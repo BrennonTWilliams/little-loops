@@ -81,21 +81,46 @@ In `scripts/little_loops/cli/queue.py`:
    ```
 
 2. In `cmd_add`, before calling `_classify_action`, reject the ambiguous case
-   (`args.loop_input is not None and args.input is not None`) with an `Error:` message on
-   stderr and return 2, matching the existing `ValueError` exit path.
+   (`args.loop_input is not None and args.input is not None`) with this message on
+   stderr and return 2, matching the existing `ValueError` exit path:
+
+   ```
+   Error: input given both positionally and via --input; use one
+   ```
+
 3. Pass `args.loop_input if args.loop_input is not None else args.input` as
    `input_value` — no change to `_classify_action`, which already stores it verbatim
    under `args["loop_input"]` (JSON coercion stays at dequeue time).
 4. After classification, if the positional was used and `spec.runner` is not
-   `RunnerType.LOOP`, error out (exit 2). This restriction applies to the positional
-   only; `--input` keeps its current permissive behaviour so existing invocations are
-   unaffected.
+   `RunnerType.LOOP`, print this message on stderr and return 2 (nothing is enqueued):
+
+   ```
+   Error: positional input is only valid for loop targets ('<target>' classified as <runner>); use --input, or quote the full command
+   ```
+
+   `<runner>` is `spec.runner.value`. Naming the runner is required: a loop name that
+   does not resolve (a typo, or no `.loops/<name>.yaml` in the current directory) falls
+   through classification to `cmd`, and without the runner in the message the user
+   cannot tell why their loop target was rejected. The "quote the full command" hint
+   covers the unquoted raw-command case (`ll-queue add pytest tests/`), which today fails
+   in argparse with `unrecognized arguments` and after this change reaches `cmd_add`
+   instead. This restriction applies to the positional only; `--input` keeps its current
+   permissive behaviour so existing invocations are unaffected.
+
+**Rationale vs. the FEAT-2906 design note.** FEAT-2906 says "Do not add a bare second
+positional to `ll-queue add`: it would collide with `target`, which under `--runner cmd`
+is already a full command line." That concern is about a raw command's words being
+split across `target` and a second positional. Step 4 removes it: the positional is
+accepted only when the target classifies as (or is forced to) `LOOP`, where `target` is
+a single loop name. For every non-loop runner a second token is still an error, as it is
+today; only the message changes from argparse's to the one above.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
-- **Argparse placement constraint (verified)**: an optional positional (`nargs="?"`) declared after `target` binds correctly when it directly follows `target` (`add L X --priority P2`) on both Python 3.11.11 and 3.12.10, but the interleaved form `add L --priority P2 X` parses on 3.12.10 and fails with `unrecognized arguments: X` on 3.11.11. The project floor is Python 3.11 (`pip` here resolves to pyenv 3.11), so the documented and tested form must be the positional-immediately-after-target shape, and docs must not imply the interleaved form works.
+- **Argparse placement constraint (verified)**: an optional positional (`nargs="?"`) declared after `target` binds correctly when it directly follows `target` (`add L X --priority P2`) on both Python 3.11.11 and 3.12.10, but the interleaved form `add L --priority P2 X` parses on 3.12.10 and fails with `unrecognized arguments: X` on 3.11.11. The project floor is Python 3.11 (`pip` here resolves to pyenv 3.11), so the documented and tested form must be the positional-immediately-after-target shape, and docs must not imply the interleaved form works. Re-verified 2026-09-28: the flags-before-target form `add --priority P2 L X` binds correctly on both 3.11.11 and 3.12.10, so docs may show it as well.
+- **Test-authoring trap (Python version skew)**: the local `python` is 3.12 but CI unit tests run on 3.11 (`.github/workflows/ci.yml` `python-version: '3.11'`). A test that uses the interleaved form `add L --priority P2 X` passes locally and fails in CI. Tests must use only `add L X [flags]` (or `add [flags] L X`). Do not add a test for the interleaved form; if one is wanted, it must skip below Python 3.12.
 - **Ambiguity check must compare against `args.input` after parsing**: because positional and `--input` land in different Namespace attributes (`loop_input` vs `input`), argparse itself cannot make them mutually exclusive; the exit-2 check has to live in `cmd_add` and return the code (matching the existing `return 2` contract), not raise `SystemExit`.
 
 ## Program Design
@@ -146,7 +171,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli_queue.py:122` — new cases go in `TestCmdAdd` after `test_add_with_input_persists_onto_entry_args` (:156). No existing `TestCmdAdd` test resolves a loop from a file through `main_queue`; create `.loops/<name>.yaml` in `tmp_path` (as `TestClassifyAction.test_classifies_loop_name` does at :46, under the autouse `_isolate_cwd`) or pass `--runner loop`. Use argv shape `add <target> <input> [flags]` [Agent 3 finding]
-- `scripts/tests/test_cli_queue.py:176` — `test_add_with_bad_arg_pair_exits_2` asserts only `result == 2`; the new ambiguity/non-loop tests should also assert `"Error:"` in stderr via `capsys` (template: `test_cli_learning_tests.py:69`) and that `list_entries()` is empty [Agent 3 finding]
+- All new `TestCmdAdd` argv lists must place the input immediately after the target (`["ll-queue", "add", L, X, "--priority", "P2"]`) — the interleaved form fails on the 3.11 CI runner (see Codebase Research Findings)
+- `scripts/tests/test_cli_queue.py:176` — `test_add_with_bad_arg_pair_exits_2` asserts only `result == 2`; the new ambiguity/non-loop tests should also assert the exact message substrings from Proposed Solution steps 2 and 4 (`"given both positionally and via --input"`; `"only valid for loop targets"` plus `"classified as cmd"`) in stderr via `capsys` (template: `test_cli_learning_tests.py:69`) and that `list_entries()` is empty [Agent 3 finding]
 - `scripts/tests/test_cli_queue.py:88` — `test_input_value_stored_verbatim_under_loop_input` covers `_classify_action` with `runner_override="loop"`; no test pins `--input` with a non-loop runner, so add `add x --runner cmd --input Y` → 0 to pin "`--input` unchanged" [Agent 3 finding]
 - `scripts/tests/test_cli_queue.py` — extra cases: `add L X` entry equals `add L --input X` (args, runner, timeout — the Success Metric); `add L X --priority P2` binds on 3.11; bare unresolved name + positional → 2; raw-command target (`add "pytest tests/" extra --runner cmd`) → 2 (FEAT-2906 collision case); empty-string positional counts as given (`is not None`) [Agent 3 finding]
 - `scripts/tests/test_cli_queue_run.py:40` — helpers `_add_target`/`_add_and_get_id` and `TestCmdRunLoopDispatch._add_loop` (:316) use a single bare token; unaffected [Agent 3 finding]
@@ -160,13 +186,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md:4583` — `` `add TARGET` `` row in the `### ll-queue` Subcommands table; show the optional `[input]` [Agent 1 finding]
 - `docs/reference/API.md:5126` — `add TARGET` bullet in `### main_queue`; add `[input]` and `--input` (see Files to Modify) [Agent 2 finding]
-- Docs must show only the positional-immediately-after-target shape (`add L X --priority P2`); the interleaved form fails on Python 3.11 [Agent 2 finding]
+- Docs must show only the positional-immediately-after-target shape (`add L X --priority P2`) or the flags-first shape (`add --priority P2 L X`); the interleaved form `add L --priority P2 X` fails on Python 3.11 [Agent 2 finding]
 - `docs/reference/CLI.md` is end-user audience — no `scripts/tests/` paths (`test_docs_audience_gate.py`) [Agent 2 finding]
 
 ### Configuration
 - N/A — `config-schema.json` `queue` covers only the DB path [Agent 1 finding]
 
-### Codebase Research Findings
+### Integration Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
@@ -218,9 +244,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - `ll-queue add refine-to-ready-issue "BUG-3354"` queues an entry equivalent to
   `ll-queue add refine-to-ready-issue --input "BUG-3354"`.
-- `ll-queue add refine-to-ready-issue "BUG-3354" --input "ENH-1"` errors (ambiguous
-  input), rather than silently preferring one.
-- A positional input with a non-loop target/runner (e.g. `--runner cmd`) exits 2.
+- `ll-queue add refine-to-ready-issue "BUG-3354" --input "ENH-1"` exits 2 with
+  `Error: input given both positionally and via --input; use one` on stderr, rather than
+  silently preferring one, and enqueues nothing.
+- A positional input with a non-loop target/runner (e.g. `--runner cmd`, or a loop name
+  that does not resolve) exits 2 with
+  `Error: positional input is only valid for loop targets ('<target>' classified as <runner>); use --input, or quote the full command`
+  on stderr, and enqueues nothing.
+- The Proposed Solution states why the loop-only restriction resolves the FEAT-2906
+  "no bare second positional" design note.
+- All new tests use the positional-immediately-after-target argv shape and pass on the
+  Python 3.11 CI runner.
 - Existing `--input`-only invocations continue to work unchanged (backward compatible).
 - `docs/reference/CLI.md` documents the new positional and updates the example block.
 
