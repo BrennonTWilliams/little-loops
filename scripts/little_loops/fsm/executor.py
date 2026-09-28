@@ -3289,6 +3289,7 @@ class FSMExecutor:
                     if selection is not None
                     else (state.model or self.fsm.llm.model)
                 ),
+                working_dir=self.working_dir,
             )
 
         self._emit(

@@ -6305,6 +6305,8 @@ def evaluate(
     output: str,
     exit_code: int,
     context: InterpolationContext,
+    model: str | None = None,
+    working_dir: Path | None = None,
 ) -> EvaluationResult
 ```
 Dispatch to appropriate evaluator based on config type.

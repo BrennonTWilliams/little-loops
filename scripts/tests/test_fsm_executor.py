@@ -7230,6 +7230,62 @@ class TestExecutorWorkingDir:
         assert result.final_state == "d"
         assert not (worktree_path / ".ll" / "history.db").exists()
 
+    def test_diff_stall_evaluator_in_worktree_ignores_main_tree_edits(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3634: a diff_stall evaluator state run with working_dir=<worktree>
+        fingerprints the worktree, not the process's cwd (the main tree). The
+        `check` state's action edits the main tree on every pass; a correctly
+        scoped fingerprint must not see those edits, so it stalls after 2
+        iterations. Modelled on
+        test_shell_action_in_worktree_resolves_main_repo_history_db above."""
+        import subprocess
+
+        from tests.helpers import copy_git_template
+
+        main_repo = tmp_path / "main"
+        main_repo.mkdir()
+        copy_git_template(main_repo)
+        (main_repo / "m.txt").write_text("m0\n")
+        subprocess.run(["git", "add", "."], cwd=main_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=main_repo, check=True, capture_output=True
+        )
+        monkeypatch.chdir(main_repo)
+
+        worktree_path = tmp_path / "wt"
+        worktree_path.mkdir()
+        copy_git_template(worktree_path)
+        (worktree_path / "w.txt").write_text("w0\n")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=worktree_path, check=True, capture_output=True
+        )
+
+        run_dir = tmp_path / "runs" / "r1"
+        fsm = FSMLoop(
+            name="t",
+            initial="check",
+            context={"run_dir": str(run_dir)},
+            states={
+                "check": StateConfig(
+                    action=f"echo m >> {main_repo / 'm.txt'}",
+                    evaluate=EvaluateConfig(type="diff_stall", max_stall=1),
+                    on_yes="check",
+                    on_no="stalled",
+                    max_retries=5,
+                    on_retry_exhausted="never_stalled",
+                ),
+                "stalled": StateConfig(terminal=True),
+                "never_stalled": StateConfig(terminal=True, failure=True),
+            },
+        )
+
+        result = FSMExecutor(fsm, working_dir=worktree_path).run()
+
+        assert result.final_state == "stalled"
+        assert result.iterations == 2
+
 
 class TestSubLoopExecution:
     """Tests for hierarchical FSM sub-loop execution (FEAT-659)."""

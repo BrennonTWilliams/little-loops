@@ -2063,6 +2063,64 @@ class TestDiffStallEvaluator:
         assert result.details["max_stall"] == 2
         assert list(run_dir.glob("ll-diff-stall-myloop-check_stall-*.count"))
 
+    def test_dispatch_diff_stall_threads_working_dir_to_cwd(self, repo) -> None:
+        """BUG-3634: evaluate()'s working_dir reaches evaluate_diff_stall as cwd.
+
+        `repo` (the process cwd, via the fixture's monkeypatch.chdir) is a valid git
+        repo, but the nonexistent path passed as working_dir is not. If working_dir
+        were dropped instead of threaded through, this would fingerprint `repo` and
+        return "yes"; only correct threading produces the "error" verdict below.
+        """
+        config = EvaluateConfig(type="diff_stall")
+        ctx = InterpolationContext(loop_name="myloop", state_name="check_stall")
+        missing = repo.parent / "does-not-exist"
+        result = evaluate(config, "", 0, ctx, working_dir=missing)
+        assert result.verdict == "error"
+        assert str(missing) in result.details["error"]
+
+    def test_cwd_param_fingerprints_other_directory_including_symlinks(
+        self, repo, tmp_path
+    ) -> None:
+        """A `cwd` argument fingerprints that directory, not the process cwd, and the
+        os.path.islink/isfile probes on git-listed paths resolve against it (not the
+        process cwd `repo`)."""
+        other = tmp_path / "other"
+        other.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=other, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=other, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=other, check=True)
+        (other / "dl").symlink_to("target1")
+        subprocess.run(["git", "add", "-A"], cwd=other, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=other, check=True)
+
+        first = evaluate_diff_stall(
+            state_dir=other / ".loops" / "runs" / "r1", state_key="l-s", cwd=other
+        )
+        assert first.verdict == "yes"
+
+        # Edit only `repo` (process cwd) -- must not register against `other`'s state.
+        (repo / "a.txt").write_text("changed-in-process-cwd\n")
+        stable = evaluate_diff_stall(
+            state_dir=other / ".loops" / "runs" / "r1", state_key="l-s", cwd=other, max_stall=1
+        )
+        assert stable.details["diff_changed"] is False
+
+        # Changing the symlink target inside `other` must register as progress -- this
+        # only happens if the os.path probes resolve `dl` against `cwd`, not process cwd.
+        (other / "dl").unlink()
+        (other / "dl").symlink_to("target2")
+        changed = evaluate_diff_stall(
+            state_dir=other / ".loops" / "runs" / "r1", state_key="l-s", cwd=other, max_stall=1
+        )
+        assert changed.details["diff_changed"] is True
+
+    def test_nonexistent_cwd_returns_error_with_working_directory_message(self) -> None:
+        missing = Path("/nonexistent/does-not-exist-bug-3634")
+        result = evaluate_diff_stall(cwd=missing)
+        assert result.verdict == "error"
+        assert "working directory" in result.details["error"]
+        assert str(missing) in result.details["error"]
+
 
 class TestScoreStallEvaluator:
     """Tests for score_stall evaluator (ENH-2428).

@@ -3,10 +3,11 @@ id: BUG-3634
 type: BUG
 title: diff_stall evaluator fingerprints main tree instead of worktree child_working_dir
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T05:28:45Z'
+completed_at: '2026-09-28T01:01:41Z'
 verify_verdict: VALID
 confidence_score: 100
 outcome_confidence: 93
@@ -52,6 +53,15 @@ diff_stall state inside a `worktree:` child (`executor.py` ~:1232,
 `child_working_dir`) fingerprints the main tree instead of the worktree...
 the evaluator needs the executor's working dir threaded through to
 `evaluate()`."
+
+## Proposed Solution
+
+Thread a `working_dir`/`cwd` parameter from `FSMExecutor._evaluate` through
+`evaluate()` into `evaluate_diff_stall` → `_diff_stall_fingerprint` →
+`_run_git`, so a `diff_stall` state inside a `worktree:` child fingerprints
+`child_working_dir` instead of the process's `Path.cwd()`. See Acceptance
+Criteria and Program Design below for the exact signatures, call path, and
+edge cases (missing `cwd`, the `run_dir` exclusion staying on process cwd).
 
 ## Acceptance Criteria
 
@@ -225,12 +235,38 @@ Findings from codebase-analyzer, organized below.
 
 - BUG-3627 — diff_stall content fingerprint (this gap is out of scope there).
 
+## Resolution
+
+Threaded a `working_dir: Path | None = None` keyword argument through
+`evaluate()` into `evaluate_diff_stall(cwd=...)` → `_diff_stall_fingerprint(cwd=...)`
+→ `_run_git(cwd=...)`, exactly per the Program Design. `FSMExecutor._evaluate`
+now passes `working_dir=self.working_dir` at its `evaluate(...)` call site
+(`fsm/executor.py`), which already resolves to `child_working_dir` inside a
+`worktree:` child. `_diff_stall_fingerprint`'s `os.path.islink`/`isfile`
+probes now resolve git-listed paths against `cwd` (or `Path.cwd()` when
+unset); the `run_dir` exclusion deliberately stays on the process cwd per the
+Acceptance Criteria. `_run_git` distinguishes a missing `cwd` from a missing
+`git` binary via a pre-check plus `exc.filename` on `FileNotFoundError`.
+
+Added coverage in `scripts/tests/test_fsm_evaluators.py` (cwd fingerprinting
+another directory including a symlink target change, a nonexistent-cwd error
+case, and a dispatcher-level `working_dir=` threading test) and
+`scripts/tests/test_fsm_executor.py::TestExecutorWorkingDir` (an
+executor-level test proving a `diff_stall` state run with
+`working_dir=<worktree>` ignores edits made to the process's main tree).
+Verified all four new tests fail without the `cwd=working_dir` wiring by
+temporarily reverting it and re-running.
+
+Implementation matched the issue's Program Design exactly; no deviations.
+
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T01:01:19 - `7e36f33a-2583-40eb-9c2c-04ef32e243fd.jsonl`
+- `/ll:ready-issue` - 2026-09-28T00:44:54 - `f157d678-72ec-49d3-b785-227c8627d0cb.jsonl`
 - `/ll:confidence-check` - 2026-09-28T00:22:39 - `350c84d2-7d71-4aaf-b81d-f6ca349c5726.jsonl`
 - `/ll:verify-issues` - 2026-09-28T00:19:54 - `776b6a7c-b6d7-48e6-8471-3662e71e1b89.jsonl`
 - `/ll:wire-issue` - 2026-09-27T06:33:10 - `de835f3b-4603-4a08-b7dc-82329ffec1ac.jsonl`

@@ -609,23 +609,29 @@ def _stall_state_paths(
     return directory / f"{stem}.txt", directory / f"{stem}.count"
 
 
-def _run_git(args: list[str], stdin: str | None = None) -> str:
+def _run_git(args: list[str], stdin: str | None = None, cwd: Path | None = None) -> str:
     """Run a git command for the diff_stall fingerprint, raising on any failure."""
+    if cwd is not None and not Path(cwd).exists():
+        raise _GitFingerprintError(f"working directory does not exist: {cwd}")
     try:
         # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2/AC3)
         proc = subprocess.run(
-            ["git", *args], capture_output=True, text=True, timeout=30, input=stdin
+            ["git", *args], capture_output=True, text=True, timeout=30, input=stdin, cwd=cwd
         )
     except subprocess.TimeoutExpired:
         raise _GitFingerprintError("git diff timed out") from None
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
+        if exc.filename:
+            raise _GitFingerprintError(f"working directory does not exist: {exc.filename}") from None
         raise _GitFingerprintError("git not found in PATH") from None
     if proc.returncode != 0:
         raise _GitFingerprintError(f"git diff failed: {proc.stderr[:200]}")
     return proc.stdout
 
 
-def _diff_stall_fingerprint(scope: list[str] | None, run_dir: Path | None) -> str:
+def _diff_stall_fingerprint(
+    scope: list[str] | None, run_dir: Path | None, cwd: Path | None = None
+) -> str:
     """Content fingerprint of the scoped working state (committed, staged, unstaged, untracked).
 
     Raises:
@@ -633,8 +639,14 @@ def _diff_stall_fingerprint(scope: list[str] | None, run_dir: Path | None) -> st
     """
     paths = list(scope) if scope else ["."]
     excludes = [":(exclude).loops/"]
-    toplevel = Path(_run_git(["rev-parse", "--show-toplevel"]).strip()).resolve()
+    toplevel = Path(_run_git(["rev-parse", "--show-toplevel"], cwd=cwd).strip()).resolve()
     if run_dir is not None:
+        # run_dir is always resolved against the process cwd, not `cwd`: it exists to hide
+        # the evaluator's own snapshot files, which _stall_state_paths writes relative to
+        # the process cwd (the executor never chdirs). A worktree child's run_dir is already
+        # absolute (FSMExecutor worktree-attach block), so this is a no-op there; for a
+        # top-level executor with `working_dir` set and a relative run_dir, resolving against
+        # `cwd` would point the exclusion at the wrong directory.
         resolved = (Path.cwd() / run_dir).resolve()
         try:
             rel_top = resolved.relative_to(toplevel).as_posix()
@@ -647,18 +659,22 @@ def _diff_stall_fingerprint(scope: list[str] | None, run_dir: Path | None) -> st
     # Working-tree content of every tracked + untracked (non-ignored) file in scope. Hashing
     # the working tree (not HEAD/diff parts) makes commits neutral: edit-then-commit is
     # progress, a commit of already-present changes is a stall tick.
-    listing = _run_git(["ls-files", "-c", "-o", "--exclude-standard", "-z", *pathspec])
+    listing = _run_git(["ls-files", "-c", "-o", "--exclude-standard", "-z", *pathspec], cwd=cwd)
     files = sorted({p for p in listing.split("\0") if p})
+    base = Path(cwd) if cwd is not None else Path.cwd()
     h = hashlib.sha256()
     regular: list[str] = []
     for path in files:
-        if os.path.islink(path):
-            h.update(f"{path}\0->{os.readlink(path)}\0".encode())
-        elif os.path.isfile(path):
+        full = base / path
+        if os.path.islink(full):
+            h.update(f"{path}\0->{os.readlink(full)}\0".encode())
+        elif os.path.isfile(full):
             regular.append(path)
         # else: deleted tracked file or gitlink directory - absence is part of the state
     if regular:
-        digests = _run_git(["hash-object", "--stdin-paths"], stdin="\n".join(regular) + "\n")
+        digests = _run_git(
+            ["hash-object", "--stdin-paths"], stdin="\n".join(regular) + "\n", cwd=cwd
+        )
         for path, digest in zip(regular, digests.split(), strict=False):
             h.update(f"{path}\0{digest}\0".encode())
     return h.hexdigest()
@@ -669,6 +685,7 @@ def evaluate_diff_stall(
     max_stall: int = 1,
     state_dir: Path | None = None,
     state_key: str = "",
+    cwd: Path | None = None,
 ) -> EvaluationResult:
     """Detect stalled iterations by comparing a content fingerprint between runs.
 
@@ -696,6 +713,8 @@ def evaluate_diff_stall(
         state_dir: Per-run directory for snapshot/count files; None uses the
             legacy ``.loops/tmp`` location.
         state_key: ``<loop_name>-<state_name>`` prefix for the state files.
+        cwd: Working directory to run git commands in; None uses the
+            process's current working directory.
 
     Returns:
         EvaluationResult with verdict:
@@ -704,7 +723,7 @@ def evaluate_diff_stall(
             - error: git command failed or timed out
     """
     try:
-        current_diff = _diff_stall_fingerprint(scope, state_dir)
+        current_diff = _diff_stall_fingerprint(scope, state_dir, cwd=cwd)
     except _GitFingerprintError as exc:
         return EvaluationResult(verdict="error", details={"error": exc.error})
 
@@ -1938,6 +1957,7 @@ def evaluate(
     exit_code: int,
     context: InterpolationContext,
     model: str | None = None,
+    working_dir: Path | None = None,
 ) -> EvaluationResult:
     """Dispatch to appropriate evaluator based on config type.
 
@@ -1949,6 +1969,9 @@ def evaluate(
         model: Model identifier for the ``llm_structured`` evaluator (state
             ``model:`` override or the loop's ``llm.model`` default). Ignored
             by every other evaluator type.
+        working_dir: Executor's resolved working directory (``child_working_dir``
+            inside a ``worktree:`` child). Used by the ``diff_stall`` evaluator
+            as its git ``cwd``. Ignored by every other evaluator type.
 
     Returns:
         EvaluationResult from the appropriate evaluator
@@ -2112,6 +2135,7 @@ def evaluate(
             max_stall=config.max_stall,
             state_dir=Path(str(run_dir)) if run_dir else None,
             state_key=f"{context.loop_name}-{context.state_name}" if context else "",
+            cwd=working_dir,
         )
 
     elif eval_type == "score_stall":
