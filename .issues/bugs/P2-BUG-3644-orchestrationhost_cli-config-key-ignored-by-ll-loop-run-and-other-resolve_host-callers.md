@@ -17,7 +17,7 @@ labels:
 
 ## Summary
 
-`orchestration.host_cli` in `.ll/ll-config.json` is documented as a host-selection override, but only `ll-doctor` honors it. `apply_host_cli_from_config()` (`little_loops.host_runner`) is the sole bridge from the config key into `LL_HOST_CLI`, and its only production caller is `cli/doctor.py` (`apply_host_cli_from_config(cfg)`, ~line 1438). `resolve_host()` reads only `LL_HOST_CLI`, `LL_HOOK_HOST` and the `_PROBE_ORDER` PATH probe.
+`orchestration.host_cli` in `.ll/ll-config.json` is documented as a host-selection override, but only `ll-doctor` honors it. `apply_host_cli_from_config()` (`little_loops.host_runner`) is the sole bridge from the config key into the host env var, and its only production caller is `little_loops.cli.doctor`. `resolve_host()` reads only the host env vars (`LL_HOST_CLI`, `LL_HOOK_HOST`) and the `_PROBE_ORDER` PATH probe.
 
 Found while reviewing ENH-3548 (validate-time model hint warnings).
 
@@ -44,8 +44,15 @@ Apply the config key at CLI entry for every automation tool that resolves a host
 ## Steps to Reproduce
 
 1. Set `"orchestration": {"host_cli": "codex"}` in `.ll/ll-config.json`, leave `LL_HOST_CLI` unset, have both `claude` and `codex` on PATH.
-2. Run `ll-doctor` — reports `codex`.
-3. Run any loop with `ll-loop run` — dispatches to the probe winner, not `codex`.
+2. Run `ll-doctor` — applies the config key before resolving the host.
+3. Run any loop with `ll-loop run` — dispatches to the probe winner, not `codex` (unless `codex` happens to win the probe).
+
+## Acceptance Criteria
+
+- [ ] With `LL_HOST_CLI` unset and `orchestration.host_cli` set, `resolve_host()` as reached from `ll-loop run`, `ll-loop validate`, `ll-auto`, `ll-parallel`, `ll-sprint` and `ll-logs fleet-review` selects the configured host, not the probe winner.
+- [ ] `LL_HOST_CLI` still overrides the config key; with neither set, the probe order is unchanged.
+- [ ] `FSMExecutor._preflight_model_hints` and ENH-3548's validate-time hint warnings resolve against the configured host.
+- [ ] A regression test proves a new CLI entry point cannot bypass the config key (single choke point, or a test enumerating entry points).
 
 ## Related
 
