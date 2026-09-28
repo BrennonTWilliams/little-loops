@@ -13,6 +13,7 @@ from little_loops.adapters.core import (
     _emit_degraded_agent,
     _emit_mirrored_skill,
     _extract_body,
+    _resolve_mirror_model,
     _select_frontmatter_fields,
 )
 
@@ -24,7 +25,9 @@ __all__ = ["GeminiEmitter"]
 # ---------------------------------------------------------------------------
 
 
-def _prepare_skill_content(content: str, skill_name: str) -> tuple[str, bool]:
+def _prepare_skill_content(
+    content: str, skill_name: str, resolved_model: str | None = None
+) -> tuple[str, bool]:
     """Return modified SKILL.md content for Gemini output plus a changed flag.
 
     Injects ``name: <skill_name>`` when absent and removes
@@ -34,7 +37,9 @@ def _prepare_skill_content(content: str, skill_name: str) -> tuple[str, bool]:
     (ENH-2883), not host-private regex logic.
     """
     fields_read = HOST_CAPABILITIES["gemini"].frontmatter_fields_read
-    return _select_frontmatter_fields(content, skill_name, fields_read)
+    return _select_frontmatter_fields(
+        content, skill_name, fields_read, resolved_model=resolved_model
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +91,17 @@ class GeminiEmitter:
         path, so a SKILL.md-only mirror dangles every read. Delegates to the
         shared mirrored-skill core with gemini's content-prep policy.
         """
-        return _emit_mirrored_skill(skill_meta, ".gemini", _prepare_skill_content)
+        model = _resolve_mirror_model(
+            skill_meta.get("fm") or {},
+            "gemini",
+            HOST_CAPABILITIES["gemini"].frontmatter_fields_read,
+            skill_meta.get("model_hint_omissions"),
+        )
+        return _emit_mirrored_skill(
+            skill_meta,
+            ".gemini",
+            lambda content, name: _prepare_skill_content(content, name, model),
+        )
 
     def emit_command(self, cmd_meta: dict) -> str:
         """Write ``.gemini/commands/<stem>.toml``."""

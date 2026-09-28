@@ -452,6 +452,24 @@ agents exit preview and gain native subagent spawning later, the capability
 map's `subagents` flips to `native` and `agent_output_format` switches to
 describe the native format — no other code changes required.
 
+### Frontmatter `model_hint` (skills and agents)
+
+A skill or agent may declare `model_hint: <coding|reasoning|burst>` (the same
+vocabulary as a loop state's `model_hint`) as a portable model declaration.
+`ll-adapt` resolves it per host from the **built-in mappings only** —
+`orchestration.model_hints` overrides are deliberately ignored, because
+generated mirrors are shipped content. `model_hint` itself is never written
+into a generated mirror (skills, commands or agents, on any host).
+
+- **Claude Code (native):** no resolution. Claude Code reads the literal `model:`, which must be the exact `claude-code` alias for the hint (`coding` → `sonnet`, `reasoning` → `opus`, `burst` → `haiku`, case-insensitive); a different alias, a concrete `claude-*` ID or `inherit` next to a hint is an `ll-adapt` error.
+- **Codex agent TOML:** resolved from the `codex` mapping. No built-in Codex mapping exists yet, so `model` is **omitted** (Codex uses its default) and `ll-adapt` prints one stderr warning per hint, e.g. ``model_hint 'coding' unmapped for codex; 9 agents omit `model` ``. `--quiet` suppresses it; it is not an error.
+- **Skill mirrors (Codex, Gemini, Kimi Code, Qwen, omp) and Kimi Code / Qwen / omp agent mirrors:** `model` is written only for a host whose `frontmatter_fields_read` includes `model`; none does today, so the field is omitted silently.
+- **Gemini agents:** unsupported: degraded-mode output carries no frontmatter.
+
+Codex skills are rewritten in place, so the Claude Code pin and the hint stay
+in the source `SKILL.md`. An unknown hint, or a pin that disagrees with it, is
+a per-file `ll-adapt` error and fails the staleness gate.
+
 > **Last Verified: 2026-08-31** — this table was re-checked against the
 > emitters' actual source (not just re-dated); distinct from *Last Updated*
 > above, which only means the file text changed. Update both dates when the

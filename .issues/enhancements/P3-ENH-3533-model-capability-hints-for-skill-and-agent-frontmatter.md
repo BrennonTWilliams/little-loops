@@ -3,12 +3,13 @@ id: ENH-3533
 type: ENH
 title: Model capability hints for skill and agent frontmatter
 priority: P3
-status: open
+status: done
 parent: EPIC-3563
 epic: EPIC-3563
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:20:40Z'
+completed_at: '2026-09-28T23:13:43Z'
 labels:
 - multi-host
 blocked_by:
@@ -144,13 +145,17 @@ Added in the 2026-09-28 third review:
 - `ModelHintUnmappedError` is raised for a missing mapping only; unknown/unsupported backend and config-disabled hints raise plain `ModelHintError` and surface as `AdapterError`.
 - `test_wiring_skills_and_commands.py:474-524` (`test_host_artifacts_are_not_stale`) — existing staleness gate, now also asserting `errors == 0`; must pass after regeneration.
 
+### Deviations
+
+- 2026-09-28 (implementation): `_resolve_frontmatter_model` takes an optional third argument `omissions: Counter[tuple[str, str]] | None`, and `process_skills`/`process_agents` hand the emitters a per-call `Counter` through the `skill_meta`/`agent_meta` dict (`"model_hint_omissions"`) instead of emitter-instance state. `_select_frontmatter_fields` gained `resolved_model` and `strip_model` keyword parameters; a new `_resolve_mirror_model` wraps the refinement 15 `fields_read` gate. Refinement 16's unconditional strip does **not** cover Codex skills: `CodexEmitter.emit_skill` rewrites the source `skills/*/SKILL.md` in place (there is no separate Codex skill mirror), so it passes `strip_model=False` to keep the Claude pin and `model_hint` in the source. Codex-bridged commands and omp commands never carry the hint (omp command copies go through `_strip_model_hint`).
+
 ### Dropped touchpoints (from earlier wiring passes)
 Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help text, `doc_counts.py:_parse_skill_frontmatter`, `frontmatter.py:parse_skill_frontmatter`, `cli/doctor.py:943`, `init/writers.py:238`, `CONTRIBUTING.md:691,707` (verify-skills wording), `skills/configure/areas.md:862`, `scripts/little_loops/loops/mechanize-skills.yaml:503`, `scripts/pyproject.toml:92`, `cli/__init__.py:64,156`, `test_cli_docs.py::TestMainVerifySkills`, `test_skill_size_checker.py`, `test_doc_counts.py::TestCheckSkillBudget`, and CLI-level try/except in `cli/adapt.py`/`cli/adapt_agents_for_codex.py`. Refinement 2 removes `config-schema.json:1819-1832` (no new consumer of `orchestration.model_hints`).
 
 ## Implementation Steps
 
 0. **Pre-implementation checks (before writing code).**
-   - Settle the uncommitted working-tree change that removes `model: sonnet` from 10 `skills/*/SKILL.md` files (audit-issue-conflicts, confidence-check, spike, and others). Land or revert it first, since it decides which skills carry a pin. Either way, `skills/map-dependencies/SKILL.md` (`model: sonnet`) keeps its pin and is a safe Step 7 target.
+   - The change that removed `model: sonnet` from 10 `skills/*/SKILL.md` files (audit-issue-conflicts, confidence-check, spike, and others) has landed (`0329a74b9`), so no working-tree change is pending. `skills/map-dependencies/SKILL.md` (`model: sonnet`) keeps its pin and is a safe Step 7 target.
    - Confirm Claude Code tolerates an unknown `model_hint:` key: put it on a scratch agent and a scratch skill, run `claude plugin validate`, and check that both register and run on their `model:` pin. If Claude Code rejects the key, stop and re-scope; do not ship migrated files.
 1. BUG-3640 is done (`4bd11c089`); build on its `_is_claude_model` predicate, omit-when-empty Codex TOML rule, and the `model:` strip in `_select_frontmatter_fields`.
 2. Add `ModelHintUnmappedError` to `host_runner.py`. Add `_validate_model_decl` and `_resolve_frontmatter_model` to `adapters/core.py`. Wire validation into `process_agents`/`process_skills` (in `process_skills`, before the `disable-model-invocation` skip) with `ModelHintError` → `AdapterError`.
@@ -170,6 +175,7 @@ Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help 
 
 - **Resolution timing** → generation time only (Option A). Native Claude Code reads the literal `model:` pin, kept consistent by validation.
 - **Staleness** → built-in-only resolution makes a mapping change a code change; `test_host_artifacts_are_not_stale` enforces regeneration (refinement 8).
+- **Claude Code tolerance (Step 0, 2026-09-28)** → confirmed. A scratch plugin with an agent and a skill carrying `model: sonnet` + `model_hint: coding` registered both (`hintprobe:probe-agent`, `hintprobe:probe`) in a headless `claude -p` init event. `claude plugin validate` alone is not evidence: it accepted even malformed frontmatter.
 - **Claude-native path** → no `ll-adapt` materialization for Claude Code. The `/ll:spike` on native hint support is not needed under Option A: Claude Code does not have to honor `model_hint`, only tolerate it as an unknown key. Verify that tolerance **before implementing** (Implementation Step 0), not on the first migrated file: it still registers under `/ll:*` / the Agent list and runs on its `model:` pin. If Claude Code rejects the key, stop, ship no migrated files, and record that here.
 
 ## Acceptance Criteria
@@ -218,12 +224,29 @@ Refreshed 2026-09-28 (supersedes the 2026-09-24 check): ENH-3527 is done; `resol
 
 Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). `/ll:verify-issues ENH-3533 --auto`, 2026-09-28: every `file:line` citation in the Codebase Research Findings, Integration Map, Program Design, and Dropped-touchpoints list was checked against the current tree (all `adapters/*.py`, `host_runner.py`, `cli/*.py`, `capabilities.py`, doc/schema files, and the cited test classes/functions) — all confirmed accurate except two stale citations in the Dropped-touchpoints line, now corrected in place: `loops/mechanize-skills.yaml:503` → `scripts/little_loops/loops/mechanize-skills.yaml:503` (the file lives under `scripts/little_loops/loops/`, not a top-level `loops/`); `cli/doctor.py:238,943` → `cli/doctor.py:943` (line 238 is an unrelated `print("  (none found)")`; only line 943, the `check_skill_sizes()`/`ll-verify-skills` adapter docstring, is a real touchpoint). `ll-verify-evidence` found no fabricated quotes. No active required decision rules. Dependency check (§2E) found `blocked_by: BUG-3640` (status was open at that time, so unsatisfied) had no reciprocal `## Blocks` entry on BUG-3640 — fixed by adding one there in this pass. BUG-3640 has since completed (`4bd11c089`), so that edge is now satisfied (see the 2026-09-28 re-check below). B6 proposal-vs-code check: the planned `ModelHintError` → `AdapterError` conversion lands inside `process_agents`/`process_skills`' existing per-file `except AdapterError` blocks (`core.py:477,550,628,670`), so no exception-handler gap.
 
-Re-check 2026-09-28 (after BUG-3640 landed), `/ll:verify-issues ENH-3533 --auto`: verdict at time of check **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). Re-checked every `file:line` citation against the current tree: `codex.py:430` (`CodexEmitter.emit_agent`), `host_runner.py:134-138`/`:153`/`:186` (`_BUILTIN_HINT_MAPPINGS`, `resolve_model_hint`, the `builtin is None` branch the new `ModelHintUnmappedError` attaches to), `core.py:120,435,565` and the four `except AdapterError` sites (`:477,550,628,670`), `kimi.py:111-126`, `qwen.py:128-145`, `omp.py:62-73,109-122`, `gemini.py:81,131-138`, `fsm/executor.py:3687,3704` — all accurate. Two stale items corrected in place: the `CodexEmitter` class line (`codex.py:328` → `:329`), and the prior note's "BUG-3640 status: open" claim (BUG-3640 is now `done`). The frontmatter `blocked_by: BUG-3640` edge is a satisfied edge (`done`), so it is informational and needs no backlink. The Step 0 working-tree premise still holds (10 `skills/*/SKILL.md` modified, uncommitted). `ll-verify-evidence` clean; no active required decision rules; no new B6 findings.
+Re-check 2026-09-28 (after BUG-3640 landed), `/ll:verify-issues ENH-3533 --auto`: verdict at time of check **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). Re-checked every `file:line` citation against the current tree: `codex.py:430` (`CodexEmitter.emit_agent`), `host_runner.py:134-138`/`:153`/`:186` (`_BUILTIN_HINT_MAPPINGS`, `resolve_model_hint`, the `builtin is None` branch the new `ModelHintUnmappedError` attaches to), `core.py:120,435,565` and the four `except AdapterError` sites (`:477,550,628,670`), `kimi.py:111-126`, `qwen.py:128-145`, `omp.py:62-73,109-122`, `gemini.py:81,131-138`, `fsm/executor.py:3687,3704` — all accurate. Two stale items corrected in place: the `CodexEmitter` class line (`codex.py:328` → `:329`), and the prior note's "BUG-3640 status: open" claim (BUG-3640 is now `done`). The frontmatter `blocked_by: BUG-3640` edge is a satisfied edge (`done`), so it is informational and needs no backlink. The Step 0 working-tree premise was later superseded: the 10-skill `model:` removal is committed (`0329a74b9`). `ll-verify-evidence` clean; no active required decision rules; no new B6 findings.
 Graph: `ll-code` provider=`codegraph` freshness=`fresh` (used only to cross-check anchors; all confirmed by direct Grep).
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-28
+- **Status**: Completed
+
+### Changes Made
+- `host_runner.py`: `ModelHintUnmappedError(ModelHintError)`, raised only for a missing mapping.
+- `adapters/core.py`: `_validate_model_decl`, `_resolve_frontmatter_model`, `_resolve_mirror_model`, `_strip_model_hint`, `_report_model_omissions`; `_select_frontmatter_fields` strips `model_hint:` and writes an optional resolved `model:`; `process_skills`/`process_agents` validate (skills before the `disable-model-invocation` skip) and print one aggregated stderr warning per host and hint unless `quiet`.
+- Emitters: Codex agent resolves via the `codex` mapping (omit + warn while unmapped); Kimi/Qwen/omp/Gemini route through the `fields_read`-gated resolution; omp command copies strip the hint; Codex in-place skill rewrite preserves pin and hint (see Deviations).
+- Migrated `agents/codebase-locator.md` and `skills/map-dependencies/SKILL.md` to `model_hint: coding` + `model: sonnet`; `ll-adapt --apply` for codex/gemini/kimi-code/qwen produced no mirror diffs (hint and Claude pin are stripped). `map-dependencies` is `disable-model-invocation: true`, so it has no skill mirror.
+- Tests: new `test_adapters_model_hint.py`; `errors == 0` assertion in `test_host_artifacts_are_not_stale`; golden-corpus `agent-model-hint` case. Also re-pinned five spawn-site line numbers in `test_spawn_detector_candidate_set_is_superset_of_known_inventory`, which `0329a74b9` had shifted by one line.
+- Docs: HOST_COMPATIBILITY, CLI, CONFIGURATION, API, CONTRIBUTING.
+
+### Verification
+- `python -m pytest scripts/tests/` — 0 failures after the doc-parity fix; `ruff check scripts/` clean; `mypy` clean (the `ruamel` stub-noise runs are intermittent and unrelated).
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Completed** | Created: 2026-09-24 | Completed: 2026-09-28 | Priority: P3
 
 
 ## Confidence Check Notes
@@ -237,6 +260,8 @@ _Added by `/ll:confidence-check` on 2026-09-28 (re-scored after BUG-3640 landed)
 - ~~Unresolved `blocked_by` dependency: BUG-3640~~ — resolved: BUG-3640 is done (`4bd11c089`), verified by `/ll:ready-issue` 2026-09-28.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T23:13:43 - `0562d5cc-d87f-455b-9430-790b67569d4c.jsonl`
+- `/ll:ready-issue` - 2026-09-28T22:56:48 - `56049524-d23b-4c55-b28c-560fb5fa69c0.jsonl`
 - `/ll:confidence-check` - 2026-09-28T22:11:42 - `44228021-27b2-40cb-bf8f-6f451445bf46.jsonl`
 - `/ll:confidence-check` - 2026-09-28T21:57:32 - `8c4886b8-e5fe-4392-8c81-999e92290df1.jsonl`
 - `/ll:verify-issues` - 2026-09-28T21:55:16 - `5f779b40-d61a-4af9-929a-1df2e6a1dc35.jsonl`

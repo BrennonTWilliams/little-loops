@@ -64,6 +64,7 @@ __all__ = [
     "KimiRunner",
     "MODEL_HINTS",
     "ModelHintError",
+    "ModelHintUnmappedError",
     "OmpRunner",
     "OpenCodeRunner",
     "PiRunner",
@@ -145,6 +146,10 @@ class ModelHintError(ValueError):
     """A ``model_hint`` could not be resolved to a backend-valid model."""
 
 
+class ModelHintUnmappedError(ModelHintError):
+    """A known backend has no built-in or configured mapping for a valid hint (ENH-3533)."""
+
+
 def hint_backend_keys() -> frozenset[str]:
     """Return every valid backend key for ``model_hints`` mappings and resolution."""
     return frozenset(RUNTIME_HOST_CAPABILITIES) | TEST_ONLY_HOSTS | {ANTHROPIC_API_BACKEND}
@@ -185,7 +190,7 @@ def resolve_model_hint(
         return resolve_model_alias(_HINT_ALIASES[hint])
     builtin = _BUILTIN_HINT_MAPPINGS.get(backend)
     if builtin is None:
-        raise ModelHintError(
+        raise ModelHintUnmappedError(
             f"model_hint {hint!r} has no mapping for backend {backend!r}; "
             f"set orchestration.model_hints.{backend}.{hint} in .ll/ll-config.json"
         )

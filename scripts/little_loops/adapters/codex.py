@@ -16,7 +16,7 @@ from little_loops.adapters.capabilities import HOST_CAPABILITIES
 from little_loops.adapters.core import (  # noqa: F401
     AdapterError,
     _extract_body,
-    _is_claude_model,
+    _resolve_frontmatter_model,
     _select_frontmatter_fields,
 )
 
@@ -102,7 +102,9 @@ def _insert_skill_fields(content: str, name: str, short_desc: str) -> tuple[str,
     which import this name directly.
     """
     fields_read = HOST_CAPABILITIES["codex"].frontmatter_fields_read
-    return _select_frontmatter_fields(content, name, fields_read, short_desc)
+    # Codex skills are rewritten in place (the source SKILL.md *is* the Codex
+    # artifact), so the Claude Code pin and ``model_hint`` must survive.
+    return _select_frontmatter_fields(content, name, fields_read, short_desc, strip_model=False)
 
 
 def _title_case(slug: str) -> str:
@@ -442,9 +444,9 @@ class CodexEmitter:
             return "skipped"
 
         name = str(fm.get("name") or agent_name)
-        model = str(fm.get("model") or "")
-        if _is_claude_model(model):
-            model = ""
+        model = (
+            _resolve_frontmatter_model(fm, "codex", agent_meta.get("model_hint_omissions")) or ""
+        )
         short_desc = _extract_agent_short_desc(content)
         if not short_desc:
             if not quiet:

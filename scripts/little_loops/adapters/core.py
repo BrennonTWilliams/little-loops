@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib
 import re
 import sys
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, cast, runtime_checkable
@@ -20,7 +21,12 @@ from typing import Protocol, cast, runtime_checkable
 import yaml
 
 from little_loops.adapters.capabilities import HOST_CAPABILITIES
-from little_loops.host_runner import MODEL_ALIASES
+from little_loops.host_runner import (
+    MODEL_ALIASES,
+    ModelHintError,
+    ModelHintUnmappedError,
+    resolve_model_hint,
+)
 
 
 class AdapterError(Exception):
@@ -122,6 +128,8 @@ def _select_frontmatter_fields(
     name: str,
     fields_read: tuple[str, ...],
     short_desc: str = "",
+    resolved_model: str | None = None,
+    strip_model: bool = True,
 ) -> tuple[str, bool]:
     """Add/strip SKILL.md frontmatter fields per a host's ``frontmatter_fields_read``.
 
@@ -140,6 +148,15 @@ def _select_frontmatter_fields(
     - When it is *not* in *fields_read*, strips an existing
       ``metadata.short-description:`` line (and the ``metadata:`` header if
       left empty) — a host that doesn't read the field shouldn't emit it.
+
+    - Unless *strip_model* is False, strips a Claude Code ``model:`` alias /
+      ``claude-*`` ID (BUG-3640) and the ``model_hint:`` key (ENH-3533):
+      ``model_hint`` is a portable declaration that is resolved at generation
+      time and never emitted. Callers that rewrite the *source* file in place
+      (Codex skills) pass ``strip_model=False`` so the Claude pin and the
+      hint survive.
+    - Writes ``model: <resolved_model>`` when the caller resolved one (only
+      done for hosts that read ``model``, see :func:`_resolve_mirror_model`).
 
     Uses targeted string manipulation — no yaml roundtrip — to preserve
     existing frontmatter formatting. Returns ``(new_content, changed)``.
@@ -180,14 +197,36 @@ def _select_frontmatter_fields(
             changed = True
         fm_text = cleaned
 
-    model_match = re.search(r"^model\s*:\s*(.*)$", fm_text, re.MULTILINE)
-    if model_match and _is_claude_model(model_match.group(1).strip()):
-        cleaned = re.sub(r"^model\s*:.*$\n?", "", fm_text, flags=re.MULTILINE)
+    if strip_model:
+        model_match = re.search(r"^model\s*:\s*(.*)$", fm_text, re.MULTILINE)
+        if model_match and _is_claude_model(model_match.group(1).strip()):
+            cleaned = re.sub(r"^model\s*:.*$\n?", "", fm_text, flags=re.MULTILINE)
+            if cleaned != fm_text:
+                changed = True
+            fm_text = cleaned
+
+        cleaned = re.sub(r"^model_hint\s*:.*$\n?", "", fm_text, flags=re.MULTILINE)
         if cleaned != fm_text:
             changed = True
         fm_text = cleaned
 
+    if resolved_model is not None:
+        fm_text = fm_text.rstrip("\n") + f"\nmodel: {resolved_model}"
+        changed = True
+
     return f"---\n{fm_text}{after}", changed
+
+
+def _strip_model_hint(content: str) -> str:
+    """Return *content* with the ``model_hint:`` frontmatter key removed (ENH-3533)."""
+    if not content.startswith("---\n"):
+        return content
+    m = _FM_CLOSE_RE.search(content[3:])
+    if not m:
+        return content
+    fm_text = content[4 : 3 + m.start()]
+    cleaned = re.sub(r"^model_hint\s*:.*$\n?", "", fm_text, flags=re.MULTILINE)
+    return f"---\n{cleaned}{content[3 + m.start() :]}"
 
 
 def _is_claude_model(value: str) -> bool:
@@ -201,6 +240,96 @@ def _is_claude_model(value: str) -> bool:
     """
     normalized = value.strip().lower()
     return normalized in MODEL_ALIASES or normalized.startswith("claude-")
+
+
+def _validate_model_decl(fm: dict) -> None:
+    """Validate a ``model_hint`` / ``model`` declaration in source frontmatter (ENH-3533).
+
+    A hint must be in :data:`little_loops.host_runner.MODEL_HINTS`. A literal
+    ``model:`` next to a hint is the Claude Code pin and must equal the exact
+    alias ``resolve_model_hint(hint, backend="claude-code")`` returns
+    (case-insensitive); a different alias, a concrete ``claude-*`` ID or
+    ``inherit`` is an error. ``model:`` without a hint, and a hint without a
+    pin, are both valid here.
+
+    Raises:
+        AdapterError: on an unknown hint or a disagreeing pin.
+    """
+    hint = fm.get("model_hint")
+    if hint is None:
+        return
+    try:
+        expected = resolve_model_hint(str(hint), backend="claude-code")
+    except ModelHintError as exc:
+        raise AdapterError(str(exc)) from exc
+    pin = fm.get("model")
+    if pin is None:
+        return
+    if str(pin).strip().lower() != expected:
+        raise AdapterError(
+            f"model {str(pin)!r} disagrees with model_hint {hint!r}: the Claude Code pin "
+            f"must be {expected!r}"
+        )
+
+
+def _resolve_frontmatter_model(
+    fm: dict,
+    backend: str,
+    omissions: Counter[tuple[str, str]] | None = None,
+) -> str | None:
+    """Return the ``model`` to emit for *backend*, or ``None`` to omit the field.
+
+    With a ``model_hint``: resolve it through the built-in mappings only
+    (``overrides=None`` — generated mirrors are shipped content and must not
+    depend on the maintainer's config). A missing mapping
+    (:class:`ModelHintUnmappedError`) omits the field and records
+    ``(backend, hint)`` in *omissions* for the aggregated warning; any other
+    :class:`ModelHintError` becomes :class:`AdapterError`. Without a hint,
+    a literal ``model:`` passes through unless it is a Claude alias (BUG-3640).
+    """
+    hint = fm.get("model_hint")
+    if hint is not None:
+        try:
+            return resolve_model_hint(str(hint), backend=backend, overrides=None)
+        except ModelHintUnmappedError:
+            if omissions is not None:
+                omissions[(backend, str(hint))] += 1
+            return None
+        except ModelHintError as exc:
+            raise AdapterError(str(exc)) from exc
+    model = str(fm.get("model") or "")
+    if not model or _is_claude_model(model):
+        return None
+    return model
+
+
+def _resolve_mirror_model(
+    fm: dict,
+    backend: str,
+    fields_read: tuple[str, ...],
+    omissions: Counter[tuple[str, str]] | None = None,
+) -> str | None:
+    """Resolve the hinted model for a SKILL.md-style mirror, gated on ``fields_read``.
+
+    Only hosts whose ``frontmatter_fields_read`` includes ``model`` receive a
+    resolved value (ENH-3533): nothing verifies that the other hosts honor the
+    key. Files without a ``model_hint`` are left to the verbatim passthrough.
+    """
+    if "model" not in fields_read or fm.get("model_hint") is None:
+        return None
+    return _resolve_frontmatter_model(fm, backend, omissions)
+
+
+def _report_model_omissions(omissions: Counter[tuple[str, str]], noun: str, quiet: bool) -> None:
+    """Print one stderr summary line per ``(host, hint)`` that omitted ``model``."""
+    if quiet:
+        return
+    for (host, hint), count in sorted(omissions.items()):
+        print(
+            f"  WARN   model_hint {hint!r} unmapped for {host}; "
+            f"{count} {noun} omit `model` (host default applies)",
+            file=sys.stderr,
+        )
 
 
 def _is_model_invocation_disabled(fm: dict) -> bool:
@@ -445,6 +574,7 @@ def process_skills(
         ``(adapted, skipped, errors)`` counts.
     """
     adapted = skipped = errors = 0
+    omissions: Counter[tuple[str, str]] = Counter()
 
     for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
         skill_name = skill_md.parent.name
@@ -457,6 +587,16 @@ def process_skills(
             continue
 
         fm = _read_frontmatter(content) or {}
+        # Validate before the disable-model-invocation skip so a skipped skill
+        # with a bad hint still errors (ENH-3533).
+        try:
+            _validate_model_decl(fm)
+        except AdapterError as exc:
+            if not quiet:
+                print(f"  ERROR  {skill_name}: {exc}", file=sys.stderr)
+            errors += 1
+            continue
+
         if _is_model_invocation_disabled(fm):
             if not quiet:
                 print(f"  SKIP   {skill_name}: disable-model-invocation: true")
@@ -472,6 +612,7 @@ def process_skills(
                     "fm": fm,
                     "apply": apply,
                     "quiet": quiet,
+                    "model_hint_omissions": omissions,
                 }
             )
         except AdapterError as exc:
@@ -486,6 +627,7 @@ def process_skills(
         else:
             errors += 1
 
+    _report_model_omissions(omissions, "skills", quiet)
     return adapted, skipped, errors
 
 
@@ -585,6 +727,7 @@ def process_agents(
         ``(adapted, skipped, errors)`` counts.
     """
     adapted = skipped = errors = 0
+    omissions: Counter[tuple[str, str]] = Counter()
 
     # ENH-2874: select native vs. degraded emission from the capability flag
     # alone — no host-name branch. A host qualifies for degraded emission
@@ -619,9 +762,11 @@ def process_agents(
             "output_dir": output_dir,
             "apply": apply,
             "quiet": quiet,
+            "model_hint_omissions": omissions,
         }
 
         try:
+            _validate_model_decl(fm)
             result = (
                 _emit_degraded_agent(agent_meta) if degraded else emitter.emit_agent(agent_meta)
             )
@@ -637,6 +782,7 @@ def process_agents(
         else:
             errors += 1
 
+    _report_model_omissions(omissions, "agents", quiet)
     return adapted, skipped, errors
 
 

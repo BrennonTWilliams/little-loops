@@ -11382,6 +11382,8 @@ class AdapterError(Exception): ...
 | `KimiEmitter` | `"kimi-code"` | Implemented (EPIC-2910) — emits skill/command/agent files for Kimi Code; `emit_mcp_config` is a stub. Host key is `"kimi-code"`, not `"kimi"`, to match its `host_runner` registry key. |
 | `ClaudeCodeEmitter` | `"claude-code"` | Implemented (FEAT-3139) — `emit_skill`/`emit_command`/`emit_agent` are stubs (Claude Code's plugin marketplace serves these natively); `emit_mcp_config` merges `{"mcpServers": {"ll-mcp": {"command": "ll-mcp"}}}` into `.mcp.json` at the project root |
 
+**`model_hint` handling (ENH-3533).** `process_skills` and `process_agents` validate a frontmatter `model_hint` (unknown hint, or a `model:` that is not the exact `claude-code` alias for it) and count a violation as an error. `ModelHintError` from resolution surfaces as `AdapterError`. Emitters resolve the hint with built-in mappings only (`overrides=None`); a missing mapping (`ModelHintUnmappedError`) omits `model` and is reported as one aggregated stderr line per host and hint unless `quiet=True`. The hint is never emitted into a generated mirror.
+
 To add a host: create `scripts/little_loops/adapters/<host>.py` implementing `HostEmitter`, then register the class in `_EMITTER_MAP` in `core.py`.
 
 ---

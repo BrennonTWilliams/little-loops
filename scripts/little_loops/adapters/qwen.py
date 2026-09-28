@@ -36,6 +36,7 @@ from little_loops.adapters.capabilities import HOST_CAPABILITIES
 from little_loops.adapters.core import (
     _emit_mirrored_skill,
     _read_frontmatter,
+    _resolve_mirror_model,
     _select_frontmatter_fields,
 )
 
@@ -66,10 +67,18 @@ class QwenEmitter:
         relative path, so a SKILL.md-only mirror dangles every read.
         Delegates to the shared mirrored-skill core (BUG-3164).
         """
+        model = _resolve_mirror_model(
+            skill_meta.get("fm") or {},
+            "qwen",
+            _fields_read(),
+            skill_meta.get("model_hint_omissions"),
+        )
         return _emit_mirrored_skill(
             skill_meta,
             ".qwen",
-            lambda content, name: _select_frontmatter_fields(content, name, _fields_read()),
+            lambda content, name: _select_frontmatter_fields(
+                content, name, _fields_read(), resolved_model=model
+            ),
         )
 
     def emit_command(self, cmd_meta: dict) -> str:
@@ -141,7 +150,15 @@ class QwenEmitter:
         apply: bool = agent_meta["apply"]
         quiet: bool = agent_meta["quiet"]
 
-        new_content, _ = _select_frontmatter_fields(content, agent_name, _fields_read())
+        model = _resolve_mirror_model(
+            agent_meta.get("fm") or {},
+            "qwen",
+            _fields_read(),
+            agent_meta.get("model_hint_omissions"),
+        )
+        new_content, _ = _select_frontmatter_fields(
+            content, agent_name, _fields_read(), resolved_model=model
+        )
         out_path = output_dir / f"{agent_name}.md"
 
         if out_path.exists() and out_path.read_text() == new_content:

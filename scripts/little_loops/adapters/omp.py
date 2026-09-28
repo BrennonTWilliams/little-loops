@@ -44,7 +44,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from little_loops.adapters.capabilities import HOST_CAPABILITIES
-from little_loops.adapters.core import _emit_mirrored_skill, _select_frontmatter_fields
+from little_loops.adapters.core import (
+    _emit_mirrored_skill,
+    _resolve_mirror_model,
+    _select_frontmatter_fields,
+    _strip_model_hint,
+)
 
 __all__ = ["OmpEmitter"]
 
@@ -67,10 +72,18 @@ class OmpEmitter:
         path, so a SKILL.md-only mirror dangles every read. Delegates to the
         shared mirrored-skill core.
         """
+        model = _resolve_mirror_model(
+            skill_meta.get("fm") or {},
+            "omp",
+            _fields_read(),
+            skill_meta.get("model_hint_omissions"),
+        )
         return _emit_mirrored_skill(
             skill_meta,
             ".omp",
-            lambda content, name: _select_frontmatter_fields(content, name, _fields_read()),
+            lambda content, name: _select_frontmatter_fields(
+                content, name, _fields_read(), resolved_model=model
+            ),
         )
 
     def emit_command(self, cmd_meta: dict) -> str:
@@ -90,6 +103,8 @@ class OmpEmitter:
         plugin_root = cmd_path.parent.parent
         out_path = plugin_root / ".omp" / "commands" / f"{stem}.md"
 
+        # Verbatim copy, except the portable ``model_hint`` declaration (ENH-3533).
+        content = _strip_model_hint(content)
         if out_path.exists() and out_path.read_text() == content:
             if not quiet:
                 print(f"  SKIP   {label}: already adapted")
@@ -119,7 +134,15 @@ class OmpEmitter:
         apply: bool = agent_meta["apply"]
         quiet: bool = agent_meta["quiet"]
 
-        new_content, _ = _select_frontmatter_fields(content, agent_name, _fields_read())
+        model = _resolve_mirror_model(
+            agent_meta.get("fm") or {},
+            "omp",
+            _fields_read(),
+            agent_meta.get("model_hint_omissions"),
+        )
+        new_content, _ = _select_frontmatter_fields(
+            content, agent_name, _fields_read(), resolved_model=model
+        )
         out_path = output_dir / f"{agent_name}.md"
 
         if out_path.exists() and out_path.read_text() == new_content:

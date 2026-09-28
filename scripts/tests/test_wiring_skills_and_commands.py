@@ -507,16 +507,18 @@ def test_host_artifacts_are_not_stale(project_root: Path, host: str, kind: str) 
     skills_dir, commands_dir, agents_dir, agent_output_dir = _host_output_dirs(project_root, host)
 
     if kind == "skills":
-        adapted, _skipped, _errors = process_skills(emitter, skills_dir, apply=False, quiet=True)
+        adapted, _skipped, errors = process_skills(emitter, skills_dir, apply=False, quiet=True)
     elif kind == "commands":
-        adapted, _skipped, _errors = process_commands(
+        adapted, _skipped, errors = process_commands(
             emitter, commands_dir, skills_dir, apply=False, quiet=True
         )
     else:
-        adapted, _skipped, _errors = process_agents(
+        adapted, _skipped, errors = process_agents(
             emitter, agents_dir, agent_output_dir, apply=False, quiet=True
         )
 
+    # ENH-3533: a shipped file with an invalid model_hint/pin surfaces as an error.
+    assert errors == 0, f"{host}'s {kind} generation reported {errors} error(s)"
     assert adapted == 0, (
         f"{host}'s {kind} mirror is stale ({adapted} artifact(s) would be "
         f"rewritten). Regenerate with: ll-adapt --host {host} --apply"
@@ -743,12 +745,12 @@ SPAWN_SITE_INVENTORY: frozenset[tuple[str, int]] = frozenset(
         ("skills/audit-claude-config/SKILL.md", 118),
         ("skills/audit-claude-config/SKILL.md", 223),
         ("skills/audit-claude-config/wave1-prompts.md", 9),
-        ("skills/audit-issue-conflicts/SKILL.md", 205),
-        ("skills/audit-issue-conflicts/SKILL.md", 252),
-        ("skills/wire-issue/SKILL.md", 152),
+        ("skills/audit-issue-conflicts/SKILL.md", 204),
+        ("skills/audit-issue-conflicts/SKILL.md", 251),
+        ("skills/wire-issue/SKILL.md", 151),
         ("skills/manage-issue/SKILL.md", 110),
-        ("skills/go-no-go/SKILL.md", 176),
-        ("skills/go-no-go/SKILL.md", 276),
+        ("skills/go-no-go/SKILL.md", 175),
+        ("skills/go-no-go/SKILL.md", 275),
         ("commands/refine-issue.md", 187),
         ("commands/tradeoff-review-issues.md", 79),
         ("commands/manage-release.md", 134),

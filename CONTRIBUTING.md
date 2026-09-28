@@ -690,6 +690,8 @@ capped at 500 lines.
 
 Run `ll-verify-skills` to check that no SKILL.md exceeds 500 lines (exits 1 on any violation).
 
+**Model selection in skills and agents:** declare `model_hint: coding|reasoning|burst` as the portable declaration, optionally with a `model:` pin that must be the exact Claude Code alias for that hint (`coding` → `sonnet`, `reasoning` → `opus`, `burst` → `haiku`). Claude Code reads only `model:`, so a hint with no pin has no effect on Claude Code. `ll-adapt` resolves the hint for other hosts from built-in mappings and never emits it into mirrors; see [Frontmatter `model_hint`](docs/reference/HOST_COMPATIBILITY.md#frontmatter-model_hint-skills-and-agents).
+
 ### New Skill Checklist
 
 Before adding a new skill, answer:

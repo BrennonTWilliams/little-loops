@@ -3,6 +3,7 @@ name: map-dependencies
 description: Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan.
 disable-model-invocation: true
 model: sonnet
+model_hint: coding
 allowed-tools:
   - Read
   - Glob
