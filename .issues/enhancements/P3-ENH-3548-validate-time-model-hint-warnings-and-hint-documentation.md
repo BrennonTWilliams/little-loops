@@ -269,6 +269,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - [resolved 2026-09-28 by manual review] ARCH-121 requires a `*_ok` suppression flag for every new validate rule — decided: exemption for host-dependent hint-resolution warnings, recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T22:54:42 - `30920171-b2d1-4a65-8976-6add0126d6fe.jsonl`
 - `manual review` - 2026-09-28 - corrected evaluator-path `model` precedence and learning-state path rules (filed BUG-3646); added prompt-mode gate, out-of-vocab skip, contributed-action limitation, remediation text in messages; made agreement test deterministic; decided invalid-config and warning-budget handling; removed BUG-3644-owned doc/schema edits
 - `/ll:confidence-check` - 2026-09-28T22:43:47 - `9b0a9144-bbd1-46a6-aca5-08f4cec9c484.jsonl`
 - `/ll:verify-issues` - 2026-09-28T22:41:26 - `5fafe6c4-1e0c-4610-a069-76b4dd11d35b.jsonl`
