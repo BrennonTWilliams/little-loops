@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T19:18:02Z'
+confidence_score: 100
+outcome_confidence: 95
+score_complexity: 22
+score_test_coverage: 23
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3639: Pin unapplied_decision corpus test to a frozen fixture corpus instead of live .issues/
@@ -125,6 +131,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T20:06:36 - `17025306-364a-4143-b659-80dee88f61b2.jsonl`
 - `/ll:refine-issue` - 2026-09-28T19:30:00 - `f3afff3d-0f77-4821-a4f6-45be74a7a00e.jsonl`
 - `/ll:format-issue` - 2026-09-28T19:21:18 - `ddc7b8ed-4e52-4365-b63d-32d433349fbb.jsonl`
 - `/ll:capture-issue` - 2026-09-28T19:18:10 - `71f8d034-e0e5-4531-a9b5-d0d92b80145c.jsonl`
