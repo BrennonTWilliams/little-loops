@@ -345,7 +345,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   keys and their report lines.
 - New unit tests for summary construction from records
 - `summary.json` truthfulness on every exit (EPIC-3565 AC) incl. rate-limit exits (BUG-3567)
-- Structural, rewrite: `test_builtin_loops.py` `TestAutodevLoop` (:6411; `finalize_done` behavioral coverage via `_run_finalize_done` :7216-7243 under `bash -c`, which stops exercising the logic once it moves to Python). The thin-shell gate is `test_finalize_states_are_thin_module_calls` (:7182-7200, in the same class) — it, not `test_shell_states_call_helper_module_not_inline_logic` (which is `TestFleetLoopImproveLoop`'s fleet-improve-only gate), asserts `finalize_done`/`finalize_step_capped` are each a single `python3 -m little_loops.autodev_summary` call with zero inline shell. `test_autodev_loop.py` has zero `finalize_done` references (per-iteration markers only); `test_fsm_topology.py` only pins the autodev state count (46 states as of ENH-3623's post-cutover `autodev.yaml`; this issue adds no state)
+- Structural, rewrite: `test_builtin_loops.py` `TestAutodevLoop` (:6411; `finalize_done` behavioral coverage via `_run_finalize_done` :7216-7243 under `bash -c`, which stops exercising the logic once it moves to Python). The thin-shell gate is `test_finalize_states_are_thin_module_calls` (:7182-7200, in the same class) — it, not `test_shell_states_call_helper_module_not_inline_logic` (which is `TestFleetLoopImproveLoop`'s fleet-improve-only gate), asserts `finalize_done`/`finalize_step_capped` are each a single `python3 -m little_loops.autodev_summary` call with zero inline shell. `test_autodev_loop.py` has zero `finalize_done` references (per-iteration markers only); `test_fsm_topology.py` only pins the autodev state count (45 states as of ENH-3623's post-cutover `autodev.yaml`; this issue adds no state)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_autodev_decision_gate.py` — pins `autodev-decide-ran` in `mark_decide_ran_at_dequeue` (:160), `record_decision_unresolved`'s ledger write (:1028), design-remedy attempted markers (:732, :739), and four `on_rate_limit_exhausted == "finalize_rate_limited"` pins (:459, :471, :606, :727) — breaks as markers/routing move [Agent 1 finding]
@@ -410,8 +410,8 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
-- **Post-ENH-3623 anchor refresh, confirmed (2026-09-27, second pass)**: `autodev.yaml` is 1447 lines / 46 states. `dequeue_next:96` (writes `prep-pass-$CURRENT` at :119-120). `skip_inflight:547` still reads `refine-terminal-class` at :569-570, with the three child-ledger fallback greps at :584 (`autodev-decision-unresolved.txt`), :591 (`autodev-spike-inconclusive.txt`), :597 (`autodev-proposal-unsound.txt`). `finalize_rate_limited:1392`, `finalize_done:1404` (action is now `python3 -m little_loops.autodev_summary --run-dir ${context.run_dir} --quality-gate <ref>` — a `--quality-gate` flag not previously recorded in this issue), `finalize_step_capped:1423` (adds `--stop-reason max_steps`).
-- **`refine-to-ready-issue.yaml` anchors reconfirmed unchanged** (1578 lines / 61 states): the 8 `refine-terminal-class` writer sites are still exactly `:742, :1195, :1250, :1261, :1272, :1285, :1319, :1565` (no drift since the prior 2026-09-27 pass); `resolve_issue` clear still `:192`. Writer states: `record_proposal_unsound:737` (writes class :742, ledger `autodev-proposal-unsound.txt` :744), `record_spike_inconclusive:1279` (class :1285, ledger :1287), `record_decision_unresolved:1302` (class :1319, ledger :1321).
+- **Post-ENH-3623 anchor refresh, confirmed (2026-09-27, second pass)**: `autodev.yaml` is 1446 lines / 45 states. `dequeue_next:96` (writes `prep-pass-$CURRENT` at :119-120). `skip_inflight:547` still reads `refine-terminal-class` at :569-570, with the three child-ledger fallback greps at :584 (`autodev-decision-unresolved.txt`), :591 (`autodev-spike-inconclusive.txt`), :597 (`autodev-proposal-unsound.txt`). `finalize_rate_limited:1392`, `finalize_done:1404` (action is now `python3 -m little_loops.autodev_summary --run-dir ${context.run_dir} --quality-gate <ref>` — a `--quality-gate` flag not previously recorded in this issue), `finalize_step_capped:1423` (adds `--stop-reason max_steps`).
+- **`refine-to-ready-issue.yaml` anchors reconfirmed unchanged** (1577 lines / 64 states): the 8 `refine-terminal-class` writer sites are still exactly `:742, :1195, :1250, :1261, :1272, :1285, :1319, :1565` (no drift since the prior 2026-09-27 pass); `resolve_issue` clear still `:192`. Writer states: `record_proposal_unsound:737` (writes class :742, ledger `autodev-proposal-unsound.txt` :744), `record_spike_inconclusive:1279` (class :1285, ledger :1287), `record_decision_unresolved:1302` (class :1319, ledger :1321).
 - **`preparation_policy.py` anchors reconfirmed**: 1391 lines. `FACTS_DIR:63`, `PASS_PREFIX:64`, `facts_path:836-837`, `current_pass:840-846`, `prep_step:1000-1036`, `prep_record:1039-1084`, `_DEFER_STOPS:1089-1096`, `_INFRA_STOPS:1097`, `prep_apply:1100-1159` (docstring: "Sole terminal writer"), `_apply_outcome:1162-1291` with `sentinel()` closure at :1207-1208, called from 5 sites: `:1253` (`child_stop`), `:1258` (`rate_limited`), `:1266` (`_INFRA_STOPS`), `:1285` (`_DEFER_STOPS`), `:1289` (unknown outcome, fail-closed). `callers-of _apply_outcome` (code graph) confirms `prep_apply` (:1143) is its sole caller.
 - **Test-anchor ambiguity resolved: the autodev thin-shell gate has a different name than prior anchors claimed.** `TestAutodevLoop.test_finalize_states_are_thin_module_calls` (`test_builtin_loops.py:7182-7200`, class header `:6411`) is the actual structural gate asserting `finalize_done`/`finalize_step_capped` are each a single `python3 -m little_loops.autodev_summary --run-dir ${context.run_dir} --quality-gate <ref>[extra]` call with zero inline shell (`printf`/`grep`/`awk`/`sort`/`for`/`if`/`case`/`echo`/`$(` all asserted absent). Every prior pass's "thin-shell gate" anchor (`:21491`/`:21440`/`:21017`/`:20987`) named `test_shell_states_call_helper_module_not_inline_logic`, which resolves only to `TestFleetLoopImproveLoop` (`:20103`, the fleet-improve loop) — that test was never autodev's gate, and no autodev-scoped test of that exact name exists. `_run_finalize_done` helper is at `:7216-7243`. AC's "ENH-3619's structural gate stays green" claim is accurate; only the anchor citation was wrong.
 - **Marker disposition re-derived against post-ENH-3623 `autodev.yaml`, full inventory (analyzer, 2026-09-27).** Confirmed **dead** (zero references anywhere in `scripts/little_loops/`): `autodev-pre-spike-readiness`, `autodev-design-gate-failed`, `autodev-design-remedy-attempted`, `autodev-atomic-design-remedy-pending`, `autodev-contradiction-reconcile`, `autodev-go-no-go-attempted`, `autodev-pre-deferral-remedy`, `autodev-size-review-ran-this-pass`, `autodev-rescore-retry`, `autodev-rescore-origin`, `autodev-reentry`, `autodev-scores-absent.txt`, `autodev-broke-down` (distinct from the still-live `refine-broke-down`). Confirmed **still live**: `autodev-repair-cycle-count` (now a projection per `prep_record` docstring `preparation_policy.py:81`, written `:1083`, reset `autodev.yaml:143`), `autodev-pre-readiness` (written `autodev.yaml:142`, read `preparation_policy.py:935`), `autodev-gate-infra.txt`/`mark_gate_infra` (write-only, `autodev.yaml:1178`/state header `:1170`, still zero readers anywhere — the "drop or keep" question is unresolved, unchanged from before ENH-3623), `autodev-pre-ids`/`-post-ids`/`-diff-ids`/`-new-children` (written `autodev.yaml:158,1266,1270,1286-1380`), `refine-broke-down` (reset `autodev.yaml:122,636`; written `refine-to-ready-issue.yaml:195,1222` and `preparation_policy.py:1076,1214`; read `recursive-refine.yaml:484`).
@@ -654,7 +654,38 @@ ENH-3606 and the `autodev-prepared.txt` design, and carry pre-cutover anchors). 
 current state is recorded in Review Decisions (both 2026-09-27 blocks), the Marker
 disposition table and the Integration Map. Git history holds the original text.
 
+**`/ll:verify-issues --auto` pass, 2026-09-27.** Verdict at time of check: **NEEDS_UPDATE**
+(corrections below applied in the same pass, so the issue as it now reads is up to date —
+this section is a record of what was wrong and fixed, not an outstanding action item). Spot
+verification confirmed every checked core-code claim against the current tree: `autodev.yaml`
+is 1446 lines / 45 states with `dequeue_next:96`, `refine_current:454`,
+`route_refine_outcome:500`, `skip_inflight:547`, `finalize_done:1404`, `finalize_step_capped:1423`
+exactly as cited; `refine-to-ready-issue.yaml`'s 8 `refine-terminal-class` writer sites
+(:742, :1195, :1250, :1261, :1272, :1285, :1319, :1565) and the `resolve_issue` clear (:192)
+are unchanged; `prepare-issue.yaml` still has zero `refine-terminal-class` references;
+`preparation_policy.py` (1391 lines) still has `_apply_outcome:1162`/`sentinel():1207-1208`,
+`_DEFER_STOPS:1089`, `_INFRA_STOPS:1097`, `prep_apply:1100`, `prep_record:1039`, `prep_step:1000`
+exactly as cited; `AutodevSummary.KEYS` is still the same 16 keys in the same order
+(`test_autodev_summary.py:262-266` pins `len == 16`); `ll-verify-evidence` found zero
+fabricated evidence spans; the decisions log has zero active required rules (gate is a
+clean pass); and `ll-issues format-check ENH-3600` reproduces exactly the `stale_file_ref`
+(`fsm/validation.py`, inert) and `unmarked_superseded_directive` findings the Confidence
+Check Notes already accounted for, with nothing new. `ENH-3606`/`ENH-3619`/`ENH-3623`/
+`ENH-3630`/`ENH-3577` all resolve to the statuses (`cancelled`/`done`/`done`/`done`/`done`)
+already assumed by the body text; `blocked_by: []` and `parent: EPIC-3565` (open, correctly
+still the active umbrella) are consistent.
+
+Corrected in place (stale line/state-count citations, Codebase Research Findings /
+Tests sections only — no directive text changed): `refine-to-ready-issue.yaml` line/state
+count `1578 lines / 61 states` → `1577 lines / 64 states` (confirmed via YAML parse, not
+just line-count grep); `autodev.yaml` line/state count in the "second pass" anchor-refresh
+finding `1447 lines / 46 states` → `1446 lines / 45 states` (this entry disagreed with an
+earlier, correct finding in the same file that already said 1446/45); and the Tests
+section's `test_fsm_topology.py` citation `46 states` → `45 states` (the test itself
+asserts `len(topo["states"]) == 45`, per its own in-file comment trail).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-28T00:03:43 - `1c278270-e2ba-4e4c-99ea-a1e85ca8ec50.jsonl`
 - `/ll:confidence-check` - 2026-09-27T23:54:58 - `4498bd70-2a17-4806-80cb-9c7b98782d4a.jsonl`
 - `/ll:wire-issue` - 2026-09-27T23:34:09 - `bfc7c299-f46e-4b01-958a-fe298468cb8a.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T22:55:35 - `a2f463b8-cf83-4388-84d1-2b97de36c16c.jsonl`
