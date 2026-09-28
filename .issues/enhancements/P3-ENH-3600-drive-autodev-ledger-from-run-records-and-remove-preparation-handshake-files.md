@@ -3,10 +3,11 @@ id: ENH-3600
 type: ENH
 title: Drive autodev ledger from run records and remove preparation handshake files
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:51Z'
+completed_at: '2026-09-28T02:43:12Z'
 blocked_by: []
 parent: EPIC-3565
 relates_to:
@@ -611,6 +612,20 @@ What the rewrite of `finalize_done` must preserve, and what is allowed to change
 - [ ] The child-written ledger exception is documented in `LOOPS_REFERENCE.md`; `auto-refine-and-implement`'s counts are unchanged; `oracles/resolve-decision` needs no change (its `autodev-decide-ran` mention is a comment only)
 - [ ] `docs/ARCHITECTURE.md` describes the parent/child contract (records vs. ledgers, which is the count source, and the `prep-pass-*` dequeued-ID set)
 
+## Resolution
+
+Landed in two commits, per the Sequencing section's additive-then-delete convention:
+`7e2fd7184` (additive: `record_absent`/`record_ledger_mismatch` accounting from
+`run_dir/prep-pass-<ID>` + `run-records/prepare-issue/<ID>.json`, `skip_inflight`'s
+record-only classification, the `_generate.py` golden-fixture post-process) and
+`9e5018e47` (deletion: the eight `refine-terminal-class` writer sites,
+`preparation_policy.py`'s `sentinel()` closure, the confirmed-dead-marker grep gate,
+and the ARCHITECTURE.md/LOOPS_REFERENCE.md/CLI.md/SKILL.md doc updates). Full test
+suite: 25959 passed, 3 pre-existing unrelated failures (`test_issue_parser.py`
+corpus-report baseline, `test_verify_evidence.py` two unrelated issue files,
+`test_prose_dep_sweep_gate.py` ENH-3548/ENH-3547 drift) — none touch files this
+issue modified.
+
 ## Parent Issue
 
 Decomposed from ENH-3577: Consolidate autodev issue preparation into a single controller loop
@@ -685,6 +700,7 @@ section's `test_fsm_topology.py` citation `46 states` → `45 states` (the test 
 asserts `len(topo["states"]) == 45`, per its own in-file comment trail).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T02:42:24 - `50d194ea-00f1-41ce-9109-895b10638cb9.jsonl`
 - `/ll:confidence-check` - 2026-09-28T00:19:33 - `c114b5d1-26af-4084-9009-c4eb84a6db58.jsonl`
 - `/ll:verify-issues` - 2026-09-28T00:03:43 - `1c278270-e2ba-4e4c-99ea-a1e85ca8ec50.jsonl`
 - `/ll:confidence-check` - 2026-09-27T23:54:58 - `4498bd70-2a17-4806-80cb-9c7b98782d4a.jsonl`
