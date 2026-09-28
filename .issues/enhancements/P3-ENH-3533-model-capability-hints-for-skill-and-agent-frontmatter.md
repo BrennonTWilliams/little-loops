@@ -224,6 +224,7 @@ _Added by `/ll:confidence-check` on 2026-09-28 (re-scored after BUG-3640 landed)
 - ~~Unresolved `blocked_by` dependency: BUG-3640~~ — resolved: BUG-3640 is done (`4bd11c089`), verified by `/ll:ready-issue` 2026-09-28.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T21:57:32 - `8c4886b8-e5fe-4392-8c81-999e92290df1.jsonl`
 - `/ll:verify-issues` - 2026-09-28T21:55:16 - `5f779b40-d61a-4af9-929a-1df2e6a1dc35.jsonl`
 - `/ll:ready-issue` - 2026-09-28T21:47:46 - `fbc10432-1400-4e81-b8f4-4b69027756de.jsonl`
 - `/ll:confidence-check` - 2026-09-28T21:08:24 - `7f294095-d1d9-4ee9-9b43-311d4ce2c57c.jsonl`
