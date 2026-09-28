@@ -528,7 +528,7 @@ def _print_introspection_summary(introspection: Any) -> None:
         print(f"  {field}: {iv.value}  ({iv.provenance}: {iv.evidence})")
     for ambiguity in introspection.ambiguities:
         print(
-            f"  {ambiguity.field}: kept template default — "
+            f"  {ambiguity.field}: not adopted — "
             f"{len(ambiguity.candidates)} candidates found ({', '.join(ambiguity.candidates)})"
         )
 

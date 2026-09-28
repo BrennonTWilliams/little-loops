@@ -13,6 +13,7 @@ otherwise it stays the template default, tagged ``default``.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import tomllib
@@ -20,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from little_loops.config.dirs import canonical_dir
+from little_loops.config.dirs import canonical_dir, dir_prefix
 from little_loops.init.detect import TemplateMatch
 
 Provenance = Literal["declared", "inferred", "default"]
@@ -127,8 +128,11 @@ class IntrospectResult:
 
 
 def introspect(root: Path, template: TemplateMatch) -> IntrospectResult:
-    """Derive project.{test,lint,format,type}_cmd, project.src_dir, and
-    scan.focus_dirs from repo manifests, falling back to *template* defaults.
+    """Derive project.{test,lint,format,type}_cmd, project.src_dir,
+    project.test_dir, and scan.focus_dirs from repo manifests. Template-default
+    fallbacks are existence-filtered against the target root and end at ``.``
+    (root layout) or, for test_dir only, the literal ``tests/`` write target
+    when no test dir or test file exists anywhere in the project.
     """
     project = template.data.get("project", {})
     scan = template.data.get("scan", {})
@@ -183,12 +187,14 @@ def introspect(root: Path, template: TemplateMatch) -> IntrospectResult:
     values["project.src_dir"] = src_dir_iv
     ambiguities = [ambiguity] if ambiguity is not None else []
 
-    values["scan.focus_dirs"] = _introspect_focus_dirs(
-        root, src_dir_iv, scan.get("focus_dirs") or []
-    )
-
     default_test_dir = project.get("test_dir") or "tests"
-    values["project.test_dir"] = _introspect_test_dir(root, default_test_dir)
+    src_dir_for_test = src_dir_iv.value if isinstance(src_dir_iv.value, str) else "."
+    test_dir_iv = _introspect_test_dir(root, src_dir_for_test, default_test_dir)
+    values["project.test_dir"] = test_dir_iv
+
+    values["scan.focus_dirs"] = _introspect_focus_dirs(
+        root, src_dir_iv, test_dir_iv, scan.get("focus_dirs") or []
+    )
 
     return IntrospectResult(values=values, ambiguities=ambiguities)
 
@@ -690,48 +696,117 @@ def _cargo_src_candidate(root: Path) -> str | None:
     return None
 
 
+def _existing_dir(root: Path, value: str) -> str | None:
+    """Canonicalized *value* if it is ``.`` or an existing repo-relative dir, else None.
+
+    Rejects an absolute value or one containing a ``..`` part (``root / value``
+    could resolve outside the root).
+    """
+    if not value or value.startswith("/"):
+        return None
+    if ".." in Path(value).parts:
+        return None
+    canonical = canonical_dir(value)
+    if canonical == ".":
+        return "."
+    return canonical if (root / canonical).is_dir() else None
+
+
+# Root-level layout detection: a project whose sources/tests live at the repo
+# root rather than under a package subdir.
+_ROOT_LAYOUT_EXTENSIONS = (".py", ".go", ".ts", ".js", ".mjs", ".cjs")
+_ROOT_LAYOUT_IGNORED_NAMES = {
+    "setup.py",
+    "conftest.py",
+    "noxfile.py",
+    "tasks.py",
+    "fabfile.py",
+    "gulpfile.js",
+    "Gruntfile.js",
+}
+_ROOT_LAYOUT_CONFIG_RE = re.compile(r"\.config\.(js|ts|mjs|cjs)$")
+
+# One shared glob set for every test-file check in this module.
+_TEST_FILE_GLOBS: tuple[str, ...] = (
+    "test_*.py",
+    "*_test.py",
+    "*_test.go",
+    "*.test.*",
+    "*.spec.*",
+    "*Test.java",
+    "*Tests.java",
+)
+
+
+def _detect_root_layout(root: Path) -> bool:
+    """True when *root* holds a non-ignored source file at the top level."""
+    for entry in root.iterdir():
+        if not entry.is_file():
+            continue
+        name = entry.name
+        if name.startswith(".") or name in _ROOT_LAYOUT_IGNORED_NAMES:
+            continue
+        if _ROOT_LAYOUT_CONFIG_RE.search(name):
+            continue
+        if any(fnmatch.fnmatch(name, g) for g in _TEST_FILE_GLOBS):
+            continue
+        if entry.suffix in _ROOT_LAYOUT_EXTENSIONS:
+            return True
+    return False
+
+
 def _introspect_src_dir(
     root: Path, py_data: dict[str, Any] | None, default_value: str
 ) -> tuple[IntrospectedValue, Ambiguity | None]:
     candidates: set[str] = set()
     evidence = ""
 
+    def _add(raw: str | None, note: str) -> None:
+        nonlocal evidence
+        if raw is None:
+            return
+        existing = _existing_dir(root, raw)
+        if existing is None:
+            return
+        candidates.add(existing)
+        if not evidence:
+            evidence = note
+
     if _iter_candidate_dirs(root, "src/*/__init__.py"):
-        candidates.add("src/")
-        evidence = "src/*/__init__.py package marker"
+        _add("src/", "src/*/__init__.py package marker")
 
     package_dirs = _iter_top_level_package_dirs(root)
     if package_dirs:
-        candidates |= package_dirs
-        if not evidence:
-            names = ", ".join(sorted(package_dirs))
+        filtered_package_dirs = {d for d in package_dirs if _existing_dir(root, d) is not None}
+        candidates |= filtered_package_dirs
+        if filtered_package_dirs and not evidence:
+            names = ", ".join(sorted(filtered_package_dirs))
             evidence = f"sole package marker under {names}"
 
-    pyproject_candidate = _pyproject_src_candidate(py_data)
-    if pyproject_candidate:
-        candidates.add(pyproject_candidate)
-        evidence = evidence or "pyproject.toml packages declaration"
-
-    tsconfig_candidate = _tsconfig_src_candidate(root)
-    if tsconfig_candidate:
-        candidates.add(tsconfig_candidate)
-        evidence = evidence or "tsconfig.json rootDir/include"
-
-    cargo_candidate = _cargo_src_candidate(root)
-    if cargo_candidate:
-        candidates.add(cargo_candidate)
-        evidence = evidence or "Cargo.toml + src/main.rs or src/lib.rs"
+    _add(_pyproject_src_candidate(py_data), "pyproject.toml packages declaration")
+    _add(_tsconfig_src_candidate(root), "tsconfig.json rootDir/include")
+    _add(_cargo_src_candidate(root), "Cargo.toml + src/main.rs or src/lib.rs")
 
     if len(candidates) == 1:
         return IntrospectedValue(next(iter(candidates)), "inferred", evidence), None
 
     if len(candidates) > 1:
+        value = _existing_dir(root, default_value) or "."
         return (
-            IntrospectedValue(default_value, "default", "multiple src_dir candidates"),
+            IntrospectedValue(value, "default", "multiple src_dir candidates"),
             Ambiguity(field="src_dir", candidates=sorted(candidates)),
         )
 
-    return IntrospectedValue(default_value, "default", "no unambiguous package marker"), None
+    filtered_default = _existing_dir(root, default_value)
+    if filtered_default is not None and filtered_default != ".":
+        return (
+            IntrospectedValue(filtered_default, "default", "no unambiguous package marker"),
+            None,
+        )
+
+    if _detect_root_layout(root):
+        return IntrospectedValue(".", "inferred", "root-level source files"), None
+    return IntrospectedValue(".", "default", "no existing src dir detected"), None
 
 
 # ---------------------------------------------------------------------------
@@ -739,25 +814,58 @@ def _introspect_src_dir(
 # ---------------------------------------------------------------------------
 
 
+def _test_dir_covered(test_value: str, focus_dirs: list[str]) -> bool:
+    """True when *test_value* is already implied by an existing focus dir."""
+    return any(test_value == fd or test_value.startswith(dir_prefix(fd)) for fd in focus_dirs)
+
+
+def _is_test_path(value: str) -> bool:
+    return any(part in ("test", "tests") for part in Path(value.rstrip("/")).parts)
+
+
 def _introspect_focus_dirs(
-    root: Path, src_dir_iv: IntrospectedValue, default_focus_dirs: list[str]
+    root: Path,
+    src_dir_iv: IntrospectedValue,
+    test_dir_iv: IntrospectedValue,
+    default_focus_dirs: list[str],
 ) -> IntrospectedValue:
-    focus_dirs: list[str] = []
-    evidence_parts: list[str] = []
-    if src_dir_iv.provenance != "default" and isinstance(src_dir_iv.value, str):
-        focus_dirs.append(src_dir_iv.value)
-        evidence_parts.append("adopted src_dir")
+    src_value = src_dir_iv.value if isinstance(src_dir_iv.value, str) else None
+    test_value = test_dir_iv.value if isinstance(test_dir_iv.value, str) else None
+    test_candidate = (
+        test_value if (test_dir_iv.provenance != "default" and test_value not in (None, ".")) else None
+    )
 
-    for test_dir_name in ("tests/", "test/"):
-        if (root / test_dir_name).is_dir():
-            if not any(test_dir_name.startswith(fd) for fd in focus_dirs):
-                focus_dirs.append(test_dir_name)
-                evidence_parts.append(f"detected {test_dir_name} directory")
+    if src_value == ".":
+        evidence = (
+            "adopted src_dir" if src_dir_iv.provenance != "default" else "no existing src dir detected"
+        )
+        return IntrospectedValue(["."], src_dir_iv.provenance, evidence)
 
-    if not focus_dirs:
-        return IntrospectedValue(list(default_focus_dirs), "default", "template default")
+    if src_dir_iv.provenance != "default" and src_value:
+        focus_dirs = [src_value]
+        evidence_parts = ["adopted src_dir"]
+        if test_candidate is not None and not _test_dir_covered(test_candidate, focus_dirs):
+            focus_dirs.append(test_candidate)
+            evidence_parts.append(f"detected {test_candidate} directory")
+        result = IntrospectedValue(focus_dirs, "inferred", " + ".join(evidence_parts))
+    else:
+        focus_dirs = [d for d in default_focus_dirs if _existing_dir(root, d) is not None]
+        if test_candidate is not None and not _test_dir_covered(test_candidate, focus_dirs):
+            focus_dirs.append(test_candidate)
+            result = IntrospectedValue(
+                focus_dirs,
+                "inferred",
+                "template default (existing dirs only) + detected test dir",
+            )
+        else:
+            result = IntrospectedValue(
+                focus_dirs, "default", "template default (existing dirs only)"
+            )
 
-    return IntrospectedValue(focus_dirs, "inferred", " + ".join(evidence_parts))
+    if not result.value or all(_is_test_path(d) for d in result.value):
+        return IntrospectedValue(["."], "inferred", "no non-test focus dir")
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -765,10 +873,99 @@ def _introspect_focus_dirs(
 # ---------------------------------------------------------------------------
 
 
-def _introspect_test_dir(root: Path, default_value: str) -> IntrospectedValue:
+def _has_test_files(root: Path, rel_dir: str, *, allow_conftest: bool = False) -> bool:
+    """Bounded (depth 4) recursive search under *rel_dir* for a test file.
+
+    ``conftest.py`` counts as a marker only when *allow_conftest* is set —
+    a root ``conftest.py`` is routine in src-layout projects and must not by
+    itself signal a test directory.
+    """
+    base = root if rel_dir == "." else root / rel_dir
+    if not base.is_dir():
+        return False
+    globs = _TEST_FILE_GLOBS + (("conftest.py",) if allow_conftest else ())
+    return _search_test_files(base, globs, depth=4)
+
+
+def _search_test_files(base: Path, globs: tuple[str, ...], depth: int) -> bool:
+    try:
+        entries = list(base.iterdir())
+    except OSError:
+        return False
+    for entry in entries:
+        name = entry.name
+        if entry.is_file():
+            if any(fnmatch.fnmatch(name, g) for g in globs):
+                return True
+        elif entry.is_dir() and depth > 0:
+            if name in _SKIP_DIRS or name.startswith("."):
+                continue
+            if _search_test_files(entry, globs, depth - 1):
+                return True
+    return False
+
+
+def _root_level_test_files(root: Path) -> bool:
+    """True when a file directly under *root* (not recursive) matches a test glob."""
+    for entry in root.iterdir():
+        if entry.is_file() and any(fnmatch.fnmatch(entry.name, g) for g in _TEST_FILE_GLOBS):
+            return True
+    return False
+
+
+def _find_nested_test_dir(root: Path, src_dir: str) -> str | None:
+    """A conventional nested test dir: ``<src_dir>/tests|test/``, Maven/Gradle
+    ``src/test/java/``, or the sole one-level ``*/tests|test/`` match."""
+    if src_dir != ".":
+        base = src_dir.rstrip("/")
+        for name in ("tests", "test"):
+            candidate = f"{base}/{name}/"
+            if (root / candidate).is_dir():
+                return candidate
+
+    maven = "src/test/java/"
+    if (root / maven).is_dir():
+        return maven
+
+    matches: set[str] = set()
+    for pattern in ("*/tests", "*/test"):
+        for p in sorted(root.glob(pattern)):
+            if not p.is_dir():
+                continue
+            top = p.relative_to(root).parts[0]
+            if top in _SKIP_DIRS or top.startswith("."):
+                continue
+            rel = f"{p.relative_to(root)}/"
+            if _has_test_files(root, rel.rstrip("/"), allow_conftest=True):
+                matches.add(rel)
+    if len(matches) == 1:
+        return next(iter(matches))
+    return None
+
+
+def _introspect_test_dir(root: Path, src_dir: str, default_value: str) -> IntrospectedValue:
     for test_dir_name in ("tests/", "test/"):
         if (root / test_dir_name).is_dir():
             return IntrospectedValue(
                 test_dir_name, "inferred", f"detected {test_dir_name} directory"
             )
-    return IntrospectedValue(default_value, "default", "template default")
+
+    nested = _find_nested_test_dir(root, src_dir)
+    if nested is not None:
+        return IntrospectedValue(nested, "inferred", f"detected {nested} directory")
+
+    if _root_level_test_files(root):
+        return IntrospectedValue(".", "inferred", "root-level test files")
+
+    if src_dir != "." and (root / src_dir).is_dir() and _has_test_files(root, src_dir):
+        return IntrospectedValue(src_dir, "inferred", f"co-located test files under {src_dir}")
+    if _has_test_files(root, "."):
+        return IntrospectedValue(".", "inferred", "co-located test files")
+
+    existing_default = _existing_dir(root, default_value)
+    if existing_default is not None:
+        return IntrospectedValue(existing_default, "default", "template default")
+
+    return IntrospectedValue(
+        "tests/", "default", "no test files found; conventional location for new tests"
+    )

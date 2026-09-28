@@ -23,6 +23,7 @@ from little_loops.init.detect import (
     detect_project_type_all,
     format_detection_summary,
 )
+from little_loops.init.summary import summary_rows
 from little_loops.init.validate import (
     _check_jq,
     _check_little_loops_version,
@@ -601,6 +602,26 @@ class TestBuildConfig:
         config = build_config(match)
         assert "learning_tests" in config
         assert config["learning_tests"]["enabled"] is False
+
+    def test_dot_src_dir_round_trips(self, fake_templates: Path, tmp_project: Path) -> None:
+        """ENH-3616: '.' is truthy, so a root-layout src_dir survives build_config
+        (unlike an empty string, which would re-adopt the template default)."""
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"src_dir": ".", "test_dir": ".", "scan_focus_dirs": ["."]})
+        assert config["project"]["src_dir"] == "."
+        assert config["project"]["test_dir"] == "."
+        assert config["scan"]["focus_dirs"] == ["."]
+
+    def test_dot_src_dir_reaches_summary_rows(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        """ENH-3616: the 'Source dir' summary row still renders for '.'."""
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"src_dir": "."})
+        rows = dict(summary_rows(config, tmp_project))
+        assert rows["Source dir"] == "."
 
     def test_learning_tests_enabled_via_choice(
         self, fake_templates: Path, tmp_project: Path

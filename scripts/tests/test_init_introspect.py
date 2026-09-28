@@ -71,7 +71,7 @@ class TestPythonCommandDetection:
         result = introspect(tmp_path, python_template)
         iv = result.values["project.type_cmd"]
         assert iv.provenance == "declared"
-        assert iv.value == "mypy src/"
+        assert iv.value == "mypy ."  # no src/ dir exists in tmp_path -> src_dir is "."
 
     def test_type_cmd_bare_when_mypy_files_set(
         self, tmp_path: Path, python_template: object
@@ -118,7 +118,7 @@ class TestPythonCommandDetection:
         result = introspect(tmp_path, generic)
         assert result.values["project.lint_cmd"].value == "ruff check ."
         assert result.values["project.format_cmd"].value == "ruff format ."
-        assert result.values["project.type_cmd"].value == "mypy src/"
+        assert result.values["project.type_cmd"].value == "mypy ."  # no src/ dir exists
 
 
 class TestManifestDiscoveryNesting:
@@ -238,6 +238,7 @@ class TestSrcDirDetection:
         result = introspect(tmp_path, python_template)
         iv = result.values["project.src_dir"]
         assert iv.provenance == "default"
+        assert iv.value == "."  # template default "src/" does not exist in tmp_path
         assert len(result.ambiguities) == 1
         ambiguity = result.ambiguities[0]
         assert ambiguity.field == "src_dir"
@@ -247,7 +248,7 @@ class TestSrcDirDetection:
         result = introspect(tmp_path, python_template)
         iv = result.values["project.src_dir"]
         assert iv.provenance == "default"
-        assert iv.value == python_template.data["project"]["src_dir"]
+        assert iv.value == "."  # template default "src/" does not exist; no root-level sources
 
 
 class TestPyprojectSrcCandidateRootSpellings:
@@ -326,7 +327,8 @@ class TestTestDirDetection:
         result = introspect(tmp_path, python_template)
         iv = result.values["project.test_dir"]
         assert iv.provenance == "default"
-        assert iv.value == "tests"
+        assert iv.value == "tests/"
+        assert iv.evidence == "no test files found; conventional location for new tests"
 
 
 class TestFocusDirsDetection:
@@ -347,7 +349,7 @@ class TestFocusDirsDetection:
         result = introspect(tmp_path, python_template)
         iv = result.values["scan.focus_dirs"]
         assert iv.provenance == "default"
-        assert iv.value == python_template.data["scan"]["focus_dirs"]
+        assert iv.value == ["."]  # template default ["src/", "tests/"] does not exist
 
 
 class TestBaseToolToken:
@@ -577,6 +579,261 @@ class TestBuildCmd:
         template = _template_for(tmp_path, "pyproject.toml", templates_dir)
         config = build_config(template, {"build_cmd": "make build"})
         assert config["project"]["build_cmd"] == "make build"
+
+
+class TestExistingDirHelper:
+    def test_dot_always_accepted(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _existing_dir
+
+        assert _existing_dir(tmp_path, ".") == "."
+        assert _existing_dir(tmp_path, "./") == "."
+
+    def test_existing_relative_dir_accepted(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _existing_dir
+
+        (tmp_path / "src").mkdir()
+        assert _existing_dir(tmp_path, "src/") == "src/"
+
+    def test_nonexistent_dir_rejected(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _existing_dir
+
+        assert _existing_dir(tmp_path, "src/") is None
+
+    def test_absolute_value_rejected(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _existing_dir
+
+        assert _existing_dir(tmp_path, "/etc") is None
+
+    def test_dotdot_value_rejected(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _existing_dir
+
+        (tmp_path.parent / "sibling-does-not-matter").exists()
+        assert _existing_dir(tmp_path, "../x") is None
+
+
+class TestRootLayoutDetection:
+    def test_top_level_python_module_is_root_layout(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _detect_root_layout
+
+        (tmp_path / "main.py").touch()
+        assert _detect_root_layout(tmp_path) is True
+
+    def test_empty_dir_not_root_layout(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _detect_root_layout
+
+        assert _detect_root_layout(tmp_path) is False
+
+    def test_tooling_only_files_not_root_layout(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _detect_root_layout
+
+        (tmp_path / "setup.py").touch()
+        (tmp_path / "conftest.py").touch()
+        (tmp_path / "vite.config.ts").touch()
+        (tmp_path / ".eslintrc.js").touch()
+        assert _detect_root_layout(tmp_path) is False
+
+    def test_test_files_alone_not_root_layout(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _detect_root_layout
+
+        (tmp_path / "test_foo.py").touch()
+        assert _detect_root_layout(tmp_path) is False
+
+    def test_top_level_go_file_is_root_layout(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _detect_root_layout
+
+        (tmp_path / "main.go").touch()
+        assert _detect_root_layout(tmp_path) is True
+
+
+class TestNestedTestDirDetection:
+    def test_finds_nested_scripts_tests(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _find_nested_test_dir
+
+        (tmp_path / "scripts" / "tests").mkdir(parents=True)
+        (tmp_path / "scripts" / "tests" / "test_foo.py").touch()
+        assert _find_nested_test_dir(tmp_path, ".") == "scripts/tests/"
+
+    def test_two_unrelated_nested_test_dirs_not_adopted(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _find_nested_test_dir
+
+        (tmp_path / "frontend" / "test").mkdir(parents=True)
+        (tmp_path / "frontend" / "test" / "foo.test.ts").touch()
+        (tmp_path / "backend" / "tests").mkdir(parents=True)
+        (tmp_path / "backend" / "tests" / "test_foo.py").touch()
+        assert _find_nested_test_dir(tmp_path, ".") is None
+
+    def test_dot_prefixed_dir_ignored(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _find_nested_test_dir
+
+        (tmp_path / ".claude" / "tests").mkdir(parents=True)
+        (tmp_path / ".claude" / "tests" / "test_foo.py").touch()
+        assert _find_nested_test_dir(tmp_path, ".") is None
+
+    def test_maven_layout_detected(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _find_nested_test_dir
+
+        (tmp_path / "src" / "test" / "java").mkdir(parents=True)
+        assert _find_nested_test_dir(tmp_path, "src/main/java/") == "src/test/java/"
+
+    def test_src_dir_nested_tests_wins_over_one_level_probe(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _find_nested_test_dir
+
+        (tmp_path / "scripts" / "tests").mkdir(parents=True)
+        assert _find_nested_test_dir(tmp_path, "scripts/") == "scripts/tests/"
+
+
+class TestSrcDirRootLayout:
+    def test_flat_layout_yields_dot_inferred(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "app.py").touch()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.src_dir"]
+        assert iv.value == "."
+        assert iv.provenance == "inferred"
+
+    def test_tooling_only_root_yields_dot_default(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "setup.py").touch()
+        (tmp_path / "conftest.py").touch()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.src_dir"]
+        assert iv.value == "."
+        assert iv.provenance == "default"
+
+    def test_flat_go_repo_yields_dot_inferred(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "go.mod", templates_dir)
+        (tmp_path / "go.mod").write_text("module example.com/x\n")
+        (tmp_path / "main.go").touch()
+        result = introspect(tmp_path, template)
+        iv = result.values["project.src_dir"]
+        assert iv.value == "."
+        assert iv.provenance == "inferred"
+        assert iv.evidence == "root-level source files"
+
+    def test_hatch_packages_naming_missing_dir_filtered_out(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text('[tool.hatch.build]\npackages = ["ghost_pkg"]\n')
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.src_dir"]
+        assert iv.value == "."
+
+    def test_tsconfig_root_dir_naming_missing_dir_filtered_out(
+        self, tmp_path: Path, templates_dir: Path
+    ) -> None:
+        template = _template_for(tmp_path, "tsconfig.json", templates_dir)
+        (tmp_path / "tsconfig.json").write_text(
+            json.dumps({"compilerOptions": {"rootDir": "app"}})
+        )
+        result = introspect(tmp_path, template)
+        iv = result.values["project.src_dir"]
+        assert iv.value == "."
+
+
+class TestTestDirNewBehavior:
+    def test_nested_scripts_tests_detected(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "scripts" / "little_loops").mkdir(parents=True)
+        (tmp_path / "scripts" / "little_loops" / "__init__.py").touch()
+        (tmp_path / "scripts" / "tests").mkdir()
+        (tmp_path / "scripts" / "tests" / "test_foo.py").touch()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.test_dir"]
+        assert iv.value == "scripts/tests/"
+        assert iv.provenance == "inferred"
+
+    def test_go_colocated_tests_not_tests_fallback(
+        self, tmp_path: Path, templates_dir: Path
+    ) -> None:
+        template = _template_for(tmp_path, "go.mod", templates_dir)
+        (tmp_path / "go.mod").write_text("module example.com/x\n")
+        (tmp_path / "main.go").touch()
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "foo_test.go").touch()
+        result = introspect(tmp_path, template)
+        iv = result.values["project.test_dir"]
+        assert iv.value == "."
+        assert iv.provenance == "inferred"
+
+    def test_js_colocated_tests_under_src(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "tsconfig.json", templates_dir)
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"compilerOptions": {"rootDir": "src"}}))
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "index.ts").touch()
+        (src / "index.test.ts").touch()
+        result = introspect(tmp_path, template)
+        assert result.values["project.src_dir"].value == "src/"
+        iv = result.values["project.test_dir"]
+        assert iv.value == "src/"
+        assert iv.provenance == "inferred"
+
+    def test_root_level_test_file_yields_dot(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "tsconfig.json", templates_dir)
+        (tmp_path / "tsconfig.json").write_text("{}")
+        (tmp_path / "foo.spec.ts").touch()
+        result = introspect(tmp_path, template)
+        iv = result.values["project.test_dir"]
+        assert iv.value == "."
+        assert iv.provenance == "inferred"
+
+    def test_root_conftest_alone_falls_back_to_tests(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "conftest.py").touch()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.test_dir"]
+        assert iv.value == "tests/"
+        assert iv.provenance == "default"
+
+    def test_two_unrelated_nested_test_dirs_falls_back_to_colocated_search(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        """Neither ``frontend/test/`` nor ``backend/tests/`` is adopted as *the*
+        nested test dir (ambiguous), but the broader bounded co-located search
+        still finds a test file and proposes ``.`` rather than the phantom
+        ``tests/`` — only an *empty* search falls all the way back to that."""
+        (tmp_path / "frontend" / "test").mkdir(parents=True)
+        (tmp_path / "frontend" / "test" / "foo.test.ts").touch()
+        (tmp_path / "backend" / "tests").mkdir(parents=True)
+        (tmp_path / "backend" / "tests" / "test_foo.py").touch()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.test_dir"]
+        assert iv.value == "."
+        assert iv.provenance == "inferred"
+        assert iv.evidence == "co-located test files"
+
+
+class TestFocusDirsGuard:
+    def test_ambiguous_src_plus_nested_tests_never_alone(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        for name in ("scripts", "lib"):
+            pkg = tmp_path / name / "pkg"
+            pkg.mkdir(parents=True)
+            (pkg / "__init__.py").touch()
+        (tmp_path / "scripts" / "tests").mkdir()
+        (tmp_path / "scripts" / "tests" / "test_foo.py").touch()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["scan.focus_dirs"]
+        assert iv.value == ["."]
+
+    def test_src_default_plus_top_level_tests_only_yields_dot(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "tests").mkdir()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["scan.focus_dirs"]
+        assert iv.value == ["."]
+
+    def test_java_layout_focus_dirs(self, tmp_path: Path, templates_dir: Path) -> None:
+        template = _template_for(tmp_path, "pom.xml", templates_dir)
+        (tmp_path / "pom.xml").touch()
+        (tmp_path / "src" / "main" / "java").mkdir(parents=True)
+        (tmp_path / "src" / "test" / "java").mkdir(parents=True)
+        result = introspect(tmp_path, template)
+        iv = result.values["scan.focus_dirs"]
+        assert iv.value == ["src/main/java/", "src/test/java/"]
 
 
 class TestFocusDirsEvidence:

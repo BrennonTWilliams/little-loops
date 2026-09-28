@@ -4,10 +4,11 @@ type: ENH
 title: 'll-init: detect src/test/focus dirs from real layout, never propose nonexistent
   dirs'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T22:32:30Z'
+completed_at: '2026-09-28T03:41:21Z'
 reconcile_attempted: true
 confidence_score: 100
 outcome_confidence: 95
@@ -340,6 +341,40 @@ Verdict at time of check: **NEEDS_UPDATE** (one anchor had drifted; corrected in
 - **Graph**: provider=`codegraph` freshness=`stale` — not used to originate the anchor-drift finding; confirmed directly via `sed`/`grep` against HEAD.
 - **ENH-3612 coordination note** (Wiring Phase): re-confirmed done (`status: done`); no action needed.
 
+## Resolution
+
+Implemented in `scripts/little_loops/init/introspect.py`: added `_existing_dir`
+(canonicalizes and existence-checks a dir value, rejecting absolute/`..`
+values), `_TEST_FILE_GLOBS` + `_has_test_files` (bounded depth-4 recursive
+test-file search, shared by every check), `_root_level_test_files`,
+`_detect_root_layout` (flat-repo detection with a tooling/test-file ignore
+list), and `_find_nested_test_dir` (`<src_dir>/tests|test/`, Maven
+`src/test/java/`, then a sole one-level `*/tests|test/` match).
+
+- `_introspect_src_dir` now filters every candidate (package-marker,
+  pyproject, tsconfig, Cargo) and the template default through `_existing_dir`
+  before counting; a filtered-empty/`.` zero-candidate result routes through
+  `_detect_root_layout` to pick `inferred` vs `default` provenance for `.`.
+- `_introspect_test_dir` gained a `src_dir` parameter and a six-step probe
+  order (top-level `tests|test/` → nested → root-level test files → co-located
+  under src_dir or root → filtered template default → the one deliberate
+  nonexistent fallback `tests/`, evidenced `"no test files found; ..."`).
+- `_introspect_focus_dirs` gained a `test_dir_iv` parameter (the `introspect()`
+  call order now computes test_dir before focus_dirs); focus dirs collapse to
+  `["."]` whenever src_dir is `.` or whenever every surviving entry is a test
+  dir, and are never empty.
+- Updated `cli.py:531` ambiguity wording ("not adopted" instead of "kept
+  template default", since the ambiguity value can now be `.`).
+
+Rewrote the three phantom-default tests plus the mypy-command/e2e-summary
+tests that assumed a `src/` dir existing in an empty `tmp_path`, and added new
+coverage for the helpers, root-layout/co-located/nested-test-dir detection,
+the focus-dirs test-dir-only guard, and the `.`/`""` round-trip through
+`build_config`/`summary_rows`. Full suite: `python -m pytest scripts/tests/`
+— 4 pre-existing unrelated failures confirmed via `git stash` (issue-corpus
+count, evidence-quote gate, prose-dep-drift gate, one flaky process-group
+test), 26018 passed.
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
@@ -356,6 +391,8 @@ _Added by manual review — 2026-09-27:_
 - Removed the resolved `blocked_by: BUG-3631` edge and the two stale Confidence Check Notes sections (both scored 80/100 solely on that dependency); `_warn_config_drift` marked no-change (declared-only). Effort raised to Medium. Re-run `/ll:confidence-check`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T03:41:21 - `a1114a79-3057-4b58-b7ff-749d67448f3f.jsonl`
+- `/ll:manage-issue` - 2026-09-28T03:40:35 - `a1114a79-3057-4b58-b7ff-749d67448f3f.jsonl`
 - `/ll:confidence-check` - 2026-09-27T21:40:48 - `232ffda2-5aad-4a53-98cc-f078a39c501d.jsonl`
 - `/ll:wire-issue` - 2026-09-27T20:56:39 - `9f137c1a-0103-40a8-9268-05ba85972649.jsonl`
 - `/ll:reconcile-issue` - 2026-09-27T20:31:03 - `875ff80d-d1f7-4605-9400-e1a7cf094cda.jsonl`

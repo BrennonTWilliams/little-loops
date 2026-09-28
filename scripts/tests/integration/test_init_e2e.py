@@ -266,7 +266,8 @@ class TestInitHeadlessIntrospection:
 
         out = capsys.readouterr().out
         assert "lint_cmd: ruff check .  (declared: [tool.ruff] present)" in out
-        assert "type_cmd: mypy src/  (declared: [tool.mypy] present)" in out
+        # no src/ dir exists in this project -> src_dir resolves to "."
+        assert "type_cmd: mypy .  (declared: [tool.mypy] present)" in out
 
     def test_yes_derives_node_test_cmd_from_package_json(self, tmp_path: Path) -> None:
         project = tmp_path / "node_project"
