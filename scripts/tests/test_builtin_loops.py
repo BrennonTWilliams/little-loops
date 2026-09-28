@@ -19905,6 +19905,7 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/oracles/plan-node-refine.yaml", "context.max_nodes", "ENH-3358"),
     ("loops/oracles/plan-node-refine.yaml", "context.node_id", "ENH-3358"),
     ("loops/oracles/resolve-decision.yaml", "context.issue_id", "ENH-3358"),
+    ("loops/prepare-issue.yaml", "context.advise_go_no_go", "ENH-3590"),
     ("loops/prompt-across-issues.yaml", "captured.current_item.output", "ENH-3358"),
     ("loops/prompt-across-issues.yaml", "context.ids", "ENH-3358"),
     ("loops/prompt-across-issues.yaml", "context.parent", "ENH-3358"),

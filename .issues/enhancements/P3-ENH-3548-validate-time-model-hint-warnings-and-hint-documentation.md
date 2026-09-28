@@ -12,9 +12,6 @@ captured_at: '2026-09-24T17:40:15Z'
 labels:
 - multi-host
 - loops
-blocked_by:
-- ENH-3527
-- ENH-3547
 ---
 
 # ENH-3548: Validate-time model hint warnings and hint documentation
@@ -87,7 +84,7 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue covers validate-time WARNINGs, `haiku-gen` guidance, and documentation only. Resolver/config is ENH-3527 and dispatch wiring is ENH-3547. ENH-3527 dropped the `operation` parameter (2026-09-24). Blocked by ENH-3547 because the docs describe the support matrix that ENH-3547 proves with tests; the validate-warning half needs only ENH-3527 and can be built first.
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers validate-time WARNINGs, `haiku-gen` guidance, and documentation only. Resolver/config is ENH-3527 (done) and dispatch wiring is ENH-3547 (done). ENH-3527 dropped the `operation` parameter (2026-09-24). ENH-3547 proved the support matrix with tests that this issue's docs describe; both prerequisites have since landed, so this issue is no longer blocked.
 
 
 ## Session Log

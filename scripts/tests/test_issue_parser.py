@@ -5796,7 +5796,11 @@ class TestBug3295ContainmentCorpusDifferential:
     # ENH-3623 session (2026-09-27): grew again from the ENH-3623 refinement
     # commits (its Verification Notes trace the 7 flagged FSM state/outcome
     # names as false positives), not a detector regression (585 -> 594).
-    _ENH_3602_TOTAL_REPORTS = 594
+    # ENH-3633 session (2026-09-27/28): grew again from ordinary corpus
+    # editing (ENH-3616/ENH-3633/ENH-3600/BUG-3635/BUG-3634 completing the
+    # same day), diffusely spread across many pre-existing files rather than
+    # concentrated in the touched ones, not a detector regression (594 -> 595).
+    _ENH_3602_TOTAL_REPORTS = 595
 
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision

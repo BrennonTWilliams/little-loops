@@ -50,7 +50,7 @@ is the most recent victim, not the only one.
 ## Current Behavior
 
 `scripts/little_loops/fsm/executor.py:1285-1307` emits `action_complete`:
-
+<!-- ll-evidence-ok: this issue is status: done; the quoted "Current Behavior" snapshot predates this issue's own implementation (stderr_preview now lives at executor.py:2722-2728) and has since receded beyond the evidence checker's revision search window -->
 ```python
 preview = result.output[-2000:].strip() if result.output else None
 payload: dict[str, Any] = {
