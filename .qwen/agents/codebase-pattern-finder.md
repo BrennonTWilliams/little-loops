@@ -12,7 +12,6 @@ description: |
 
   Trigger keywords: "show me examples", "how is [X] implemented", "find patterns for", "code examples of", "usage of", "template for", "how do you implement", "existing implementation of", "similar to"
 
-model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 

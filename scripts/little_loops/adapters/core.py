@@ -20,6 +20,7 @@ from typing import Protocol, cast, runtime_checkable
 import yaml
 
 from little_loops.adapters.capabilities import HOST_CAPABILITIES
+from little_loops.host_runner import MODEL_ALIASES
 
 
 class AdapterError(Exception):
@@ -179,7 +180,27 @@ def _select_frontmatter_fields(
             changed = True
         fm_text = cleaned
 
+    model_match = re.search(r"^model\s*:\s*(.*)$", fm_text, re.MULTILINE)
+    if model_match and _is_claude_model(model_match.group(1).strip()):
+        cleaned = re.sub(r"^model\s*:.*$\n?", "", fm_text, flags=re.MULTILINE)
+        if cleaned != fm_text:
+            changed = True
+        fm_text = cleaned
+
     return f"---\n{fm_text}{after}", changed
+
+
+def _is_claude_model(value: str) -> bool:
+    """Return True if *value* is a Claude Code model alias or concrete ID.
+
+    True for a :data:`little_loops.host_runner.MODEL_ALIASES` key (``sonnet``,
+    ``opus``, ``haiku``, ``fable``, case-insensitive) or any ``claude-*`` ID.
+    Used to keep Claude Code's own model directives out of generated mirrors
+    for other hosts (BUG-3640): those hosts don't resolve Claude aliases and
+    a mismatched literal ``claude-*`` ID isn't a valid model for them either.
+    """
+    normalized = value.strip().lower()
+    return normalized in MODEL_ALIASES or normalized.startswith("claude-")
 
 
 def _is_model_invocation_disabled(fm: dict) -> bool:

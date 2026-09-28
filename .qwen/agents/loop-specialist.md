@@ -11,7 +11,6 @@ description: |
 
   Trigger keywords: "diagnose loop", "loop is stuck", "loop failure", "refine loop", "optimize loop", "verify loop", "loop keeps looping", "premature termination", "oscillating loop", "loop drift", "harness-optimize"
 
-model: sonnet
 tools: ["Bash", "Read", "Edit", "Write"]
 ---
 

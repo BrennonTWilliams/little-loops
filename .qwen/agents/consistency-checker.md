@@ -10,7 +10,6 @@ description: |
 
   Trigger: Called by /ll:audit-claude-config for Wave 2 cross-checks
 
-model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 

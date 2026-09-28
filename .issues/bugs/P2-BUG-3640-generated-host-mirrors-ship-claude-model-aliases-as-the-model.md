@@ -3,10 +3,11 @@ id: BUG-3640
 type: BUG
 title: Generated host mirrors ship Claude model aliases as the model
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T20:15:06Z'
+completed_at: '2026-09-28T21:43:07Z'
 parent: EPIC-3563
 labels:
 - multi-host
@@ -71,21 +72,34 @@ A Claude Code model alias (a key of `host_runner.MODEL_ALIASES`: `fable`, `opus`
 
 ## Acceptance Criteria
 
-- [ ] No file under `.codex/agents/`, `.gemini/`, `.qwen/`, `.kimi-code/` contains a `model` value that is a `MODEL_ALIASES` key or a `claude-*` ID (enforced by a test walking the committed mirrors).
-- [ ] A non-Anthropic literal `model:` in source frontmatter still reaches the generated artifact unchanged.
-- [ ] `test_host_artifacts_are_not_stale` passes with the regenerated mirrors.
-- [ ] Claude Code's native reading of `agents/*.md` / `skills/*/SKILL.md` is unchanged (source files not edited).
+- [x] No file under `.codex/agents/`, `.gemini/`, `.qwen/`, `.kimi-code/` contains a `model` value that is a `MODEL_ALIASES` key or a `claude-*` ID (enforced by a test walking the committed mirrors).
+- [x] A non-Anthropic literal `model:` in source frontmatter still reaches the generated artifact unchanged.
+- [x] `test_host_artifacts_are_not_stale` passes with the regenerated mirrors.
+- [x] Claude Code's native reading of `agents/*.md` / `skills/*/SKILL.md` is unchanged (source files not edited).
 
 ## Blocks
 
 - ENH-3533 — builds its `model_hint` resolution (`_resolve_frontmatter_model`) on top of the alias-stripping seam this issue introduces in `_select_frontmatter_fields` / `CodexEmitter.emit_agent`
 
+## Resolution
+
+Implemented per the Proposed Solution:
+
+- Added `_is_claude_model(value: str) -> bool` in `scripts/little_loops/adapters/core.py` (`MODEL_ALIASES` key or `claude-*` prefix, case-insensitive).
+- `_select_frontmatter_fields` (`core.py`) now strips a top-level `model:` line whose value matches `_is_claude_model` — covers Kimi/Qwen agent emission and every host's skill emission in one place.
+- `CodexEmitter.emit_agent` (`codex.py`) clears `model` to `""` when it matches `_is_claude_model`; `_format_agent_toml` now omits the `model = "..."` line entirely when `model` is empty, mirroring the existing `sandbox_mode`/`mcp_servers` optional-field pattern.
+- Regenerated all mirrors: `ll-adapt --host codex|gemini|qwen|kimi-code --apply`.
+- Updated pinned tests to assert the alias is stripped and added non-Anthropic-literal passthrough cases: `test_adapters.py` (`TestCodexEmitterEmitAgent`, `TestQwenEmitterEmitAgent`, new `TestIsClaudeModel` / `TestSelectFrontmatterFieldsModelStripping`), `test_adapt_agents_for_codex.py` (`TestProcessAgents`, `TestRealAgentsIntegrationGuard`), and the `agent_cases.json` golden corpus.
+- Added `test_generated_mirrors_do_not_ship_claude_model_aliases` in `test_wiring_skills_and_commands.py`, walking every committed `.codex/`, `.gemini/`, `.qwen/`, `.kimi-code/` mirror — satisfies AC #1 directly, not just via unit coverage.
+- Source `agents/*.md` / `skills/*/SKILL.md` files were not edited (AC #4).
+
 ## Status
 
-**Open** | Created: 2026-09-28 | Priority: P2
+**Done** | Created: 2026-09-28 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T21:42:51 - `9d03d44d-bf3d-4c2d-8c11-078b67f26820.jsonl`
 - `/ll:verify-issues` - 2026-09-28T21:01:34 - `6ee1f8dc-4aaf-4326-9a2c-971c5336e607.jsonl`
 - `/ll:confidence-check` - 2026-09-28T20:42:58 - `8c20e11f-c92c-4edc-8c38-39bebd1ef326.jsonl`
 - `/ll:verify-issues` - 2026-09-28T20:26:37 - `ad55cfa6-adc7-4f43-81d2-899456dc7a54.jsonl`

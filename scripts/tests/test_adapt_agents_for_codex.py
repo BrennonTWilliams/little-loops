@@ -177,12 +177,20 @@ class TestProcessAgents:
         content = (codex_dir / "my-agent.toml").read_text()
         assert 'description = "Use when stuff."' in content
 
-    def test_toml_contains_model(self, tmp_path: Path) -> None:
+    def test_claude_alias_model_is_omitted(self, tmp_path: Path) -> None:
+        """BUG-3640: a Claude Code model alias is not a Codex model."""
         _make_agent(tmp_path, "my-agent", model="opus")
         codex_dir = tmp_path / ".codex" / "agents"
         _process_agents(tmp_path / "agents", codex_dir, apply=True, quiet=True, only=None)
         content = (codex_dir / "my-agent.toml").read_text()
-        assert 'model = "opus"' in content
+        assert "model = " not in content
+
+    def test_non_claude_model_literal_passes_through(self, tmp_path: Path) -> None:
+        _make_agent(tmp_path, "my-agent", model="gpt-5-codex")
+        codex_dir = tmp_path / ".codex" / "agents"
+        _process_agents(tmp_path / "agents", codex_dir, apply=True, quiet=True, only=None)
+        content = (codex_dir / "my-agent.toml").read_text()
+        assert 'model = "gpt-5-codex"' in content
 
     def test_skips_agent_without_description(self, tmp_path: Path) -> None:
         agents_dir = tmp_path / "agents"
@@ -361,6 +369,8 @@ class TestRealAgentsIntegrationGuard:
             )
 
     def test_all_real_toml_files_have_required_fields(self) -> None:
+        """`model` is deliberately excluded (BUG-3640): every real agent's source
+        frontmatter carries a Claude Code alias, which is correctly omitted."""
         codex_agents_dir = Path(__file__).parent.parent.parent / ".codex" / "agents"
         if not codex_agents_dir.exists():
             return
@@ -368,7 +378,6 @@ class TestRealAgentsIntegrationGuard:
             content = toml_path.read_text()
             assert 'name = "' in content, f"{toml_path.name}: missing name field"
             assert 'description = "' in content, f"{toml_path.name}: missing description field"
-            assert 'model = "' in content, f"{toml_path.name}: missing model field"
             assert 'developer_instructions = """' in content, (
                 f"{toml_path.name}: missing developer_instructions field"
             )

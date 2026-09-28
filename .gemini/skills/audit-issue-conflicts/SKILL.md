@@ -3,7 +3,6 @@ name: audit-issue-conflicts
 description: Use when asked to detect conflicting requirements or incompatible decisions across open issues.
 disable-model-invocation: false
 argument-hint: "[EPIC-NNNN | ID,ID,ID,...] [--auto] [--dry-run] [--cross-theme]"
-model: sonnet
 allowed-tools:
   - Read
   - Glob

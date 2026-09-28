@@ -6,7 +6,6 @@ arguments:
   - name: focus-area
     description: "Optional: limit analysis to a specific goal ID, persona, or 'gaps|ux|opportunities'"
     required: false
-model: sonnet
 allowed-tools:
   - Read
   - Glob

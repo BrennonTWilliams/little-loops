@@ -10,7 +10,6 @@ description: |
 
   Trigger: Called automatically by optimize-prompt-hook in thorough mode
 
-model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 

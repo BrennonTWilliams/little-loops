@@ -1,7 +1,6 @@
 ---
 name: ll-commit
 description: Create git commits with user approval and no assistant attribution
-model: haiku
 allowed-tools:
   - Bash(git:*)
 ---

@@ -5,7 +5,6 @@ description: |
 
   Keywords: "look up", "search for", "find docs", "what's new in", "current version", "latest release", "how do I [with recent tech]", "research", "documentation for"
 
-model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Bash"]
 ---
 

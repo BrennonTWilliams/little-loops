@@ -14,8 +14,10 @@ from little_loops.adapters.core import (
     AdapterError,
     HostEmitter,
     _extract_body,
+    _is_claude_model,
     _is_model_invocation_disabled,
     _read_frontmatter,
+    _select_frontmatter_fields,
     process_agents,
     process_commands,
     process_mcp_config,
@@ -128,6 +130,64 @@ class TestIsModelInvocationDisabled:
 
     def test_none_value(self) -> None:
         assert _is_model_invocation_disabled({"disable-model-invocation": None}) is False
+
+
+# =============================================================================
+# _is_claude_model
+# =============================================================================
+
+
+class TestIsClaudeModel:
+    def test_sonnet_alias(self) -> None:
+        assert _is_claude_model("sonnet") is True
+
+    def test_opus_alias(self) -> None:
+        assert _is_claude_model("opus") is True
+
+    def test_haiku_alias(self) -> None:
+        assert _is_claude_model("haiku") is True
+
+    def test_fable_alias(self) -> None:
+        assert _is_claude_model("fable") is True
+
+    def test_alias_uppercase(self) -> None:
+        assert _is_claude_model("Sonnet") is True
+
+    def test_alias_with_whitespace(self) -> None:
+        assert _is_claude_model("  sonnet  ") is True
+
+    def test_concrete_claude_id(self) -> None:
+        assert _is_claude_model("claude-sonnet-5") is True
+
+    def test_non_claude_literal(self) -> None:
+        assert _is_claude_model("gpt-5-codex") is False
+
+    def test_empty_string(self) -> None:
+        assert _is_claude_model("") is False
+
+
+# =============================================================================
+# _select_frontmatter_fields — model stripping (BUG-3640)
+# =============================================================================
+
+
+class TestSelectFrontmatterFieldsModelStripping:
+    def test_strips_claude_alias_model(self) -> None:
+        content = "---\nname: my-agent\nmodel: sonnet\n---\n\nBody.\n"
+        new_content, changed = _select_frontmatter_fields(content, "my-agent", ("name",))
+        assert "model:" not in new_content
+        assert changed is True
+
+    def test_preserves_non_claude_model(self) -> None:
+        content = "---\nname: my-agent\nmodel: gpt-5-codex\n---\n\nBody.\n"
+        new_content, _ = _select_frontmatter_fields(content, "my-agent", ("name",))
+        assert "model: gpt-5-codex" in new_content
+
+    def test_no_model_key_is_unaffected(self) -> None:
+        content = "---\nname: my-agent\n---\n\nBody.\n"
+        new_content, changed = _select_frontmatter_fields(content, "my-agent", ("name",))
+        assert new_content == content
+        assert changed is False
 
 
 # =============================================================================
@@ -632,10 +692,19 @@ class TestCodexEmitterEmitAgent:
             'description = "Use for tasks."' in (meta["output_dir"] / "my-agent.toml").read_text()
         )
 
-    def test_toml_contains_model(self, tmp_path: Path) -> None:
+    def test_claude_alias_model_is_omitted(self, tmp_path: Path) -> None:
+        """BUG-3640: a Claude Code model alias is not a Codex model."""
         meta = self._meta(tmp_path, "my-agent", model="opus")
         CodexEmitter().emit_agent(meta)
-        assert 'model = "opus"' in (meta["output_dir"] / "my-agent.toml").read_text()
+        content = (meta["output_dir"] / "my-agent.toml").read_text()
+        assert "model = " not in content
+
+    def test_non_claude_model_literal_passes_through(self, tmp_path: Path) -> None:
+        """A deliberate Codex-targeted model literal still reaches the TOML."""
+        meta = self._meta(tmp_path, "my-agent", model="gpt-5-codex")
+        CodexEmitter().emit_agent(meta)
+        content = (meta["output_dir"] / "my-agent.toml").read_text()
+        assert 'model = "gpt-5-codex"' in content
 
     def test_toml_contains_developer_instructions(self, tmp_path: Path) -> None:
         meta = self._meta(tmp_path, "my-agent", body="Do the thing.")
@@ -2158,8 +2227,32 @@ class TestQwenEmitterEmitAgent:
         QwenEmitter().emit_agent(meta)
         content = self._out_path(tmp_path, "my-agent").read_text()
         assert "name: my-agent" in content
-        assert "model: sonnet" in content
         assert "Agent instructions." in content
+
+    def test_claude_alias_model_is_stripped(self, tmp_path: Path) -> None:
+        """BUG-3640: the default `_make_agent` model is the `sonnet` alias."""
+        meta = self._meta(tmp_path, "my-agent")
+        QwenEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "model: sonnet" not in content
+
+    def test_non_claude_model_literal_passes_through_verbatim(self, tmp_path: Path) -> None:
+        """A non-Anthropic literal model value is an author's deliberate choice."""
+        agent_md = _make_agent(tmp_path, "my-agent", model="qwen-max")
+        content = agent_md.read_text()
+        fm = _read_frontmatter(content) or {}
+        meta = {
+            "agent_name": "my-agent",
+            "agent_path": agent_md,
+            "content": content,
+            "fm": fm,
+            "output_dir": tmp_path / ".qwen" / "agents",
+            "apply": True,
+            "quiet": True,
+        }
+        QwenEmitter().emit_agent(meta)
+        content = self._out_path(tmp_path, "my-agent").read_text()
+        assert "model: qwen-max" in content
 
     def test_returns_adapted_on_first_run(self, tmp_path: Path) -> None:
         meta = self._meta(tmp_path, "my-agent")

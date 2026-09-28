@@ -906,3 +906,37 @@ def test_manage_release_has_no_hardcoded_version_file_paths(project_root: Path) 
     assert "little_loops/" not in content, (
         "[BUG-3635] commands/manage-release.md must not hard-code a little_loops/ path"
     )
+
+
+# =============================================================================
+# BUG-3640: generated mirrors must not ship a Claude Code model alias
+# =============================================================================
+
+_MIRROR_MODEL_GLOBS: tuple[str, ...] = (
+    ".codex/agents/*.toml",
+    ".gemini/skills/*/SKILL.md",
+    ".qwen/agents/*.md",
+    ".qwen/skills/*/SKILL.md",
+    ".kimi-code/agents/*.md",
+    ".kimi-code/skills/*/SKILL.md",
+)
+
+_MIRROR_MODEL_LINE_RE = re.compile(r'^model\s*[:=]\s*"?([^"\n]+?)"?\s*$', re.MULTILINE)
+
+
+def test_generated_mirrors_do_not_ship_claude_model_aliases(project_root: Path) -> None:
+    """No committed non-Claude host mirror may carry a `MODEL_ALIASES` key or a
+    `claude-*` ID as its `model` value — those aliases only resolve for Claude
+    Code's own host CLI (BUG-3640)."""
+    from little_loops.adapters.core import _is_claude_model
+
+    violations: list[str] = []
+    for pattern in _MIRROR_MODEL_GLOBS:
+        for path in project_root.glob(pattern):
+            content = path.read_text()
+            for match in _MIRROR_MODEL_LINE_RE.finditer(content):
+                value = match.group(1).strip()
+                if _is_claude_model(value):
+                    violations.append(f"{path.relative_to(project_root)}: model={value!r}")
+
+    assert not violations, f"[BUG-3640] Claude model alias in generated mirror(s): {violations}"

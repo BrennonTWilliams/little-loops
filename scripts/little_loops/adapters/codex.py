@@ -16,6 +16,7 @@ from little_loops.adapters.capabilities import HOST_CAPABILITIES
 from little_loops.adapters.core import (  # noqa: F401
     AdapterError,
     _extract_body,
+    _is_claude_model,
     _select_frontmatter_fields,
 )
 
@@ -240,14 +241,14 @@ def _format_agent_toml(
     (``sandbox_mode``, ``mcp_servers``) when source data is available.
     """
     escaped_desc = description.replace("\\", "\\\\").replace('"', '\\"')
-    escaped_model = model.replace("\\", "\\\\").replace('"', '\\"')
     safe_body = body.replace('"""', '\\"\\"\\"')
     if not safe_body.endswith("\n"):
         safe_body += "\n"
 
-    result = (
-        f'{_MARKER}\nname = "{name}"\ndescription = "{escaped_desc}"\nmodel = "{escaped_model}"\n'
-    )
+    result = f'{_MARKER}\nname = "{name}"\ndescription = "{escaped_desc}"\n'
+    if model:
+        escaped_model = model.replace("\\", "\\\\").replace('"', '\\"')
+        result += f'model = "{escaped_model}"\n'
 
     # Resolve tools from frontmatter for rich-field derivation
     tools = fm.get("tools")
@@ -442,6 +443,8 @@ class CodexEmitter:
 
         name = str(fm.get("name") or agent_name)
         model = str(fm.get("model") or "")
+        if _is_claude_model(model):
+            model = ""
         short_desc = _extract_agent_short_desc(content)
         if not short_desc:
             if not quiet:

@@ -12,7 +12,6 @@ description: |
 
   Trigger keywords: "analyze workflow", "categorize messages", "pattern analysis", "step 1 workflow", "message categorization"
 
-model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Write"]
 ---
 

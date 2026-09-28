@@ -10,7 +10,6 @@ description: |
 
   Trigger keywords: "how does", "explain the", "trace the", "walk through", "implementation of", "detailed analysis of", "understand the", "deep dive into"
 
-model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 

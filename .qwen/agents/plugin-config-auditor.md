@@ -10,7 +10,6 @@ description: |
 
   Trigger: Called by /ll:audit-claude-config for Wave 1 component audits
 
-model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 
