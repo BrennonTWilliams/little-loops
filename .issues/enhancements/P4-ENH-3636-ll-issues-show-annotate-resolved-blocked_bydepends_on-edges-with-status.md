@@ -8,7 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T17:29:51Z'
 reconcile_attempted: true
-verify_verdict: VALID
+verify_verdict: NON_VALID
 confidence_score: 100
 outcome_confidence: 86
 score_complexity: 18
@@ -70,17 +70,17 @@ Design decisions (settled):
 
 _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
-- Segment-level dimming (splitting a comma-joined relationship value and conditionally applying `_dim` to individual comma-separated items while leaving others plain) has no precedent anywhere in this codebase — searched every `colorize(`/`_dim(` call site under `scripts/little_loops/cli/issues/`. Existing `_dim` usage is always whole-label or whole-value (e.g. `_dim('Blocked by:')` dims the row label, not the value, at `show.py:679`). Implementation Steps item 4's "dimming each comma-separated item ending in ` (done)` / ` (cancelled)`" is new territory for this helper, not an established convention being followed.
+- Segment-level dimming (splitting a comma-joined relationship value and conditionally applying `_dim` to individual comma-separated items while leaving others plain) has no precedent anywhere in this codebase — searched every `colorize(`/`_dim(` call site under `scripts/little_loops/cli/issues/`. Existing `_dim` usage is always whole-label or whole-value (e.g. `_render_row` dims the row label via `_dim(key_text)`, not the value, at `show.py:679`). Implementation Steps item 4's "dimming each comma-separated item ending in ` (done)` / ` (cancelled)`" is new territory for this helper, not an established convention being followed.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/cli/issues/show.py`:
-  - `_parse_card_fields` (~261-392): inside the existing `try` block (line 282), reuse the already-loaded `_all = find_issues(config, status_filter=set(_ALL_STATUSES))` (line 284) to build an ID → raw status map, mirroring the existing `parent_display` ID→title resolution (BUG-3392 pattern, same function). Compute `blocked_by_display`, `depends_on_display`, `unresolved_blocked_by`, `unresolved_depends_on`; defaults set before the `try` so the `except` path yields the unannotated fallback.
+  - `_parse_card_fields` (~261-392): inside the existing `try` block (line 280), reuse the already-loaded `_all = find_issues(config, status_filter=set(_ALL_STATUSES))` (line 284) to build an ID → raw status map, mirroring the existing `parent_display` ID→title resolution (BUG-3392 pattern, same function). Compute `blocked_by_display`, `depends_on_display`, `unresolved_blocked_by`, `unresolved_depends_on`; defaults set before the `try` so the `except` path yields the unannotated fallback.
   - `_RELATIONSHIP_KEYS` (521-532): swap `"blocked_by"` → `"blocked_by_display"` and `"depends_on"` → `"depends_on_display"` (same labels).
 
 ### Dependent Files (Callers/Importers)
-- `skills/confidence-check/SKILL.md:163` — parses `blocked_by` from `ll-issues show --json` by splitting on commas. **The `blocked_by` value must stay byte-identical** (raw IDs, no annotation). A later follow-up could switch this skill to `unresolved_blocked_by` and drop its per-blocker `ll-issues show` calls — out of scope here. That follow-up must first decide how to handle IDs not found on disk: `unresolved_blocked_by` includes them, but the scheduler ignores them.
+- `skills/confidence-check/SKILL.md:162` — parses `blocked_by` from `ll-issues show --json` by splitting on commas. **The `blocked_by` value must stay byte-identical** (raw IDs, no annotation). A later follow-up could switch this skill to `unresolved_blocked_by` and drop its per-blocker `ll-issues show` calls — out of scope here. That follow-up must first decide how to handle IDs not found on disk: `unresolved_blocked_by` includes them, but the scheduler ignores them.
 - `scripts/little_loops/mcp_server/tools.py:138` (`issue_get`) and `scripts/little_loops/mcp_server/resources.py:264` — return `_parse_card_fields` output verbatim; they pick up the new keys automatically (additive, no code change).
 - `dep_graph.get_blocking_issues()` scheduler callers (`issue_manager.py:1882,1972`) — untouched.
 
@@ -112,8 +112,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_rn_implement.py:1101` — `test_check_blocked_by_parses_frontmatter_not_show_json` asserts the gate reads frontmatter, not `show --json`; unaffected while raw `blocked_by` is unchanged [Agent 3 finding]
 
 ### Documentation
-- `docs/reference/CLI.md:1659` (Relationships bullet under `ll-issues show`) — note that resolved `blocked_by` / `depends_on` targets are annotated `(done)` / `(cancelled)`.
-- `docs/reference/CLI.md` `--json` row (~1665) — list the new `unresolved_blocked_by` / `unresolved_depends_on` keys, defined as "targets not resolved as `done`/`cancelled`, including IDs not found in the project" (the scheduler ignores missing IDs; `show` does not). Also note in the Relationships bullet that live entries list before resolved ones.
+- `docs/reference/CLI.md:1672` (Relationships bullet under `ll-issues show`) — note that resolved `blocked_by` / `depends_on` targets are annotated `(done)` / `(cancelled)`.
+- `docs/reference/CLI.md` `--json` row (line 1678, `| `--json` / `-j` | Output issue fields as JSON (includes `source`, `norm`, `fmt` keys) |`) — list the new `unresolved_blocked_by` / `unresolved_depends_on` keys, defined as "targets not resolved as `done`/`cancelled`, including IDs not found in the project" (the scheduler ignores missing IDs; `show` does not). Also note in the Relationships bullet that live entries list before resolved ones.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md:4871` — enumerates the `--json` output fields incl. `blocked_by`, `depends_on`, `parent_display`, under `#### show`; add `blocked_by_display`, `depends_on_display`, `unresolved_blocked_by`, `unresolved_depends_on` in `show` [Agent 2 finding]
@@ -179,12 +179,32 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-28. Graph: provider `codegraph`, freshness `stale` (results used as leads only; every anchor confirmed by direct grep/read). `ll-verify-evidence`: clean (0 findings)._
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date except for the `Remaining:` item — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Corrected in place (line-anchor drift only):
+- Integration Map: `_parse_card_fields` `try` block at line 280 (was 282)
+- Integration Map: `skills/confidence-check/SKILL.md:162` (was 163)
+- Documentation: `docs/reference/CLI.md` Relationships bullet at line 1672 (was 1659); `--json` row at line 1678 (was "~1665")
+- Codebase Research Findings: `show.py:679` is `_render_row`'s `_dim(key_text)`, not a literal `_dim('Blocked by:')` call (whole-label dimming claim itself holds)
+
+Remaining (out of correctable scope — Motivation is not auto-rewritten):
+- Motivation: `set_status.py:268` should be `set_status.py:222-224` (the "never cascade" comment)
+- Motivation: `dependency_graph.py:283` should be `dependency_graph.py:295` (`return blockers - completed`; line 283 is the `def`)
+
+Verified accurate: `_parse_card_fields` (`show.py:63`), `_dim` (401), `_TERMINAL_STATUSES` (455, includes `deferred`), `_RELATIONSHIP_KEYS` (521), `_render_relationships_block` (535), `_id_matches` (`cli_args.py:408`), `issue_progress._TERMINAL_STATUSES` (`{"done","cancelled"}`, line 14), `issue_parser` `open`+`completed_at` → `done` mapping (line 4198), scheduler call sites `issue_manager.py:1882,1972`, MCP `tools.py:138/146` and `resources.py:264/267`, all four hand-built-fixture test names, host-mirror lines (`.gemini/.qwen/.kimi-code` `:161`), `rn-remediate`/`rn-decompose` snapshot lines, and the Proposed Solution's consequences (no exception-handler, fixture-invalidation, or AC-coverage defects found).
+
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P4
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T21:57:00 - `5d91eb51-54e9-48f2-8c6c-bd0f06305c43.jsonl`
+- `/ll:verify-issues` - 2026-09-28T21:55:40 - `a1acb612-8e7a-4230-9d9e-0d5963f5dea9.jsonl`
 - `/ll:ready-issue` - 2026-09-28T21:46:09 - `d5d8a3f8-64b9-4c39-8b6b-ecd85fd5da80.jsonl`
 - `/ll:confidence-check` - 2026-09-28T21:33:25 - `fc46e001-34dd-4cf2-a47b-15cce154c9f8.jsonl`
 - `/ll:verify-issues` - 2026-09-28T21:32:04 - `b7a753bd-68cc-4e0d-bf56-7f0d8928b4c8.jsonl`
