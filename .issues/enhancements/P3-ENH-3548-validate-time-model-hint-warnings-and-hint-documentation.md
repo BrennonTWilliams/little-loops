@@ -72,15 +72,16 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 ### Signatures
 
 - `resolve_model_hint(hint, *, backend, overrides=None) -> str` — from ENH-3527; validation catches its error and emits a WARNING.
-- `validate_fsm(fsm: FSMLoop, orchestration_request_path: str | None = None, *, host_cli: str | None = None, model_hints: dict[str, dict[str, str | Literal[False]]] | None = None) -> list[ValidationError]` — extends the existing signature (`structural_rules.py:1169`, drifts with the file — confirm at implementation time) with the two keyword args; `host_cli=None` skips resolution warnings.
+- `validate_fsm(fsm: FSMLoop, orchestration_request_path: str | None = None, *, host_cli: str | None = None, model_hints: dict[str, dict[str, str | Literal[False]]] | None = None) -> list[ValidationError]` — extends the existing signature in `structural_rules.py` with the two keyword args; `host_cli=None` skips resolution warnings.
 - `load_and_validate(...)` — gains the same two keyword args and forwards them, mirroring how `orchestration_request_path` is threaded today.
-- `cli/logs.py`'s `_validate_builtin_loop(...)` helper (`logs.py:2326`) — the fleet-review call site at `logs.py:2761` does not call `load_and_validate` directly; it goes through this wrapper. The wrapper's own signature must also gain `host_cli`/`model_hints` and forward them to its `load_and_validate` call, or the two new kwargs stop at the wrapper boundary.
+- `cli/logs.py`'s `_validate_builtin_loop(...)` helper — the fleet-review call site in `_cmd_fleet_review()` does not call `load_and_validate` directly; it goes through this wrapper. The wrapper's own signature must also gain `host_cli`/`model_hints` (with defaults) and forward them to its `load_and_validate` call, or the two new kwargs stop at the wrapper boundary.
+- A new `_validate_model_hint_resolution(fsm, *, orchestration_request_path, host_cli, model_hints) -> list[ValidationError]` in `structural_rules.py`, called from `validate_fsm` — mirrors `FSMExecutor._model_consumer_paths` (static downgrade causes only) and `_resolve_model`'s declaration selection; dedupes `llm.model_hint` warnings per (hint, backend). Name is a suggestion; line anchors throughout this issue drift — locate by symbol name.
 
 ### Call Path
 
-- `ll-loop validate` (`cli/loop/config_cmds.py:25`) → `load_and_validate(..., orchestration_request_path=, host_cli=, model_hints=)` → `validate_fsm` → structural rules → `resolve_model_hint` (per reachable request path) → WARNING
-- `host_cli` comes from the host `resolve_host()` would select (`LL_HOST_CLI` / `orchestration.host_cli` / probe order). `model_hints` comes from `BRConfig(...).orchestration.model_hints`. Both are read at the same site that reads `.orchestration.request_path` today.
-- `cli/logs.py:2761` (fleet-review) → `_validate_builtin_loop` (`logs.py:2326`, gains the same two kwargs) → `load_and_validate(..., host_cli=, model_hints=)`. In-process callers `cli/loop/scaffold_eval.py:278` and `scaffold_verify.py:340` stay unchanged and skip resolution warnings.
+- `ll-loop validate` (`cmd_validate` in `cli/loop/config_cmds.py`) → `load_and_validate(..., orchestration_request_path=, host_cli=, model_hints=)` → `validate_fsm` → `_validate_model_hint_resolution` → `resolve_model_hint` (per consumer path) → WARNING
+- `host_cli` is `resolve_host().name` (env + probe, identical to run time — see Decisions), or `None` on `HostNotConfigured`. `model_hints` comes from `BRConfig(...).orchestration.model_hints`. Both are read at the same site that reads `.orchestration.request_path` today.
+- `_cmd_fleet_review()` in `cli/logs.py` → `_validate_builtin_loop` (gains the same two kwargs) → `load_and_validate(..., host_cli=, model_hints=)`. In-process callers `cli/loop/scaffold_eval.py:278` and `scaffold_verify.py:340` stay unchanged and skip resolution warnings.
 - Other `load_and_validate` callers (`cli/doctor.py:688`'s fleet-wide validate, `cli/loop/run.py:146`, `cli/loop/info.py:1472`, `cli/loop/edit_routes.py:51`, `fsm/loop_paths.py:104,128`, `fsm/executor.py:1163`) are **not** touched by this issue; they keep calling without `host_cli`/`model_hints`, so `host_cli=None`'s default skips resolution warnings there and behavior is unchanged. `cli/doctor.py` in particular validates every runnable built-in loop and is a plausible second surface for these warnings — deliberately deferred here, not an oversight; revisit as a fast-follow if fleet-wide hint-resolution coverage is wanted.
 
 ### Codebase Research Findings
@@ -93,7 +94,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 - **WARNING conventions**: rules are `_validate_*` functions returning `list[ValidationError]`, extended into `validate_fsm`; WARNINGs set `severity=ValidationSeverity.WARNING` explicitly (default is ERROR); paths are `states.<name>.<field>` or `llm.model_hint`; messages carry a `[state: <name>]` prefix and an issue-ID tag; `KNOWN_TOP_LEVEL_KEYS` in `_base.py` registers any `*_ok` flag. `resolve_model_hint` raises `ModelHintError` (a `ValueError`) for unknown hint, unknown backend, unsupported backend (`opencode`, `pi`), config-disabled (`False`) and missing mapping; `hint_backend_keys()` lists valid backends.
 - **Severity asymmetry**: an unmapped hint on a reachable path is a run-ending ERROR at run start (`_preflight_model_hints`, `model_hint_error=True`) but only a WARNING at validate time here — intentional per the issue, since host and config vary by machine.
 - **Config plumbing**: `BRConfig(...).orchestration.model_hints` is already validated at config load (`_validate_model_hints`) and typed `dict[str, dict[str, str | Literal[False]]]`; `initial_model_display` (`cli/loop/header.py`) is the existing non-raising consumer that catches `HostNotConfigured` and `ModelHintError` — evidence that host-not-configured is expected to degrade, not raise, outside the executor.
-- **Decision Rules** (new gap kind: hint-resolution WARNING) — inputs: state, `fsm.llm`, `host_cli`, `model_hints`. A hint is checked per reachable consumer path: `sdk`/`batch` request path → `anthropic-api` backend plus the CLI host (fallback); `cli` → CLI host; evaluator (explicit `llm_structured` or implicit prompt verdict) → CLI host only, never `anthropic-api`; `/ll:` skill action or `tools:` → CLI only. No warning when `host_cli is None`. No escape hatch exists in the issue; whether to add a `*_ok` flag is undecided (ENH-3527's hint rules have none).
+- **Decision Rules** (new gap kind: hint-resolution WARNING) — inputs: state, `fsm.llm`, `host_cli`, `model_hints`. A hint is checked per reachable consumer path: `sdk`/`batch` request path → `anthropic-api` backend plus the CLI host (fallback); `cli` → CLI host; evaluator (explicit `llm_structured` or implicit prompt verdict) → CLI host only, never `anthropic-api`; `/ll:` skill action or `tools:` → CLI only. No warning when `host_cli is None`. No escape hatch: ARCH-121 exemption decided (see Decisions). The host-source question above is also decided: `resolve_host()` (see Decisions, BUG-3644).
 
 ## Integration Map
 
@@ -102,7 +103,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 - Tests: `test_fsm_validation_structural.py`, `test_fsm_validation_evaluator_rules.py`, `test_wiring_reference_docs.py`, plus a `ll-loop validate` CLI-level test of the WARNING output.
 - Docs are end-user docs (`docs/guides`, `docs/reference`): use consuming-project paths, no `scripts/tests/` citations (`test_docs_audience_gate.py`).
 
-### Codebase Research Findings
+### Integration Research
 
 _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
@@ -118,7 +119,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/validation/structural_rules.py:2035` — `load_and_validate()` forwards `validate_fsm(fsm, orchestration_request_path)` positionally; add `host_cli`/`model_hints` keyword params and pass them by keyword in `load_and_validate()` [Agent 1 finding]
 - `scripts/little_loops/fsm/validation/structural_rules.py:500` — `_validate_state_action()` is where `_validate_model_hint_decl()` runs per state; per-state resolution warnings need the two new values threaded here (or a sibling pass over `fsm.states` in `validate_fsm()`) [Agent 1 finding]
-- `scripts/little_loops/fsm/validation/structural_rules.py:1320` — `llm.model_hint` inline checks in `validate_fsm()`; the loop-level hint gets the same evaluator-path (CLI-only) resolution warning [Agent 1 finding]
+- `scripts/little_loops/fsm/validation/structural_rules.py:1320` — `llm.model_hint` inline checks in `validate_fsm()`; the loop-level hint is resolution-checked on the evaluator path (CLI host) and on `sdk`/`batch` states without a state-level declaration (`anthropic-api`), deduped per (hint, backend) — see Expected Behavior (corrected 2026-09-28: it is not evaluator-only) [Agent 1 finding]
 - `scripts/little_loops/fsm/validation/evaluator_rules.py:520` — `_validate_haiku_pinned_generator()` keys only on `state.model`; extend for hint-only `burst` (`model_hint`), keeping `haiku_generator_ok` suppression, `_is_llm_judged` skip and exactly one WARNING for a `model:`-only state [Agent 1, 3 finding]
 - `scripts/little_loops/cli/loop/config_cmds.py:25` — `cmd_validate()` reads `BRConfig(Path.cwd()).orchestration.request_path` before its `try:` and calls `load_and_validate` at `:33`; read `orchestration.model_hints` and derive `host_cli` at the same site and pass both [Agent 1, 2 finding]
 - `scripts/little_loops/cli/logs.py:2326` — `_validate_builtin_loop()` has `orchestration_request_path` as a required keyword-only arg with no default; add `host_cli`/`model_hints` **with defaults** and forward to its `load_and_validate` call [Agent 1, 3 finding]
@@ -183,14 +184,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update `scripts/little_loops/fsm/validation/structural_rules.py` `load_and_validate()` (`:2035`) — add `host_cli`/`model_hints` keyword params and forward them to `validate_fsm`
 - Update `scripts/little_loops/cli/logs.py` `_validate_builtin_loop()` (`:2326`) and `_cmd_fleet_review()` (`:2761`) — new kwargs with defaults; read both values where `orchestration.request_path` is read
-- Update `scripts/little_loops/cli/loop/config_cmds.py` `cmd_validate()` (`:25`) — read `model_hints`, derive `host_cli` (decide env+probe vs `orchestration.host_cli` knowingly), guard the pre-`try:` config load
+- Update `scripts/little_loops/cli/loop/config_cmds.py` `cmd_validate()` — read `model_hints`, derive `host_cli` via `resolve_host().name` (catch `HostNotConfigured` → `None`; see Decisions), guard the pre-`try:` config load
 - Update `scripts/little_loops/fsm/validation/evaluator_rules.py` `_validate_haiku_pinned_generator()` (`:520`) — hint-only `burst` guidance
 - Update `scripts/little_loops/fsm/validation/__init__.py` — docstring and any new helper in imports and `__all__`
 - Update `scripts/tests/spike/enh3342_scan_action_file_param/test_file_param.py` — the pinned `validate_fsm` parameter set
 - Update `scripts/tests/test_ll_logs.py` `test_validate_builtin_loop_matches_load_and_validate_directly` — pass matching new kwargs on both sides
 - Add tests in `test_model_hints.py`, `test_fsm_validation_evaluator_rules.py`, `test_ll_loop_commands.py` and `DOC_STRINGS_PRESENT` entries in `test_wiring_reference_docs.py` / `test_wiring_guides_and_meta.py`
 - Update `docs/reference/API.md` (fix `Path | None` → `str | None`), `docs/reference/CLI.md`, `docs/reference/HOST_COMPATIBILITY.md`, `docs/reference/CONFIGURATION.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`, `skills/review-loop/reference.md`
-- Decide and record the ARCH-121 suppression-flag question before finalizing the rule (add `*_ok` in `_base.py`/`fsm/schema.py`, or document the exemption)
+- ARCH-121: decided — exemption recorded, no `*_ok` flag (see Decisions); document the exemption in `docs/reference/CLI.md`'s rule-to-suppression-flag paragraph
 - Run `ll-adapt --host <gemini|kimi-code|qwen> --apply` if `skills/review-loop/reference.md` is edited; run `test_verify_host_map.py` and `test_docs_audience_gate.py` after the docs pass
 
 ## Impact
@@ -203,8 +204,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - [ ] Warnings fire for an unmapped hint on a reachable request path and not when every path resolves; downgrade-only states produce no SDK warning.
 - [ ] An evaluator-only hint on a `request_path: sdk` state is checked against the CLI host only (no `anthropic-api` warning).
+- [ ] `llm.model_hint` is checked on the evaluator path (CLI host) and on `sdk`/`batch` states with no state-level declaration (`anthropic-api`), never on the CLI fallback; an unresolvable `llm.model_hint` produces exactly one WARNING per (hint, backend) at `path=llm.model_hint`.
+- [ ] `cmd_validate` derives `host_cli` from `resolve_host()` (not `orchestration.host_cli` directly); with no host found it emits no resolution warnings and does not error. A test pins the host via `LL_HOST_CLI` and asserts validate and `_preflight_model_hints` agree on the same loop.
 - [ ] `validate_fsm`/`load_and_validate` accept `host_cli`/`model_hints`; with `host_cli=None`, no resolution warnings fire and existing callers' output is unchanged.
-- [ ] Vocabulary semantics, support matrix, precedence and the deferred skill/agent scope (ENH-3533) are documented in `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/reference/{API,CLI,HOST_COMPATIBILITY,CONFIGURATION}.md` and `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`.
+- [ ] `haiku-gen` fires for a generator state with `model_hint: burst`, not for a `burst` verdict state (`_is_llm_judged`), is suppressed by `haiku_generator_ok`, and still emits exactly one WARNING for a `model:`-only haiku state.
+- [ ] `ll-loop validate` surfaces the resolution WARNING in both the plain (`caplog`) and `--json` (`violations[].message`) output branches.
+- [ ] Vocabulary semantics, support matrix, precedence, the Known limitations above and the deferred skill/agent scope (ENH-3533) are documented in `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/reference/{API,CLI,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and `skills/review-loop/reference.md`.
 
 ## Status
 
@@ -235,6 +240,7 @@ _Added by `/ll:confidence-check` on 2026-09-28_
 - Two open design decisions (host source, ARCH-121 flag) should be settled before coding.
 
 ## Session Log
+- `manual review` - 2026-09-28 - resolved host source (`resolve_host()`), corrected `llm.model_hint` path rules, added dedupe/limitations/ACs; filed BUG-3644; ARCH-121 exception recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`
 - `/ll:confidence-check` - 2026-09-28T22:14:19 - `87ecf78a-2679-4eab-bd2f-bc0befce52dd.jsonl`
 - `/ll:verify-issues` - 2026-09-28T22:12:49 - `a3a4c5a4-ab00-427b-b444-3be5a159c7cf.jsonl`
 - `/ll:wire-issue` - 2026-09-28T22:10:45 - `d53bc120-f664-4e90-8dfa-617508184f55.jsonl`
