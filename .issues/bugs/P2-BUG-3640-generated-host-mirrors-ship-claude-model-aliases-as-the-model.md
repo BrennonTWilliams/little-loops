@@ -10,6 +10,7 @@ captured_at: '2026-09-28T20:15:06Z'
 parent: EPIC-3563
 labels:
 - multi-host
+verify_verdict: VALID
 ---
 
 # BUG-3640: Generated host mirrors ship Claude model aliases as the model
@@ -72,3 +73,7 @@ A Claude Code model alias (a key of `host_runner.MODEL_ALIASES`: `fable`, `opus`
 ## Status
 
 **Open** | Created: 2026-09-28 | Priority: P2
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-28T20:26:37 - `ad55cfa6-adc7-4f43-81d2-899456dc7a54.jsonl`

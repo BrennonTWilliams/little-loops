@@ -213,4 +213,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T20:24:41 - `c4c78c52-d947-4bd2-b3a6-6c632bd38fd7.jsonl`
 - `/ll:confidence-check` - 2026-09-28T19:39:10 - `af11844b-bc48-4035-9869-d5e630b26c85.jsonl`
