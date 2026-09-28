@@ -21,7 +21,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-3590: Add advise second-model veto to the go-no-go waiver in prepare-issue
@@ -165,9 +165,32 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 **Option A — new `StepKind` returned by `after_go_no_go()`, consult runs as a loop state**: `after_go_no_go()` gains a third exit — when waived+ready and the flag is set, return a new `StepKind` (e.g. `ADVISE_GO_NO_GO`) instead of falling into `pre_implement()`. `prepare-issue.yaml`'s `select_step.route` gets one new entry (`ADVISE_GO_NO_GO: run_advise_go_no_go`), and a new shell state `run_advise_go_no_go` calls `ll-issues advise-consult ${context.input} --run-dir ${context.run_dir} --signal autodev_go_no_go_waiver --question "..."` (the already-shipped, tested CLI surface), then `record_step` records the printed token as a new fact kind so a subsequent `decide()` call reads it back and branches: `VETO` → `stop("oversized_atomic", ...)` (same target as the current no-waiver branch); `PROCEED`/`SKIPPED` → falls through into the existing `carry_preconditions.append("reopen"); pre_implement()` path. Requires declaring `advise_go_no_go: ""` in `autodev.yaml`'s `context:` block only (mirroring `skip_learning_gate`, `autodev.yaml:44`) and adding a new `--advise-go-no-go` flag to `ll-issues prep step` so `decide()` can see it. Reuses the shipped `advise_consult.py` CLI exactly as built, keeps `preparation_policy.py`'s pure layer `cli`-free, and mirrors ENH-3633's own (not-yet-built) design for the sibling consult — the only extant precedent for consuming this helper from a loop.
 
+> **Selected:** Option A — new `StepKind` returned by `after_go_no_go()`, consult runs as a loop state. It matches the existing 1:1 `StepKind`→state routing and fact-feedback precedents, reuses the shipped ENH-3632 helper verbatim, and mirrors the ENH-3633 sibling design instead of forking a second integration shape.
+
 **Option B — in-process call from the pure layer**: `after_go_no_go()` imports `little_loops.advisor.consult_for_trigger` directly (that module is not under `little_loops.cli`, so this alone does not break the import-boundary test) and re-implements the persistence/verdict-mapping/replay-by-hash logic `advise_consult.py` already has, entirely inside `preparation_policy.py`. No new loop state or `StepKind` is needed; the whole decision resolves within one `decide()` call. This avoids an extra ladder round-trip but duplicates the shipped helper's persistence contract (`.json`/`.verdict`, replay-by-hash, VETO stickiness) rather than reusing it, and gives this issue and ENH-3633 two divergent implementations of what ENH-3632 was decomposed specifically to share.
 
 **Recommended**: Option A for v1 — it reuses the shipped, tested helper byte-for-byte (no duplicated persistence/replay logic), keeps the pure `decide()` layer free of advisor-specific logic and CLI imports, and mirrors the sibling ENH-3633 design, so both consult sites converge on one integration shape instead of two.
+
+### Decision Rationale
+
+**Selected**: Option A — new `StepKind` returned by `after_go_no_go()`, consult runs as a loop state.
+
+**Reasoning**: Option A reuses the existing 1:1 `StepKind`→state routing pattern (`select_step.route`, matching the shipped `GO_NO_GO` precedent) and the existing fact-feedback mechanism (`last_done()`) that already lets a prior step's recorded fact change a later `decide()` call. It calls the shipped, tested ENH-3632 helper (`ll-issues advise-consult`) exactly as built, keeps `after_go_no_go()`/`decide()` free of I/O (currently true, per `preparation_policy.py:313-676`), and matches ENH-3633's own sibling design for the parallel consult — so both consult sites converge on one integration shape. Option B would introduce the first I/O/subprocess call into the otherwise-pure `_Decider`, duplicate ~180 lines of `advise_consult.py`'s persistence/hash-replay/VETO-stickiness logic, diverge from the ENH-3633 precedent, and force mocking of host-CLI calls into `test_h4_after_go_no_go`, which is currently a trivial synchronous parametrized test.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 | 0 |
+| Simplicity | 2 | 0 |
+| Testability | 3 | 1 |
+| Risk | 3 | 1 |
+| **Total** | **11/12** | **2/12** |
+
+**Key evidence**:
+- `select_step.route` in `prepare-issue.yaml:49-60` maps every `StepKind` 1:1 to a state (e.g. `GO_NO_GO: run_go_no_go`) — the precedent Option A's new route entry follows.
+- `_Decider.run()` already branches on `self.f.last_done()` (e.g. `preparation_policy.py:390`) — the existing mechanism for feeding a prior step's fact into a later `decide()` call.
+- Zero I/O calls exist inside `_Decider`/`decide()` today (`preparation_policy.py:313-676`); `consult_for_trigger` (`advisor.py:527-633`) makes a blocking host-CLI subprocess call (up to `timeout_seconds=180`) plus a SQLite telemetry write — Option B would be the first I/O in that layer.
+- `advise_consult.py`'s persistence/replay contract (`_persist`, `trim_consult_context`, hash-gated replay, VETO stickiness, lines 80-247) is ~180 lines Option B would have to duplicate rather than reuse.
+- ENH-3633's own design wires the same helper as a loop/shell state calling the CLI (`run_advise_ready` → `cmd_advise_consult`), matching Option A's shape, not Option B's.
 
 ## Scope Boundaries
 
@@ -370,6 +393,7 @@ _Added by `/ll:confidence-check` on 2026-09-26 (supersedes 2026-09-25 run)_
 - Chain edits depend on states that do not yet exist in the target file (retarget of `check_go_no_go_waiver.on_yes` + error terminal), so tests cannot be written against the real shape until ENH-3606 merges.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-28T00:01:05 - `6f83d493-add8-470b-8556-2eaf26136968.jsonl`
 - `/ll:refine-issue` - 2026-09-27T23:52:45 - `12973c7a-2ea6-47a2-9451-844e0bbe92d3.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:20:07 - `5304de58-f491-45bb-a965-830806ea2e48.jsonl`
 - `/ll:verify-issues` - 2026-09-26T20:03:20 - `fad4d529-a955-4d85-a909-ec88da4f9e33.jsonl`

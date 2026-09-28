@@ -1,0 +1,12 @@
+{
+  "id": "4e83399e-2031-4d2b-9d4d-f399607667d0",
+  "type": "decision",
+  "timestamp": "2026-09-27T23:59:52Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing 1:1 StepKind-to-state routing and last_done() fact-feedback precedents, calls the shipped ENH-3632 advise-consult helper as-is, keeps decide()/after_go_no_go() free of I/O, and mirrors the ENH-3633 sibling design instead of forking a second integration shape.",
+  "rule": "Option A \u2014 new StepKind returned by after_go_no_go(), consult runs as a loop state",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (in-process consult_for_trigger call inside after_go_no_go) \u2014 would introduce the first I/O/subprocess call into the pure _Decider layer, duplicate ~180 lines of advise_consult.py's persistence/replay logic, and diverge from the ENH-3633 precedent.",
+  "issue": "ENH-3590"
+}
