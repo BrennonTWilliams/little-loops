@@ -1,7 +1,6 @@
 ---
 name: decide-issue
 description: Use when asked to select the winning implementation option for an issue with decision_needed.
-model: sonnet
 allowed-tools:
   - Read
   - Glob

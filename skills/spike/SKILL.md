@@ -2,7 +2,6 @@
 name: spike
 description: Use when asked to prove an unproven internal mechanism with an isolated code spike before implementing.
 args: "ISSUE_ID [--auto | --check | --plan-only | --plan <file> | --force]"
-model: sonnet
 allowed-tools:
   - Read
   - Glob

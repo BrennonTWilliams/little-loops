@@ -3,7 +3,6 @@ name: scope-epic
 description: Use when asked to decompose a theme or goal into an EPIC with 3–8 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git.
 args: "<theme> [--from-doc <path>] [--priority P2] [--auto]"
 argument-hint: "<theme>"
-model: sonnet
 allowed-tools:
   - Read
   - Write

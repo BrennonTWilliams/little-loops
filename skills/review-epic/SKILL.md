@@ -2,7 +2,6 @@
 name: review-epic
 description: Use when asked to review epic health, audit stalled children, check scope drift, find missing coverage, or assess closure readiness. Produces a structured health report and actionable recommendations. Read-only.
 argument-hint: "<EPIC-ID> [--skip-drift]"
-model: sonnet
 allowed-tools:
   - Read
   - Bash(ll-issues:*)

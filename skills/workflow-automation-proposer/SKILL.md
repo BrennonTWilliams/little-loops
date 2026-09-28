@@ -1,7 +1,6 @@
 ---
 name: workflow-automation-proposer
 description: Use when asked to propose automations or suggest automation opportunities from workflow patterns.
-model: sonnet
 allowed-tools:
   - Read
   - Write

@@ -1,7 +1,6 @@
 ---
 name: go-no-go
 description: Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.
-model: sonnet
 allowed-tools:
   - Read
   - Glob

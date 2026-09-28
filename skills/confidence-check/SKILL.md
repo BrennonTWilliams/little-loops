@@ -2,7 +2,6 @@
 name: confidence-check
 description: Use when asked for a pre-implementation confidence check or whether an issue is ready to implement.
 args: "ISSUE_ID"
-model: sonnet
 allowed-tools:
   - Read
   - Glob
