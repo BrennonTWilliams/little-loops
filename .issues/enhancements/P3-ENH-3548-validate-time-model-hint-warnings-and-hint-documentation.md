@@ -13,7 +13,7 @@ verify_verdict: VALID
 labels:
 - multi-host
 - loops
-confidence_score: 85
+confidence_score: 90
 outcome_confidence: 67
 score_complexity: 14
 score_test_coverage: 25
@@ -240,6 +240,7 @@ _Added by `/ll:confidence-check` on 2026-09-28_
 - Two open design decisions (host source, ARCH-121 flag) should be settled before coding.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T22:35:13 - `f9845aee-2566-463f-90fc-0809b301aae7.jsonl`
 - `manual review` - 2026-09-28 - resolved host source (`resolve_host()`), corrected `llm.model_hint` path rules, added dedupe/limitations/ACs; filed BUG-3644; ARCH-121 exception recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`
 - `/ll:confidence-check` - 2026-09-28T22:14:19 - `87ecf78a-2679-4eab-bd2f-bc0befce52dd.jsonl`
 - `/ll:verify-issues` - 2026-09-28T22:12:49 - `a3a4c5a4-ab00-427b-b444-3be5a159c7cf.jsonl`

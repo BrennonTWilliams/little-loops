@@ -119,9 +119,23 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 - `scripts/little_loops/cli/queue.py` — `add` subparser definition (~line 1190) and `cmd_add` (~line 229)
 - `docs/reference/CLI.md` — `ll-queue add` flag table (~line 4599) and Examples block (~line 4672)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:5126` — `add TARGET` bullet in `### main_queue` lists `--priority`, `--runner`, `--arg`, `--timeout`, `--json` but no `--input` at all (already stale since FEAT-2906); add `[input]` positional and `--input` [Agent 2 finding]
+- `docs/reference/API.md:5123` — **Returns** line in `### main_queue` says "2 on a malformed `--arg`"; extend for the new ambiguity / non-loop-runner exit-2 paths [Agent 2 finding]
+- `scripts/little_loops/cli/queue.py:1170` — `main_queue` epilog `Examples:` block has no `--input` example; optionally add `ll-queue add <loop> "<id>"` [Agent 1 finding]
+- `docs/reference/CLI.md:4583` and `:4595` — `` `add TARGET` `` subcommand-table row and the `TARGET` flag row in `### ll-queue`; reflect the optional second token (also `:4613` prose mentioning `loop_input`) [Agent 1 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/queue.py` `main_queue` dispatches to `cmd_add`; no other importers of `cmd_add`
 - Any loop/skill/script that shells out to `ll-queue add ... --input` is unaffected (backward compatible)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.issues/features/P2-FEAT-2906-ll-queue-run-loop-dispatch-via-persistentexecutor.md:172` — design note in the `--input` section of FEAT-2906: "Do not add a bare second positional to `ll-queue add`: it would collide with `target`, which under `--runner cmd` is already a full command line." ENH-3643 does not address it. The mitigation is already in the plan (positional rejected with exit 2 unless the target classifies as `LOOP`), but a raw-command target followed by a stray word now gets a `cmd_add` error instead of an argparse "unrecognized arguments" error; the AC and a test must cover it [Agent 2 finding]
+- `scripts/little_loops/cli/queue.py:476` — `_dispatch_loop_entry` appends `action.args.get("loop_input")` as the bare positional of `ll-loop run <loop> <input>`; a positional-sourced value is stored identically, so no change [Agent 1 finding]
+- `scripts/little_loops/cli/queue.py:96` — `_format_args_summary` renders `input=...` from `args["loop_input"]` for any runner; no change [Agent 1 finding]
+- `scripts/little_loops/cli/__init__.py` — re-exports `main_queue` only (`cmd_add` is not re-exported); no change [Agent 1 finding]
+- No loop YAML, skill, command, hook or `.sh` script shells out to `ll-queue add`; `.loops/probes/enh-3507-served-page-probes.mjs` `ll(cmd)` uses only `cancel`/`requeue` [Agent 1 finding]
+- Argparse `cmd_add` reads no Namespace generically (`vars(args)` unused); `args.loop_input` is read nowhere today [Agent 2 finding]
 
 ### Similar Patterns
 - `ll-loop run <loop> [input]` — the positional being mirrored (`scripts/little_loops/cli/loop/`)
@@ -130,11 +144,27 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_cli_queue.py` — add cases beside `test_add_with_input_persists_onto_entry_args` (~line 156): positional persists to `args["loop_input"]`; positional + `--input` exits 2; positional with a non-loop runner exits 2; `--input`-only unchanged
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_queue.py:122` — new cases go in `TestCmdAdd` after `test_add_with_input_persists_onto_entry_args` (:156). No existing `TestCmdAdd` test resolves a loop from a file through `main_queue`; create `.loops/<name>.yaml` in `tmp_path` (as `TestClassifyAction.test_classifies_loop_name` does at :46, under the autouse `_isolate_cwd`) or pass `--runner loop`. Use argv shape `add <target> <input> [flags]` [Agent 3 finding]
+- `scripts/tests/test_cli_queue.py:176` — `test_add_with_bad_arg_pair_exits_2` asserts only `result == 2`; the new ambiguity/non-loop tests should also assert `"Error:"` in stderr via `capsys` (template: `test_cli_learning_tests.py:69`) and that `list_entries()` is empty [Agent 3 finding]
+- `scripts/tests/test_cli_queue.py:88` — `test_input_value_stored_verbatim_under_loop_input` covers `_classify_action` with `runner_override="loop"`; no test pins `--input` with a non-loop runner, so add `add x --runner cmd --input Y` → 0 to pin "`--input` unchanged" [Agent 3 finding]
+- `scripts/tests/test_cli_queue.py` — extra cases: `add L X` entry equals `add L --input X` (args, runner, timeout — the Success Metric); `add L X --priority P2` binds on 3.11; bare unresolved name + positional → 2; raw-command target (`add "pytest tests/" extra --runner cmd`) → 2 (FEAT-2906 collision case); empty-string positional counts as given (`is not None`) [Agent 3 finding]
+- `scripts/tests/test_cli_queue_run.py:40` — helpers `_add_target`/`_add_and_get_id` and `TestCmdRunLoopDispatch._add_loop` (:316) use a single bare token; unaffected [Agent 3 finding]
+- `scripts/tests/test_cli_surface.py:144` — `test_build_cli_surface_index_against_real_metavar_tools` scrapes `ll-queue --help` for subcommand names and long flags only (`_LONG_FLAG_RE` in `issues/cli_surface.py`); a positional line is invisible to it, but the `--input INPUT` line must stay [Agent 2 finding]
+- `scripts/tests/test_enh_3444_mcp_skills_list.py:243` and `scripts/tests/test_feat_queue_mcp_tools.py` — call `_classify_action` / MCP `queue_add` with the current keyword set; break only if `_classify_action`'s signature or error behaviour changes (it must not) [Agent 3 finding]
+- No test pins `ll-queue add --help`/usage text or compares `CLI.md` to the parser; the docs edit is not test-enforced [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` — document the positional, update the example block
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:4583` — `` `add TARGET` `` row in the `### ll-queue` Subcommands table; show the optional `[input]` [Agent 1 finding]
+- `docs/reference/API.md:5126` — `add TARGET` bullet in `### main_queue`; add `[input]` and `--input` (see Files to Modify) [Agent 2 finding]
+- Docs must show only the positional-immediately-after-target shape (`add L X --priority P2`); the interleaved form fails on Python 3.11 [Agent 2 finding]
+- `docs/reference/CLI.md` is end-user audience — no `scripts/tests/` paths (`test_docs_audience_gate.py`) [Agent 2 finding]
+
 ### Configuration
-- N/A
+- N/A — `config-schema.json` `queue` covers only the DB path [Agent 1 finding]
 
 ### Codebase Research Findings
 
@@ -155,6 +185,17 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 3. Route the positional value through `_classify_action`'s existing `input_value` parameter (stored verbatim; JSON-object-vs-plain-string handling remains at dequeue time).
 4. Error (exit 2) if the positional is used with a non-`loop` runner (skill/cmd/mcp/prompt); leave `--input` behaviour unchanged.
 5. Add tests in `scripts/tests/test_cli_queue.py` and update `docs/reference/CLI.md`'s `ll-queue add` flags and examples.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/API.md` `### main_queue` — `add TARGET` bullet (add `[input]` and `--input`) and the **Returns** line (new exit-2 paths)
+- Update `docs/reference/CLI.md` — `add TARGET` subcommand row, `TARGET` flag row and Examples block; show only the `add L X --priority P2` ordering
+- Optionally add an `--input`/positional example to `main_queue`'s epilog `Examples:` block in `queue.py`
+- Keep the runner-kind check in `cmd_add`, never `_classify_action` (`_tool_queue_add` has no `try/except ValueError`; `test_enh_3444_mcp_skills_list.py` pins the signature)
+- Add the `capsys`-asserting exit-2 tests, the `--input`-with-non-loop-runner pin and the raw-command-plus-stray-word test in `TestCmdAdd` (`test_cli_queue.py`)
+- Acknowledge the FEAT-2906 "no bare second positional" design note in the Proposed Solution rationale (guarded by the `LOOP`-only restriction)
 
 ## Success Metrics
 
@@ -193,6 +234,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-28T22:36:29 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`
 - `/ll:refine-issue` - 2026-09-28T22:17:13 - `ddb9c068-0ba1-4e5f-bc15-cadeb7d03857.jsonl`
 - `/ll:format-issue` - 2026-09-28T22:12:07 - `00e1806e-99df-47db-8e10-d56d6eca502a.jsonl`
 - `/ll:capture-issue` - 2026-09-28T21:07:32 - `7f294095-d1d9-4ee9-9b43-311d4ce2c57c.jsonl`
