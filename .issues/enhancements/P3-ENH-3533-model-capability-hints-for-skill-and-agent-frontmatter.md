@@ -112,7 +112,7 @@ These refinements close gaps in Option A as first written:
 - `test_wiring_skills_and_commands.py:474-524` (`test_host_artifacts_are_not_stale`) — existing staleness gate; must pass after regeneration.
 
 ### Dropped touchpoints (from earlier wiring passes)
-Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help text, `doc_counts.py:_parse_skill_frontmatter`, `frontmatter.py:parse_skill_frontmatter`, `cli/doctor.py:238,943`, `init/writers.py:238`, `CONTRIBUTING.md:691,707` (verify-skills wording), `skills/configure/areas.md:862`, `loops/mechanize-skills.yaml:503`, `scripts/pyproject.toml:92`, `cli/__init__.py:64,156`, `test_cli_docs.py::TestMainVerifySkills`, `test_skill_size_checker.py`, `test_doc_counts.py::TestCheckSkillBudget`, and CLI-level try/except in `cli/adapt.py`/`cli/adapt_agents_for_codex.py`. Refinement 2 removes `config-schema.json:1819-1832` (no new consumer of `orchestration.model_hints`).
+Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help text, `doc_counts.py:_parse_skill_frontmatter`, `frontmatter.py:parse_skill_frontmatter`, `cli/doctor.py:943`, `init/writers.py:238`, `CONTRIBUTING.md:691,707` (verify-skills wording), `skills/configure/areas.md:862`, `scripts/little_loops/loops/mechanize-skills.yaml:503`, `scripts/pyproject.toml:92`, `cli/__init__.py:64,156`, `test_cli_docs.py::TestMainVerifySkills`, `test_skill_size_checker.py`, `test_doc_counts.py::TestCheckSkillBudget`, and CLI-level try/except in `cli/adapt.py`/`cli/adapt_agents_for_codex.py`. Refinement 2 removes `config-schema.json:1819-1832` (no new consumer of `orchestration.model_hints`).
 
 ## Implementation Steps
 
@@ -176,12 +176,15 @@ Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help 
 
 Refreshed 2026-09-28 (supersedes the 2026-09-24 check): ENH-3527 is done; `resolve_model_hint`, `ModelHintError`, `MODEL_HINTS`, `_BUILTIN_HINT_MAPPINGS` exist in `host_runner.py` (`:121-192`). The Codex emitter class is `CodexEmitter` (`codex.py:328`), not `CodexAdapter`. `ll-adapt` output lands under the plugin root (`cli/adapt.py`). Committed mirrors confirm the alias leak (`.codex/agents/codebase-analyzer.toml:4` `model = "sonnet"`), now tracked as BUG-3640.
 
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). `/ll:verify-issues ENH-3533 --auto`, 2026-09-28: every `file:line` citation in the Codebase Research Findings, Integration Map, Program Design, and Dropped-touchpoints list was checked against the current tree (all `adapters/*.py`, `host_runner.py`, `cli/*.py`, `capabilities.py`, doc/schema files, and the cited test classes/functions) — all confirmed accurate except two stale citations in the Dropped-touchpoints line, now corrected in place: `loops/mechanize-skills.yaml:503` → `scripts/little_loops/loops/mechanize-skills.yaml:503` (the file lives under `scripts/little_loops/loops/`, not a top-level `loops/`); `cli/doctor.py:238,943` → `cli/doctor.py:943` (line 238 is an unrelated `print("  (none found)")`; only line 943, the `check_skill_sizes()`/`ll-verify-skills` adapter docstring, is a real touchpoint). `ll-verify-evidence` found no fabricated quotes. No active required decision rules. Dependency check (§2E) found `blocked_by: BUG-3640` (status: open, correctly unsatisfied) had no reciprocal `## Blocks` entry on BUG-3640 — fixed by adding one there in this pass. B6 proposal-vs-code check: the planned `ModelHintError` → `AdapterError` conversion lands inside `process_agents`/`process_skills`' existing per-file `except AdapterError` blocks (`core.py:456,529,607,649`), so no exception-handler gap.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-28T21:01:34 - `6ee1f8dc-4aaf-4326-9a2c-971c5336e607.jsonl`
 - `/ll:wire-issue` - 2026-09-28T20:07:49 - `05090d65-2eac-41cf-a99d-d360b8ff23dc.jsonl`
 - `/ll:decide-issue` - 2026-09-28T19:46:46 - `c582b1ca-9355-4bc0-b38c-78d8f0f2eb3d.jsonl`
 - `/ll:refine-issue` - 2026-09-28T19:41:20 - `c582b1ca-9355-4bc0-b38c-78d8f0f2eb3d.jsonl`

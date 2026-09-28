@@ -76,11 +76,16 @@ A Claude Code model alias (a key of `host_runner.MODEL_ALIASES`: `fable`, `opus`
 - [ ] `test_host_artifacts_are_not_stale` passes with the regenerated mirrors.
 - [ ] Claude Code's native reading of `agents/*.md` / `skills/*/SKILL.md` is unchanged (source files not edited).
 
+## Blocks
+
+- ENH-3533 — builds its `model_hint` resolution (`_resolve_frontmatter_model`) on top of the alias-stripping seam this issue introduces in `_select_frontmatter_fields` / `CodexEmitter.emit_agent`
+
 ## Status
 
 **Open** | Created: 2026-09-28 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-28T21:01:34 - `6ee1f8dc-4aaf-4326-9a2c-971c5336e607.jsonl`
 - `/ll:confidence-check` - 2026-09-28T20:42:58 - `8c20e11f-c92c-4edc-8c38-39bebd1ef326.jsonl`
 - `/ll:verify-issues` - 2026-09-28T20:26:37 - `ad55cfa6-adc7-4f43-81d2-899456dc7a54.jsonl`
