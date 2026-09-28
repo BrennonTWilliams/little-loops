@@ -206,6 +206,10 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   > ⚠ Superseded — ENH-3606 cancelled; anchors now live in preparation_policy.py, see Proposed Solution
 - `scripts/little_loops/loops/autodev.yaml` - opt-in `context:` flag passed through to `prepare-issue`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/preparation_policy.py` — `_Decider.run()`'s per-kind continuation ladder (`:380-408`, the `if kind == StepKind.GO_NO_GO.value: return self.after_go_no_go()` block) needs its own new `if kind == StepKind.ADVISE_GO_NO_GO.value:` branch to read the recorded verdict fact back and branch VETO → `stop("oversized_atomic", ...)` / PROCEED,SKIPPED → the reopen+`pre_implement()` continuation — the Call Path section names `after_go_no_go()` but not this separate ladder site as an edit target [Agent 1 finding]
+- `scripts/little_loops/cli/issues/advise_consult.py` — contrary to this issue's current claim that this file "needs no changes": `_verdict_path()`/`_persist()` (`:174-188`) are private (module-local, confirmed zero external importers repo-wide) and there is no shared/importable helper for `<run_dir>/advise-<ID>.verdict`'s path. `prep_record()`'s new branch (see Dependent Files) must either duplicate the `run_dir / f"advise-{issue_id}.verdict"` construction or this file must export a public accessor [Agent 1 finding]
+
 ### Dependent Files (Callers/Importers)
 - `ll-advise` CLI (`--json` payload contract; see `skills/advise/SKILL.md` step 3 for the 7 keys)
 
@@ -217,6 +221,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/init/writers.py:133` — `Bash(ll-advise:*)` is already in consuming projects' permission allowlist (synced by `ll-verify-cli-allowlist`); no change needed — confirms the shell-state route won't hit a permission wall [Agent 1 finding]
 - `scripts/little_loops/session_store/writers.py:2272` — every consult writes an `advisor_consults` telemetry row (`write_advisor_consult`); enabled advise states generate rows automatically [Agent 1 finding]
 - `scripts/tests/test_advisor.py:718` — `test_only_consult_for_trigger_calls_consult` pins `consult()`'s single-caller contract; the shell route via `ll-advise` is unaffected, a direct Python call would break it [Agent 1 finding]
+- `scripts/little_loops/preparation_policy.py:976-997` (`_run_preconditions`) — sole site enumerating legal precondition strings (`clear_records`, `clear_scores`, `defer_oversized_atomic`, `reopen`); confirmed no second allowlist exists elsewhere, so no new precondition name is needed for this issue, but the *sequencing* of the existing `"reopen"` precondition is a live bug for Option A — see Wiring Phase [Agent 1/2 finding]
+- `scripts/little_loops/loops/prepare-issue.yaml:59-60` (`select_step.route`'s `_`/`_error` wildcard fallback to `apply_outcome`) — an unrouted `StepKind` token does not fail FSM validation; it silently reaches `_apply_outcome()`'s "Unknown outcome: fail closed as infra" catch-all (`preparation_policy.py:1288-1291`). Forgetting the new `ADVISE_GO_NO_GO: run_advise_go_no_go` route entry would fail closed as an infra error rather than a structural validation error, not a structural gap but a fail-mode worth confirming in tests [Agent 2 finding]
 
 ### Similar Patterns
 - `run_go_no_go` (moves to `prepare-issue.yaml` in ENH-3606) - existing adversarial-review state and its `outcome_gate_waived` stamping
@@ -232,8 +238,24 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_autodev_decision_gate.py:212` — `test_autodev_yaml_loads_and_validates` is the in-process `ll-loop validate autodev` equivalent (no subprocess test runs the CLI) [Agent 3 finding]
 - `scripts/tests/test_fsm_schema.py:2461` / `scripts/tests/test_fsm_executor.py:7402` — `context_passthrough` schema round-trip and executor merge semantics — the pass-through mechanism's contract tests [Agent 3 finding]
 
+_Wiring pass added by `/ll:wire-issue` (2026-09-27, second pass)_:
+- `scripts/tests/test_preparation_policy_writers.py:110-167` (`TestPrepRecordClassifiesFromRunRecord`) — direct template for the new `prep_record()` `ADVISE_GO_NO_GO` branch test: write/omit the fake `<run_dir>/advise-<ID>.verdict` side-file the branch reads, call `prep_record()`, assert `done.payload[...]`, then call `prep_step()` again to assert the next `decide()` routes correctly off the recorded fact [Agent 3 finding]
+- `scripts/tests/test_prep_cli.py` (e.g. `:104,107`, `test_cmd_prep_returns_2_for_unknown_subcommand`) — the `cmd_prep`/CLI-level test file; needs coverage for the new `--advise-go-no-go` flag on `prep step` [Agent 1 finding]
+- `scripts/tests/test_prepare_issue.py:142-146` (`test_every_step_kind_routes_and_errors_fall_to_apply`) — hardcodes a route-key subset tuple that already omits `GO_NO_GO`, so it won't hard-fail without an update, but is the natural place to add `ADVISE_GO_NO_GO` for completeness [Agent 1/3 finding]
+- New test mirroring `test_h4_after_go_no_go` / `test_h4_reopen_rides_on_a_decision_reentry_too` (`test_preparation_policy.py:606-641`) asserting `"reopen"` is **not** present in the `ADVISE_GO_NO_GO` step's `preconditions` and appears only on the step that follows a PROCEED/SKIPPED verdict — no existing test would catch the sequencing bug described in the Wiring Phase if implemented naively [Agent 2/3 finding]
+- New real-FSM integration scenario extending `test_autodev_characterization.py`'s `oversized_atomic_go_reopen_implement` (`:359-386`) exercising `advise_go_no_go=1` for PROCEED, VETO, and SKIPPED (`not_configured`) outcomes — no scenario anywhere exercises the flag turned on today [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` - `ll-advise` reference (link only if the new flag is user-facing)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:2542-2548` (`#### \`ll-issues prep\``) — enumerates the full `StepKind` token set verbatim (`RUN_CHILD, WIRE, REFINE_GAP, RESCORE, RECONCILE, SIZE_REVIEW, GO_NO_GO, FINISH, STOP`) and describes preconditions as "...reopening after one [go/no-go]" — both need the new token and the corrected (post-fix, see Wiring Phase) reopen sequencing [Agent 1/2 finding]
+- `docs/reference/API.md:12311` — `StepKind` enum table row lists all 9 current values verbatim [Agent 1 finding]
+- `docs/guides/LOOPS_REFERENCE.md:1096-1147` (`### \`prepare-issue\` — Preparation Dispatch Loop (internal)`) — "15-state dispatch loop" prose plus an ASCII flow diagram with no advise branch; the heading itself is pinned verbatim by `scripts/tests/test_wiring_reference_docs.py:271-274` (must not change), but the body (state count, diagram) is stale and not test-pinned [Agent 1/2 finding]
+- `scripts/little_loops/loops/README.md:31` — a third independent "15 states" / command-list description of `prepare-issue` [Agent 1/2 finding]
+- `docs/reference/DEFERRAL_CODES.md:25` — describes `oversized_atomic` as "a GO stamps `outcome_gate_waived: true` and reopens the issue for implementation" — single-step framing that becomes incomplete once an enabled veto can intervene between GO and reopen [Agent 2 finding]
+- `skills/go-no-go/SKILL.md:402` — the `outcome_gate_waived` escalation paragraph has the same single-step GO→reopen framing [Agent 2 finding]
+- `scripts/little_loops/loops/prepare-issue.yaml:5-26` — the loop file's own header comment ("Exactly 15 states (pinned by test_prepare_issue.py): ...") and call-chain comment need the new state name added [Agent 1/2 finding]
 
 ### Configuration
 - New `context:` flag `advise_go_no_go: ""` (empty = off), declared in both `autodev.yaml` and `prepare-issue.yaml`
@@ -289,6 +311,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Budget billing: _Resolved 2026-09-26: per-issue_ (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2061). The state shares the cap with the `issue_manager.py:849` and `hooks/pre_done.py:175` consults.
 - Write the new structural tests in `test_builtin_loops.py` alongside the go-no-go chain tests (chain-shape pins + bash -c stub-`ll-advise` execution + default-off), not only in `test_autodev_loop.py`
   > ⚠ Superseded — no go-no-go chain tests exist in test_builtin_loops.py; template is `test_preparation_policy.py:606-641` and `test_prepare_issue.py`, see Integration Map
+
+**Second `/ll:wire-issue` pass (2026-09-27) — critical sequencing correction for Option A:**
+
+- **Do not append `"reopen"` to `carry_preconditions` before returning the new `ADVISE_GO_NO_GO` step.** `_Decider.step()` (`preparation_policy.py:325-339`) merges `self.carry_preconditions` into whatever `Step` it constructs, and `prep_step()` (`:1000-1036`) only *skips* running preconditions when `step.kind in TERMINAL_KINDS` (`:1034`) — `ADVISE_GO_NO_GO` is not terminal, so a naive port of today's `after_go_no_go()` body (append "reopen" first, then return the new step instead of falling into `pre_implement()`) would reopen the issue immediately, before the advisor consult even runs, making the veto a no-op. This is not hypothetical: `test_h4_reopen_rides_on_a_decision_reentry_too` (`test_preparation_policy.py:638-641`) already pins `"reopen"` firing on a non-terminal `RUN_CHILD` step today via the same `carry_preconditions` mechanism. Move `self.carry_preconditions.append("reopen")` into the new continuation function that reads the `ADVISE_GO_NO_GO` fact back on PROCEED/SKIPPED, immediately before its call to `pre_implement()` — never on the branch that emits the `ADVISE_GO_NO_GO` step itself.
+- Add the `run()`-ladder branch (`preparation_policy.py:380-408`, alongside `if kind == StepKind.GO_NO_GO.value:`) for `StepKind.ADVISE_GO_NO_GO.value` that performs the VETO/PROCEED/SKIPPED branch described above.
+- Add a `prep_record()` `elif open_.step == StepKind.ADVISE_GO_NO_GO.value:` branch (mirroring `RUN_CHILD`/`SIZE_REVIEW`, `:1064-1078`) that reads `<run_dir>/advise-<ID>.verdict` and stamps the token into the fact payload; since `advise_consult.py`'s `_verdict_path`/`_persist` are private with zero external importers, either duplicate the path construction or add a public accessor.
+- Bump `test_prepare_issue.py`'s `STATES` tuple and `"Exactly 15 states"` string (both there and in `prepare-issue.yaml`'s own header comment) to 16/`run_advise_go_no_go`.
+- Update `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/LOOPS_REFERENCE.md`, `scripts/little_loops/loops/README.md`, `docs/reference/DEFERRAL_CODES.md`, and `skills/go-no-go/SKILL.md` per the Documentation section above.
 
 ## Impact
 
@@ -393,6 +423,7 @@ _Added by `/ll:confidence-check` on 2026-09-26 (supersedes 2026-09-25 run)_
 - Chain edits depend on states that do not yet exist in the target file (retarget of `check_go_no_go_waiver.on_yes` + error terminal), so tests cannot be written against the real shape until ENH-3606 merges.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-28T00:17:35 - `1c278270-e2ba-4e4c-99ea-a1e85ca8ec50.jsonl`
 - `/ll:decide-issue` - 2026-09-28T00:01:05 - `6f83d493-add8-470b-8556-2eaf26136968.jsonl`
 - `/ll:refine-issue` - 2026-09-27T23:52:45 - `12973c7a-2ea6-47a2-9451-844e0bbe92d3.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:20:07 - `5304de58-f491-45bb-a965-830806ea2e48.jsonl`
