@@ -1,0 +1,12 @@
+{
+  "id": "1ff1709d-2dd8-442e-9c87-bc7787e7db6c",
+  "type": "decision",
+  "timestamp": "2026-09-28T19:45:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the existing emit_agent seam, resolve_model_hint resolver, and _select_frontmatter_fields helper; native Claude Code invocation stays out of scope since no interception/source-rewrite mechanism exists for it (score 9/12 vs 2/12).",
+  "rule": "Generation-time resolution only (Option A) for model_hint in skill/agent frontmatter",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: native-invocation-time resolution via in-place frontmatter rewrite before Claude Code reads it \u2014 no interception point or source-write precedent exists in the codebase; feasibility itself is gated behind an unrun /ll:spike.",
+  "issue": "ENH-3533"
+}

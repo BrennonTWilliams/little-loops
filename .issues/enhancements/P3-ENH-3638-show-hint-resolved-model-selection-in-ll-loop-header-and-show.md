@@ -15,6 +15,12 @@ epic: EPIC-3563
 relates_to:
 - ENH-3547
 - ENH-3548
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # ENH-3638: Show hint-resolved model selection in ll-loop header and show
@@ -197,3 +203,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-28T19:39:10 - `af11844b-bc48-4035-9869-d5e630b26c85.jsonl`

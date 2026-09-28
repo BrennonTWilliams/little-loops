@@ -13,6 +13,7 @@ labels:
 - multi-host
 blocked_by:
 - ENH-3527
+decision_needed: false
 ---
 
 # ENH-3533: Model capability hints for skill and agent frontmatter
@@ -30,6 +31,42 @@ Extend ENH-3527's `model_hint` vocabulary (`coding`, `reasoning`, `burst`) from 
 ## Expected Behavior
 
 A skill or agent can declare `model_hint` instead of `model`; each supported host receives a host-valid model through a documented, tested mechanism, and unsupported hosts fail or warn explicitly.
+
+## Proposed Solution
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
+
+**Option A**: Generation-time resolution only, through the existing `ll-adapt` adapter path. Extend `CodexAdapter.emit_agent` (`adapters/codex.py:444`) to call `resolve_model_hint()` alongside the existing literal-`model` passthrough, and add the same resolution (or an explicit `ModelHintError`-based failure) to `KimiEmitter.emit_agent` (`kimi.py:111-126`) and `QwenEmitter.emit_agent` (`qwen.py:128-145`), which today pass any `model_hint:` frontmatter line through unresolved via `_select_frontmatter_fields`. Decide separately how `GeminiEmitter.emit_agent`'s degraded-mode path (`gemini.py:131` → `core._emit_degraded_agent()`, which strips all frontmatter) handles the field. Claude Code itself keeps reading `agents/*.md`/`skills/*/SKILL.md` frontmatter natively — `ClaudeCodeEmitter.emit_skill/emit_command/emit_agent` are declared no-ops (`claude_code.py:30-40`) because "the plugin marketplace serves skills natively," so no little-loops code sits between the source file and Claude Code's own parser. Skills/agents intended for native Claude Code use keep a literal `model:` value; `model_hint:` only resolves for the hosts that already go through adapter-based generation.
+
+> **Selected:** Option A — the only path that reuses an existing seam (`emit_agent`, `resolve_model_hint`, `_select_frontmatter_fields`); Option B has no interception point or source-rewrite precedent anywhere in the codebase.
+
+**Option B**: Resolve `model_hint` for Claude Code's own native invocation too, by having little-loops rewrite the resolved concrete model into `skills/*/SKILL.md`/`agents/*.md` source frontmatter in place before Claude Code reads it. No such mechanism exists in the codebase today: `hooks/hooks.json`'s matcher set has no entry for a `Skill` or `Task` tool, and no code under `scripts/little_loops/` writes back into the repo's own `skills/`/`agents/` directories (every adapter `write_text` call targets a generated mirror under `.codex/`, `.gemini/`, `.kimi-code/`, `.qwen/`, never the source). This option requires building a new interception/rewrite mechanism, plus a way to keep the rewritten concrete value from being treated as the portable source of truth on the next pass (regeneration/staleness handling), before "each supported host receives a host-valid model" can hold for Claude Code itself.
+
+**Recommended**: Option A — it is the only path with an existing mechanism to extend (the codex adapter already does per-field `model` translation at generation time; kimi/qwen already run frontmatter through `_select_frontmatter_fields`). Option B requires inventing frontmatter-rewrite interception that has no precedent anywhere in this codebase, and conflicts with Claude Code's own "plugin marketplace serves skills/agents natively" model that the codebase already routes around rather than through.
+
+### Decision Rationale
+
+**Selected**: Option A — generation-time resolution through the existing `ll-adapt` adapter path; native Claude Code invocation is explicitly out of scope for resolution and keeps literal `model:` values.
+
+**Reasoning**: Option A reuses a single already-established seam — every host's `emit_agent(self, agent_meta: dict) -> str` (`adapters/core.py:30-44`), a resolver already called from two sites (`host_runner.py:153-192`, `fsm/executor.py:3687,3704`), and a frontmatter-pass-through helper already sitting in the two files that need editing (`_select_frontmatter_fields`, `core.py:119-144`, consumed by `kimi.py:125`/`qwen.py:144`). It has real, bounded gaps (no built-in hint→model mapping for codex/kimi-code/qwen/gemini per `host_runner.py:134-138`; `ll-adapt`'s CLI has no config-loading or overrides-threading path per `cli/adapt.py:1-145`; `process_agents()` only catches `AdapterError`, not the `ValueError`-subclass `ModelHintError`, per `core.py:603-611`) but every gap is new wiring inside an existing call chain, not a new mechanism.
+
+Option B requires inventing a mechanism this codebase has never built: an interception point before Claude Code's own native frontmatter read (Claude Code's documented `PreToolUse` matcher set has no `Skill`/`Task` entry — `docs/claude-code/hooks-reference.md:716`), and a write path into the source `skills/`/`agents/` tree (every existing adapter `write_text` call targets a generated mirror, never the source — confirmed across all of `scripts/little_loops/adapters/*.py`). `ClaudeCodeEmitter.emit_skill/emit_command/emit_agent` are declared no-ops precisely because "the plugin marketplace serves skills natively" (`claude_code.py:30-40`) — Option B would work against that boundary, not within it. The issue's own Open Questions section already gates Option B's core premise behind an unrun `/ll:spike`.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 2/3 | 1/3 |
+| Simplicity | 2/3 | 0/3 |
+| Testability | 3/3 | 1/3 |
+| Risk | 2/3 | 0/3 |
+| **Total** | **9/12** | **2/12** |
+
+**Key evidence**:
+- Option A's seam: `CodexAdapter.emit_agent` already does per-field `model` translation (`adapters/codex.py:444`); `KimiEmitter`/`QwenEmitter.emit_agent` already run frontmatter through `_select_frontmatter_fields` (`kimi.py:125`, `qwen.py:144`).
+- Option A's existing test scaffolding: `test_adapters.py:635-638,1500-1504,2155-2162`, `test_model_hints.py` (`TestResolver`, `TestHostArgv`, `TestPortabilityProof`).
+- Option B's missing mechanism: no `Skill`/`Task` entry in Claude Code's `PreToolUse` matcher set (`docs/claude-code/hooks-reference.md:716`); no adapter `write_text` call targets the source `skills/`/`agents/` tree; `SessionStart` hooks are contractually advisory-only, never mutating (`hooks/drift_check.py:22-24`).
+- Option B's feasibility is explicitly unproven: this issue's own Open Questions gate it behind `/ll:spike` ("can Claude Code honor a frontmatter hint at all... without rewriting the file").
 
 ## Integration Map
 
@@ -140,5 +177,7 @@ Checked 2026-09-24: `CodexAdapter.emit_agent(self, agent_meta: dict) -> str` exi
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-28T19:46:46 - `c582b1ca-9355-4bc0-b38c-78d8f0f2eb3d.jsonl`
+- `/ll:refine-issue` - 2026-09-28T19:41:20 - `c582b1ca-9355-4bc0-b38c-78d8f0f2eb3d.jsonl`
 - `/ll:wire-issue` - 2026-09-28T19:35:30 - `f552ed04-ad08-4162-b169-daaec37f3df4.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
