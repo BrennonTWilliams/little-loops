@@ -18,7 +18,7 @@ learning_tests_required:
 
 ## Summary
 
-Add an `ll-doctor` check that validates the user's `orchestration.model_hints` values against the host's own model catalog, and warns when a configured model is hidden, upgraded or retiring. It runs only in `ll-doctor`, never on the loop run path, so hint resolution stays deterministic and offline.
+Add an `ll-doctor` check that validates the user's `orchestration.model_hints` values against the host's own model catalog, and warns when a configured model is hidden, upgraded or retiring. It runs only in `ll-doctor`, never on the loop run path, so hint resolution during `ll-loop run`/`validate` stays deterministic and offline. The doctor output itself is not offline-deterministic: it reads Codex's refreshed catalog, which can change between runs (see Proposed Solution).
 
 ## Current Behavior
 
@@ -28,14 +28,20 @@ Codex publishes the data needed to catch this: `codex debug models` (codex-cli 0
 
 ## Expected Behavior
 
-`ll-doctor` shows a "Model hints" section. For each backend/hint pair in `orchestration.model_hints` whose host exposes a catalog (Codex today):
+`ll-doctor` shows a "Model hints" section. Row granularity (pinned by tests):
 
-- slug not in the catalog → WARN "not in <host> catalog"
-- `visibility: hide` → WARN "hidden in <host> catalog"
-- `upgrade` present → WARN naming the replacement and `retirement_at`, plus a copy-pasteable config line (`orchestration.model_hints.codex.coding = "gpt-5.6-sol"`)
-- otherwise OK
+- **Catalog-capable backend (Codex today), probe succeeded** → one row per configured backend/hint pair, named `<backend>.<hint>` (e.g. `codex.coding`). Verdict per slug, in this precedence (first match wins; hidden is appended to the upgrade note when both apply):
+  1. `upgrade` present → WARN naming the replacement and `retirement_at` ("retires 2026-10-14", or "retired on 2026-10-14" once past), plus a plain instruction: set `orchestration.model_hints.codex.coding` to `"gpt-5.6-sol"`. (`ll-config` has only a `get` subcommand, so the note must not pretend to be command or file syntax.)
+  2. `visibility: hide` → WARN "hidden in codex catalog"
+  3. slug not listed → WARN "not listed in codex catalog (retired, or a custom-provider model)". The refreshed catalog drops older models the host may still accept (`gpt-5.4`, `gpt-5.2` on 2026-09-28), so the wording must not claim the host rejects it.
+  4. otherwise OK
+- **Catalog-capable backend, probe failed** (missing binary, non-zero exit, timeout, unparseable JSON, missing/non-list `models`) → one row per backend named `<backend>`, "catalog unavailable: <reason>".
+- **Codex configured with a non-OpenAI `model_provider`** → one row per backend, "not checked: custom model_provider <name>"; the catalog does not describe that provider's models.
+- **Backend with no catalog probe** (`claude-code`, `gemini`, …) → one row per backend, "not checked: no model catalog for <host>". Printed with `–`, not `✗`, so Claude-only users do not see an error-looking symbol for a non-problem.
+- **Skipped entirely**: hint values set to `False`; the `anthropic-api` and test-only fake backends (no host binary).
+- **No `model_hints` configured** → a single "none configured" row.
 
-Hosts without a catalog probe, a missing binary, a non-zero exit, a timeout or an unparseable/changed JSON shape each yield one informational "catalog unavailable" row; the check never fails the doctor run. With no `model_hints` configured, the section prints a single "none configured" row.
+The check never fails the doctor run and never raises.
 
 ## Motivation
 
@@ -45,21 +51,24 @@ EPIC-3563 decided against runtime catalog probes and heuristics (second-opinion 
 
 Follow the advisor section pattern in `little_loops.cli.doctor` (`_advisor_data` → `_print_advisor_section` → `@register_check _advisor_check`):
 
-- `_model_hints_data() -> list[dict]` — no-arg, sources `BRConfig(Path.cwd()).orchestration.model_hints`; per catalog-capable backend, calls a probe; emits rows with `name`, `status`, `severity`, `note`.
-- `_probe_codex_catalog() -> dict[str, dict] | None` — runs the Codex binary via `resolve_host_named("codex")` (never a `"codex"` literal; see Host CLI Abstraction) with args `debug models`, short timeout, returns `{slug: entry}` or `None` on any failure. Memoize like `_probe_advisor_version`.
-- Keep the probe table keyed by backend so a second host can register a catalog probe later without touching the row logic.
-- Severity: `CheckResult.severity` is only `error`/`informational` (no `warning`), so every row is `informational` — WARN rows use `status="partial"`, OK rows `status="full"`, unavailable rows `status="unsupported"`. That keeps the doctor exit code untouched (`_exit_code_for` fails only on `error` + `unsupported`).
+- `_model_hints_data() -> list[dict]` — no-arg, sources `BRConfig(Path.cwd()).orchestration.model_hints` (guarded with `isinstance(..., dict)`); per catalog-capable backend, calls its probe; emits rows with `name`, `status`, `severity`, `checked`, `note`.
+- `_probe_catalog(backend: str) -> dict[str, dict] | None` — `@lru_cache` keyed on the backend name, mirroring `_probe_advisor_version(host)` so results do not leak across tests. Looks up the backend in `_CATALOG_PARSERS`, resolves the binary via `resolve_host_named(backend)` (never a `"codex"` literal; see Host CLI Abstraction), gates on `runner.detect()`, runs the backend's catalog args, checks `returncode`, and returns `{slug: entry}` or `None` on any failure (broad `except Exception`, as in `_code_query_data`). Exceptions are not memoized.
+- `_CATALOG_PARSERS: dict[str, tuple[list[str], Callable[[str], dict[str, dict] | None]]]` — backend → (catalog args, stdout parser). Only `"codex"` → (`["debug", "models"]`, `_parse_codex_catalog`) is registered; a second host adds an entry without touching the row logic.
+- **Catalog mode: refreshed (default), not `--bundled`.** Verified 2026-09-28 on codex-cli 0.152.1, the two disagree: refreshed shows `gpt-5.5` → upgrade `gpt-5.6-sol` (retires 2026-10-14) and omits `gpt-5.4`/`gpt-5.2`; `--bundled` shows `gpt-5.5` with no upgrade, `gpt-5.4` hidden with upgrade → `gpt-5.6-terra`, and `gpt-5.2` listed. The bundled catalog is frozen at the binary's release date, so it misses exactly the retirements this check exists to catch. The refresh may do network I/O (Codex caches it in `~/.codex/models_cache.json`), so use `timeout=20` (live call took ~1s) and document that doctor output can change between runs.
+- **`model_provider` guard**: read top-level `model_provider` from Codex's `config.toml` (in the `CODEX_HOME` directory, default `~/.codex`) with stdlib `tomllib`; if set and not `"openai"`, emit the "not checked: custom model_provider" row and skip the probe. Profile-level providers are out of scope. Any read/parse failure → treat as unset.
+- **Spawn site**: the probe gets its own `subprocess.run` marked `# ll-no-project: detection probe, no task payload (ENH-3184 AC2)`, and the `test_enh3184_spawn_site_guard.py` pin for `little_loops/cli/doctor.py` moves `(1, 1)` → `(2, 2)`. Do not reuse `_probe_version`: it ignores `returncode` and drops `invocation.args`, and changing it would touch the working version probe.
+- Severity: `CheckResult.severity` is only `error`/`informational` (no `warning`), so every row is `informational` — OK rows use `status="full"`, WARN rows `status="partial"`, catalog-unavailable and not-checked rows `status="unsupported"`. Not-checked rows carry `checked: False` and `_print_model_hints_section` prints them with `–` instead of `✗`. All rows are exit-code-neutral (`_exit_code_for` fails only on `error` + `unsupported`).
 
-`codex debug` is a debug subcommand with no stability promise. The probe must treat any schema surprise as "catalog unavailable", and tests must pin the parsed fields (`slug`, `visibility`, `upgrade.model`, `upgrade.retirement_at`) with a fixture, not the live binary.
+`codex debug` is a debug subcommand with no stability promise. The probe must treat any schema surprise as "catalog unavailable", and tests must pin the parsed fields (`slug`, `visibility`, `upgrade.model`, `upgrade.retirement_at`) with a fixture, not the live binary. The `codex` learning-test record is proven but does not cover `debug models`; the fixture and its provenance README are the contract for this surface.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 - **Live catalog shape (verified 2026-09-28 against codex-cli 0.152.1, `codex debug models`)**: top-level object with a `models` list (6 entries). Each entry carries `slug`, `visibility` (`list`/`hide`), `priority`, and an `upgrade` key; `upgrade` is `null` for models with no successor and an object `{model, migration_markdown, retirement_at}` otherwise (`gpt-5.5` → `gpt-5.6-sol`, `2026-10-14T19:00:00Z`). Entries also carry ~35 unrelated large fields (`base_instructions`, etc.), so the parser must read only the four pinned fields and must treat `upgrade: null` as "no upgrade", not as a schema surprise.
-- **Row granularity is unspecified and must be pinned by a test**: Expected Behavior is per backend/hint pair for catalog-capable hosts, but "hosts without a catalog probe … each yield one informational row" does not say per-pair or per-backend. `model_hints` may also hold `False` values (skipped) and backends that have no host binary (`anthropic-api`, `fake`), and existing sections split between multi-row list data (`_advisor_data`, named rows) and single-row dict data (`_code_query_data`) — the choice affects the `--json` shape and the docs bullet.
+- **Row granularity is unspecified and must be pinned by a test**: Expected Behavior is per backend/hint pair for catalog-capable hosts, but "hosts without a catalog probe … each yield one informational row" does not say per-pair or per-backend. `model_hints` may also hold `False` values (skipped) and backends that have no host binary (`anthropic-api`, `fake`), and existing sections split between multi-row list data (`_advisor_data`, named rows) and single-row dict data (`_code_query_data`) — the choice affects the `--json` shape and the docs bullet. **Resolved (review 2026-09-28)**: see Expected Behavior — per pair for a successful catalog probe, per backend for every other row; the section is a multi-row list like `_advisor_data`.
 - **Failure-containment precedent**: `_code_query_data` wraps its probes in `except Exception:` ("doctor must never crash on a probe") and returns an informational row; `_advisor_data` catches only `HostNotConfigured` because `_probe_version` already swallows OS-level errors. The no-raise AC for a probe that also parses JSON needs the broader containment, since `json.JSONDecodeError`, `KeyError`/`TypeError` on schema drift and a non-dict `models` are not covered by `_probe_version`'s exception tuple. `doctor.py` has no shared JSON-or-None helper (`fleet_improve._parse_json_or_none` exists but is unrelated to doctor).
-- **Memoization scope**: `_probe_advisor_version` is `@lru_cache` keyed on host name specifically so it does not leak across `monkeypatch.chdir` / patched-`BRConfig` test boundaries, and exceptions are not memoized. A zero-arg `_probe_codex_catalog` cache has no key to discriminate tests, so cache-clearing in tests is load-bearing.
+- **Memoization scope**: `_probe_advisor_version` is `@lru_cache` keyed on host name specifically so it does not leak across `monkeypatch.chdir` / patched-`BRConfig` test boundaries, and exceptions are not memoized. A zero-arg `_probe_codex_catalog` cache has no key to discriminate tests, so cache-clearing in tests is load-bearing. **Resolved (review 2026-09-28)**: the probe is `_probe_catalog(backend: str)`, keyed like `_probe_advisor_version`, and one autouse `cache_clear()` fixture in `scripts/tests/conftest.py` covers every doctor test file.
 
 ## Integration Map
 
@@ -84,13 +93,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md:922` — `--json` key enumeration (`entry_points`, …, `schema_drift`, `advisor`, `full`) in the `CapabilityReport` table row; add `model_hints` [Agent 2 finding]
 - `scripts/little_loops/cli/doctor.py:1351` — add `"model_hints": _model_hints_data()` to the `--json` dict in `_print_report`, beside `"advisor": _advisor_data()` [Agent 1 finding]
 - `scripts/little_loops/cli/doctor.py:1468` — call `_print_model_hints_section()` in `main_doctor`'s `if not args.json:` block after `_print_code_query_section()` [Agent 1 finding]
-- `scripts/little_loops/cli/doctor.py:1296` — `_probe_version` cannot be reused for the catalog call (no `returncode` check, drops `invocation.args`, single spawn site pinned at `(1, 1)`); the new probe needs its own `subprocess.run` with `# ll-no-project:` marker and the pin in `test_enh3184_spawn_site_guard.py` updated to `(2, 2)` — or routes through one shared helper and keeps `(1, 1)` [Agent 3 finding]
+- `scripts/little_loops/cli/doctor.py:1296` — `_probe_version` cannot be reused for the catalog call (no `returncode` check, drops `invocation.args`, single spawn site pinned at `(1, 1)`); the new probe gets its own `subprocess.run` with `# ll-no-project:` marker and the pin in `test_enh3184_spawn_site_guard.py` updated to `(2, 2)` (decided in review 2026-09-28; the shared-helper alternative would change the working version probe) [Agent 3 finding]
 
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/mcp_server/tools.py:211` — `_tool_capabilities` mirrors only the `CapabilityReport` fields of `_print_report`'s dict (not the install-surface keys); no change needed [Agent 1 finding]
-- `scripts/little_loops/config-schema.json:2343` — `skill_budget` description cites `cli/doctor.py:536-555`; that hard-coded range must still be valid after the new section lands (append new code below it, not above) [Agent 1 finding]
+- `scripts/little_loops/config-schema.json:2343` — `skill_budget` description cites `cli/doctor.py:536-555`, which is **already stale** (the skill-budget check is `_full_skill_budget_data`, ~line 920). Replace the line range with the symbol name (`cli/doctor.py:_full_skill_budget_data`) so it stops drifting [Agent 1 finding; corrected in review 2026-09-28]
 - `scripts/little_loops/cli/__init__.py:66` — re-exports `main_doctor`; no change needed [Agent 1 finding]
 - No loop YAML, hook, skill or command consumes `ll-doctor --json` keys (searched `.loops/`, `scripts/little_loops/loops/`, `hooks/`, `skills/`, `commands/`) [Agent 2 finding]
 
@@ -99,7 +108,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_enh3184_spawn_site_guard.py:42` — `_TASK_PATH_MODULES["little_loops/cli/doctor.py"] = (1, 1)` pin in `test_every_spawn_is_projected_or_exempted`; a second `subprocess.run` fails it unless marked and re-pinned [Agent 3 finding]
 - `scripts/tests/test_cli_doctor_install_checks.py:627` — `_FakeOrchestrationConfig` carries only `host_cli`; add a `model_hints` attribute [Agent 3 finding]
-- `scripts/tests/test_cli_doctor_install_checks.py:648` — autouse `_clear_advisor_probe_cache` is keyed to `_probe_advisor_version`; add a `cache_clear()` fixture for `_probe_codex_catalog` in the same file, and in `test_cli_doctor.py`, `test_cli_doctor_full.py` and `test_cli_doctor_trim.py` (or `conftest.py`) since a zero-arg `lru_cache` leaks across files [Agent 3 finding]
+- `scripts/tests/test_cli_doctor_install_checks.py:648` — autouse `_clear_advisor_probe_cache` is keyed to `_probe_advisor_version`; add one autouse `cache_clear()` fixture for `_probe_catalog` in `scripts/tests/conftest.py` so every doctor test file is covered [Agent 3 finding; simplified in review 2026-09-28]
 - `scripts/tests/test_cli_doctor.py:54` — `_json_safe_config()` is a bare `MagicMock`; `.orchestration.model_hints` becomes a `MagicMock` that breaks `print_json` (`TypeError`) unless `_model_hints_data` guards with `isinstance(model_hints, dict)`; affects every `main_doctor` test in `TestMainDoctor`, `TestVersionProbe` and `TestCheckRegistry` [Agent 3 finding]
 - `scripts/tests/test_cli_doctor.py:624` — `test_skips_probe_when_binary_not_detected` asserts `mock_run.assert_not_called()`; breaks if the Model hints section reaches a probe under a mocked config [Agent 3 finding]
 - `scripts/tests/test_cli_doctor.py:24` — `_canned_code_query` autouse fixture pattern (also `test_cli_doctor_full.py:30`, `test_cli_doctor_trim.py:17`); add a matching canned `_model_hints_data` so the three files never spawn a real `codex` [Agent 3 finding]
@@ -107,7 +116,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli_doctor_install_checks.py:961` — copy `test_magicmock_config_guard_attempts_no_resolution` for the non-dict `model_hints` guard, and `test_floor_violation_is_informational_and_does_not_fail_exit_code` (:702) for `_exit_code_for(_model_hints_check()) == 0` on each failure path [Agent 3 finding]
 - `scripts/tests/test_cli_doctor.py:661` — `test_probe_timeout_falls_back_to_unknown` and `:687` `test_probe_failing_binary_falls_back_to_unknown` are the `TimeoutExpired`/`FileNotFoundError` fakes to copy; no doctor test sets `returncode`, so the non-zero-exit case follows `MagicMock(returncode=1, stdout="", stderr="boom")` from `test_host_runner.py:2510` `test_codex_cleanup_paths_unlinked_on_failure` [Agent 3 finding]
 - `scripts/tests/test_stray_ll_regression.py:36` — `test_ll_doctor_from_subdirectory_creates_no_stray_ll` runs the real `ll-doctor --json` in a scratch project (empty `model_hints`, so no probe); the new section's `BRConfig(Path.cwd())` must not create a stray `.ll/` [Agent 1 finding]
-- `scripts/tests/fixtures/codex/models-catalog.json` (new) — catalog fixture pinned to `slug`, `visibility`, `upgrade.model`, `upgrade.retirement_at`, including an `upgrade: null` entry; load via the `fixtures_dir` fixture (`conftest.py:569`), record capture provenance in `scripts/tests/fixtures/codex/README.md` (codex-cli 0.152.1, sanitization note), and run `ll-verify-private-refs` on it [Agent 3 finding]
+- `scripts/tests/fixtures/codex/models-catalog.json` (new) — catalog fixture pinned to `slug`, `visibility`, `upgrade.model`, `upgrade.retirement_at`, including an `upgrade: null` entry, a hidden entry, an upgraded entry with a future `retirement_at`, one with a past `retirement_at`, and one both hidden and upgraded (bundled `gpt-5.4` shape); load via the `fixtures_dir` fixture (`conftest.py:569`), record capture provenance in `scripts/tests/fixtures/codex/README.md` (codex-cli 0.152.1, sanitization note), and run `ll-verify-private-refs` on it [Agent 3 finding]
 - No test asserts the exact `--json` key set, exact stdout or registered-check count, so adding a key/section/check breaks none of them [Agent 2 finding]
 
 ### Documentation
@@ -130,18 +139,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `model_hints: dict[str, dict[str, str | Literal[False]]]` — `BRConfig.orchestration.model_hints`, already validated by `_validate_model_hints`; `False` values mean "no model" and are skipped
 - `catalog: dict[str, dict[str, Any]]` — Codex `slug` → catalog entry (`visibility`, `upgrade.model`, `upgrade.retirement_at`)
-- `_CATALOG_PROBES: dict[str, Callable[[], dict[str, dict[str, Any]] | None]]` — backend name → probe; only `"codex"` registered
+- `_CATALOG_PARSERS: dict[str, tuple[list[str], Callable[[str], dict[str, dict[str, Any]] | None]]]` — backend name → (catalog args, stdout parser); only `"codex"` → (`["debug", "models"]`, `_parse_codex_catalog`) registered
 
 ### Signatures
 
-- `_probe_codex_catalog() -> dict[str, dict[str, Any]] | None` — `@lru_cache`; runs `[invocation.binary, "debug", "models"]` from `resolve_host_named("codex").build_version_check()` with a short timeout; `None` on `HostNotConfigured`, `FileNotFoundError`, `OSError`, `TimeoutExpired`, non-zero exit, bad JSON, or missing `models` key
-- `_model_hints_data() -> list[dict[str, Any]]` — no-arg; builds `BRConfig(Path.cwd())`, emits rows with `name`, `status`, `severity`, `note`
-- `_print_model_hints_section() -> None` — prints the "Model hints" section using `_STATUS_SYMBOLS`
+- `_probe_catalog(backend: str) -> dict[str, dict[str, Any]] | None` — `@lru_cache` keyed on backend; resolves `resolve_host_named(backend)`, gates on `runner.detect()`, runs `[runner.build_version_check().binary, *args]` with `timeout=20` (refreshed catalog, not `--bundled`), checks `returncode`; `None` on any exception, non-zero exit, or a parser `None`
+- `_parse_codex_catalog(stdout: str) -> dict[str, dict[str, Any]] | None` — reads only `slug`, `visibility`, `upgrade.model`, `upgrade.retirement_at`; `upgrade: null` means no upgrade; `None` on bad JSON or a missing/non-list `models`
+- `_codex_model_provider() -> str | None` — top-level `model_provider` from Codex's `config.toml` (in `CODEX_HOME`, default `~/.codex`) via `tomllib`; `None` on absence or any error
+- `_model_hints_data() -> list[dict[str, Any]]` — no-arg; builds `BRConfig(Path.cwd())`, emits rows with `name`, `status`, `severity`, `checked`, `note`
+- `_print_model_hints_section() -> None` — prints the "Model hints" section using `_STATUS_SYMBOLS`, with `–` for `checked: False` rows
 - `_model_hints_check() -> list[CheckResult]` — `@register_check`; maps `_model_hints_data()` rows to `CheckResult`
 
 ### Call Path
 
-`main_doctor` -> `_print_model_hints_section` -> `_model_hints_data` -> `_probe_codex_catalog` -> `resolve_host_named`
+`main_doctor` -> `_print_model_hints_section` -> `_model_hints_data` -> `_probe_catalog` -> `resolve_host_named`
 
 `main_doctor` -> `_run_registered_checks` -> `_model_hints_check` -> `_model_hints_data`
 
@@ -152,12 +163,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Add `"model_hints": _model_hints_data()` to `_print_report`'s `--json` dict and `_print_model_hints_section()` to `main_doctor`'s text block in `scripts/little_loops/cli/doctor.py`; `CheckResult`s never feed `--json`, so registering the check alone does not satisfy AC 1
-- Decide the spawn-site shape for `_probe_codex_catalog` up front: own `subprocess.run` with `# ll-no-project:` marker and re-pin `scripts/tests/test_enh3184_spawn_site_guard.py` to `(2, 2)`, or one shared helper that keeps `(1, 1)`
-- Guard `_model_hints_data` with `isinstance(model_hints, dict)` and broad `except Exception` around probe + parse (matches `_code_query_data`); add `cache_clear()` fixtures for `_probe_codex_catalog` in the four doctor test files (or `conftest.py`)
+- Give `_probe_catalog` its own `subprocess.run` with the `# ll-no-project:` marker and re-pin `scripts/tests/test_enh3184_spawn_site_guard.py` to `(2, 2)`
+- Guard `_model_hints_data` with `isinstance(model_hints, dict)` and broad `except Exception` around probe + parse (matches `_code_query_data`); add one autouse `_probe_catalog.cache_clear()` fixture in `scripts/tests/conftest.py`
 - Extend `_FakeOrchestrationConfig` with `model_hints`; add a canned `_model_hints_data` autouse fixture beside `_canned_code_query` in `test_cli_doctor.py`, `test_cli_doctor_full.py`, `test_cli_doctor_trim.py`
 - Add `scripts/tests/fixtures/codex/models-catalog.json` (with an `upgrade: null` entry) and a `README.md` provenance note; run `ll-verify-private-refs` on it
 - Update `docs/reference/CLI.md` (`### ll-doctor`: section list, `--json` bullet), `docs/reference/CONFIGURATION.md` (`model_hints` row), `docs/reference/HOST_COMPATIBILITY.md:767` and `docs/ARCHITECTURE.md:922` section/key lists; add a pointer in `config-schema.json` `orchestration.model_hints` description
-- Confirm `config-schema.json:2343`'s `cli/doctor.py:536-555` citation still points at the skill-budget check after the edit
+- Replace the stale `cli/doctor.py:536-555` citation in `config-schema.json:2343` with `cli/doctor.py:_full_skill_budget_data`
+- Docs (`CLI.md` `ll-doctor` entry): state that the check reads Codex's refreshed catalog, may do network I/O, and can report differently between runs
 
 ## Impact
 
@@ -169,12 +181,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Scope Boundaries
 
 - **In**: doctor-only check; Codex catalog probe; row/print/register wiring; docs row in `docs/reference/CLI.md` (`ll-doctor`) and a note in `docs/reference/CONFIGURATION.md` (`orchestration.model_hints`).
-- **Out**: any use of the catalog during `ll-loop run` or `ll-loop validate`; auto-writing config; models.dev or other network catalogs; built-in non-Claude mappings (see the Codex host-default issue).
+- **Out**: any use of the catalog during `ll-loop run` or `ll-loop validate`; auto-writing config; models.dev or other network catalogs; built-in non-Claude mappings (ENH-3642); Codex profile-level `model_provider` overrides.
 
 ## Acceptance Criteria
 
 - [ ] `ll-doctor` prints a Model hints section; `--json` includes its rows.
-- [ ] Fixture-driven tests cover: OK slug, unknown slug, hidden slug, upgraded slug (replacement + date + suggested config line in the note), no `model_hints` configured, binary missing, non-zero exit, timeout, malformed JSON, missing `models` key.
+- [ ] Fixture-driven tests cover: OK slug, `upgrade: null` slug (OK), unlisted slug, hidden slug, upgraded slug with future retirement (replacement + "retires <date>" + set-key instruction in the note), upgraded slug with past retirement ("retired on <date>"), slug both hidden and upgraded (upgrade verdict, hidden appended), no `model_hints` configured, `False` hint value skipped, backend with no catalog probe ("not checked", `checked: False`), non-OpenAI `model_provider` ("not checked"), binary missing, non-zero exit, timeout, malformed JSON, missing `models` key.
+- [ ] Probe invokes the refreshed catalog (`debug models` with no `--bundled`).
 - [ ] No failure path raises out of the check or changes the doctor exit code.
 - [ ] Codex binary resolved through `host_runner`, not a string literal.
 

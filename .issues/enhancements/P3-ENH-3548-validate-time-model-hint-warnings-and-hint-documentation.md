@@ -231,11 +231,22 @@ _Added by `/ll:confidence-check` on 2026-09-28_
 **Outcome Confidence**: 67/100 → MODERATE
 
 ### Concerns
-- Cited line anchors have drifted (`load_and_validate` now `structural_rules.py:1944`, not `:2035`; `cmd_validate` now `config_cmds.py:14`, not `:25`); re-confirm at implementation time.
+- Line anchors are call-site/body lines, not definition lines, and still hold (`structural_rules.py:2035` is the `validate_fsm` forwarding call inside `load_and_validate`, defined at `:1944`; `config_cmds.py:25` is the `BRConfig` read inside `cmd_validate`, defined at `:14`); still locate by symbol name at implementation time.
 
 ### Outcome Risk Factors
 - Broad enumeration across ~8 code sites, ~8 docs and ~7 test files, plus moderate per-site complexity in mirroring executor request-path predicates (`_model_consumer_paths`, `_compute_request_path`) inside validation.
 - Wide dependent surface (~11 `load_and_validate` callers, `fleet_improve.gate()` and `workflow-generator.yaml` warning-count comparisons); new kwargs need defaults, and the pinned parameter set in `spike/enh3342_scan_action_file_param` must be updated deliberately.
+
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-09-28 (`--auto`)._
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- **Corrected**: the Confidence Check Notes concern claimed line anchors had drifted (`load_and_validate` `:2035`→`:1944`, `cmd_validate` `:25`→`:14`). Those figures are the definition lines; the issue's anchors point at body lines (`:2035` forwarding call, `:25` `BRConfig` read) that still hold. Concern rewritten in place.
+- **Verified accurate**: `_model_consumer_paths` / `_resolve_model` / `_preflight_model_hints` behavior matches the per-path declaration-selection rules; `resolve_host()` ignores `orchestration.host_cli` (only `cli/doctor.py:815,1438` use it); all `load_and_validate` caller anchors (`doctor.py:688`, `run.py:147`, `info.py:1472`, `edit_routes.py:51`, `loop_paths.py:104,128`, `executor.py:1163`, `structural_rules.py:297`, `policy_revision.py:95`); `logs.py:2326/2761`; `evaluator_rules.py:520`; test anchors (`test_ll_logs.py:6085-6108`, `test_model_hints.py` classes, `TestHaikuPinnedGenerator`, spike test pinning `{"fsm", "orchestration_request_path"}`); docs anchors (`API.md:6684/6737` `Path | None` mismatch, `HOST_COMPATIBILITY.md` section order, `HARNESS_OPTIMIZATION_GUIDE.md:113/486`, `config-schema.json:1806/1811`, `review-loop/reference.md:53`); no hint docs in `LOOPS_GUIDE.md`, `generalized-fsm-loop.md`, `API.md`, `HOST_COMPATIBILITY.md`.
+- **Dependencies**: ENH-3527, ENH-3547 done; EPIC-3563, ENH-3533, BUG-3644 open (references only, none is a `blocked_by` edge). No broken refs.
+- **Checks with no findings**: `ll-verify-evidence` clean; `ll-issues format-check` clean; no active required decision rules; ARCH-121 exemption entry `514b7ae3-…` present; Proposed-Solution consequence check (B6) found no exception-handler, fixture or AC-coverage gap. Graph-assisted checks not needed (no negative claims); provider `codegraph`, freshness `fresh`.
 
 ## Resolved Concerns
 
@@ -243,6 +254,7 @@ _Added by `/ll:confidence-check` on 2026-09-28_
 - [resolved 2026-09-28 by manual review] ARCH-121 requires a `*_ok` suppression flag for every new validate rule — decided: exemption for host-dependent hint-resolution warnings, recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-28T22:41:26 - `5fafe6c4-1e0c-4610-a069-76b4dd11d35b.jsonl`
 - `/ll:confidence-check` - 2026-09-28T22:35:13 - `f9845aee-2566-463f-90fc-0809b301aae7.jsonl`
 - `manual review` - 2026-09-28 - resolved host source (`resolve_host()`), corrected `llm.model_hint` path rules, added dedupe/limitations/ACs; filed BUG-3644; ARCH-121 exception recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`
 - `/ll:confidence-check` - 2026-09-28T22:14:19 - `87ecf78a-2679-4eab-bd2f-bc0befce52dd.jsonl`

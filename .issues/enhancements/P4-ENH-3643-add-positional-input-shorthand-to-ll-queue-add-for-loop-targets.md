@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T21:07:23Z'
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3643: Add positional [input] shorthand to ll-queue add for LOOP targets
@@ -268,6 +274,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T22:41:59 - `567c9044-53d9-466d-a31f-6021ef77a649.jsonl`
 - `/ll:wire-issue` - 2026-09-28T22:36:29 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`
 - `/ll:refine-issue` - 2026-09-28T22:17:13 - `ddb9c068-0ba1-4e5f-bc15-cadeb7d03857.jsonl`
 - `/ll:format-issue` - 2026-09-28T22:12:07 - `00e1806e-99df-47db-8e10-d56d6eca502a.jsonl`
