@@ -12,7 +12,7 @@ discovered_date: '2026-09-29'
 captured_at: '2026-09-29T05:29:44Z'
 decision_needed: false
 reconcile_attempted: true
-verify_verdict: VALID
+verify_verdict: NON_VALID
 confidence_score: 85
 outcome_confidence: 68
 score_complexity: 14
@@ -95,7 +95,7 @@ Rejected option: needs only a doc string pinned in `test_wiring_reference_docs.p
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/artifact/serve.py:173` — second hand-built site in `_make_page_html_factory()` (`db_path=config.project_root / ".ll" / "history.db"` into `build_dashboard_html`); the first is `make_history_route()` at `:92`, whose `db_path.stat()` ETag key also reads the local file [Agent 1 finding, confirmed by grep]
 - `scripts/little_loops/cli/loop/run.py:691` — hand-built `db_path=_config.project_root / ".ll" / "history.db"` in the `ll-loop run --serve` dashboard render (`build_dashboard_html(..., serve_context=serve_ctx)`); same `allow_missing` degrade, no `except` around it, so an uncaught raise here would abort `--serve` startup [Agent 1 + Agent 2 finding, confirmed by grep]
-- `scripts/little_loops/cli/doctor.py:1836` — `main_doctor` call to `collect_trim_report(Path.cwd(), window_days=...)` needs a handler (or `collect_trim_report` must skip rather than raise) to keep `--trim` advisory; `main_doctor` runs inside `cli_event_context`, which re-raises with `exit_code = 1` [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/cli/doctor.py:1837` — `main_doctor` call to `collect_trim_report(Path.cwd(), window_days=...)` needs a handler (or `collect_trim_report` must skip rather than raise) to keep `--trim` advisory; `main_doctor` runs inside `cli_event_context`, which re-raises with `exit_code = 1` [Agent 1 + Agent 2 finding]
 - `hooks/scripts/context-monitor.sh:56-58` in `record_handoff_needed()` and `:82-84` in `record_context_pressure()` — the two `resolve_history_db(".ll/history.db")` pre-resolves to drop under Option A; also drop the now-unused `resolve_history_db` from the two `from little_loops.session_store import ...` lines [Agent 1 finding, confirmed by grep]
 
 ### Dependent Files (Callers/Importers)
@@ -240,7 +240,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update `scripts/little_loops/cli/loop/run.py` — handle a `RemoteTarget` at the `build_dashboard_html(db_path=..., serve_context=serve_ctx)` call (~`:691`); it has no `except`, so a raise aborts `ll-loop run --serve`
 - Update `scripts/little_loops/cli/artifact/serve.py` — both `make_history_route()` (`:92`, incl. the `db_path.stat()` ETag key) and `_make_page_html_factory()` (`:173`); the route catches only `ValueError`, so a stated reason must fit its payload/status contract
-- Update `scripts/little_loops/cli/doctor.py` `main_doctor` (`:1836`) — add a handler around `collect_trim_report` (or skip inside it) so `--trim` stays advisory and leaves the exit code unchanged
+- Update `scripts/little_loops/cli/doctor.py` `main_doctor` (`:1837`) — add a handler around `collect_trim_report` (or skip inside it) so `--trim` stays advisory and leaves the exit code unchanged
 - Update `hooks/scripts/context-monitor.sh` — drop both `resolve_history_db(".ll/history.db")` pre-resolves (`:58`, `:84`) and the unused import on `:56`/`:82`; keep `>/dev/null 2>&1 || true`, keep `check_compaction` / `.compacted_at`, avoid non-portable shell syntax
 - Add `("trim", ...)` row to `scripts/tests/test_remote_operation_matrix.py::_REJECTED` if the refuse route is used; merge with ENH-3657's edits to `_REJECTED` and `_REMOTE_REFUSALS`
 - Add remote-fixture tests + local twins: `context-monitor.sh` subprocess under `remote` (rows arrive; stopped stub exits 0 with empty stderr), `main_doctor(["--trim"])`, `cmd_dashboard`, `TestHistoryRoute` sibling, `_make_page_html_factory`, `run.py --serve` render
@@ -297,6 +297,16 @@ The Confidence Check concerns about the `collect_trim_report` mechanism and the 
 
 - **Order (advise review, 2026-09-29):** BUG-3652 (hoists the shared `remote` fixture) → ENH-3657 ∥ ENH-3658 → ENH-3668. ENH-3657 and this issue both edit `_REMOTE_REFUSALS` and `test_remote_operation_matrix.py::_REJECTED` with independent keys/rows: whichever lands second merges, never overwrites. `blocked_by: BUG-3652` is set in frontmatter.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-09-29 (graph: provider=`codegraph`, freshness=`fresh`; anchors were confirmed by grep/Read, not by graph results)_
+
+Verdict at time of check: **DEP_ISSUES** (the one line-number drift below was corrected in the same pass; the dependency finding is not fixed by this pass)
+
+- Corrected: `cli/doctor.py` `collect_trim_report(...)` call is at `:1837`, not `:1836` (Integration Map and Wiring Phase updated in place).
+- Confirmed unchanged: `serve.py:92`/`:173`, `dashboard.py:438`, `doctor_trim.py:373`, `cli/loop/run.py:691`, `context-monitor.sh:56-58`/`:82-84` (pre-resolves), `exit 2` at `:582` after the `record_*` calls, `hooks.json:138` `timeout: 5`, `doctor.py:_remote_target()` at `:468` (uses at `:517`, `:711`). The writers' seam chain (`record_*` → `_connect_telemetry` → `schema.connect` → `_seam_target` with `reresolve_absolute=True`) holds, so Option A's premise stands. `ll-verify-evidence` and `ll-issues format-check` are clean.
+- Remaining: `blocked_by: BUG-3652` is unsatisfied (BUG-3652 is `open`), but BUG-3652 has no `## Blocks` section naming ENH-3658 (MISSING_BACKLINK; it mentions the split only in prose, and `ll-issues show BUG-3652` reports `blocks: None`). Not auto-fixed because it edits an issue outside this run's scope.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-29_
@@ -310,6 +320,7 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 - Refusal/catcher conventions remain contested repo-wide; the per-site outcomes are now fixed in Decision Rules (`main_doctor` guard via `_remote_target()`, HTTP 501 JSON for `make_history_route`, refuse in `cmd_dashboard`), but the `_make_page_html_factory` / `run.py --serve` "skip the history panel" shape is still described only loosely.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-29T21:59:39 - `f8adf1da-5f55-4437-ac1b-3cda2eb8384a.jsonl`
 - `/ll:confidence-check` - 2026-09-29T15:35:24 - `4e126c30-e610-4bf7-836c-7acf607ff2dd.jsonl`
 - `/ll:advise` - 2026-09-29 - Opus consult (user_requested); amendments applied
 - `/ll:refine-issue` - 2026-09-29T06:53:44 - `ba092082-4ae3-43dd-9062-e948c741ef8f.jsonl`

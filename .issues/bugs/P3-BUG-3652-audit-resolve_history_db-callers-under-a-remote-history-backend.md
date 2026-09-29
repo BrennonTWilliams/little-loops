@@ -304,6 +304,11 @@ _These touchpoints must be included in the implementation:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Blocks
+
+- ENH-3657
+- ENH-3658
+
 ## Status
 
 **Open** | Created: 2026-09-29 | Priority: P3

@@ -356,6 +356,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-29 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-09-29 (graph: provider=`codegraph`, freshness=`fresh`; anchors were confirmed by grep/Read, not by graph results)_
+
+Verdict at time of check: **DEP_ISSUES** (no content edits were needed; the finding below is not fixed by this pass)
+
+- Confirmed: all eight `cli/history.py` `resolve_history_db(` sites (`:501`–`:797`), five `cli/harness.py` sites (`:245`, `:1089`, `:1994`, `:2027`, `:3613`), `cli/logs.py:1718`/`:1962`, `cli/ctx_stats.py:1188`, `decisions.py:596`, `user_messages.py:1227`, `mcp_server/tools.py:172`, the hand-built `logs.py` paths (`:997/1002`, `:1535/1539`), the `"No history.db found"` warning (`logs.py:1556`), the `except HistoryError` handlers, `sft-corpus.yaml` `--reader db … || touch`, `cli.yaml` `ll_history_summary`, `skills/improve-claude-md/SKILL.md` (344 lines), and `_REJECTED` (8 rows).
+- Load-bearing premise probed directly (`session_store/backend.py:_resolve_once`, `:353`–`:355`): an absolute path is returned as a `LocalTarget` verbatim, while `None`/relative goes through `resolve_history_target`; `open_history_readonly(ensure=True)` then calls `ensure_schema` on that path. So the serve-vs-refuse split (only relative-path `cli/harness.py` can serve) holds. `LibsqlBackend.ensure_schema` does run `check_access(..., write=True)` (`libsql.py:286`), which is what Proposed Solution 1(c) targets. `history_reader/harness.py` readers have no `.exists()` gate.
+- `ll-verify-evidence` and `ll-issues format-check` are clean; no active required decision rule conflicts (proposal-vs-code check found no exception-handler, fixture or AC-coverage gap beyond what the issue already lists).
+- Remaining: `blocked_by: BUG-3652` is unsatisfied (BUG-3652 is `open`), but BUG-3652 has no `## Blocks` section naming ENH-3657 (MISSING_BACKLINK; it mentions the split only in prose). Not auto-fixed because it edits an issue outside this run's scope.
+
 ## Confidence Check Notes
 
 > **Update 2026-09-29:** concerns 1–3 and 6 below (table contradiction, `refuse_on_remote(None, …)`, catch/prefix/channel, MCP `root=`) are resolved by the re-scope; the `blocked_by: BUG-3652` edge and cleared `verify_verdict` resolve 4–5. Re-run `/ll:verify-issues` and `/ll:confidence-check` before implementing.
@@ -383,6 +394,7 @@ _Re-scored 2026-09-29 after the refine/wire/gap-analysis passes; all determinist
 - Serve sites cannot distinguish an unreachable remote from an empty store (`_connect_readonly` maps `HistoryError` to `None`); the acceptance criteria do not cover it.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-29T21:59:39 - `f8adf1da-5f55-4437-ac1b-3cda2eb8384a.jsonl`
 - `/ll:confidence-check` - 2026-09-29T17:10:54 - `bd506705-1a67-435c-95c6-e7a6cced7523.jsonl`
 - `/ll:verify-issues` - 2026-09-29T16:04:55 - `d2886606-137b-4448-b1f0-22d8e796de6d.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-29T16:03:21 - `b2df855d-9a45-4710-92a2-763b4f73c99e.jsonl`
