@@ -219,6 +219,7 @@ Full-sweep pass (2026-09-29, `--auto`). Graph: provider=`codegraph` freshness=`f
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T00:50:34 - `9a024917-61ed-49b3-a021-72845a8bcfc2.jsonl`
 - `/ll:verify-issues` - 2026-09-29T00:37:37 - `5b5d1874-2832-4b4f-9528-f02ed025e782.jsonl`
 - `manual review` - 2026-09-28 - ENH-3548 found already landed (416b8e230) with a learning mirror copying the bug: made the `_static_model_paths` fix and `test_agreement` exemption removal required, added AC; dropped stale `blocks: [ENH-3548]`; batch tests must also patch `dispatch_batch_request`; corrected `_sdk_credentials_available` patch claim; noted optional learning-specific downgrade reason
 - `manual review` - 2026-09-28 - reconciled Step 1 with the env-key test convention; added downgrade-event AC, sdk/batch and per-state parametrization, shared `_learning_remedy_state` helper, latch side effect; set `blocks: [ENH-3548]` and updated ENH-3548 to CLI-only learning states; noted MR-12 follow-up

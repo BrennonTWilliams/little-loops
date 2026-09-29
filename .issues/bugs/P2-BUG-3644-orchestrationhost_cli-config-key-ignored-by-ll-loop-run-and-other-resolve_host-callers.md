@@ -15,11 +15,11 @@ decision_needed: false
 behavior_parity_not_applicable: true
 reconcile_attempted: true
 verify_verdict: VALID
-confidence_score: 80
-outcome_confidence: 49
+confidence_score: 95
+outcome_confidence: 57
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 0
 size: Very Large
 ---
@@ -312,23 +312,18 @@ Graph: provider=`codegraph` freshness=`fresh` (not needed to decide any verdict;
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-28_
+_Added by `/ll:confidence-check` on 2026-09-29_
 
-**Readiness Score**: 80/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 49/100 → LOW
-
-### Concerns
-- Criterion 4 capped at 10: `missing_behavior_parity` flags `docs/reference/API.md`. The issue already argues the file is reworded, not rewritten, so either set `behavior_parity_not_applicable: true` (human decision) or add a `### Behavior Parity` subsection.
-- cwd-vs-`project_root` semantics and lookup caching are recorded under Wiring Phase as "decide and record" but not yet decided (`mcp_server/tools.py:224`, `init/cli.py:149`, hot paths in `fsm/evaluators.py`, `subprocess_utils.py:741`, `worker_pool.py:854`). Decide before implementing the helper.
-- The repo's own `.ll/ll-config.json:152` sets `host_cli: claude-code`; every `env is None` test run from the repo cwd will resolve from config after the fix. The `no_host` fixture in `test_model_hints.py` and `TestDetectHosts` in `test_init_core.py` need `monkeypatch.chdir(tmp_path)`; other `env is None` callers in tests are not yet audited.
-- `unapplied_decision` fired: Program Design / Implementation Steps / Files to Modify still name `BRConfig`, `load_env_fallback`, `main_loop`/`main_auto`/`main_parallel`, `cmd_run`, `main_doctor` (Option A/C symbols). The issue's own notes say these are pre-fix reach / constraints rather than edit targets, but the wording should mark them so a reader does not implement the rejected options.
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 57/100 → LOW
 
 ### Outcome Risk Factors
-- Very wide blast radius: `resolve_host()` has ~45 callers across the codebase and a new `HostNotConfigured` raise path for unregistered config values reaches many callers that do not catch it.
-- Broad enumeration across ~10 source files, ~20 test files and ~25 docs; only the core helper is deep-ish (never-raise config merge with `ll.local.md`, import-cycle-safe lazy import, no `os.environ` write).
-- Behavior change for users who set the key and relied on the probe (baseline `conditions_fp` fingerprint in `cli/harness.py` also shifts).
+- Very wide blast radius: `resolve_host()` has ~45 callers and a new `HostNotConfigured` raise path for unregistered config values reaches many callers that do not catch it.
+- Broad enumeration across ~10 source files, ~20 test files (cwd exposure to the repo's own `host_cli: claude-code`, not all audited yet) and ~12 docs; only the core `_config_host_cli` helper is deep-ish (never-raise merge with `ll.local.md`, function-local import to avoid the cycle, no `os.environ` write).
+- Behavior change for every initialized project: `_persist_host_selection` writes `orchestration.host_cli` on `ll-init`, so config replaces the probe almost everywhere (and shifts `conditions_fp` in `cli/harness.py`). De-risk by landing the helper + `TestResolveHost` cases first and running the full suite before the doc sweep.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T00:50:34 - `9a024917-61ed-49b3-a021-72845a8bcfc2.jsonl`
 - `/ll:verify-issues` - 2026-09-29T00:37:37 - `5b5d1874-2832-4b4f-9528-f02ed025e782.jsonl`
 - `/ll:confidence-check` - 2026-09-28T23:09:06 - `0cabf8b0-30fa-4125-87cd-02095d27dc98.jsonl`
 - `/ll:verify-issues` - 2026-09-28T23:07:11 - `60c95e8d-f486-4f2e-819a-f8c027578985.jsonl`
