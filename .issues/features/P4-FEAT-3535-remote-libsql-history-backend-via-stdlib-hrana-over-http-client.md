@@ -11,7 +11,7 @@ learning_tests_required:
 - hrana-http
 verify_verdict: VALID
 reconcile_attempted: true
-confidence_score: 70
+confidence_score: 90
 outcome_confidence: 71
 score_complexity: 10
 score_test_coverage: 25
@@ -422,23 +422,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-28 (re-score after splitting out ENH-3650)_
+_Added by `/ll:confidence-check` on 2026-09-28 (re-score after ENH-3650 landed in 0284bd4ad)_
 
-**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override: ENH-3650 is open; the aggregate is 90 once it is done)
+**Readiness Score**: 90/100 → PROCEED
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Concerns
 - The `hrana-http` record is `proven` but carries 2 contradicted claims (expired-stream code on Turso; `SQLITE_BUSY` under write contention). The criteria already absorb both, but the rubric keeps a -5 modifier on the duplicate-implementation score while any claim is contradicted.
 - Two conditional items are settled only as tests: the copied-session double-ingest check, and dedup keys for derived tables that have none.
-
-### Gaps to Address
-- Blocked by ENH-3650 (the SQLite-only `HistoryTarget` refactor). Implement it first, then re-run `/ll:confidence-check FEAT-3535`.
+- Some Codebase Research Findings still describe the pre-ENH-3650 chokepoint (path-typed signatures, `_resolve_once` returning `Path`). The seam is now target-aware; `BackendConfig` is a minimal two-field placeholder (`provider`, `url`) that this issue must extend for `url_env`, `auth_token_env`, `project_id` and `telemetry_timeout_ms`.
 
 ### Outcome Risk Factors
 - Broad enumeration across roughly 10 files in Files to Modify (new client module, backend registration, config schema and wiring, migrate subcommand, doctor branch, ingestion worker).
 - Moderate per-site complexity: a new protocol client with baton, batch and error-code handling, plus a remote migration path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T03:00:46 - `4d45d755-73ff-4de3-8bd1-bb8e866143f2.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:44:43 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:39:42 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:35:02 - `73686e01-7e81-40c2-bf94-43634394b513.jsonl`
