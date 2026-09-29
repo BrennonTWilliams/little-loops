@@ -464,8 +464,9 @@ consult whose result actually reached the advisor host records the new hash
 to `.ll/advisor-budget/<kind>-<value>.pre_done.json`; a skipped or failed
 consult never poisons the dedup.
 
-An empty diff, a non-git-work-tree root, or `advisor.timeout_seconds > 190`
-(the hook's own timeout margin) all short-circuit to a silent no-op. v1 is
+An empty diff or a non-git-work-tree root short-circuits to a silent no-op.
+The consult timeout is clamped to 180s so it finishes inside the hook's own
+190s timeout, even when `advisor.timeout_seconds` is set higher. v1 is
 advisory only: a successful verdict is surfaced via **exit 0 + `feedback`**
 (the recommendation, confidence, risks, and dissent, printed to stderr) —
 never via blocking (`exit_code=2`). A failed or timed-out consult logs a

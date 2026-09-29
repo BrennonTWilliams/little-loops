@@ -14,8 +14,10 @@ Decision order (first match short-circuits to a no-op ``LLHookResult(exit_code=0
    ``git`` is unavailable.
 2. ``git diff HEAD`` is empty and there are no untracked files.
 3. The capped diff's SHA-256 matches the last recorded hash for this task.
-4. ``advisor.timeout_seconds > 190`` (the ``Stop`` hook's own timeout margin).
-5. Otherwise: consult, and on a real verdict record the new diff hash.
+4. Otherwise: consult, and on a real verdict record the new diff hash. The
+   consult timeout is clamped to ``_STOP_HOOK_CONSULT_TIMEOUT_CAP`` so it
+   finishes inside the ``Stop`` hook's own 190s timeout, whatever
+   ``advisor.timeout_seconds`` is set to.
 
 v1 is advisory only — ``exit_code`` is always 0; a successful verdict is
 surfaced via ``feedback`` (stderr), never via blocking (``exit_code=2``).
@@ -37,6 +39,9 @@ from little_loops.hooks.types import LLHookEvent, LLHookResult
 from little_loops.paths import find_project_root
 
 logger = logging.getLogger(__name__)
+
+# Leaves headroom under hooks.json's 190s ``Stop`` timeout for the git diff and host startup.
+_STOP_HOOK_CONSULT_TIMEOUT_CAP = 180
 
 _DIFF_MAX_LINES = 400
 _DIFF_MAX_BYTES = 96_000
@@ -163,14 +168,14 @@ def handle(event: LLHookEvent) -> LLHookResult:
         if diff_sha == _last_diff_sha(root, task_key):
             return LLHookResult(exit_code=0)
 
-        if config.advisor.timeout_seconds > 190:
-            logger.warning(
-                "pre_done: advisor.timeout_seconds (%d) exceeds the Stop hook's 190s "
-                "margin — skipping consult to avoid a host-killed hook that has "
-                "already spent budget",
+        if config.advisor.timeout_seconds > _STOP_HOOK_CONSULT_TIMEOUT_CAP:
+            logger.info(
+                "pre_done: clamping advisor.timeout_seconds (%d) to %ds to fit the Stop "
+                "hook's 190s timeout",
                 config.advisor.timeout_seconds,
+                _STOP_HOOK_CONSULT_TIMEOUT_CAP,
             )
-            return LLHookResult(exit_code=0)
+            config.advisor.timeout_seconds = _STOP_HOOK_CONSULT_TIMEOUT_CAP
 
         outcome = consult_for_trigger(
             "pre_done",

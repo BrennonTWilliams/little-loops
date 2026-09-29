@@ -175,7 +175,7 @@ class TestDedup:
 
 
 class TestTimeoutClamp:
-    def test_timeout_over_190_short_circuits(
+    def test_timeout_over_cap_is_clamped_not_skipped(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _init_repo(tmp_path)
@@ -189,11 +189,15 @@ class TestTimeoutClamp:
             encoding="utf-8",
         )
 
-        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+        outcome = ConsultOutcome(task_key=TaskKey("session", "s1"), verdict=_make_verdict())
+        with patch(
+            "little_loops.advisor.consult_for_trigger", return_value=outcome
+        ) as mock_consult:
             result = pre_done.handle(_event())
 
         assert result.exit_code == 0
-        mock_consult.assert_not_called()
+        mock_consult.assert_called_once()
+        assert mock_consult.call_args.kwargs["config"].advisor.timeout_seconds == 180
 
 
 class TestSessionIdSeeding:
