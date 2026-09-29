@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import json
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -4807,6 +4809,108 @@ class TestCorpusHasNoPriorityDrift:
         assert not offenders, f"prefixed issues missing frontmatter priority: {offenders}"
 
 
+def _enclosing_symbol(tree: ast.AST, lineno: int) -> str:
+    """Dotted qualname of the innermost def/class whose span holds ``lineno``.
+
+    A def's span starts at its first decorator. Defs nested under ``if``/``try``/
+    ``with`` bodies are found without adding to the name. When no def/class
+    contains the line, fall back to the top-level assignment target, else
+    ``"<module>"``.
+    """
+    best: tuple[int, str] | None = None
+
+    def visit(body: list[ast.stmt], prefix: str) -> None:
+        nonlocal best
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                start = min([node.lineno, *(d.lineno for d in node.decorator_list)])
+                end = node.end_lineno or node.lineno
+                if not start <= lineno <= end:
+                    continue
+                name = f"{prefix}.{node.name}" if prefix else node.name
+                if best is None or end - start <= best[0]:
+                    best = (end - start, name)
+                visit(node.body, name)
+                continue
+            for field in ("body", "orelse", "finalbody"):
+                sub = getattr(node, field, None)
+                if isinstance(sub, list):
+                    visit(sub, prefix)
+            for handler in getattr(node, "handlers", []):
+                visit(handler.body, prefix)
+
+    assert isinstance(tree, ast.Module)
+    visit(tree.body, "")
+    if best is not None:
+        return best[1]
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            if not node.lineno <= lineno <= (node.end_lineno or node.lineno):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    return target.id
+    return "<module>"
+
+
+_PRIORITY_REGEX_PATTERN = re.compile(r"P\[0-5\]|P\\d")
+
+
+def _scan_source(rel_path: str, text: str) -> Counter[tuple[str, str]]:
+    """Count physical lines matching the raw-priority pattern per ``(rel_path, qualname)``.
+
+    Regex runs first; ``ast.parse`` only when the file has hits. A file that
+    does not parse is a hard failure naming the file.
+    """
+    hits = [
+        lineno
+        for lineno, line in enumerate(text.splitlines(), start=1)
+        if _PRIORITY_REGEX_PATTERN.search(line)
+    ]
+    found: Counter[tuple[str, str]] = Counter()
+    if not hits:
+        return found
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as exc:
+        raise AssertionError(f"cannot scan {rel_path}: SyntaxError: {exc}") from exc
+    for lineno in hits:
+        found[(rel_path, _enclosing_symbol(tree, lineno))] += 1
+    return found
+
+
+def _scan_priority_regex_hits(src_root: Path) -> Counter[tuple[str, str]]:
+    """Run ``_scan_source`` over every ``*.py`` under ``src_root``."""
+    found: Counter[tuple[str, str]] = Counter()
+    for path in sorted(src_root.rglob("*.py")):
+        rel = str(path.relative_to(src_root))
+        found.update(_scan_source(rel, path.read_text(encoding="utf-8", errors="ignore")))
+    return found
+
+
+def _diff_against_allowlist(
+    found: Counter[tuple[str, str]],
+    allowlist: dict[tuple[str, str], tuple[int, str]],
+) -> tuple[list[str], list[str]]:
+    """Return ``(new, stale)`` as paste-ready allowlist key strings.
+
+    A count above the allowlisted one is ``new``; a count below (including
+    zero) is ``stale``.
+    """
+    new: list[str] = []
+    stale: list[str] = []
+    for key in sorted(set(found) | set(allowlist)):
+        have = found.get(key, 0)
+        allowed = allowlist[key][0] if key in allowlist else 0
+        label = f"({key[0]!r}, {key[1]!r}): ({have}, ...)"
+        if have > allowed:
+            new.append(f"{label}  # allowlisted count: {allowed}")
+        elif have < allowed:
+            stale.append(f"{label}  # allowlisted count: {allowed}")
+    return new, stale
+
+
 class TestPriorityRegexCompletenessAllowlist:
     """BUG-3286 Tests § Completeness verification.
 
@@ -4818,143 +4922,213 @@ class TestPriorityRegexCompletenessAllowlist:
     *new*, un-allowlisted raw priority regex is the actual protection this
     guard provides; it does not claim to be a complete census of every
     filename-priority read (``resolve_issue_path``'s ``startswith`` tiebreaker
-    at ``issue_parser.py:272``-ish uses no regex at all and is invisible here
-    by construction — see the issue's Proposed Solution § Out of scope).
+    uses no regex at all and is invisible here by construction — see the
+    issue's Proposed Solution § Out of scope).
+
+    Entries are anchored on the enclosing symbol (ENH-3653), not line numbers,
+    so unrelated edits do not fail the gate.
     """
 
-    # path (relative to scripts/little_loops) -> {line: reason}. Re-derive
-    # line numbers by re-running the scan below if this test fails after an
-    # unrelated edit shifts lines; a *new* entry means a new raw priority
-    # regex was added and should be justified here or converted to call
-    # little_loops.issue_parser.resolve_priority.
-    _ALLOWLIST: dict[str, dict[int, str]] = {
-        "cli/issues/clusters.py": {
-            74: "`[P3]`-style priority tag inside cluster body text, not a filename read",
-        },
-        "cli/issues/normalize.py": {
-            154: "_slug_for strips the prefix to build a slug; a text op, not a priority read",
-        },
-        "cli/issues/prioritize.py": {
-            61: "docstring for _priority_prefix_re",
-        },
-        "cli/issues/refine_status.py": {
-            567: "normalized-filename convention check help text",
-        },
-        "cli/issues/search.py": {
-            114: "--priority P1-P3 range argument parser, not a filename regex",
-            120: "--priority P# argument parser, not a filename regex",
-        },
-        "cli/issues/skip.py": {
-            47: "prefix rewrite writing the already-validated args.priority into the "
+    # (path relative to scripts/little_loops, enclosing qualname) ->
+    # (count of matching physical lines, justification). A *new* key or a
+    # higher count means a new raw priority regex was added and should be
+    # justified here or converted to call little_loops.issue_parser.resolve_priority.
+    _ALLOWLIST: dict[tuple[str, str], tuple[int, str]] = {
+        ("cli/issues/clusters.py", "_PRIORITY_TAG_RE"): (
+            1,
+            "`[P3]`-style priority tag inside cluster body text, not a filename read",
+        ),
+        ("cli/issues/normalize.py", "_slug_for"): (
+            1,
+            "strips the prefix to build a slug; a text op, not a priority read",
+        ),
+        ("cli/issues/prioritize.py", "_priority_prefix_re"): (
+            1,
+            "docstring for _priority_prefix_re",
+        ),
+        ("cli/issues/refine_status.py", "_print_key"): (
+            1,
+            "normalized-filename convention check help text",
+        ),
+        ("cli/issues/search.py", "_parse_priority_filter"): (
+            2,
+            "range parser (`P#-P#`); single-value parser (`P#`) -- --priority argument "
+            "parsers, not filename regexes",
+        ),
+        ("cli/issues/skip.py", "cmd_skip"): (
+            1,
+            "prefix rewrite writing the already-validated args.priority into the "
             "filename (BUG-3286 change C); a write, not a priority read",
-        },
-        "cli/migrate.py": {
-            16: "optional (?:P\\d-)? prefix inside an issue-ID regex; priority group discarded",
-        },
-        "cli/verify_evidence.py": {
-            110: "_ISSUE_ID_RE (BUG-3282): issue-ID shape matching to recognize an "
-            "artifact attribution in evidence prose; optional prefix group discarded",
-        },
-        "hooks/post_tool_use.py": {
-            98: "gates 'is this an issue file'; does not read priority as a value",
-            108: "extracts ID+slug from an issue filename; does not read priority as a value",
-        },
-        "issue_history/parsing.py": {
-            53: "comment describing the deliberately out-of-scope analytics filename convention",
-            59: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
-            754: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
-        },
-        "issue_lifecycle.py": {
-            1425: "BUG-3286 step 5: derives priority from the renamed filename to sync "
-            "frontmatter on skip (write path, not a duplicate resolver)",
-            1432: "extracts issue_id from the renamed filename for event emission; "
-            "priority group discarded",
-        },
-        "issue_parser.py": {
-            50: "_NORMALIZED_RE: filename-shape validation constant",
-            58: "_ANCHORED_FILENAME_RE: ID-anchor parsing for resolve_issue_path's identity "
-            "resolution, not planning-priority resolution",
-            177: "resolve_issue_path's P-TYPE-NNN user-input parsing; priority captured from "
-            "input, not resolved planning priority",
-            351: "docstring for is_normalized",
-            1155: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
+        ),
+        ("cli/migrate.py", "_FILENAME_PREFIX_RE"): (
+            1,
+            "optional (?:P\\d-)? prefix inside an issue-ID regex; priority group discarded",
+        ),
+        ("cli/verify_evidence.py", "_ISSUE_ID_RE"): (
+            1,
+            "BUG-3282: issue-ID shape matching to recognize an artifact attribution in "
+            "evidence prose; optional prefix group discarded",
+        ),
+        ("hooks/post_tool_use.py", "_maybe_auto_commit"): (
+            2,
+            "gates 'is this an issue file'; extracts ID+slug from an issue filename -- "
+            "neither reads priority as a value",
+        ),
+        ("issue_history/parsing.py", "parse_completed_issue"): (
+            2,
+            "comment describing the deliberately out-of-scope analytics filename "
+            "convention; the deliberately out-of-scope analytics reader (defaults to P5, "
+            "not live planning signal)",
+        ),
+        ("issue_history/parsing.py", "scan_active_issues"): (
+            1,
+            "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
+        ),
+        ("issue_lifecycle.py", "skip_issue"): (
+            2,
+            "BUG-3286 step 5: derives priority from the renamed filename to sync "
+            "frontmatter on skip (write path, not a duplicate resolver); extracts "
+            "issue_id from the renamed filename for event emission, priority group "
+            "discarded",
+        ),
+        ("issue_parser.py", "IssueParser._generate_id_from_filename"): (
+            1,
+            "strips a leading priority token before digit-scanning for ID generation",
+        ),
+        ("issue_parser.py", "IssueParser._parse_type_and_id"): (
+            2,
+            "comment describing the P[0-5]-NNN- filename shape; directory-fallback "
+            "number extraction, priority digit skipped over, not read as a value",
+        ),
+        ("issue_parser.py", "_ANCHORED_FILENAME_RE"): (
+            1,
+            "ID-anchor parsing for resolve_issue_path's identity resolution, not "
+            "planning-priority resolution",
+        ),
+        ("issue_parser.py", "_DEP_ID_RE"): (
+            1,
+            "BUG-3059: dependency-ID shape validation; optional prefix group discarded",
+        ),
+        ("issue_parser.py", "_NORMALIZED_RE"): (
+            1,
+            "filename-shape validation constant",
+        ),
+        ("issue_parser.py", "check_format_gaps"): (
+            1,
+            "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            # Line numbers below re-measured after the ENH-3623 option-span
-            # boundary fix added 44 lines above this block -- the shift this
-            # guard exists to catch, so they move together with it.
-            2116: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
-            "group discarded",
-            4369: "comment describing the P[0-5]-NNN- filename shape",
-            4373: "_parse_type_and_id's directory-fallback number extraction; priority digit "
-            "skipped over, not read as a value",
-            4394: "_generate_id_from_filename strips a leading priority token before "
-            "digit-scanning for ID generation",
-        },
-        "issues/prose_deps.py": {
-            21: "_ID_RE: prose-dependency ID shape, optional prefix group discarded",
-        },
-        "mcp_server/tools.py": {
-            848: "JSON-schema pattern for a priority argument, not a filename read",
-            1006: "JSON-schema pattern for a priority argument, not a filename read",
-        },
-        "session_store/writers.py": {
-            3113: "_FILENAME_PRIORITY_RE: the deliberately-preserved filename fallback in "
-            "_derive_type_priority (BUG-3286 step 7 Deviation — no BRConfig in scope to "
-            "call resolve_priority here)",
-            3175: "docstring for _derive_type_priority",
-        },
-        "sync.py": {
-            291: "comment describing the P[0-5]-TYPE-NNN- filename shape",
-        },
+        ),
+        ("issue_parser.py", "is_normalized"): (
+            1,
+            "docstring for is_normalized",
+        ),
+        ("issue_parser.py", "resolve_issue_path"): (
+            1,
+            "P-TYPE-NNN user-input parsing; priority captured from input, not resolved "
+            "planning priority",
+        ),
+        ("issues/prose_deps.py", "_ID_RE"): (
+            1,
+            "prose-dependency ID shape, optional prefix group discarded",
+        ),
+        ("mcp_server/tools.py", "_TOOLS"): (
+            2,
+            "JSON-schema pattern for a priority argument, not a filename read (two sites)",
+        ),
+        ("session_store/writers.py", "_FILENAME_PRIORITY_RE"): (
+            1,
+            "the deliberately-preserved filename fallback in _derive_type_priority "
+            "(BUG-3286 step 7 Deviation — no BRConfig in scope to call resolve_priority "
+            "here)",
+        ),
+        ("session_store/writers.py", "_derive_type_priority"): (
+            1,
+            "docstring for _derive_type_priority",
+        ),
+        ("sync.py", "GitHubSyncManager._extract_issue_id"): (
+            1,
+            "comment describing the P[0-5]-TYPE-NNN- filename shape",
+        ),
     }
 
-    _PATTERN = re.compile(r"P\[0-5\]|P\\d")
-
-    def test_no_unallowlisted_raw_priority_regex(self) -> None:
+    def test_priority_regex_allowlist_matches_scan(self) -> None:
+        """The real tree's raw priority regexes match the allowlist exactly."""
         repo_root = Path(__file__).resolve().parents[2]
-        src_root = repo_root / "scripts" / "little_loops"
+        found = _scan_priority_regex_hits(repo_root / "scripts" / "little_loops")
 
-        found: dict[str, set[int]] = {}
-        for path in sorted(src_root.rglob("*.py")):
-            rel = str(path.relative_to(src_root))
-            for lineno, line in enumerate(
-                path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1
-            ):
-                if self._PATTERN.search(line):
-                    found.setdefault(rel, set()).add(lineno)
+        new, stale = _diff_against_allowlist(found, self._ALLOWLIST)
 
-        allowlisted = {rel: set(lines.keys()) for rel, lines in self._ALLOWLIST.items()}
-
-        unallowlisted = {
-            rel: sorted(lines - allowlisted.get(rel, set()))
-            for rel, lines in found.items()
-            if lines - allowlisted.get(rel, set())
-        }
-        unallowlisted = {rel: lines for rel, lines in unallowlisted.items() if lines}
-
-        assert not unallowlisted, (
-            f"new raw priority regex not in the allowlist (justify here or convert to "
-            f"resolve_priority): {unallowlisted}"
+        assert not new and not stale, (
+            "raw priority regex allowlist out of sync with the scan.\n"
+            "New (justify here or convert to resolve_priority):\n  "
+            + "\n  ".join(new or ["(none)"])
+            + "\nStale (regex removed or moved to another symbol):\n  "
+            + "\n  ".join(stale or ["(none)"])
         )
 
-    def test_allowlist_entries_still_exist(self) -> None:
-        """Every allowlisted entry still matches the pattern at its recorded line
-        — catches stale entries left behind after a refactor shifts lines."""
-        repo_root = Path(__file__).resolve().parents[2]
-        src_root = repo_root / "scripts" / "little_loops"
+    _SYNTHETIC_SRC = (
+        "def outer():\n"
+        '    r"""Docstring mentioning P\\d."""\n'
+        "    # comment about P[0-5]-NNN- names\n"
+        "    return 1\n"
+    )
 
-        stale: list[str] = []
-        for rel, lines in self._ALLOWLIST.items():
-            path = src_root / rel
-            if not path.exists():
-                stale.append(f"{rel}: file no longer exists")
-                continue
-            file_lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            for lineno in lines:
-                if lineno > len(file_lines) or not self._PATTERN.search(file_lines[lineno - 1]):
-                    stale.append(f"{rel}:{lineno}")
+    def test_scan_is_invariant_to_line_shifts(self) -> None:
+        shifted = "\n" * 20 + self._SYNTHETIC_SRC
+        assert _scan_source("m.py", self._SYNTHETIC_SRC) == _scan_source("m.py", shifted)
 
-        assert not stale, f"stale allowlist entries (line moved or pattern gone): {stale}"
+    def test_extra_hit_in_allowlisted_symbol_is_new(self) -> None:
+        allowlist = {("m.py", "outer"): (2, "docstring and comment")}
+        src = self._SYNTHETIC_SRC.replace("    return 1\n", '    x = "P[0-5]"\n    return 1\n')
+        new, stale = _diff_against_allowlist(_scan_source("m.py", src), allowlist)
+        assert len(new) == 1 and "'outer'" in new[0]
+        assert not stale
+
+    def test_removed_hit_from_count_two_key_is_stale(self) -> None:
+        allowlist = {("m.py", "outer"): (3, "three sites")}
+        new, stale = _diff_against_allowlist(_scan_source("m.py", self._SYNTHETIC_SRC), allowlist)
+        assert not new
+        assert len(stale) == 1 and "'outer'" in stale[0]
+
+    def test_removed_key_entirely_is_stale(self) -> None:
+        allowlist = {("gone.py", "f"): (1, "removed")}
+        new, stale = _diff_against_allowlist(Counter(), allowlist)
+        assert not new
+        assert len(stale) == 1
+
+    def test_same_line_double_match_counts_once(self) -> None:
+        src = 'def f():\n    return r"P\\d-P\\d"\n'
+        assert _scan_source("m.py", src) == Counter({("m.py", "f"): 1})
+
+    def test_decorated_def_and_nested_def_anchors(self) -> None:
+        src = (
+            "class C:\n"
+            "    @staticmethod\n"
+            "    def m():\n"
+            "        def inner():\n"
+            '            return "P[0-5]"\n'
+            "        return inner\n"
+            '    X = "P[0-5]"\n'
+            'TOP = ("a",\n'
+            '       "P[0-5]")\n'
+            '"P[0-5]"\n'
+        )
+        assert _scan_source("m.py", src) == Counter(
+            {
+                ("m.py", "C.m.inner"): 1,
+                ("m.py", "C"): 1,
+                ("m.py", "TOP"): 1,
+                ("m.py", "<module>"): 1,
+            }
+        )
+
+    def test_defs_under_if_and_try_are_found(self) -> None:
+        src = 'if True:\n    def f():\n        return "P[0-5]"\ntry:\n    pass\nexcept Exception:\n    def g():\n        return "P[0-5]"\n'
+        assert _scan_source("m.py", src) == Counter({("m.py", "f"): 1, ("m.py", "g"): 1})
+
+    def test_syntax_error_fails_naming_the_file(self) -> None:
+        with pytest.raises(AssertionError, match=r"broken\.py"):
+            _scan_source("broken.py", 'x = "P[0-5]"\ndef (:\n')
 
 
 class TestSectionBodyLastMatchWins:

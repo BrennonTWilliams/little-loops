@@ -3,10 +3,11 @@ id: ENH-3653
 type: ENH
 title: Anchor the priority-regex allowlist on symbols, not line numbers
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:19Z'
+completed_at: '2026-09-29T05:22:51Z'
 confidence_score: 95
 outcome_confidence: 96
 score_complexity: 21
@@ -172,9 +173,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented in `scripts/tests/test_issue_parser.py`: `_ALLOWLIST` re-keyed to `(rel_path, qualname) -> (count, justification)` (25 keys / 31 lines); added `_enclosing_symbol`, `_scan_source`, `_scan_priority_regex_hits`, `_diff_against_allowlist`; folded the two old tests into `test_priority_regex_allowlist_matches_scan`; added 8 synthetic-source tests (line-shift invariance, new/stale counts, same-line double match, decorated/nested/conditional defs, SyntaxError). Verified the real-tree gate still passes after inserting lines above the `session_store/writers.py` entries. Full suite: 27369 passed, 293 skipped. Obsolete memory note `reference_writers_line_number_allowlist.md` deleted.
+
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P4
+**Done** | Created: 2026-09-29 | Priority: P4
 
 ## Confidence Check Notes
 
@@ -189,6 +194,8 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 _Otherwise clean: no parity, claim, structure, decision, or dependency gaps; no unproven mechanism; no learning-test targets._
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T05:22:51 - `34e07446-dde7-4b81-890a-a9f4824b2435.jsonl`
+- `/ll:ready-issue` - 2026-09-29T05:13:34 - `a68771e7-f2f5-4f9d-a3aa-9b0152180379.jsonl`
 - `/ll:confidence-check` - 2026-09-29T05:09:00 - `787f4414-79a9-4e49-9cef-a489309ecc13.jsonl`
 - `/ll:wire-issue` - 2026-09-29T04:57:37 - `e175d93c-8c73-4377-9a46-bbada6b9c65d.jsonl`
 - `/ll:refine-issue` - 2026-09-29T04:55:38 - `4499f980-478f-43ad-ae6e-d08229ebdabd.jsonl`
