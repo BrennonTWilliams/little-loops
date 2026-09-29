@@ -9,6 +9,7 @@ discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:46:29Z'
 learning_tests_required:
 - hrana-http
+verify_verdict: DIRECTIVE_DRIFT
 ---
 
 # FEAT-3535: Remote libSQL history backend via stdlib Hrana-over-HTTP client
@@ -139,7 +140,7 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 **Test conventions:**
 - Convention: network-client tests run a real stdlib server bound to `127.0.0.1` port 0 in a daemon thread and tear it down with `shutdown()` then `server_close()`, with a small explicit client timeout (`scripts/tests/test_flux_image_generator.py` fixture `flux_stub`; `scripts/tests/test_feat3323_sse_bridge.py`). Contested: `scripts/tests/test_link_checker.py` instead mocks `urlopen` and injects exceptions to test timeout classification; a blackhole-connect timeout needs a real socket, which mocks cannot prove.
 - Convention: opt-in external gates skip with a stated reason at module or test level (`test_host_conformance.py` gates live tiers on `LL_HOST_CONFORMANCE_LIVE`; `test_transport.py` uses `skipif` on a missing import). Tests needing a live endpoint are marked `pytest.mark.integration` and excluded from CI by `-m "not integration and not conformance"`. No `LL_TEST_LIBSQL_*` reference exists outside FEAT-3524/3535.
-- Learning tests are markdown files under `.ll/learning-tests/` with frontmatter (`target`, `date`, `status`, `assertions` of claim/result, `raw_output_path`, `proven_package`, `proven_version`), managed by `ll-learning-tests` (`check`, `prove`, `list`, `mark-stale`). `libsql-remote.md` exists; `hrana-http.md` does not.
+- Learning tests are markdown files under `.ll/learning-tests/` with frontmatter (`target`, `date`, `status`, `assertions` of claim/result, `raw_output_path`, `proven_package`, `proven_version`), managed by `ll-learning-tests` (`check`, `prove`, `list`, `mark-stale`). `libsql-remote.md` and `hrana-http.md` both exist (`hrana-http` proven 2026-09-28).
 
 _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
@@ -162,7 +163,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
   - Doctor checks: a `_X_data()` dict plus a `@register_check` function, a JSON payload key, and a `_print_X_section()`; an absent optional feature is `unsupported` + `informational`, and only error-severity unsupported yields exit 1. `_history_db_data` currently hard-codes `Path.cwd() / DEFAULT_DB_PATH` and a 16-byte SQLite-header file check before `resolve_backend().connect_readonly`, so a remote target needs its own probe branch.
   - A new `history.*` key touches `config-schema.json`, `HistoryConfig.from_dict` (lenient), `config/core.py` wiring, `docs/reference/CONFIGURATION.md`, and the structural asserts in `test_config_schema.py`/`test_config.py`. Contested: the recent `history.db_path` and `workspace_manifest_path` keys were *not* added to `config/core.py::to_dict()`, `skills/configure/areas.md` `## Area: history`, or `skills/configure/show-output.md`; the inherited Files-to-Modify list (step 7 "configure history-area mirrors") should decide knowingly whether `backend` follows the fuller or the thinner precedent. Skill/README edits trip the mirror gates (`ll-adapt --host <gemini|kimi-code|qwen> --apply`).
   - Test placement: network-client tests use a real stdlib server on `127.0.0.1` port 0 in a daemon thread with `shutdown()` then `server_close()` (`test_flux_image_generator.py::flux_stub`), whereas `test_link_checker.py` mocks `urlopen`; no existing test blackholes a connect. Live-endpoint tests are `pytest.mark.integration` (excluded by `-m "not integration and not conformance"`) and env-gated via a predicate read at fixture time (`tests/conftest.py::_live_conformance_allowed`). `conftest.py` autouse fixtures set `LL_HISTORY_DB` and guard against opening the real `.ll/history.db`, so any non-sqlite test runs with that env already set.
-- **Learning-test gate is prose-only.** FEAT-3535 has no `learning_tests_required` frontmatter (FEAT-3524 declared `[libsql, libsql-remote]`); the `hrana-http` gate is enforced by `learning_tests/gate.py`/`ll-learning-tests assess` only when that key is present. `hrana-http.md` does not exist; a stdlib-target record like `httpserver.md` omits `proven_package`/`proven_version` and uses age-based staleness.
+- **Learning-test gate is enforced.** FEAT-3535 declares `learning_tests_required: [hrana-http]` (FEAT-3524 declared `[libsql, libsql-remote]`), enforced by `learning_tests/gate.py`/`ll-learning-tests assess`. `hrana-http.md` exists and is proven (2026-09-28); like the stdlib-target record `httpserver.md` it omits `proven_package`/`proven_version` and uses age-based staleness.
 - **No other open issue gates this one.** FEAT-3524 is `cancelled` (predecessor), ENH-3525 and ENH-3526 are `done`; no open issue mentions `HistoryTarget`, `history.backend`, or Hrana beyond this one.
 
 ## Acceptance Criteria
@@ -170,11 +171,12 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - [ ] With `history.backend` unset or `provider: sqlite`, the existing history test suite passes unchanged.
 - [ ] `resolve_backend("libsql")` returns a `LibsqlBackend`; history reads and writes round-trip against a `sqld` endpoint.
 - [ ] Every network wait uses a socket-level timeout; a connect to a blackholed host fails within the configured limit and raises a `HistoryError` subclass.
-- [ ] Hrana error codes (`SQLITE_CONSTRAINT`, `SQLITE_BUSY`, `STREAM_EXPIRED`, auth failure) map to distinct `HistoryError` classes without message matching.
+- [ ] Hrana error codes map to `HistoryError` classes without message matching, per the Error Code Mapping table under Program Design: `SQLITE_CONSTRAINT` to `HistoryIntegrityError`; `STREAM_EXPIRED` (sqld) and `SQLITE_BUSY` (Turso idle-transaction rollback) to one retryable stream-lost class; HTTP 400/401/403 and `BLOCKED` to `HistoryUnavailable`; `SQL_PARSE_ERROR` and `SQLITE_UNKNOWN` to `HistoryOperationError`.
 - [ ] Unsupported operations (FTS5, maintenance, `ATTACH`, `create_function`, snapshot export) raise a capability-limitation error naming the operation.
-- [ ] Two concurrent remote migrations serialize or one fails safely, leaving the schema consistent.
+- [ ] Two concurrent remote migrations, each sent as one atomic `batch` (never an interactive transaction), both complete or one fails with a structured error, leaving exactly one schema-version row.
+- [ ] A write that contends with another open transaction is bounded by the client read timeout and raises a `HistoryError` subclass; the client never relies on receiving `SQLITE_BUSY` (both endpoints block until the server reaps the idle holder, sqld ~5s, Turso ~10s).
 - [ ] A failing best-effort telemetry write never aborts the observed operation and stays within the telemetry latency budget.
-- [ ] The `hrana-http` learning test passes against `sqld` and Turso Cloud before any client code lands.
+- [x] The `hrana-http` learning test is proven (`ll-learning-tests assess --issue FEAT-3535` exits 0) before any client code lands. Done 2026-09-28: 12 passing assertions, 2 recorded failures that re-scoped the criteria above. Auth-failure assertions were proven on Turso Cloud only, because the local `sqld` ran unauthenticated.
 - [ ] Remote integration tests skip only when `LL_TEST_LIBSQL_URL` / `LL_TEST_LIBSQL_AUTH_TOKEN` are absent; `python -m pytest scripts/tests/` exits 0.
 
 ## Program Design
@@ -182,7 +184,23 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ### Types
 
 - `HranaClient`: stdlib `http.client` client for `/v3/pipeline` holding base URL, auth token, connect/read timeouts, and the current baton
-- `HranaError(HistoryError)`: carries the structured Hrana error `code` and message
+- `HranaError(HistoryError)`: carries the structured Hrana error `code` and message; a retryable stream-lost subclass covers `STREAM_EXPIRED` and idle-transaction `SQLITE_BUSY`
+
+### Error Code Mapping
+
+Observed in `.ll/learning-tests/hrana-http.md` (2026-09-28). Errors arrive in `results[i].error` (`{message, code}`) with HTTP 200, except where noted.
+
+| Observed | Where | `HistoryError` class |
+|---|---|---|
+| `SQLITE_CONSTRAINT` (PK and NOT NULL) | both | `HistoryIntegrityError` |
+| `SQL_PARSE_ERROR`, `SQLITE_UNKNOWN` (missing table) | both | `HistoryOperationError` |
+| `STREAM_EXPIRED`: HTTP 400, top-level `{message, code}` body, not in `results` | sqld | retryable stream-lost |
+| `SQLITE_BUSY` with "interactive transaction was rolled back because the stream was idle" | Turso | retryable stream-lost |
+| HTTP 400 malformed JWT, HTTP 401 empty token | Turso | `HistoryUnavailable` |
+| `BLOCKED` (read-only token write) | Turso | `HistoryUnavailable` |
+| second `BEGIN IMMEDIATE` under contention | both | no error; blocks until the holder is reaped, so the client read timeout bounds it |
+
+The client must parse both the per-result `error` and the top-level HTTP-error body. Turso cannot distinguish busy from expired by code, so the one stream-lost class is deliberate. Migrations use an atomic `batch` (`begin immediate`, conditional statements, conditional `commit`, `not ok` conditional `rollback`), which serialized four concurrent runs with one schema row.
 - `LibsqlBackend`: `Backend` implementation built on `HranaClient`; `supports()` returns False for FTS5, maintenance, `ATTACH`, `create_function`, and snapshot export
 
 ### Signatures
@@ -214,7 +232,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Produce `.ll/learning-tests/hrana-http.md` (new) (prerequisite gate).
+1. ~~Produce `.ll/learning-tests/hrana-http.md`~~ Done 2026-09-28 (proven; see Error Code Mapping under Program Design).
 2. Land FEAT-3524 §1a's SQLite-only `HistoryTarget` refactor, with no behavior change.
 3. Add the Hrana HTTP client and its unit tests.
 4. Add `history.backend` config and `LibsqlBackend`.
@@ -255,6 +273,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-29T02:24:24 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:refine-issue` - 2026-09-29T01:36:58 - `53ec1cbf-a55d-477a-91f3-8081b28d4c2d.jsonl`
 - `/ll:refine-issue` - 2026-09-24T00:55:16 - `851cba84-d70b-4baa-8370-ffdce9646511.jsonl`
 - `/ll:format-issue` - 2026-09-24T00:50:45 - `037fa15a-ec40-4d82-9ee3-839372456150.jsonl`
