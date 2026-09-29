@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:19Z'
+confidence_score: 95
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3653: Anchor the priority-regex allowlist on symbols, not line numbers
@@ -168,8 +174,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-29 | Priority: P4
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-29_
+
+**Readiness Score**: 95/100 → STOP — ADDRESS GAPS (Program Design hard override; aggregate would be PROCEED)
+**Outcome Confidence**: 96/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- Program Design gate fails (`ll-issues check-design`): "no call-path anchor resolves against the repo". Every anchor in `### Call Path` is either new (`_scan_priority_regex_hits`, `_scan_source`, `_enclosing_symbol`, `_diff_against_allowlist`, `test_priority_regex_allowlist_matches_scan`) or dotted with a new leaf (`TestPriorityRegexCompletenessAllowlist.test_priority_regex_allowlist_matches_scan` resolves only its last segment). Fix: name an existing public symbol in the Call Path, e.g. a standalone `TestPriorityRegexCompletenessAllowlist` line, or `resolve_issue_path`, or the model helper `_enclosing_functions`; or set `program_design_not_applicable: true`. Also see the private-anchor underscore-strip caveat: name at least one public def or class.
+
+_Otherwise clean: no parity, claim, structure, decision, or dependency gaps; no unproven mechanism; no learning-test targets._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T05:09:00 - `787f4414-79a9-4e49-9cef-a489309ecc13.jsonl`
 - `/ll:wire-issue` - 2026-09-29T04:57:37 - `e175d93c-8c73-4377-9a46-bbada6b9c65d.jsonl`
 - `/ll:refine-issue` - 2026-09-29T04:55:38 - `4499f980-478f-43ad-ae6e-d08229ebdabd.jsonl`
 - `/ll:format-issue` - 2026-09-29T04:50:00 - `d770577e-1f76-4a53-b5c3-a8661dec6288.jsonl`

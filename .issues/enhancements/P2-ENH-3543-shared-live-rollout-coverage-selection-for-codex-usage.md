@@ -15,9 +15,11 @@ labels:
 blocked_by:
 - ENH-3532
 - ENH-3647
+- ENH-3655
 relates_to:
 - ENH-3528
 - ENH-3549
+- ENH-3655
 confidence_score: 70
 outcome_confidence: 63
 score_complexity: 10
@@ -30,7 +32,7 @@ score_change_surface: 10
 
 ## Summary
 
-Implement one shared coverage-selection policy behind `select_usage_observations` that usage, cost, waste, quality and export readers all use, so that live invocation totals and historical rollout requests covering the same work are counted once. Split out of ENH-3532 (rollout ingestion); live identity plumbing was further split to ENH-3647 on 2026-09-28. This issue keeps correlation, selection and reader/export parity.
+Implement one shared coverage-selection policy behind `select_usage_observations` that usage, cost, waste, quality and export readers all use, so that live invocation totals and historical rollout requests covering the same work are counted once where correlation is proven. Split out of ENH-3532 (rollout ingestion); live identity plumbing was further split to ENH-3647 on 2026-09-28, and the independent join spike to ENH-3655 on 2026-09-29. This issue keeps production correlation, selection and reader/export parity.
 
 ## Current Behavior
 
@@ -49,11 +51,11 @@ Live Codex rows carry `session_id = thread.started.thread_id` and a locally gene
 
 One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its live total equals the sum of the rollout `last_token_usage` records between that invocation's `task_started` and `task_complete` (fixture: 19404 + 19541 = 38945 input, 112 + 5 = 117 output). `exec resume` restarts the total, so each invocation maps to its own `task_started`…`task_complete` span in the same rollout file. Rollout spans have a native key: `task_started`/`task_complete` both carry `payload.turn_id` (e.g. `01a0d1da-dba9-…` and `01a0d1da-f7cb-…` in `rollout-exec-resume.jsonl`). Match on verified host + thread ID + span; equal token sums are a consistency check, not the identity.
 
-The captures prove session identity and matching accounting totals, but not an automatic live-to-span join: live `turn.started` carries no turn ID, and `turn.completed` carries usage without a turn ID. A generated invocation UUID does not establish a rollout span. **Readiness gate:** specify and prove how each live invocation acquires an exact rollout span, including resume, concurrent/ambiguous activity, incomplete transcripts and compaction. No timestamp-nearness, matching-count or run-ID heuristic may certify the join. If producer evidence cannot establish it, keep coverage unresolved; do not declare the complete-match criterion satisfied by synthetic IDs alone.
+The captures prove session identity and matching accounting totals, but not an automatic live-to-span join: live `turn.started` carries no turn ID, and `turn.completed` carries usage without a turn ID. A generated invocation UUID does not establish a rollout span. **Readiness gate owned by ENH-3655:** specify and prove how each live invocation acquires an exact rollout span, including resume, concurrent/ambiguous activity, incomplete transcripts and compaction. No timestamp-nearness, matching-count or run-ID heuristic may certify the join. If producer evidence cannot establish it, keep coverage unresolved; do not declare the complete-match criterion satisfied by synthetic IDs alone.
 
-**Run the spike now (2026-09-29).** It needs only the committed fixtures, so it does not wait for ENH-3532 or ENH-3647 (epic step 1) and must not gate ENH-3647. Scope spans **by thread** (`payload.id`, ENH-3532 gate 1 rule c), never by a `session_id` that forks share with their parent; cross-check each span against `turn_id`; and add a 0.155 `exec --json` capture, since fixture-only evidence is from 0.152.1 while current producers are 0.154+ (which also emit `token_usage_record` with `turn_id`/`response_id` — check whether that removes the need for an ordering join).
+**ENH-3655 runs the spike now (2026-09-29).** It is unblocked by ENH-3532 and ENH-3647 and must not gate ENH-3647. Scope spans **by thread** (`payload.id`, ENH-3532 gate 1 rule c), never by a `session_id` that forks share with their parent; cross-check each span against `turn_id`; and add a current-version `exec --json` capture, since fixture-only evidence is from 0.152.1 while current producers are 0.154+ (which also emit `token_usage_record` with `turn_id`/`response_id` — check whether that removes the need for an ordering join).
 
-**Candidate join to evaluate first (spike before implementation):** per verified `(host, thread_id)`, order live invocations by local capture order and rollout spans by native `ordinal` within each verified stream (ordinals are monotonic across `exec resume` within one file: the two spans in `rollout-exec-resume.jsonl` occupy ordinals 1–19 and 21–28). Accept the join only when (a) the thread's live invocation count equals its completed-span count, (b) every span is closed by `task_complete`, and (c) each positional pair's sums match. Any failure — including interactive TUI turns in the same thread that add spans without live rows — leaves the whole thread `overlap_unresolved`. This is an ordering join, not timestamp proximity; the spike must show whether (a)–(c) are sufficient or whether an ordering hazard (concurrent `exec resume` on one thread) defeats it. If the spike refutes it and no producer field exists, ship the selector with conservative unresolved behavior only and record the complete-match criteria as blocked on producer evidence.
+**Candidate join evaluated by ENH-3655:** per verified `(host, thread_id)`, order live invocations by local capture order and rollout spans by native `ordinal` within each verified stream (ordinals are monotonic across `exec resume` within one file: the two spans in `rollout-exec-resume.jsonl` occupy ordinals 1–19 and 21–28). Accept the join only when (a) the thread's live invocation count equals its completed-span count, (b) every span is closed by `task_complete`, and (c) each positional pair's sums match. Any failure — including interactive TUI turns in the same thread that add spans without live rows — leaves the whole thread `overlap_unresolved`. The spike determines whether (a)–(c) suffice or whether an ordering hazard (concurrent `exec resume` on one thread) defeats the join. If it refutes the join and no producer field exists, ship the selector with conservative unresolved behavior only and record complete-match criteria as blocked on producer evidence.
 
 ### Selection policy
 
@@ -72,7 +74,7 @@ ENH-3580 independently exports additive provenance columns. This issue owns how 
 
 ### Session filter (shared with ENH-3549)
 
-ENH-3549 needs one session's selected observations for `ll-ctx-stats` cache rate. Add a paired `host` + `session_id` filter to `select_usage_observations` rather than having readers stream every row (the dashboard notes ~150k rows) and filter client-side. Require `host` whenever `session_id` is supplied; an ID-only call is an error rather than a cross-host read. Candidate correlation is restricted to the verified host/thread pair; reconcile all coverage candidates for that pair before applying report-window and attribution filters. A row with unverified/NULL host identity cannot be silently assigned to the requested host. Whichever of ENH-3543/ENH-3549 lands first adds the paired filter; the other reuses it.
+ENH-3656 needs one session's selected observations for the Claude `ll-ctx-stats` cache rate; ENH-3549 later extends the consumer to Codex. Add a paired `host` + `session_id` filter to `select_usage_observations` rather than having readers stream every row (the dashboard notes ~150k rows) and filter client-side. Require `host` whenever `session_id` is supplied; an ID-only call is an error rather than a cross-host read. Candidate correlation is restricted to the verified host/thread pair; reconcile all coverage candidates for that pair before applying report-window and attribution filters. A row with unverified/NULL host identity cannot be silently assigned to the requested host. Whichever of ENH-3543/ENH-3656 lands first adds the paired filter; the other reuses it.
 
 ### Quality regressions
 
@@ -80,7 +82,7 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 
 ## Scope Boundaries
 
-- **In scope**: the live-to-span join (spike-gated); the shared coverage selector; routing usage, cost, waste, quality and export aggregation through it; the `session_id` selector filter.
+- **In scope**: the live-to-span join only where ENH-3655 proves it; the shared coverage selector; routing usage, cost, waste, quality and export aggregation through it; the `session_id` selector filter if ENH-3656 has not added it.
 - **Out of scope**: live identity capture (ENH-3647); rollout ingestion (ENH-3532); Claude live/transcript reconciliation; ENH-3528's rendering contract.
 
 ## Program Design
@@ -107,8 +109,8 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 
 ## Implementation Steps
 
-1. Spike the candidate ordering join against the fixtures, a captured fork/subagent thread and a 0.155 `exec --json` capture (plus a synthetic concurrent-resume case); record PROVEN/REFUTED and the attribution, filter and snapshot contracts here.
-2. Add coverage selection and the `session_id` filter behind `select_usage_observations`, preserving verified attribution and qualification metadata.
+1. Apply ENH-3655's PROVEN/REFUTED join result. Specify the attribution, filter and snapshot contracts here; if correlation remains unproven, use conservative unresolved selection.
+2. Add coverage selection and add or reuse ENH-3656's paired `session_id` filter behind `select_usage_observations`, preserving verified attribution and qualification metadata.
 3. Route quality regressions per § Quality regressions.
 4. Integrate privacy-safe snapshot selection and built-in dashboard queries; add cross-reader/export regressions and run project checks.
 
@@ -120,7 +122,7 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 
 ## Acceptance Criteria
 
-- [ ] A captured producer-backed test establishes the live invocation-to-rollout span join; absent/ambiguous joins remain unresolved, including resume and concurrent same-session activity.
+- [ ] ENH-3655's producer-backed result is recorded and applied: only proven live invocation-to-rollout span joins suppress a counterpart; refuted or ambiguous joins remain unresolved, including resume and concurrent same-session activity.
 - [ ] Existing session/invocation columns are reused; old schemas and unverified legacy identities retain conservative behavior.
 - [ ] Selected request rows preserve verified run/state/invocation attribution; conflicting attribution is qualified, and per-state cost/waste totals remain consistent.
 - [ ] Date-window boundaries, model filters and `require_run_id` cannot create false completeness; tests cover counterpart rows outside the reporting window and initially unattributed requests.
@@ -155,7 +157,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Integration Map now names `scripts/little_loops/session_store/schema_manifest.json`.
 
 ### Gaps to Address
-- Unresolved `blocked_by`: ENH-3532 (open). Resolved 2026-09-28 by splitting the live-identity half into ENH-3647 (no ENH-3532 dependency); the remaining selector genuinely needs rollout rows. Re-run the confidence check after the join spike.
+- Unresolved `blocked_by`: ENH-3532 and ENH-3647 are needed for production selection; ENH-3655 now owns the independent join spike. Re-run the confidence check after the spike and prerequisites.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: cross-module identity plumbing (parser → runner → executor → writer) plus a coverage policy behind the existing selector and snapshot/dashboard parity.
