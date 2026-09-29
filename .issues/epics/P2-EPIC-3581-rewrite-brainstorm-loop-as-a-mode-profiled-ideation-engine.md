@@ -105,6 +105,18 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 
 - **Pre-implementation review** (2026-09-29, `/ll:advise` with Opus; nothing measured): profile gates fold into engine routing tokens (no gate states); `dedup` re-tags cells blind to the generator's tags; `reframe` is a forced ranking; cap tie-break by generation order; `abstention_rate` recorded (`> 0.25` low confidence, `> 0.5` fails validation); `materialize` is 4 fixed batched states (FEAT-3585); `classify_mode` reports the chosen mode in the report header so a wrong auto-selection is visible and rerunnable with `mode=`.
 
+- **Third pre-implementation review** (2026-09-29, `/ll:advise` with Opus; nothing measured) — applied across all children:
+  - **Tournament failure routing**: the parent `tournament` state routes `on_yes` → `portfolio` and `on_no`/`on_error`/`on_timeout` → `salvage_tournament` (a judge-call error otherwise discards every completed round). Judge states carry `timeout: 300`; the time guard is `TOURNAMENT_TIMEOUT_S + JUDGE_CALL_TIMEOUT_S + TAIL_S`. Confirm the action-timeout path with a `MockActionRunner` test before writing the routing (FEAT-3582).
+  - **Report owner**: a deterministic `render-report` engine command and a `render_report` state (between `validate_portfolio` and `route_sink`) are the only writers of `brainstorm.md`; `init` still empties it (FEAT-3667/3582).
+  - **Clock**: the time guard takes `--elapsed-ms ${loop.elapsed_ms}` (active time incl. resume offset), never wall-clock `run_started_epoch`.
+  - **Routing safety**: every classify-routed engine command prints a `fail` token on exit 1; happy tokens are listed explicitly; every classify state sets `_: finalize_failed`.
+  - **Idempotent appends**: `record-round` (keyed by round+pair), `next-round` (skips recorded rounds), `ingest` (replaces by lens index; `lenses.txt` holds indices) so a re-run never double-counts; framings are sanitized of `|` and newlines.
+  - **Prompt parameterisation**: engine commands print prompt blocks (axes/bins, extra fields, rubric, occupancy, round pairs) to stdout; states capture them and interpolate inside `<<<…>>>` nonce fences. No `round_prompt.txt`. Profiles gain a `lenses` key.
+  - **Hidden LLM calls**: every prompt state uses `next:` + `on_error:` (or an explicit `evaluate:`) so the default `llm_structured` evaluator adds no call.
+  - **FEAT-3582 merge gate**: `MockActionRunner` end-to-end runs (happy, floor-fail, child-timeout salvage, child-error salvage), one real run per pinned brief from the worktree with `PYTHONPATH=<worktree>/scripts` (the editable install otherwise resolves `main`), and the old-vs-new core comparison. The loop keeps the name `brainstorm` (fence/baseline/README keys are filename-keyed).
+  - **Scope cuts**: `ground=web` and FEAT-3585's `fallback_html` mid-tournament restart are out of v1.
+  - **Quality metric**: FEAT-3596 adds a blind human A/B on the two pinned briefs (old top idea vs new winner; pass = win or tie on both).
+
 ## Impact
 
 - **Priority**: P2 - brainstorm is a shipped built-in loop whose core machinery is inert in every observed run
@@ -138,10 +150,11 @@ In scope:
   An explicit `mode=<x>` skips classification; individual profile knobs
   (`materialize`, `ground`, `premortem`, …) are overridable per run so mixed
   briefs (e.g. a product concept that also needs a landing-page visual) work.
-- `ground` state: none | codebase | web, with non-LLM evidence probes (anchor
-  existence; cited-URL fetch + quote match).
+- `ground` state: none | codebase, with non-LLM anchor-existence probes. **`ground=web`
+  (cited-URL fetch + quote match) is deferred to a follow-up** (2026-09-29 third review):
+  v1 ships codebase grounding only; the `business` profile defaults to `ground: none`.
 - `materialize` state for visual mode: HTML/SVG mockups → Playwright screenshots →
-  image-capability canary → image-pairwise judging.
+  image-capability canary → image-pairwise judging (no mid-tournament HTML restart in v1).
 - Integration and evaluation (FEAT-3596): reference runs, failure-path fixtures,
   combined step budget, comparison against the old loop.
 - Optional annotate-only `premortem` finisher (risks and kill criteria for winner and runner-up).
@@ -161,14 +174,6 @@ Out of scope:
 - **FEAT-3585** — Brainstorm materialize state: rendered mockups judged visually (open)
 - **FEAT-3586** — Brainstorm optional pre-mortem finisher (open)
 - **FEAT-3596** — Brainstorm engine integration, reference runs, and evaluation (open)
-- **FEAT-3667** — Brainstorm engine module: deterministic core, CLI contract, and artifact profile (open)
-
-
-
-
-
-
-
 
 ## Success Metrics
 
@@ -187,6 +192,7 @@ Out of scope:
 - `ll-loop validate` passes (MR rules, per-run artifact isolation under
   `${context.run_dir}/`).
 - Cost ceiling: a default run (`mode: auto`, classifier included) makes ≤ 30 LLM calls (old loop 14 measured 2026-09-29, 13 without the finalize summary; expected ≈ 22 = 1 classify + 1 frame + 9 diverge + 1 dedup + 1 shortlist + ≈ 8 judge, +1 reframe when the profile enables it). Total input/output tokens are **recorded, not gated**, until the baseline exists — per-session overhead (≈ 94k tokens per call in the 2026-06-27 run) makes call count the wrong unit for cost.
+- Blind A/B (FEAT-3596): a person compares old-loop top idea vs new winner on both pinned briefs, blind; pass = win or tie on both.
 - Judge reliability is observable: tournament `tie_rate` and `abstention_rate` are recorded and the report
   flags `low_confidence` rankings.
 

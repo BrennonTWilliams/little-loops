@@ -22,6 +22,12 @@ reconcile_attempted: true
 
 # FEAT-3585: Brainstorm materialize state: rendered mockups judged visually
 
+## Scope Note (2026-09-29, EPIC-3581 third review)
+
+**No mid-tournament HTML restart in v1.** The round-1 `fallback_html` restart (record-round token, child `restart_html` state, schedule restart, ≤ 21 extra child steps) is cut. Image capability is decided **before** the tournament by the canary (and Playwright availability), which sets `judge_mode: html` up front. Inside the tournament a verdict lacking the stamped codes is an abstention (0.5 each); if the abstention rate exceeds 0.25 the run is `low_confidence`, and above 0.5 `validate_portfolio` fails it (FEAT-3582). No restart, no discarded rounds.
+
+**Mockup authoring size cap:** the single authoring call is capped in the prompt (≤ 4 KB / ≈ 120 lines per mockup, inline CSS/SVG only) so 8 mockups fit one response; files are written with the Write tool, one per finalist. If the reference run (FEAT-3596) shows truncated or missing files, fall back to two batches. Judge prompts must **not inline HTML** (the pair block lists file paths; a single argument over Linux's 128 KiB limit fails).
+
 ## Summary
 
 Add a gated `materialize` state for **visual** brainstorming: finalists are rendered
@@ -46,7 +52,7 @@ Brainstorm judges every idea as text, including visual ones: a "dense, warm-pape
   image-pair verdict must echo both codes (`seen: [codeA, codeB]`); a script
   checks them. A verdict with a missing or wrong code is treated as an abstention
   (0.5 each, logged), so a model that never viewed the images cannot silently
-  decide a match. **The fallback is decided after round 1, inside the tournament child** (2026-09-29): the engine's `record-round` reports the round-1 proof-failure rate; if more than half of round 1's pair verdicts fail the check it prints `fallback_html`, the child discards round-1 image verdicts, sets `judge_mode: html` (`html_canary_failed`) in `finalists.json`, and restarts the schedule from round 1 in HTML mode. Later rounds treat a failed-proof verdict as an abstention; those count toward `abstention_rate` (FEAT-3582 § Tournament Specification: `> 0.25` low confidence, `> 0.5` fails validation).
+  decide a match. **No mid-tournament fallback (2026-09-29 third review — supersedes the earlier round-1 `fallback_html` restart):** a failed-proof verdict is an abstention; those count toward `abstention_rate` (FEAT-3582 § Tournament Specification: `> 0.25` low confidence, `> 0.5` fails validation).
 - **Render sandbox**: mockup HTML is untrusted LLM output. The screenshot step opens
   it via `file://` with all non-`file:` requests aborted (`page.route`), so no
   network access, CDN fonts, or beacons; deterministic screenshots follow.
@@ -219,6 +225,8 @@ _Added 2026-09-29 (EPIC-3581 pre-implementation review, `/ll:advise` with Opus):
 - **Batched authoring instead of a materialize sub-loop**: one authoring call for all finalists + one screenshot-all state keeps the step cost fixed (≈ 5) and avoids a second child loop. Dissent recorded: a sub-loop is defensible if a single call proves unreliable in output size/quality — if the reference run (FEAT-3596) shows truncated or missing files, fall back to authoring in two batches, still without per-finalist steps.
 - Round-1 proof check and the abstention accounting replace the after-the-fact ">half of verdicts" rule.
 - **Learning test done (2026-09-29)**: `.ll/learning-tests/playwright.md` now proves (6 new passing claims, node `@playwright/test` 1.60.0, chromium): `page.screenshot` of a `file://` page writes a valid PNG at exactly the viewport size and is byte-identical across two consecutive shots; with `page.route('**/*')` continuing `file:` and aborting everything else, `goto('file://…')` still loads, `img`/stylesheet/`fetch()` requests to a local http server are aborted (0 server hits vs 3 in the no-route control) and the in-page `fetch()` rejects rather than hanging. Raw output appended to `.ll/learning-tests/raw/playwright.txt`. Caveat: the record's `proven_version: 1.57.0` is the *Python* `playwright` distribution stamped by `ll-learning-tests`; the node package used here is 1.60.0, so the older `pageerror` claims were proven under a different version than the new ones. The mockup-author page must not rely on a stamped-pixel OCR claim — reading the stamped code back out of a PNG is judged by the model and checked by the canary, not proven here.
+
+_Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus):_ `fallback_html` restart removed (see Scope Note; `record-round` prints only `ok`|`fail`); authoring output capped per mockup; judge prompts reference file paths, never inline HTML; the `materialize` states are prompt/shell states with `next:` + `on_error:` and no hidden evaluator calls; the mockup files are written via the Write tool; `materialize` routes are classify-safe (`_: finalize_failed`).
 
 _Added 2026-09-29 (EPIC-3581 second review):_
 

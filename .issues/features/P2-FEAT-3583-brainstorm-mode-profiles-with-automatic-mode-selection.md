@@ -59,6 +59,7 @@ Brainstorm has a single fixed pipeline with no notion of mode: every brief runs 
   to `""` with their pinned values (`12`/`4`/`8`) in the `artifact` profile; every preset
   here states its own values, and a profile may lower them (never raise `max_finalists`
   above 8). Without this, non-empty context defaults would beat every profile.
+- **Per-profile lens catalog** (2026-09-29): each profile carries a `lenses` list (the pinned catalog rows below are starting points, changing one is fine if the schema test stays consistent); `frame` reads `profile.json` `lenses` instead of its hardcoded universal catalog, so mode changes what `diverge` is asked to explore, not only the axes and rubric. Closes the previously open schema gap.
 - Each profile axis declares enumerated bins (`axes: [{name, bins}, {name, bins}]`)
   per the FEAT-3582 Data Contract, so cells cannot be invented.
 - Every profile produces the canonical `portfolio.json`; `output_shape` changes only
@@ -95,7 +96,7 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 ### Types
 
 - `Axis`: `{name: str, bins: [str]}` — cell values must be members of `bins`
-- `Profile` (`extra` idea fields per mode are listed in § Pinned Preset Contents; the schema test asserts them): `{mode: str, reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
+- `Profile` (`extra` idea fields per mode are listed in § Pinned Preset Contents; the schema test asserts them): `{mode: str, lenses: [str], reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" (`web` deferred), materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
 - `ModeDecision`: `{mode: str, confidence: float, rationale: str}`
 
 ### Signatures
@@ -130,7 +131,7 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
 
 ### Configuration
-- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`, and — 2026-09-29 — `min_ideas`, `min_cells`, `max_finalists`, `ideas_per_round`), each defaulting to `""` (inherit). This supersedes any child issue's standalone `none`/`false` default for these keys. The `Profile` type also gains `reserve` (shortlist reserve size, read by FEAT-3582 `shortlist`; `2` when `ground=web`, else `0`). Further schema gaps from the 2026-09-29 review — a per-profile lens catalog, `output_shape` fallbacks, `judge_mode` — remain open and are not addressed here.
+- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`, and — 2026-09-29 — `min_ideas`, `min_cells`, `max_finalists`, `ideas_per_round`), each defaulting to `""` (inherit). This supersedes any child issue's standalone `none`/`false` default for these keys. The `Profile` type also gains `reserve` (shortlist reserve size, read by FEAT-3582 `shortlist`; `2` when `ground=web`, else `0`). `lenses` is added to the `Profile` type (2026-09-29 third review). Remaining schema gaps — `output_shape` fallbacks, `judge_mode` — stay open.
 
 ### Codebase Research Findings
 
@@ -190,18 +191,23 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review); the schema test must assert thes
 |-------|-----------|----------|--------------|------------|
 | axes | register `[literal, evocative, abstract]` × tone `[playful, neutral, serious]` | density `[sparse, balanced, dense]` × temperament `[warm, neutral, cool]` | scope `[local, module, cross-cutting]` × approach `[extend, refactor, new-component]` | customer `[existing, adjacent, new]` × model `[product, service, platform]` |
 | `reframe` | false | false | true | true |
-| `ground` | none | none | codebase | web |
+| `ground` | none | none | codebase | none (was `web`; deferred, EPIC-3581 third review) |
 | `materialize` | none | render | none | none |
 | `premortem` | false | false | true | true |
 | `output_shape` | grid | portfolio | winner_risks | winner_risks |
 | `min_ideas` / `min_cells` / `max_finalists` / `ideas_per_round` | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 |
-| `reserve` (shortlist) | 0 | 0 | 0 | 2 (`ground=web`; a `ground=web` override on any profile also sets 2) |
+| `reserve` (shortlist) | 0 | 0 | 0 | 0 (`ground=web` is deferred out of v1; the field stays in the schema for the follow-up) |
 | `extra` idea fields | — | `palette`, `layout_summary` | `touchpoints`, `creates` (FEAT-3584) | `assumptions`, `target_customer` |
+| `lenses` | universal catalog (today's `frame` list) | visual-craft lenses (e.g. typography, color, layout density, motion, metaphor, constraint) | system lenses (e.g. data flow, failure modes, extensibility, migration, testability, operability) | market lenses (e.g. customer job, pricing, distribution, incumbents, regulation, unit economics) |
 | rubric focus | breadth, distinctness, memorability | visual clarity, hierarchy, fit to brief | feasibility in this codebase, leverage, blast radius | demand evidence, differentiation, cost to test |
 
 - `output_shape: grid` renders the **grid map in addition to** the portfolio section (FEAT-3582 Acceptance Criteria: `brainstorm.md` presents a portfolio + the grid map); `portfolio` and `winner_risks` render the portfolio without the full grid map. `portfolio.json` is identical for all shapes.
 - Classifier confidence threshold: `0.6` (`>=` accepts). The classifier prompt lists the four modes with the one-line profile description; malformed/unknown output → `artifact`, recorded in `profile.json`.
 - `visual` keeps `premortem` off and `business` keeps `materialize` off; mixed briefs use per-knob overrides.
+
+## Review Decisions
+
+_Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measured):_ profiles gain `lenses` (per-mode lens catalog read by `frame`); `business` defaults to `ground: none` and `reserve: 0` because `ground=web` is out of v1; profile data reaches prompts through engine `prompt-block` stdout blocks captured by the states (FEAT-3667), not by prompt-side file reads; `classify_mode` is a prompt state and must declare `next:` + `on_error:` (no hidden evaluator call) and route via an explicit classify with `_: finalize_failed` where it gates.
 
 ## Impact
 

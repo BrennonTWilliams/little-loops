@@ -83,8 +83,10 @@ old loop.
   new `winners.md` (still `text`/`rationale` keys) unchanged, with or without the
   annotate-only premortem.
 - **Combined budget**: pin `max_steps` and `timeout` for the worst case (all
-  features on, L lenses, `classify_mode`, `ground_codebase`, `ground_web`, materialize's 4 fixed states, the tournament sub-loop, and the
-  fixed premortem cost of 3 parent steps / 2 LLM calls; profile gates cost 0 steps). FEAT-3582's rough worst case is ≈ 56 steps against 60 with no slack on the salvage path, so expect `max_steps` ≈ 75 and update `test_max_steps_is_60` deliberately. **Timeout** is derived, not guessed: `parent timeout ≥ PRE_TOURNAMENT_WORST_S + TOURNAMENT_TIMEOUT_S (1800) + TAIL_S (600)`, where `PRE_TOURNAMENT_WORST_S` = per-call latency measured in the baseline/reference runs (44–97 s in the 2026-06 runs) × the pre-tournament call count with everything on (9 diverge + classify + frame + reframe + dedup + shortlist + `ground_web` + materialize author/canary), plus screenshot time. Keep the engine constants (`PARENT_TIMEOUT_S` etc.) and a test asserting they equal `brainstorm.yaml`.
+  features on, L lenses, `classify_mode`, `ground_codebase`, `render_report`, materialize's 4 fixed states, the tournament sub-loop, and the
+  fixed premortem cost of 3 parent steps / 2 LLM calls; profile gates cost 0 steps). FEAT-3582's rough worst case is ≈ 55 steps against 60 with no slack on the salvage path, so expect `max_steps` ≈ 75 and update `test_max_steps_is_60` deliberately. **Timeout** is derived, not guessed: `parent timeout ≥ PRE_TOURNAMENT_WORST_S + TOURNAMENT_TIMEOUT_S (1800) + JUDGE_CALL_TIMEOUT_S (300) + TAIL_S (600)`, where `PRE_TOURNAMENT_WORST_S` = per-call latency measured in the baseline/reference runs (44–97 s in the 2026-06 runs) × the pre-tournament call count with everything on (9 diverge + classify + frame + reframe + dedup + shortlist + materialize author/canary; `ground_web` is deferred), plus screenshot time. Keep the engine constants (`PARENT_TIMEOUT_S` etc.) and a test asserting they equal `brainstorm.yaml`.
+- **Blind A/B (added 2026-09-29, third review)**: the mechanism-driven metrics below (cells, duplicates, call count) can all pass while idea quality gets worse, so a person compares — blind, order randomized — the old loop's top idea against the new winner on both pinned briefs. Pass = the new winner wins or ties on **both** briefs; record the verdicts in the Session Log or `postmortems/`. No LLM-judged usefulness metric replaces this.
+- **Merge-gate evidence for FEAT-3582**: the old-vs-new **core** comparison and the worktree real runs (`PYTHONPATH=<worktree>/scripts`) run *before* FEAT-3582 merges to `main` (every project is `local-editable`); the four-mode and all-features runs stay here. FEAT-3596's baseline (`postmortems/brainstorm-baseline/`) is the input.
 - **Comparison vs old loop** on 2 fixed briefs: duplicates retained, occupied grid
   cells, LLM call count, total input/output tokens, wall-clock runtime, and the
   tournament `tie_rate` (judge position sensitivity on the top-3 head-to-heads; FEAT-3582 — measure it here before revisiting the round-robin format). No LLM-judged "usefulness"
@@ -151,7 +153,7 @@ fixtures, a pinned combined budget, and a before/after comparison table.
 - `max_steps`/`timeout` pinned for the all-features worst case; `ll-loop validate
   brainstorm` passes.
 - Comparison table (duplicates, cells, LLM calls, tokens, runtime, `tie_rate`)
-  recorded against the old loop on 2 briefs; default-run LLM calls ≤ 45.
+  recorded against the old loop on 2 briefs; default-run LLM calls ≤ 30 (aligned with EPIC-3581 and § Expected Behavior; it previously said 45).
 - Issue stays open until FEAT-3584, FEAT-3585, and FEAT-3586 are done and their
   reference runs recorded.
 

@@ -20,6 +20,10 @@ reconcile_attempted: true
 
 # FEAT-3584: Brainstorm ground state with codebase and web evidence probes
 
+## Scope Note (2026-09-29, EPIC-3581 third review)
+
+**v1 ships `ground=codebase` only.** `ground=web` (`ground_web`, cited-URL fetch + quote probe, shortlist `reserve`) is **deferred to a follow-up issue**: it is the largest source of risk (SSRF surface, network flakiness, extra LLM call) for the least gain, and the `business` profile now defaults to `ground: none`. The web text below is retained as the follow-up's spec; the v1 acceptance criteria are the codebase ones. The `finalists.json` schema keeps `reserve` (default `0`) so the follow-up needs no contract change.
+
 ## Summary
 
 Add a gated `ground` state to the brainstorm engine that attaches evidence to ideas
@@ -190,10 +194,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
+**v1 (codebase only) — probe safety (added 2026-09-29):**
+- LLM-supplied strings never reach a shell: probes run as `subprocess` argv lists; `git grep` uses `-F -e <symbol> --`; issue IDs are validated against the ID pattern before `ll-issues show`.
+- `touchpoints` and `creates` are confined to the repo root: absolute paths, `..` traversal and paths resolving outside the root are rejected (`grounded: false`, reason `outside_repo`); `creates` parent-directory checks apply inside the root only. Fixtures cover `/etc/passwd`, `../x`, and a symlink escape.
+- `ground_codebase` is one parent step, routes with `next:` + `on_error:`, and adds no LLM call.
+
+**Full criteria (v1 codebase items; web items are the deferred follow-up):**
+
 - Codebase probes are deterministic and cover: missing touchpoint file, missing
   symbol, unknown issue ID, `creates` path that already exists, `creates` with a
   missing parent dir, and zero-touchpoint idea (`unknown`, not `false`).
-- Web source probe is non-LLM and covers: URL loads with quote present (pass, incl.
+- _(Deferred follow-up)_ Web source probe is non-LLM, disables redirects (`--max-redirs 0`, or revalidates scheme and resolved address on every hop) and covers DNS rebinding by connecting to the validated address, and covers: URL loads with quote present (pass, incl.
   after whitespace/entity/case normalization), URL loads without quote (fail),
   retrieval failure and HTTP 401/403/429 (`unknown`), non-http(s) scheme and
   private-range host (rejected → `unknown`), no web capability (`unknown`, not

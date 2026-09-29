@@ -90,12 +90,12 @@ All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `pyth
 
 ### Call Path
 
-`portfolio` -> (token `premortem`) `premortem_critic` -> `premortem_defender` -> `annotate` -> `validate_portfolio` -> `route_sink`
+`portfolio` -> (token `premortem`) `premortem_critic` -> `premortem_defender` -> `annotate` -> `render_report` -> `validate_portfolio` -> `route_sink`
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/brainstorm.yaml` — add `premortem_gate`, `premortem_critic`, `premortem_defender`, and the `annotate` module call between `portfolio` and `validate_portfolio`; extend report rendering
+- `scripts/little_loops/loops/brainstorm.yaml` — add `premortem_critic`, `premortem_defender`, and the `annotate` module call between `portfolio` and `render_report` (no gate state: `portfolio` prints the routing token); report sections come from `render-report` reading `premortem.json` (FEAT-3667 owns `brainstorm.md`)
 - `scripts/little_loops/brainstorm_engine.py` — `annotate`, `render_risks` (module created by FEAT-3582)
 - `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entries for `premortem_critic`/`premortem_defender` (interpolate `${context.brief}`)
 - `scripts/tests/data/loop_interpolation_baseline.json` — new shell-state sites, if any
@@ -105,7 +105,7 @@ All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `pyth
 - FEAT-3583 — supplies the resolved `premortem` value and the `premortem` context override
 
 ### Similar Patterns
-- `route_sink` in `brainstorm.yaml` — the gated-routing pattern for `premortem_gate`
+- `route_sink` in `brainstorm.yaml` — the gated-routing pattern (here folded into `portfolio`'s stdout token)
 
 ### Tests
 - `scripts/tests/test_brainstorm_engine.py` — direct unit tests of `annotate`/`render_risks`: valid critic+defender output → `premortem.json` + `unmitigated_fatal` flag; fatal risk with a mitigation → no flag; malformed / unknown-id / mismatched-risk / revised-body output → fail-open skip with `premortem_skipped`; `winners.md`, `ranking`, and slots untouched; wildcard not critiqued
@@ -130,9 +130,9 @@ _Carried from `/ll:refine-issue` — 2026-09-25, edited 2026-09-29 for the annot
 
 ## Implementation Steps
 
-1. Add `premortem_gate`, `premortem_critic`, `premortem_defender` between `portfolio` and `validate_portfolio` (blocked by FEAT-3582/FEAT-3583); a false gate routes straight past the finisher.
+1. Add `premortem_critic`, `premortem_defender` between `portfolio` and `render_report` (blocked by FEAT-3582/FEAT-3583); a `validate` token from `portfolio` routes straight past the finisher (`render_report` → `validate_portfolio`).
 2. Implement `annotate` and `render_risks` in `brainstorm_engine.py` with unit tests first (TDD): schema validation, immutability check, fail-open, `unmitigated_fatal` flag.
-3. Render `Risks & Kill Criteria` for the winner and runner-up in `brainstorm.md`; leave output unchanged when disabled.
+3. Extend `render-report` (FEAT-3667) to add `Risks & Kill Criteria` for the winner and runner-up when `premortem.json` exists; output unchanged when it does not.
 4. Add `FENCE_ROLES` entries; run `ll-loop validate brainstorm`.
 
 ## Impact
@@ -163,6 +163,7 @@ _Added 2026-09-29 (EPIC-3581 second review, `/ll:advise` with Opus; nothing here
 - **Annotate-only for v1.** Removed demotion/promotion, script-determined concession, `conceded`, `winner: null`, the all-conceded outcome, the sink-skip branch, and `premortem_rounds`. A same-model defender supplies a mitigation for almost every risk, so "fatal with no mitigation" would rarely concede; a P4 optional feature should not add nullable-winner complexity to the P2 core. FEAT-3582 dropped the matching Data Contract fields (its Review Decisions 23–24).
 - Replaced the round-bounded critic/defender loop with one critic call and one defender call over both critiqued ideas (4 parent steps including the gate). This also removes the per-run counter, the `retry_counter` hazard, and the missing executable counter test.
 - `annotate` is an engine-module command, not an inline script.
+- _2026-09-29 third review:_ **resolved** the two Confidence Check concerns — `render-report` (FEAT-3667) is the sole renderer and reads `premortem.json`; the critic/defender match rule is **by index and exact `failure_mode` string after whitespace/case normalization** (a mismatch in count, order or text is a fail-open skip). Stale "4 parent steps including the gate" wording removed: **3 parent steps**, gate folded into `portfolio`. Both prompt states declare `next:` + `on_error:` (no hidden evaluator call).
 - The prior Confidence Check scores (75 / 64) were for the demotion design and are void; re-run `/ll:confidence-check` after FEAT-3582/FEAT-3583 land.
 
 ## Related Key Documentation
