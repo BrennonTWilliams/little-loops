@@ -73,8 +73,26 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ### Files to Modify
 - `scripts/little_loops/cli/history.py`, `cli/harness.py`, `cli/logs.py`, `cli/ctx_stats.py`, `decisions.py`, `user_messages.py`, `mcp_server/tools.py`, `session_store/backend.py` (`_REMOTE_REFUSALS`), `skills/improve-claude-md/SKILL.md`; sites and line numbers are in BUG-3652's caller table.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/ctx_stats.py:_build_parser` — epilog "Exit codes" lists only `0`/`1 - No data found`; add the remote-refusal cause to exit 1 if `main_ctx_stats` refuses [Agent 2 finding]
+- `scripts/little_loops/cli/harness.py:_parse_harness_args` — epilog "Exit codes" (`0` pass, `1` fail, `2`, `3` abstain) does not mention a refusal; a refusal returning 1 is indistinguishable from a graded FAIL, so document it or pick a distinct return [Agent 2 finding]
+- `scripts/little_loops/cli/messages.py:main_messages` — `--reader` help text ("auto (DB first, JSONL fallback), db (DB only, error if unavailable)") already matches the degrade/refuse split; verify wording only [Agent 2 finding]
+- `scripts/little_loops/loops/lib/cli.yaml` (`ll_history_summary` description) — the description tells callers to redirect stderr; extend it for the refusal exit 1 if item 5 lands a fallback or documents the exit [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `cli/messages.py:main_messages` (sole caller of `extract_conversation_turns`), `cli/issues/decisions.py:cmd_decisions` (sole caller of `generate_from_completed`); `issue_history/parsing.py` and `issue_history/evolution.py` gate on `.exists()`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py` — re-exports `main_history`, `main_harness`, `main_logs`, `main_ctx_stats`; entry points in `scripts/pyproject.toml` (`ll-history`, `ll-harness`, `ll-logs`, `ll-ctx-stats`). **Boundary shape**: `main_history()` and `main_logs()` take **no `argv`** (read `sys.argv[1:]`), while `main_harness(argv=None)` and `main_ctx_stats(argv=None)` do; each body runs inside `cli_event_context(DEFAULT_DB_PATH, ...)`, so a `try/except HistoryUnsupported` must sit inside the `with` to return 1 without the context seeing an exception (unverified whether the exit-1 CLI event row is still written) [Agent 2 finding]
+- `scripts/little_loops/loops/sft-corpus.yaml` state `stage` — `ll-messages --sft-format ... --reader db ... 2>/dev/null || touch "$OUTPUT"`: this is the `reader=db` refuse path, so the new exit 1 is swallowed, `stage` emits an empty `raw.jsonl` and routes to `enrich` as success with the refusal text hidden. Decide whether `sft-corpus` should use `--reader auto` or fail loudly [Agent 1 + Agent 2 finding]
+- `.loops/ll-logs-telemetry-digest.yaml` state `run_stats` — branches on `grep -q "No history.db found" "$ERR"` against `logger.warning(...)` in `cli/logs.py` (stats aggregator, ~`:1556`); a new `ll-logs` degrade notice must **add** a stderr line, never reword that string, or `STATS_NO_DATA` flips to `STATS_OK` [Agent 2 finding]
+- `scripts/little_loops/loops/lib/common.yaml` fragment `harness_exit` — describes `ll-harness` exit codes only; no YAML currently invokes `ll-harness`, so a refusal exit 1 reaches only prose gates [Agent 2 finding]
+- `skills/analyze-history/SKILL.md` — runs `ll-history summary` / `analyze` interactively with no fallback; a refusal surfaces as a stderr line + exit 1 [Agent 2 finding]
+- `skills/create-eval-from-issues/SKILL.md` — tells users to run `ll-harness dsl evals/dsl/<source>/` (`cmd_dsl`, one of the five pre-resolve sites) with no fallback [Agent 2 finding]
+- `skills/improve-claude-md/SKILL.md` Step CT-0 — top of `--consume-triggers` mode; empty stdout currently reads as "No open Evolution Trigger candidates found", so the invisible failure masquerades as "no candidates". SKILL.md is 344 lines, so the guard fits under the 500-line cap without a companion extraction [Agent 2 finding]
+- `scripts/little_loops/cli/doctor.py`, `cli/issues/set_status.py`, `cli/issues/research_triage.py`, `cli/parallel.py`, `cli/sprint/run.py`, `cli/loop/run.py`, `work_verification.py`, `transport.py`, `runner_spec.py`, `parallel/{orchestrator,merge_coordinator,worker_pool}.py`, `fsm/{executor,continuity}.py` — also call `resolve_history_db()` but are writers/runtime, not reader verdict sites; confirm they belong to BUG-3652 (not this issue), and check `cli/doctor.py` (ENH-3525 history-DB check) specifically, since it is user-invoked and reads [Agent 1 finding]
+- `scripts/little_loops/issue_history/workspace_quality.py` — already handles `HistoryUnsupported` for the `attach` refusal and gates `activity` via `_gate_member`; `activity --workspace` members use per-member non-default paths, so a subcommand-entry `refuse_on_remote(None, ...)` applies to cwd config only [Agent 1 + Agent 3 finding]
+- `scripts/little_loops/history_reader/_base.py:_connect_readonly` — shared read chokepoint (`open_history_readonly(db_path, ensure=True)`) for `history_reader/{summary_dag,usage,runs,search,context,formatting}.py`; also reached by `cli/history_context.py:main_history_context` (separate CLI, callers wrap in `2>/dev/null || true`) [Agent 1 finding]
 
 ### Similar Patterns
 - `refuse_on_remote` callers in `session_store/lifecycle.py` and `session_store/queries.py`; CLI boundary handling in `cli/backfill_worker.py:main` and `cli/session.py:_main_migrate`.
@@ -82,8 +100,37 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_remote_operation_matrix.py` (`_REJECTED`), `test_remote_hooks.py` (fixture shape), `test_decisions.py`, `test_cli_decisions.py`, `test_cli_harness.py`, `test_improve_claude_md_skill.py`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+No test under `scripts/tests/` asserts that a reader CLI refuses or degrades under `provider: libsql`, and none of the reader-CLI test files use `HranaStub`/`libsql`; every verdict test is new. New tests reuse the `remote` fixture (duplicated in `test_remote_operation_matrix.py`, `test_remote_hooks.py`, `test_libsql_backend.py`; must `monkeypatch.delenv("LL_HISTORY_DB")` to override the autouse `conftest._isolate_history_db`) — hoist it into `conftest.py` or a shared helper rather than copying it into six more files.
+
+- `scripts/tests/test_cli_history.py` (`TestHistoryRootSubcommand`, `TestHistoryReworkSubcommand`, `TestHistoryQualitySubcommand`, `TestHistoryActivity`, `TestHistorySessionsJson`, `TestHistoryAnalyzeDbPath`) — new per-subcommand refuse tests; follow the `patch.object(sys, "argv", ...)` + `patch("pathlib.Path.cwd", ...)` shape. `TestHistoryActivity` already uses `delenv("LL_HISTORY_DB")` and stays safe if the refusal is scoped to cwd config [Agent 3 finding]
+- `scripts/tests/test_issue_history_cli.py` (`test_main_history_summary_empty`, `test_main_history_summary_json`, `test_main_history_summary_text`) and `scripts/tests/test_cli.py` `TestHistory*` — local `summary`/`analyze` coverage that must stay green; add the `summary` refuse test beside them [Agent 3 finding]
+- `scripts/tests/test_ll_logs.py` (`TestDiff` ~`:4193`, `TestEvalExport` ~`:4475`, `TestStats::test_stats_no_db_returns_0` ~`:2347`) — new `_cmd_diff`/`_cmd_eval_export` remote tests; assert stderr notice and unchanged stdout (Pattern: `capsys.readouterr().err` vs `.out`) [Agent 3 finding]
+- `scripts/tests/test_cli_ctx_stats.py` (`test_env_var_overrides_default_db_location` ~`:537`) — new `main_ctx_stats` remote notice test; uses `monkeypatch.chdir(tmp_path)` + `patch("sys.argv", ...)` [Agent 3 finding]
+- `scripts/tests/test_user_messages.py` (`test_extract_conversation_turns_basic`, ENH-3428 `reader="jsonl"` test ~`:2624`) and `scripts/tests/test_cli_messages.py` — no existing test exercises `reader="auto"` or `reader="db"`; add both remote cases (auto → JSONL, db → refuse) [Agent 3 finding]
+- `scripts/tests/test_mcp_server.py` (`test_history_search_tool_empty_db_returns_empty_list` ~`:227`, `test_call_unknown_tool_returns_error_not_exception` ~`:264` as the `is_error` shape) and `test_enh_3171_mcp_project_root.py::test_history_search_reads_db_under_explicit_root_from_foreign_cwd` (~`:179`) — **design hazard**: `refuse_on_remote(db, operation)` has no `root=` and reads config from cwd, so `refuse_on_remote(None, "history_search")` reads the wrong config when the MCP `project_root` differs from cwd; no test covers a remote config at `project_root` with a foreign cwd — write one [Agent 3 finding]
+- `scripts/tests/test_cli_harness.py` (`TestMainHarness`; ~13 direct `resolve_history_db(DEFAULT_DB_PATH)` calls at ~`:1359`, `:2982`, `:4094`, `:4149`, `:5180`–`:5315`) — many tests call `cmd_cmd(args)`/`cmd_skill(args)` directly, so a catch only in `main_harness` does not cover them; new remote tests must call `main_harness([...])`. Existing local tests are unaffected [Agent 3 finding]
+- `scripts/tests/test_libsql_backend.py::test_resolve_history_db_raises_for_the_remote_target` (~`:137`) and `TestSchemaSeam::test_ensure_db_refuses_a_remote_target_before_any_mutation` (~`:322`), `test_session_store_backend.py::test_backend_not_local_is_an_unsupported_error` — pin that `resolve_history_db` still raises `HistoryBackendNotLocal` and that it subclasses `HistoryUnsupported`; the fix must stay at call sites, not change `resolve_history_db` [Agent 3 finding]
+- `scripts/tests/test_history_store_chokepoint_gate.py` — AST gate failing on `sqlite3.connect(` outside `session_store/backend.py`; degrade paths must not add a raw connect [Agent 3 finding]
+- `scripts/tests/test_wiring_skills_and_commands.py` — `DOC_STRINGS_PRESENT` (~`:217`) requires `skills/improve-claude-md/SKILL.md` to keep `[ -f .ll/decisions.yaml ]` (BUG-2423) and `DOC_STRINGS_ABSENT` (~`:387`–`:391`) requires `decisions list --type rule 2>/dev/null | grep`; edit CT-0 only, leave CT-1 intact [Agent 3 finding]
+- `scripts/tests/test_enh494_skill_companions.py` (500-line cap; SKILL.md is 344) and `scripts/tests/test_fsm_fragments.py::test_all_cli_yaml_fragments_have_description` (keep the `ll_history_summary` description non-empty) [Agent 3 finding]
+- Docs gates to keep green: `scripts/tests/test_wiring_reference_docs.py` (`DOC_STRINGS_PRESENT`: `CONFIGURATION.md` must keep `history.backend.provider`, `history.backend.project_id`, `Remote history backend`; `CLI.md` must keep `ll-session migrate`) and `scripts/tests/test_docs_audience_gate.py` [Agent 3 finding]
+- Local-behavior regressions to guard: `test_cli_decisions.py::TestDecisionsCLIGenerate::test_generate_from_completed_writes_entries` and `test_decisions.py::TestGenerateFromCompleted::test_honors_ll_history_db_env_override` (ENH-3525) pin the local DB-vs-scan branch; the remote degrade branch must not re-gate the local path onto the file scan [Agent 3 finding]
+- Rejected-operation matrix: add one `_REJECTED` row per new operation name (`(operation, lambda)` calling `refuse_on_remote(None, "<op>")`); no test asserts the `_REMOTE_REFUSALS` key set or the default why-clause `"it is a local-file operation"`, so a key-per-operation test is new [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, `docs/reference/API.md`, `docs/ARCHITECTURE.md:758`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — no remote/libsql mention at all; `ll-history summary|analyze|export|root` (~`:389`–`:423`), `rework|quality|activity` (~`:457`–`:514`), and `eval-export` "degrades gracefully to `{}` if `history.db` is missing" (~`:565`) need a remote note [Agent 2 finding]
+- `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:125` — `--reader SOURCE` (`auto`/`db`/`jsonl`) row is where the auto→JSONL degrade vs `db` refuse is stated [Agent 2 finding]
+- `docs/guides/EVALUATION_GUIDE.md:481` — "Every `ll-harness` invocation writes a row to `harness_events` in `.ll/history.db`"; clarify against the refusal [Agent 2 finding]
+- `docs/reference/loops.md:493` — `sft-corpus` step "`ll-messages --sft-format --reader db` for DB-first transcript ingestion"; note it refuses under a remote backend [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` (`:316` `ll-ctx-stats` reader, `:502` `ll-harness` CLI-support row, `:606` session store row) — mention the remote-backend reader verdicts [Agent 2 finding]
+- `docs/reference/COMMANDS.md:586` and `docs/guides/MCP_SERVER_GUIDE.md` (`history_search` read-tools table) — `analyze-history` skill delegation and MCP `history_search` refusal [Agent 1 + Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md:3662` — `ll_messages` fragment with the `--sft-format` override note (adjacent to the known `:3660` `ll_history_summary` entry) [Agent 2 finding]
+- `docs/reference/API.md` — one stale-phrase check: BUG-3652 cites `API.md:9946` "SQLite-only prerequisite" (different from ARCHITECTURE.md's "SQLite-only chokepoint"); confirm whether it is in scope [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -141,6 +188,20 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 2. Guard the `skills/improve-claude-md` CT-0 block, run `ll-adapt --host <gemini|kimi-code|qwen> --apply`, and re-run `test_improve_claude_md_skill.py`.
 3. Add remote-stub tests per site plus local twins, update the reader docs, then run `python -m pytest scripts/tests/` (default local store) with `ruff check` and `mypy` clean.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Place the `except HistoryUnsupported` inside each `cli_event_context(...)` block (`main_history()` and `main_logs()` take no `argv`; `main_harness(argv=None)` and `main_ctx_stats(argv=None)` do), and test `main_harness([...])` rather than the `cmd_*` handlers, which existing tests call directly
+- Thread `root=project_root` for MCP `_tool_history_search`: `refuse_on_remote` has no `root=` and reads cwd config, so either resolve the backend against `project_root` first or accept cwd-only semantics and record it; add a remote-config-at-`project_root` + foreign-cwd test beside `test_enh_3171_mcp_project_root.py`
+- Keep `cli/logs.py`'s `"No history.db found"` warning string unchanged; add the degrade notice as a separate stderr line (`.loops/ll-logs-telemetry-digest.yaml` `run_stats` greps it)
+- Decide `loops/sft-corpus.yaml` `stage` (`--reader db ... 2>/dev/null || touch`): switch to `--reader auto` or surface the refusal, since the swallowed exit 1 currently yields an empty corpus routed to `enrich` as success
+- Update `cli/ctx_stats.py` and `cli/harness.py` epilog "Exit codes" text, and `loops/lib/cli.yaml` `ll_history_summary` description, for the new refusal exit 1
+- Update `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:125`, `docs/guides/EVALUATION_GUIDE.md:481`, `docs/reference/loops.md:493`, `docs/reference/HOST_COMPATIBILITY.md`, `docs/reference/COMMANDS.md:586`, `docs/guides/MCP_SERVER_GUIDE.md` alongside the four reference docs already listed
+- Update `skills/analyze-history/SKILL.md` and `skills/create-eval-from-issues/SKILL.md` to tell the model what a remote-refusal exit 1 means (no fallback exists in either today)
+- In `skills/improve-claude-md/SKILL.md`, edit CT-0 only (keep `[ -f .ll/decisions.yaml ]` and `decisions list --type rule 2>/dev/null | grep`, pinned by `test_wiring_skills_and_commands.py`); no checked-in `ll-adapt` host mirror of this skill was found, so run `ll-adapt --apply` and confirm whether it changes anything before treating step 2 as a mirror update
+- Hoist the `remote` fixture (currently copied in three test files) into `scripts/tests/conftest.py` or a shared helper before adding reader-CLI remote tests; add `_REJECTED` rows per new operation in `test_remote_operation_matrix.py`
+
 ## Impact
 
 - **Priority**: P3 - opt-in remote-backend users only; startup breakage is handled by BUG-3652.
@@ -170,4 +231,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-29T06:08:54 - `6853b72a-3d36-49af-862a-88cc681f2623.jsonl`
 - `/ll:refine-issue` - 2026-09-29T06:01:38 - `fce6088f-c5fa-4a10-a502-c439e3fca2a1.jsonl`
