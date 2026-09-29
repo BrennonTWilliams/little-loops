@@ -29,7 +29,7 @@ relates_to:
 
 Add native token-usage ingestion for the remaining runtime hosts that expose it (Qwen, Gemini, OMP, and any others whose transcripts carry usage), following ENH-3532's observation/replay contract, ENH-3528's provenance reporting, and ENH-3543's shared coverage policy. ENH-3544 owns the capability vocabulary. Deferred from ENH-3528.
 
-**Split 2026-09-28:** the six-host producer survey moved to ENH-3648 (unblocked) so evidence capture is not held behind this issue's `blocked_by` edges. This issue keeps the shared per-host dispatch, the refresh/re-ingestion operation, and normalizers for the hosts ENH-3648 recommends. Hosts whose semantics ENH-3648 finds distinct enough get their own issue; this issue then owns only the shared infrastructure plus the remaining hosts.
+**Split 2026-09-28:** the six-host producer survey moved to ENH-3648 (unblocked) so evidence capture is not held behind this issue's `blocked_by` edges. This issue keeps the shared per-host dispatch, the refresh/re-ingestion operation, and normalizers for the hosts ENH-3648 recommends. Hosts whose semantics ENH-3648 finds distinct enough get their own child issue under EPIC-3562; this issue then owns only the shared infrastructure plus the remaining hosts. ENH-3534 may close after handing off a host, but the epic cannot count that host complete while its child is open or deferred.
 
 ## Current Behavior
 
@@ -61,12 +61,12 @@ Use the existing shared observation selector for reporting; ENH-3543 owns reconc
 
 ## Acceptance Criteria
 
-- [ ] Every host ENH-3648 recommends for ingestion has a normalizer or a linked per-host issue; only verified complete observations are measured.
+- [ ] Every host ENH-3648 recommends for ingestion has a normalizer here or a per-host implementation issue with `parent: EPIC-3562`; only verified complete observations are measured. An open/deferred child or `unknown` survey verdict remains incomplete in the epic's eight-host ledger even if this shared-infrastructure issue closes.
 - [ ] An upgrade test starts with already-normalized raw rows missing usage, refreshes from available originals, then rebuilds twice with stable totals and attribution. Missing originals remain unavailable with a diagnostic.
 - [ ] Reporting uses the shared selector and remains explicitly unresolved until verified overlap reconciliation exists; identical counts never establish identity.
 
 - [ ] ENH-3544 capability entries for implemented hosts reflect ENH-3648's evidence, distinguishing proven unsupported paths from unknown ones, separately from ingestion implementation.
-- [ ] Each supported host has a normalizer with the same fixture categories as ENH-3532 (repeats, resets, partial records, multiple sessions).
+- [ ] Each implemented host has fixtures for the applicable producer risks from ENH-3648's findings (repeats, resets, partial records and multiple sessions where that behavior exists); inapplicable cases are identified rather than fabricated.
 - [ ] The normalizers stop stripping `message.usage` where it is needed, without changing other normalized output.
 - [ ] Ingestion and rebuild are idempotent and preserve live-only rows.
 

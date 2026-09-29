@@ -42,6 +42,7 @@ _Refreshed 2026-09-28 after BUG-3587 landed (b3b452e40)._
 
 - **In scope**: additive estimated/stale labels, observation-boundary metadata, and propagation through the context-state fallback text/JSON and `context-health-monitor.yaml`.
 - **Out of scope**: threshold/value-selection changes (done in BUG-3587), estimator accuracy, and redesign of ENH-3528 rendering. Wiring these new fields into the existing rendering contract is in scope.
+- Occupancy is stored in context state and is not a `usage_events` consumption observation; EPIC-3562's counted-once stored-consumption goal applies to token consumption, while this issue supplies the separate occupancy provenance and freshness contract.
 
 ## Program Design
 

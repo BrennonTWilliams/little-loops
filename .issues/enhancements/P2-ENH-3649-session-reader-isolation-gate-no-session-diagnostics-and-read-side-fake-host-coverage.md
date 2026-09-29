@@ -8,13 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T01:55:17Z'
-parent: EPIC-3562
-epic: EPIC-3562
 labels:
 - observability
 - multi-host
 relates_to:
 - ENH-3549
+- ENH-3656
 - ENH-3428
 - ENH-3429
 - ENH-3430
@@ -27,7 +26,7 @@ spike_completed: true
 
 ## Summary
 
-Finish read-side session isolation that does not depend on stored usage: a mechanical gate against direct host-transcript-root access, a named-cause warning in `ll-ctx-stats` on empty discovery, promotion of the ENH-3549 spike's fake-host injection into conformance tests, and a fix for the `extract_user_messages` host gate so fake hosts reach actual message/log readers. Split out of ENH-3549 (2026-09-28); ENH-3549 keeps the stored-usage cache-rate consumer, which depends on ENH-3532. This issue has no blockers.
+Finish read-side session isolation that does not depend on stored usage: a mechanical gate against direct host-transcript-root access, a named-cause warning in `ll-ctx-stats` on empty discovery, promotion of the ENH-3549 spike's fake-host injection into conformance tests, and a fix for the `extract_user_messages` host gate so fake hosts reach actual message/log readers. Split out of ENH-3549 (2026-09-28) and detached from EPIC-3562 (2026-09-29) because most work covers general message/log readers rather than token accounting. ENH-3549 keeps the stored-usage cache-rate consumer. This issue has no blockers; coordinate its empty-discovery stderr warning with ENH-3656's distinct stored-usage diagnostics so either can land first.
 
 ## Current Behavior
 

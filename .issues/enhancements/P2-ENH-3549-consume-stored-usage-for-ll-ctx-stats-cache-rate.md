@@ -14,10 +14,10 @@ labels:
 - multi-host
 blocked_by:
 - ENH-3532
+- ENH-3543
 - ENH-3651
 - ENH-3656
 relates_to:
-- ENH-3543
 - ENH-3546
 - ENH-3534
 - ENH-3649
@@ -28,9 +28,9 @@ relates_to:
 
 ## Summary
 
-Finish `ll-ctx-stats`'s move to a read-only consumer of stored normalized `usage_events` observations through `select_usage_observations`. ENH-3656 ships the Claude Code path and shared paired host/session filter first. This issue cuts over Codex only after its producer and current-session trigger are proven, then retires the remaining direct transcript accounting paths with explicit unavailable results where stored producers are absent.
+Finish `ll-ctx-stats`'s move to a read-only consumer of stored normalized `usage_events` observations through `select_usage_observations`. ENH-3656 ships the Claude Code path and shared paired host/session filter first. This issue cuts over Codex only after its producer, ENH-3543's coverage selector and current-session trigger are proven, then retires remaining direct transcript accounting paths only with an evidence-backed stored or unavailable verdict for each host.
 
-**Splits:** the reader-isolation gate, empty-discovery diagnostics and read-side fake-host coverage moved to ENH-3649 on 2026-09-28. The Claude stored-reader stage moved to ENH-3656 on 2026-09-29 so its work is not hard-blocked by Codex ingestion. ENH-3534 only widens host coverage and is not a blocker for this issue; unsupported current-session hosts remain explicitly unavailable. The old confidence scores covered the pre-split scope and were removed; re-score after the Codex freshness gate below is decided.
+**Splits:** the reader-isolation gate, empty-discovery diagnostics and read-side fake-host coverage moved to standalone ENH-3649 on 2026-09-28. The Claude stored-reader stage moved to ENH-3656 on 2026-09-29 so its work is not hard-blocked by Codex ingestion. ENH-3534 widens host coverage but is not a blanket blocker for this issue; a host with unknown native evidence is not a completed cutover verdict. The old confidence scores covered the pre-split scope and were removed; re-score after the Codex freshness and coverage gates below are decided.
 
 ## Current Behavior
 
@@ -40,7 +40,7 @@ Finish `ll-ctx-stats`'s move to a read-only consumer of stored normalized `usage
 
 ## Expected Behavior
 
-After ENH-3656 establishes the Claude stored reader, extend cache-rate accounting to Codex through `select_usage_observations(..., host=handle.host, session_id=handle.session_id)`, preserving latest eligible session, workspace/host scope and agent exclusion. Finish removing other direct transcript token accounting. The read never widens to all-session totals, infers zeros, parses transcripts, or backfills. Stored provenance (ENH-3546 for Claude, ENH-3532 for Codex), coverage qualification (ENH-3543, or the unreconciled-sum contract before it), and ENH-3656's as-of/staleness qualification pass through unchanged. Unverified/NULL host identity is not attributed to the selected host merely because its session ID matches.
+After ENH-3656 establishes the Claude stored reader, extend cache-rate accounting to Codex through `select_usage_observations(..., host=handle.host, session_id=handle.session_id)`, preserving latest eligible session, workspace/host scope and agent exclusion. Finish removing other direct transcript token accounting only after a per-host evidence verdict. The read never widens to all-session totals, infers zeros, parses transcripts, or backfills. Stored provenance (ENH-3546 for Claude, ENH-3532 for Codex), ENH-3543's coverage qualification, and ENH-3656's as-of/staleness qualification pass through unchanged. Unverified/NULL host identity is not attributed to the selected host merely because its session ID matches. For an unresolved live/rollout overlap, per-channel observation subtotals remain auditable, but `cache_hit_rate_pct` and other canonical numeric totals are unavailable instead of a double-counted rate.
 
 Reuse ENH-3656's distinct stderr diagnostics for no store, unreadable store, selected session not yet ingested, and session ingested but without usage. A previously stored value with unproven current-session freshness is stale or has explicit unknown lag, never silently current. Missing fields are unknown; nothing is labelled estimated without an estimator.
 
@@ -48,11 +48,11 @@ Reuse ENH-3656's distinct stderr diagnostics for no store, unreadable store, sel
 
 ENH-3651 owns hook-driven ingest, initial catch-up of already-ingested raw rows and incremental derivation. ENH-3656 owns the shared read-side as-of/staleness contract. This issue adds no `--ingest` flag: reads remain pure, and an unavailable result gives manual backfill guidance. A raw-transcript fallback would reintroduce the second token parser this issue removes.
 
-Before retiring `_codex_cache_usage`, this issue wires a real Codex lifecycle trigger to ENH-3651's shared worker and brings the selected current session through ingest → incremental derive → stored read with the required as-of qualification. Name the trigger, verify its event timing and transcript/rollout path, and test the actual adapter-to-worker path; a manually invoked worker or full-rebuild-only fixture is insufficient. ENH-3532's rollout normalizer and ENH-3651's rollout derive are both required. If Codex has no proven trigger, retain its direct reader and leave this issue open; do not declare a Codex stored-reader cutover complete. Other hosts without a proven stored producer/trigger are explicitly unavailable only when their direct reader is retired under this issue or a linked host-specific issue; that limitation is not completed eight-host coverage.
+Before retiring `_codex_cache_usage`, this issue wires a real Codex lifecycle trigger to ENH-3651's shared worker and brings the selected current session through ingest → incremental derive → stored read with the required as-of and ENH-3543 coverage qualification. Name the trigger, verify its event timing and transcript/rollout path, and test the actual adapter-to-worker path; a manually invoked worker or full-rebuild-only fixture is insufficient. ENH-3532's rollout normalizer, ENH-3651's rollout derive and ENH-3543's conservative selector are required. If Codex has no proven trigger, retain its direct reader and leave this issue open; do not declare a Codex stored-reader cutover complete. For another host, record ENH-3648's native-evidence verdict and the stored producer/trigger outcome before retiring its direct reader. A proven unavailable path gets an explicit diagnostic; an `unknown` survey result keeps a child follow-up open under EPIC-3562 and cannot be counted as completed eight-host coverage.
 
 ### Staging and issue ownership
 
-ENH-3656 owns the Claude path, paired host/session filter and diagnostics after ENH-3651 makes stored transcript usage current. This issue's `blocked_by` edges now describe only the final Codex/remaining-host cutover: ENH-3532 (rollout producer), ENH-3651 (shared incremental derive and Claude trigger), and ENH-3656 (shared stored reader). This issue owns the Codex trigger. ENH-3543 may land before either reader stage; whichever of ENH-3543/ENH-3656 lands first adds the shared filter, and this issue reuses it.
+ENH-3656 owns the Claude path, paired host/session filter and diagnostics after ENH-3651 makes stored transcript usage current. This issue's `blocked_by` edges describe the final Codex/remaining-host cutover: ENH-3532 (rollout producer), ENH-3543 (coverage selector and canonical-unavailable rule), ENH-3651 (shared incremental derive and Claude trigger), and ENH-3656 (shared stored reader). This issue owns the Codex trigger. ENH-3543 may land before the Claude reader stage; whichever of ENH-3543/ENH-3656 lands first adds the shared filter, and this issue reuses it.
 
 ### Which session id
 
@@ -61,7 +61,7 @@ ENH-3656 owns the Claude path, paired host/session filter and diagnostics after 
 ## Scope Boundaries
 
 - **In scope**: Codex stored-reader cutover, final retirement of remaining direct transcript token accounting, reuse of the paired host/session filter and diagnostics, and per-host cutover tests.
-- **Out of scope**: Claude reader/filter/diagnostic implementation (ENH-3656), reader isolation and empty-discovery diagnostics (ENH-3649), producer eligibility (ENH-3532/3534/3546), live/rollout reconciliation (ENH-3543), token normalization.
+- **Out of scope**: Claude reader/filter/diagnostic implementation (ENH-3656), reader isolation and empty-discovery diagnostics (standalone ENH-3649), producer eligibility (ENH-3532/3534/3546), implementing live/rollout reconciliation (ENH-3543), token normalization.
 
 ## Program Design
 
@@ -81,7 +81,7 @@ ENH-3656 owns the Claude path, paired host/session filter and diagnostics after 
 
 ### Decision Rules
 
-Preserve latest eligible session and host/workspace scope, and exclude agent records as before. Usage deduplication belongs to persisted identity/coverage policy, not a reader-local UUID filter: drop `seen_uuids`.
+Preserve latest eligible session and host/workspace scope, and exclude agent records as before. ENH-3656 resolves Claude direct-reader UUID behavior before this issue retires the remaining parser; ENH-3532/3543 own Codex identity/coverage. Do not substitute `(source_path, line_no)` for producer observation identity or add a new reader-local UUID filter.
 
 ## Integration Map
 
@@ -96,8 +96,8 @@ Preserve latest eligible session and host/workspace scope, and exclude agent rec
 ## Implementation Steps
 
 1. Reuse ENH-3656's store-backed selection and diagnostics; pin the existing Codex latest-session/host/agent and same-ID cross-host behavior.
-2. Verify a real Codex lifecycle trigger and transcript/rollout path through ENH-3651's worker, ENH-3532's normalizer, incremental derive and selected read. Retire `_codex_cache_usage` only after this passes.
-3. Remove other direct transcript token accounting only with explicit per-host stored availability/unavailability behavior; update docs and run `python -m pytest scripts/tests/`.
+2. Verify a real Codex lifecycle trigger and transcript/rollout path through ENH-3651's worker, ENH-3532's normalizer, incremental derive and ENH-3543's selected read. A same-thread live+rollout fixture must show one canonical rate when proven non-overlapping/matched, or no canonical rate with audit subtotals when unresolved. Retire `_codex_cache_usage` only after this passes.
+3. Remove another host's direct transcript token accounting only with its recorded ENH-3648 evidence and a proven stored replacement or explicit unavailable verdict; keep `unknown` host follow-ups under EPIC-3562. Update docs and run `python -m pytest scripts/tests/`.
 
 ## Impact
 
@@ -112,8 +112,9 @@ Preserve latest eligible session and host/workspace scope, and exclude agent rec
 - [ ] Existing Codex latest-session, workspace and agent selection stays equivalent (store-backed tests); ENH-3656's Claude path remains unchanged.
 - [ ] Reuse ENH-3656's four distinct diagnostics and stale/unknown-lag behavior; `--json` stdout stays parseable and reads do not mutate ingestion state. No `--ingest` flag exists.
 - [ ] A real Codex hook → ingest → incremental derive → read fixture passes before `_codex_cache_usage` is retired, including current-session freshness after a completed turn. A manual worker/full-rebuild-only test does not satisfy this criterion; a missing trigger leaves the direct Codex reader in place and this issue open.
+- [ ] Codex live+rollout observations for one verified thread are qualified by ENH-3543 before cutover: proven selected coverage yields a canonical rate once, while unresolved overlap yields `cache_hit_rate_pct = None` and per-channel audit subtotals, never a numeric unreconciled rate.
 - [ ] Codex rollout rows already present before ENH-3651's checkpoint and rows ingested after ENH-3532's normalizer lands yield the same selected observations in either issue landing order; no historical raw usage is skipped.
-- [ ] Other hosts lacking a proven stored producer/trigger are explicitly unavailable only when their direct parser is retired, documented as such, and linked to ENH-3534 or a host-specific follow-up. No host-wide unknown override or direct transcript token accounting remains when this issue is done.
+- [ ] Each other host's direct parser is retired only after ENH-3648's evidence and a stored producer/trigger or proven unavailable verdict are recorded. If a per-host child owns an unresolved cutover, its direct parser stays in place and EPIC-3562 stays open; this issue can close only after that handoff is explicit. No host-wide unknown override or unqualified direct transcript token accounting is introduced.
 - [ ] Missing/partial components stay unknown; nothing is labelled estimated without an estimator.
 
 ## Preserved Research Context
@@ -121,7 +122,7 @@ Preserve latest eligible session and host/workspace scope, and exclude agent rec
 _From `/ll:refine-issue` 2026-09-25; isolation-gate and fake-host findings moved to ENH-3649._
 
 - **Payload shape is host-dependent.** `claude-code`, `codex`, `kimi-code` yield host-native records; `qwen`, `gemini`, `omp` yield normalizer output (Claude-shaped, `message.usage` stripped); `opencode`, `pi` share the Claude loop. Codex `payload` is the inner payload of a `response_item`/`event_msg` record. Evidence: `sessions.py` "Payload rule (ENH-3420)", `_PARSERS`.
-- **UUID dedup lives only in the `ctx_stats` single-session reader** (`seen_uuids`; `test_deduplicates_by_uuid`). `_codex_cache_usage` does not dedup; `usage_events` backfill dedups via `raw_events` `(source_path, line_no)`. The stored-usage reader delegates identity/coverage to the shared selector.
+- **UUID dedup lives only in the `ctx_stats` single-session reader** (`seen_uuids`; `test_deduplicates_by_uuid`). `_codex_cache_usage` does not dedup; `raw_events` `(source_path, line_no)` prevents re-ingesting a physical line but does not deduplicate repeated producer usage across different lines. ENH-3546/3651/3656 settle Claude producer identity and numeric parity before this parser is retired.
 - **Home isolation for ctx-stats tests**: CLI-level tests patch `Path.home` (`test_cli_ctx_stats.py:test_resolves_qwen_chats_transcript`); unit tests patch the seam call site with a hand-built `SessionHandle` (helper `_handle`). `ctx_stats` imports `detect_sessions` at module level, so the patch target is `little_loops.cli.ctx_stats.detect_sessions`.
 - **Reusable helpers:** `token_provenance` (already imported by `ctx_stats`), `ctx_stats._known_int`, `sessions.handles_from_paths`/`session_id_for`.
 

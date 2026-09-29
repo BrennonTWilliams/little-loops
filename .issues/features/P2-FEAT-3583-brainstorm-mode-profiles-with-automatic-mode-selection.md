@@ -52,6 +52,12 @@ Brainstorm has a single fixed pipeline with no notion of mode: every brief runs 
   therefore renders.
 - **Unset vs. explicit**: knob context keys default to `""` (inherit from profile).
   An explicit `none`/`false` is an override that disables the profile's behavior.
+- **Overridable knobs** (2026-09-29): `reframe`, `ground`, `materialize`, `premortem`
+  **plus** the numeric knobs `min_ideas`, `min_cells`, `max_finalists` (clamped ≤ 8 after
+  resolution) and `ideas_per_round`. FEAT-3582 ships these numeric context keys defaulting
+  to `""` with their pinned values (`12`/`4`/`8`) in the `artifact` profile; every preset
+  here states its own values, and a profile may lower them (never raise `max_finalists`
+  above 8). Without this, non-empty context defaults would beat every profile.
 - Each profile axis declares enumerated bins (`axes: [{name, bins}, {name, bins}]`)
   per the FEAT-3582 Data Contract, so cells cannot be invented.
 - Every profile produces the canonical `portfolio.json`; `output_shape` changes only
@@ -79,7 +85,7 @@ FEAT-3582 already ships `resolve_profile`, the `profile.json` schema, and the `a
 
 - Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes with enumerated bins, profile-specific idea fields (under the core `extra` object), `ground` (none|codebase|web), `materialize` (none|render), tournament rubric, `premortem`, and output shape (rendering only).
 - `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below `0.6` falls back to `artifact`. Malformed or unknown-mode output also falls back to `artifact` and is recorded as such.
-- `resolve_profile` (script, extended from FEAT-3582): (1) base profile = explicit `mode=` if set, else classifier mode, else `artifact`; (2) each knob whose context value is non-empty overrides the base profile's value; (3) writes `${context.run_dir}/profile.json` including which knobs were overridden. An invalid explicit `mode=` or knob value fails the run (exit 1 → `finalize_failed`) rather than silently falling back.
+- `resolve_profile` (engine-module command `resolve-profile`, extended from FEAT-3582; `little_loops.brainstorm_engine`): (1) base profile = explicit `mode=` if set, else classifier mode, else `artifact`; (2) each knob whose context value is non-empty overrides the base profile's value; (3) writes `${context.run_dir}/profile.json` including which knobs were overridden. An invalid explicit `mode=` or knob value fails the run (exit 1 → `finalize_failed`) rather than silently falling back.
 
 Downstream states read resolved values from `profile.json`, and gated states route the way `route_sink` does today.
 
@@ -88,7 +94,7 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 ### Types
 
 - `Axis`: `{name: str, bins: [str]}` — cell values must be members of `bins`
-- `Profile`: `{mode: str, reframe: bool, axes: [Axis, Axis], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
+- `Profile`: `{mode: str, reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
 - `ModeDecision`: `{mode: str, confidence: float, rationale: str}`
 
 ### Signatures
@@ -123,7 +129,7 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
 
 ### Configuration
-- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`), each defaulting to `""` (inherit). This supersedes any child issue's standalone `none`/`false` default for these keys.
+- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`, and — 2026-09-29 — `min_ideas`, `min_cells`, `max_finalists`, `ideas_per_round`), each defaulting to `""` (inherit). This supersedes any child issue's standalone `none`/`false` default for these keys. The `Profile` type also gains `reserve` (shortlist reserve size, read by FEAT-3582 `shortlist`; `2` when `ground=web`, else `0`). Further schema gaps from the 2026-09-29 review — a per-profile lens catalog, `output_shape` fallbacks, `judge_mode` — remain open and are not addressed here.
 
 ### Codebase Research Findings
 
@@ -187,6 +193,8 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review); the schema test must assert thes
 | `materialize` | none | render | none | none |
 | `premortem` | false | false | true | true |
 | `output_shape` | grid | portfolio | winner_risks | winner_risks |
+| `min_ideas` / `min_cells` / `max_finalists` / `ideas_per_round` | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 |
+| `reserve` (shortlist) | 0 | 0 | 0 | 2 (`ground=web`; a `ground=web` override on any profile also sets 2) |
 | `extra` idea fields | — | `palette`, `layout_summary` | `touchpoints`, `creates` (FEAT-3584) | `assumptions`, `target_customer` |
 | rubric focus | breadth, distinctness, memorability | visual clarity, hierarchy, fit to brief | feasibility in this codebase, leverage, blast radius | demand evidence, differentiation, cost to test |
 

@@ -16,9 +16,10 @@ blocked_by:
 - ENH-3532
 - ENH-3647
 - ENH-3655
+blocks:
+- ENH-3549
 relates_to:
 - ENH-3528
-- ENH-3549
 - ENH-3655
 confidence_score: 70
 outcome_confidence: 63
@@ -62,7 +63,7 @@ The captures prove session identity and matching accounting totals, but not an a
 1. Complete matched coverage: select the rollout request set and suppress the matching live total. Keep per-channel subtotals for audit.
 2. Only the live total covers the verified interval: select it.
 3. Partial rollout coverage, unmatched legacy live rows, conflicting sums, ambiguous spans, uncertain `token_usage_record`/`token_count` overlap inside a mixed rollout, or mid-invocation compaction (never captured): `coverage='overlap_unresolved'` or `unknown`, with a reason. Do not drop a whole session's live rows because some rollout row exists, or certify a rollout request set while its internal old/new-shape coverage is uncertain.
-4. Anything unresolved is an **unreconciled observation sum** with unknown aggregate provenance (ENH-3528's contract). Cost/waste/export may not bypass the selector with direct all-row sums.
+4. Anything unresolved retains an **unreconciled observation sum** and per-channel subtotals for audit (ENH-3528's observation contract), with unknown aggregate provenance. That sum is not a canonical consumption total, cost/waste total or cache-hit-rate numerator/denominator. Canonical totals and derived rates for the unresolved coverage group are unavailable (`NULL`/`None`) with a reason. Independent proven coverage groups may contribute a labelled known subtotal, but an aggregate containing unresolved groups is partial and must not present that subtotal as a complete total. Cost/waste/export may not bypass this qualification with direct all-row sums. ENH-3549 applies the same rule to the Codex single-session cache rate before its stored-reader cutover.
 
 ### Attribution, filtering and export contract
 
@@ -70,7 +71,7 @@ Verified selection must preserve local invocation/run/state attribution. When th
 
 Reconcile complete candidate coverage before report filters such as `since`, model, or `require_run_id` discard potential counterparts. Define one observation-time/window policy for source reports and exports, including spans crossing the boundary; filtering must not make partial coverage appear complete or remove a matched request merely because its original `run_id` was absent. Keep audit subtotals separate from selected totals.
 
-ENH-3580 independently exports additive provenance columns. This issue owns how a shared snapshot retains selection and unresolved-coverage qualification without exposing private source identifiers. Specify a privacy-safe selected view/selection result plus audit metadata (or an equivalent representation) and version any additional allowlist change beyond ENH-3580's v2. Raw row listings may retain all observations, but built-in aggregate queries must use the canonical selection. Include `templates/dashboard.llat/template.html.j2`: its built-in cost query currently sums raw usage rows and cannot execute the Python selector inside the browser.
+ENH-3580 independently exports additive provenance columns. This issue owns how a shared snapshot retains selection and unresolved-coverage qualification without exposing private source identifiers. Before implementation, specify a privacy-safe materialized selected-observation table or view plus audit metadata in `build_snapshot_db`, and version any additional allowlist change beyond ENH-3580's v2. Raw `usage_events` listings may retain all observations for audit, but built-in aggregate queries must read the selected representation and exclude unresolved groups from canonical numeric sums. Include `templates/dashboard.llat/template.html.j2`: its built-in cost query currently sums raw usage rows and cannot execute the Python selector inside the browser. Arbitrary user SQL against raw snapshot tables is a raw-data inspection surface, not a promised canonical aggregate; label that distinction in the dashboard.
 
 ### Session filter (shared with ENH-3549)
 
@@ -109,10 +110,10 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 
 ## Implementation Steps
 
-1. Apply ENH-3655's PROVEN/REFUTED join result. Specify the attribution, filter and snapshot contracts here; if correlation remains unproven, use conservative unresolved selection.
+1. Apply ENH-3655's PROVEN/REFUTED join result. Specify the attribution, report-window, canonical-unavailable and materialized-snapshot contracts here; if correlation remains unproven, use conservative unresolved selection.
 2. Add coverage selection and add or reuse ENH-3656's paired `session_id` filter behind `select_usage_observations`, preserving verified attribution and qualification metadata.
 3. Route quality regressions per § Quality regressions.
-4. Integrate privacy-safe snapshot selection and built-in dashboard queries; add cross-reader/export regressions and run project checks.
+4. Materialize privacy-safe snapshot selection and qualification; route built-in dashboard queries through it, label arbitrary raw SQL distinctly, add cross-reader/export regressions and run project checks.
 
 ## Impact
 
@@ -126,14 +127,15 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 - [ ] Existing session/invocation columns are reused; old schemas and unverified legacy identities retain conservative behavior.
 - [ ] Selected request rows preserve verified run/state/invocation attribution; conflicting attribution is qualified, and per-state cost/waste totals remain consistent.
 - [ ] Date-window boundaries, model filters and `require_run_id` cannot create false completeness; tests cover counterpart rows outside the reporting window and initially unattributed requests.
-- [ ] Built-in dashboard aggregation and exported-snapshot queries agree with source selection, totals, qualification and audit subtotals for matched, partial and unresolved cases, without leaking private source identifiers.
+- [ ] Built-in dashboard aggregation and exported-snapshot queries use a materialized selected representation and agree with source selection, canonical totals, qualification and audit subtotals for matched (if ENH-3655 proves the join), partial and unresolved cases, without leaking private source identifiers. Arbitrary raw SQL is not mislabelled as selected accounting.
 - [ ] `select_usage_observations(..., host=..., session_id=...)` limits candidates to the verified host/thread pair and reconciles before report filtering; a single-session read never reports partial coverage as complete, and a same-ID row from another host never enters its totals.
 - [ ] `quality_regressions.py` and `agent_quality._usage_totals` either read through the selector or stay channel-pinned, with tests asserting the chosen behavior for sessions holding live + rollout rows.
 
 - [ ] Matching uses verified host + thread ID + turn span, never root/parent ID, run ID, timestamp proximity or equal counts alone; a sum mismatch downgrades to unresolved.
 - [ ] Complete matched coverage counts once; partial coverage, unmatched legacy rows, and conflicting or ambiguous observations stay qualified with channel subtotals.
+- [ ] Unresolved coverage retains audit observation sums/subtotals but yields no canonical numeric total or derived rate for that group; independent proven groups remain countable as a labelled known subtotal, never a complete aggregate when unresolved groups are present. The Codex single-session cache-rate consumer in ENH-3549 uses this same qualification.
 - [ ] A mixed rollout containing new-shape records and old-shape-only or ambiguous `token_count` events retains audit evidence; file-wide suppression cannot make incomplete request coverage appear complete.
-- [ ] Usage, cost, waste and shareable-export tests assert the same selection/qualification, including ENH-3528's unreconciled-sum fallback.
+- [ ] Usage, cost, waste and shareable-export tests assert the same selection/qualification, retaining ENH-3528's unreconciled-sum fallback for audit only while withholding a canonical total for unresolved coverage.
 
 ## Status
 

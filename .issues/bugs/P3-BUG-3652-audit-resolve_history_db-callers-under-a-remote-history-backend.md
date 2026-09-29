@@ -273,20 +273,22 @@ Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the s
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-29_
+_Added by `/ll:confidence-check` on 2026-09-29 (re-run on the narrowed scope)_
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 56/100 → LOW
 
 ### Concerns
-- RESOLVED by the split: class (a) reader sites moved to ENH-3657 (default verdict: named `refuse_on_remote`, with per-site degrades); hand-built `.ll/history.db` paths moved to ENH-3658. Re-run `/ll:confidence-check` on the narrowed scope.
 - Guard style disagrees across the codebase (narrow tuple in `set_status.py` vs broad `Exception` elsewhere); the issue picks `HistoryError`, which is consistent with the Decision Rules.
+- Two open judgment calls remain in the body: whether cascade children get their own history rows in `apply_status_transition`, and the "stated ceiling" for slow-but-alive endpoint overhead (no number chosen). Decide both before writing the tests that pin them.
 
 ### Outcome Risk Factors
-- Broad enumeration across ~45 call sites plus docs/tests, with moderate per-site depth on the reader layer and `wire_transports`/`apply_status_transition` (shared by 3-5 callers each).
-- Broad blast radius: `wire_transports` feeds 5 callers and `apply_status_transition` feeds the CLI, MCP tool and `preparation_policy`; mitigate by landing the two startup fixes and the `HistoryError` guard first, then the classification meta-test, with reader sites defaulting to a named `refuse_on_remote` refusal.
+- Broad enumeration: ~25 in-scope `resolve_history_db()` calls across ~13 source files (plus tests/docs), with moderate per-site depth (type widening through `SQLiteTransport`/`record_orchestration_run`/`process_issue_inplace`, moving the `set_status` history write out of `acquire_lock`).
+- Broad blast radius: `wire_transports` feeds 5 callers and `apply_status_transition` feeds the CLI, MCP tool and `preparation_policy`; mitigate by landing the two startup fixes and the `HistoryError` guard first, then the writer conversions, then the meta-test.
+- Two premises are inferred from code, not executed against `HranaStub` (remote `read_base_sha`; lazy network-free `SQLiteTransport` construction). Prove both first (Step 4 note) — if either fails, the prepatch and transport fixes change shape.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T05:54:19 - `84b20094-435f-46d0-882f-cf08768d6a92.jsonl`
 - `/ll:confidence-check` - 2026-09-29T05:15:44 - `bf65814b-8af2-43a0-8fe0-ec16e1b4857f.jsonl`
 - `/ll:verify-issues` - 2026-09-29T05:14:12 - `ae0846b5-655f-4247-a75a-7ca807ba2469.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-29T05:12:10 - `a5edb1e1-9d75-4b79-af5e-93bf4804228c.jsonl`

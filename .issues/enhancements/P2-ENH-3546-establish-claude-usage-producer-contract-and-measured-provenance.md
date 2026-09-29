@@ -37,7 +37,7 @@ Decide and implement which Claude usage observations can be persisted as `proven
 
 For each Claude acquisition path (live `result`, transcript `message.usage`):
 
-1. Establish the producer contract from captured fixtures, with the Claude Code version recorded: whether `input_tokens` is uncached, whether `cache_creation_input_tokens`/`cache_read_input_tokens` are always emitted, what an omitted field means, and what scope the figure covers (per request vs. per invocation).
+1. Establish the producer contract from captured fixtures, with the Claude Code version recorded: whether `input_tokens` is uncached, whether `cache_creation_input_tokens`/`cache_read_input_tokens` are always emitted, what an omitted field means, what scope the figure covers (per request vs. per invocation), and whether repeated assistant records are snapshots or distinct usage observations.
 2. Set `measured` only for new observations that satisfy that contract with valid known components; all others stay `unknown`.
 3. Legacy rows are not promoted.
 
@@ -54,6 +54,8 @@ Legacy observations remain unknown after rebuild, not only after migration. Rebu
 **Where the discriminator lives (2026-09-28):** `rebuild()` deletes and regenerates transcript `usage_events` from `raw_events`, so a discriminator stored only on `usage_events` is lost on rebuild. Store it on **`raw_events`** at ingest time and copy it to `usage_events` on replay — the same pattern BUG-3542 used for `host_basis` (v55 added it to both tables). The migration is ordered in the epic's § Schema coordination with ENH-3532 (which also adds a `raw_events` column).
 
 **Evidence capture is step one.** No `scripts/tests/fixtures/claude/` directory exists. Capture a headless `claude -p --output-format stream-json` run (live `result` path) and the matching on-disk transcript (`message.usage` path), with the Claude Code version recorded, before any code change. Include at least one cache-hit turn so `cache_read_input_tokens` is non-zero.
+
+Capture and document assistant `uuid` and `message.id` behavior across repeated transcript entries, including whether usage fields change before a final entry. The current `ll-ctx-stats` direct reader deduplicates by `uuid`, while `_backfill_usage_events` writes each qualifying raw line; neither rule is certified as the producer's observation identity. Provide the evidence to ENH-3651 for full/incremental derivation and ENH-3656 for numeric-parity or deliberate-correction tests. Do not choose a key from equal token values alone or add a redundant raw UUID column: the stored raw payload already carries these fields.
 
 ## Scope Boundaries
 
@@ -93,7 +95,7 @@ Legacy observations remain unknown after rebuild, not only after migration. Rebu
 - [ ] Legacy transcript observations remain unknown after migration, rebuild and repeated replay, even when their component values look complete; newly qualified observations remain measured through replay.
 - [ ] The per-path predicate covers malformed components/containers and explicit zero; no invalid component is coerced into measured zero, and a captured CLI version does not certify unversioned legacy input.
 
-- [ ] Fixtures plus a README record the contract for both Claude paths.
+- [ ] Fixtures plus a README record the contract for both Claude paths, including repeated assistant record identity (`uuid` versus `message.id`), changed usage on a repeated ID and the final-usage boundary; unsupported cases are explicitly unknown.
 - [ ] Contract-satisfying new rows persist as `measured`; malformed, partial or unverified rows stay `unknown`; legacy rows are unchanged (tests).
 - [ ] Live and transcript paths set provenance explicitly only at a verified host/path eligibility boundary; component validation and related docstrings are updated.
 

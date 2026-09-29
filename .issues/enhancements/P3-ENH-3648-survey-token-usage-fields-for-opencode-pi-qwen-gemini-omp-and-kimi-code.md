@@ -47,7 +47,7 @@ For each of `opencode`, `pi`, `qwen`, `gemini`, `omp`, `kimi-code`, record — w
 
 Evidence lands as sanitized, versioned fixtures under `scripts/tests/fixtures/<host>/` plus a per-host README section, following the `fixtures/codex/README.md` pattern. If ENH-3544 has landed, the survey also updates that host's typed telemetry entries; otherwise the per-host findings table is the hand-off to ENH-3544/ENH-3534.
 
-Hosts whose CLI is not installed or cannot be driven get `unknown` with the reason; the survey does not block on them.
+Hosts whose CLI is not installed or cannot be driven get `unknown` with the reason; the survey itself does not block on them. An `unknown` host is not an eight-host completion verdict: create a per-host follow-up with `parent: EPIC-3562` so the epic remains open until the evidence is obtained or its scope is explicitly revised.
 
 ## Scope Boundaries
 
@@ -79,9 +79,9 @@ Evidence-only; no production code ships here.
 
 ## Implementation Steps
 
-1. For each host, capture one live invocation and one on-disk session containing at least one tool call and, where possible, a resume.
+1. For each host, capture one live invocation and one on-disk session containing at least one tool call and, where possible, a resume; record an explicit `unknown` reason when capture cannot be performed.
 2. Sanitize and commit fixtures with version metadata; record findings in a per-host table here.
-3. Recommend per host: implement in ENH-3534, split to its own issue (if the host's semantics are distinct enough), or record as unsupported/unknown.
+3. Recommend per host: implement in ENH-3534, split to its own issue (if the host's semantics are distinct enough), or record as evidence-backed unsupported. For unresolved `unknown` results, file a child follow-up under EPIC-3562. Update the epic's eight-host completion ledger with the evidence and owners.
 
 ## Impact
 
@@ -94,7 +94,7 @@ Evidence-only; no production code ships here.
 
 - [ ] All six hosts have a findings row with CLI version, channel, fields, cache semantics, grain and identity — or an explicit `unknown` with the reason.
 - [ ] Every `supported` claim is backed by a committed fixture; every `unsupported` claim cites evidence of absence.
-- [ ] Each host has an ingestion recommendation, and any host needing its own implementation issue is filed and linked to ENH-3534.
+- [ ] Each host has an ingestion recommendation. Host-specific implementation issues and unresolved-`unknown` evidence follow-ups use `parent: EPIC-3562` and relate to ENH-3534 where relevant; merely linking them does not count as epic completion.
 
 ## Status
 
