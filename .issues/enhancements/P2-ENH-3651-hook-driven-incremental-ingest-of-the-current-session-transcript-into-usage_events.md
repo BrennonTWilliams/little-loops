@@ -16,6 +16,7 @@ relates_to:
 - ENH-3532
 blocks:
 - ENH-3549
+- ENH-3656
 ---
 
 # ENH-3651: Hook-driven incremental ingest of the current session transcript into usage_events
@@ -59,11 +60,15 @@ On first enablement, already-ingested `raw_events` may have no corresponding `us
 
 The derive mechanism covers every replayable usage channel produced by `_backfill_usage_events`, including `rollout` once ENH-3532 adds it; ENH-3532 owns Codex normalization and native deduplication, not a second derive engine. If a new normalizer lands **after** the checkpoint already passed its historical raw rows, its schema/derivation version must trigger a one-time replay of those rows and atomically establish the new checkpoint; merely deriving rows with larger IDs would lose the older observations. Test both ENH-3532/ENH-3651 landing orders. Prove the combined Codex ingest → incremental derive → selected read before ENH-3549 retires `_codex_cache_usage`. The hook trigger is initially Claude Code unless a verified adapter provides the same lifecycle event and transcript path for another host. Record the supported trigger hosts and make an unsupported host's current-session result explicitly unavailable until an ingest/derive trigger exists; do not claim an eight-host freshness guarantee from a Claude-only hook.
 
+**Freshness boundary for readers (2026-09-29 review):** commit enough source-specific ingest progress and derive-completion metadata for a read-only consumer to state how far the selected session was materialized. `usage_events.observed_at` is the observation time, not proof that the detached worker processed the current source tail. A global derive checkpoint is sufficient only if every eligible raw row through it is committed and a selected session's source cursor can be compared with its current source tail; skipped rows, late appends, rotation and partial writes must not make the global checkpoint falsely certify that session. Otherwise persist a per-session completion boundary. ENH-3656 reads this proof and reports as-of plus stale/unknown lag; it never treats an earlier stored value as fresh after a newer append and failed worker.
+
+**Trigger ownership:** this issue implements the shared ingest/derive worker and a verified Claude Code lifecycle trigger so ENH-3656 can ship first. It leaves a reusable host-adapter entry point and records Codex trigger requirements, but ENH-3549 owns wiring and proving the Codex runtime trigger during its later cutover. A manually invoked Codex rollout derive test proves the shared mechanism, not current-session Codex freshness. ENH-3651 can close before ENH-3532; ENH-3549 owns the combined Codex producer, trigger, derive and read test after both land.
+
 ## Program Design
 
 ### Types
 
-- No new token-accounting type; the incremental path emits the same `TokenUsage`/`usage_events` rows as `rebuild()`. Keep source-specific ingest progress separate from the last committed derived `raw_events.id` (or an equivalent replay checkpoint). Choose the source-row uniqueness link, checkpoint schema and first-enable catch-up before writing the migration; document how `rebuild()` updates it.
+- No new token-accounting type; the incremental path emits the same `TokenUsage`/`usage_events` rows as `rebuild()`. Keep source-specific ingest progress separate from the last committed derived `raw_events.id` (or an equivalent replay checkpoint). Choose the source-row uniqueness link, checkpoint schema, reader-visible as-of boundary and first-enable catch-up before writing the migration; document how `rebuild()` updates them.
 
 ### Signatures
 
@@ -86,14 +91,14 @@ The derive mechanism covers every replayable usage channel produced by `_backfil
 
 ### Dependent Files (Callers/Importers)
 - `ll-ctx-stats` and the usage/cost/waste readers via `select_usage_observations` (freshness only; no contract change).
-- The host adapters under `hooks/adapters/` (Claude Code first; Codex/OpenCode reach `transcript_path` differently, see the SessionStart handler).
+- The host adapters under `hooks/adapters/` (Claude Code trigger here; Codex trigger added under ENH-3549; Codex/OpenCode reach `transcript_path` differently, see the SessionStart handler).
 
 ### Similar Patterns
 - SessionStart detached worker launch in `session_start.py` (ENH-1830 / BUG-1882 / ENH-1945).
 - `pre_done` Stop handler: per-turn firing, diff-hash dedup, non-blocking (FEAT-3118).
 
 ### Tests
-- `test_session_store_lifecycle.py` (first-enable catch-up, incremental-vs-rebuild equivalence, cross-slice state, interrupted/concurrent workers and Codex rollout after ENH-3532), `test_hooks_integration.py`, hook-intent tests, a backfill-worker test.
+- `test_session_store_lifecycle.py` (first-enable catch-up, incremental-vs-rebuild equivalence, cross-slice state, interrupted/concurrent workers, source-tail/as-of proof and Codex rollout compatibility after ENH-3532), `test_hooks_integration.py`, hook-intent tests, a backfill-worker test. ENH-3549 owns the later real Codex hook-to-reader test.
 
 ### Documentation
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md`, `docs/reference/CLI.md` (freshness of stored usage), `docs/ARCHITECTURE.md` if the ingest/derive split is described there.
@@ -104,8 +109,8 @@ The derive mechanism covers every replayable usage channel produced by `_backfil
 ## Implementation Steps
 
 1. Measure: cost of `backfill_incremental` on a large growing transcript (does it rescan the whole file?) and the watermark interaction (`last_raw_event_ts` is global, so a hook-driven run must not skip or double-advance other sources). Define rotation/truncation behavior for the source-specific cursor.
-2. Choose and record the source-row uniqueness link, initial/version-change catch-up, transaction/checkpoint and cross-slice replay-state design. Prove equivalence with `rebuild()` on sliced ingestion, including both ENH-3532/ENH-3651 landing orders, a live-only-row-preserving check and interrupted/concurrent workers.
-3. Add the hook entry and detached launch with a throttle; confirm it never blocks a turn (timeout, `LL_NON_INTERACTIVE`). Record which host adapters actually trigger it.
+2. Choose and record the source-row uniqueness link, initial/version-change catch-up, transaction/checkpoint, reader-visible as-of boundary and cross-slice replay-state design. Prove equivalence with `rebuild()` on sliced ingestion, including both ENH-3532/ENH-3651 landing orders, a live-only-row-preserving check, interrupted/concurrent workers and a selected source that advances after a failed worker.
+3. Add the Claude hook entry and detached launch with a throttle; confirm it never blocks a turn (timeout, `LL_NON_INTERACTIVE`). Record which host adapters actually trigger it and the entry point ENH-3549 will use for Codex.
 4. Update docs; run `python -m pytest scripts/tests/`.
 
 ## Impact
@@ -125,7 +130,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Success Metrics
 
-- After a turn on a supported hook-trigger host, `ll-ctx-stats` reads that session's usage from `usage_events` within one throttle interval, with no read-time parsing or backfill.
+- After a turn on a supported hook-trigger host, `ll-ctx-stats` can read that session's usage and committed as-of boundary from `usage_events`/store metadata within one throttle interval, with no read-time parsing or backfill.
 - No measurable added turn latency (the hook returns after spawning the detached worker).
 
 ## Acceptance Criteria
@@ -135,16 +140,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - [ ] First enablement catches up already-ingested but underived raw rows. The derive checkpoint and rows commit together; crash-before-commit, crash-after-commit, concurrent-worker and later-rebuild tests prove no loss or duplicate rows.
 - [ ] A newly added usage normalizer replays historical eligible raw rows that predate the checkpoint; ENH-3532 before ENH-3651 and ENH-3651 before ENH-3532 produce the same Codex rollout observations.
 - [ ] Source ingest progress does not depend on the global `last_raw_event_ts` alone; append, rotation/truncation and a turn span crossing slice boundaries have fixture-backed behavior.
-- [ ] Once ENH-3532 lands, Codex rollout ingestion reaches stored observations through this incremental derive without a per-turn full rebuild; an end-to-end test covers ENH-3549's Codex cutover.
+- [ ] The shared derive accepts Codex rollout observations once ENH-3532 lands, without a per-turn full rebuild. This compatibility is tested after ENH-3532 under ENH-3549 if ENH-3651 lands first; ENH-3549 also owns the real Codex hook-to-reader test.
 - [ ] Live-channel rows are untouched; the SessionStart worker and the hook path can run concurrently without corrupting the `last_raw_event_ts` watermark.
 - [ ] The hook never blocks the turn: it only spawns the detached worker, honors `LL_NON_INTERACTIVE`, and is throttled.
 - [ ] Supported hook-trigger hosts are listed and tested; hosts without a proven trigger report unavailable current-session usage rather than silently claiming freshness.
+- [ ] A selected session's committed as-of boundary can be compared with its current source tail without parsing usage at read time. A newer append followed by a failed/skipped worker is stale or has explicit unknown lag, never fresh; checkpoint advancement cannot hide skipped sessions, late appends, rotation or partial tails.
 - [ ] Legacy transcript rows keep their existing provenance (ENH-3546); new rows follow whatever eligibility discriminator that issue defines.
 
 ## Scope Boundaries
 
-- **In scope**: the hook trigger, initial catch-up, incremental derive for replayable `usage_events` channels, atomic checkpoint coordination with `rebuild()`, throttle and docs.
-- **Out of scope**: the stored-usage cache-rate consumer and its diagnostics (ENH-3549); rollout/other-host normalization (ENH-3532/ENH-3534); producer eligibility (ENH-3546).
+- **In scope**: the Claude Code hook trigger, reusable host-adapter worker entry point, initial catch-up, incremental derive for replayable `usage_events` channels, atomic checkpoint/as-of coordination with `rebuild()`, throttle and docs.
+- **Out of scope**: the stored-usage cache-rate consumer and its diagnostics (ENH-3656/ENH-3549); Codex runtime trigger and cutover (ENH-3549); rollout/other-host normalization (ENH-3532/ENH-3534); producer eligibility (ENH-3546).
 
 ## Backwards Compatibility
 

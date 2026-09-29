@@ -7,7 +7,6 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:08Z'
-verify_verdict: VALID
 
 ---
 
@@ -27,7 +26,7 @@ Every caller either reaches the remote store correctly (a history read or write 
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+FEAT-3535 made `history.backend.provider: libsql` a supported configuration, but only the event writers and hooks were converted. Two main orchestrator startup paths (`cli/parallel.py:main_parallel`, `cli/sprint/run.py:_cmd_sprint_run`) and the shared `transport.py:wire_transports` sqlite branch still pre-resolve through `resolve_history_db()`, so a remote-configured user hits an unhandled `HistoryBackendNotLocal` before any work starts. Best-effort telemetry should never gate `ll-parallel` or `ll-sprint`; leaving the callers unaudited also means `ll-issues set-status` can change a status file and then raise. Loop YAMLs that gate on `ll-history summary`, `ll-parallel` or `ll-sprint run` (`loops/lib/cli.yaml`, `loops/sprint-build-and-validate.yaml`) flip to failure under a remote backend for the same reason.
 
 ## Proposed Solution
 
@@ -134,6 +133,19 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - Contested: `SQLiteTransport`'s default is `DEFAULT_DB_PATH` (remote-capable) yet `transport.py`, `cli/parallel.py` and `cli/sprint/run.py` pass `resolve_history_db()`; `cli/harness.py` deliberately "resolves once" so reader and writer agree (BUG-3181).
 - Remote tests are ordinary unmarked unit tests; each module defines its own `remote(tmp_path, monkeypatch)` fixture (`test_remote_hooks.py::remote`) that must `delenv("LL_HISTORY_DB")` (the autouse `_isolate_history_db` in `conftest.py` sets it), write `.ll/ll-config.json` with `history.backend.provider: libsql`, `chdir(tmp_path)`, clear the backend-config/verification caches, and run `migrate_remote`. Dead-endpoint tests call `remote.stop()` and assert exit 0 (`test_remote_ingestion_telemetry.py::TestBestEffortNeverAborts`). Local regression twins live in the same file (`test_remote_operation_matrix.py::test_local_sqlite_still_runs_the_same_operations`).
 
+_Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
+
+**Additional conventions in force (gap-analysis pass — gate, CLI-boundary and test-shape rules):**
+- No gate enumerates `resolve_history_db()` callers today. The AST gates share one shape: walk `_SRC_ROOT.rglob("*.py")` with `ast.walk`, match `ast.Call` nodes only, compare against a module-level `_ALLOWLIST` of reasoned entries, and pair it with a drift test that asserts stale or fully-migrated entries are empty ("remove these entries"). Evidence: `scripts/tests/test_history_store_chokepoint_gate.py`, `scripts/tests/test_host_resolution_chokepoint_gate.py`, `scripts/tests/test_usage_selection_chokepoint_gate.py`.
+- Allowlist keys come in two shapes, and the gates disagree: path-only → reason (`test_history_store_chokepoint_gate.py`, `test_host_resolution_chokepoint_gate.py`) versus `(rel_path, enclosing_function)` → reason with an `id(node) → func` owner map (`test_usage_selection_chokepoint_gate.py:_enclosing_functions`). Per-function classification (a)/(b)/(c) needs the second shape. Only the usage gate lacks a drift test. The host and usage gates also carry detector self-tests (`test_gate_detects_a_stray_site`).
+- No existing gate inspects `ast.ImportFrom`; a function-local `from x import name` is caught only because `ast.walk` descends into nested bodies and the call is matched by `Name.id`. The classification gate can rely on that and need not add `ImportFrom` matching, unless a site aliases the import.
+- No gate scans `skills/` or `hooks/scripts/`. The two non-Python callers (`skills/improve-claude-md/SKILL.md` CT-0 block, `hooks/scripts/context-monitor.sh`) sit in `python -c`/heredoc text and are outside every gate; the nearest audit is behavioral (`scripts/tests/test_history_target_hook_audit.py`, a `_resolve_once` spy over 9 hook paths).
+- CLI boundaries turn `HistoryError` into a clean exit 1 by writing `<prefix>: <exc>` to stderr with no traceback. Two styles exist and disagree: `Logger.error` with `except HistoryError` (`cli/session.py:_main_migrate`) versus bare `print(..., file=sys.stderr)` with the narrower `except HistoryUnsupported` (`cli/backfill_worker.py:main`). `cli/session.py:main_session` has no handler. Every other `except HistoryError` site degrades silently (`cli/logs.py`, `cli/ctx_stats.py`, `cli/history.py:807`, `history_reader/_base.py`) rather than exiting.
+- The refusal text is `"{operation} is not supported under history.backend provider 'libsql': {why}"` (`refuse_on_remote`, `session_store/backend.py`); `resolve_history_db` itself raises `"history.backend provider {p!r} has no local database path"` with `operation="resolve_history_db"` (`session_store/db.py`). Refusal tests assert exit code, operation name plus `"libsql"` in stderr, `"Traceback" not in err`, and zero requests seen by the stub (`test_remote_hooks.py::TestBackfillWorker`, `test_remote_operation_matrix.py::TestRejectedOperations`).
+- "Skip on remote" is inlined as `isinstance(<store>, RemoteTarget)` with function-local imports at 5 sites outside `session_store/` (`cli/session.py` ×2, `worktree_utils.py:export_history_db_env`, `hooks/session_start.py` ×2, `cli/doctor.py:_remote_target`); `RemoteTarget` is imported from `session_store.targets` at most sites but from `session_store.backend` at `cli/session.py:462`. Adding a fourth-plus inline check is consistent with the codebase; introducing a shared predicate would be a new convention.
+- Test fixtures re-declare per file (no `remote` in `conftest.py`). The shared recipe is `HranaStub(token=TOKEN).start()`, env `LL_HISTORY_AUTH_TOKEN`/`LL_HISTORY_URL`, `delenv("LL_HISTORY_DB")`, config with `url_env` and `project_id`, `chdir(tmp_path)`, `clear_verification_cache()` + `clear_backend_config_cache()` (plus `remote_telemetry.reset_for_tests()` in three fixtures) before and after, then `migrate_remote`. `TOKEN = "sentinel-token-DO-NOT-LEAK"` is asserted absent from output. CLIs are driven via `monkeypatch.setattr(sys, "argv", [...])` then `main_x()`, or by passing an argv list to `main([...])`.
+- Docs convention for per-CLI remote behavior: a bold lead-in ("**Under a remote history backend** …") plus a comma-separated list of refused operations, stating they are refused "before any network call" and that reads still work (`docs/reference/CLI.md` `ll-session` section; `docs/reference/CONFIGURATION.md` `Remote history backend` bullets, which carry no issue IDs). No CLI other than `ll-session` has such a paragraph today.
+
 ## Program Design
 
 ### Types
@@ -222,6 +234,7 @@ Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the s
 - Integration Map (Dependent Files): `cli/messages.py:280` -> `:281`. The `extract_conversation_turns()` call is at line 281 (import at :276); :280 is the closing bracket of the preceding `formatter = {...}[...]` expression.
 
 ## Session Log
+- `/ll:refine-issue:gap-analysis` - 2026-09-29T05:12:10 - `a5edb1e1-9d75-4b79-af5e-93bf4804228c.jsonl`
 - `/ll:verify-issues` - 2026-09-29T05:07:48 - `1bca72e1-aabf-43e5-89dc-106f3cd4dbd4.jsonl`
 - `/ll:verify-issues` - 2026-09-29T05:06:02 - `4f909cde-90d0-4dc3-a3b6-39c01e60c85b.jsonl`
 - `/ll:verify-issues` - 2026-09-29T05:05:13 - `ae1f9ace-139a-4564-bae7-910f1fa96a3f.jsonl`

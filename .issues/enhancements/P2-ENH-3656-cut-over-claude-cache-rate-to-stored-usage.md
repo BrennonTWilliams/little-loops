@@ -34,7 +34,7 @@ Cut over the Claude Code ll-ctx-stats cache-rate path to stored normalized usage
 
 ## Expected Behavior
 
-For the latest eligible Claude Code `SessionHandle`, read only persisted normalized observations via `select_usage_observations(host=handle.host, session_id=handle.session_id)`. Preserve workspace/host selection, agent exclusion and numeric semantics. Require the verified host/thread pair; same-ID rows from another host or unverified attribution never enter the result. Reads do not parse transcripts or mutate ingestion state.
+For the latest eligible Claude Code `SessionHandle`, read only persisted normalized observations via `select_usage_observations(host=handle.host, session_id=handle.session_id)`. Preserve workspace/host selection, agent exclusion and numeric semantics. Require the verified host/session pair; same-ID rows from another host or unverified attribution never enter the result. Reads do not parse transcripts or mutate ingestion state.
 
 The result carries stored provenance and coverage qualification. Distinguish no store, unreadable store, selected session not yet ingested, and ingested-without-usage in stderr while keeping JSON stdout parseable. A stored value is not automatically current: expose its committed as-of boundary and report stale or unavailable when the selected source has advanced beyond derived progress. A read may inspect source metadata to determine lag, but does not parse usage or start ingestion. Unknown lag is explicit. ENH-3651 owns the write-side cursor/checkpoint needed to support this proof.
 
