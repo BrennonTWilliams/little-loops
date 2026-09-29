@@ -4,10 +4,11 @@ type: ENH
 title: Introduce HistoryTarget through the history.db backend chokepoint (SQLite-only,
   no behavior change)
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T02:40:50Z'
+completed_at: '2026-09-29T02:59:42Z'
 blocks:
 - FEAT-3535
 verify_verdict: VALID
@@ -74,6 +75,18 @@ Add `LocalTarget`/`RemoteTarget`/`HistoryTarget` in `session_store/backend.py`, 
 
 `open_history` -> `_resolve_once` -> `resolve_backend` -> `SqliteBackend.connect`
 
+### Deviations
+
+- 2026-09-28: Design gave `_resolve_once(target)` one parameter. Implemented
+  `_resolve_once(target, *, reresolve_absolute: bool = False)`. Reason: the hook audit found
+  that no hook path reached `_resolve_once` (writers open through `schema.connect`/`ensure_db`,
+  which resolved via `_resolve_db_path`). Routing the seam through `_resolve_once` unchanged
+  would have stopped env/config redirecting a cwd-absolute `.ll/history.db` (an intentional
+  hook behavior), so the seam passes `reresolve_absolute=True` to keep `_resolve_db_path`'s
+  exact precedence. The entry points keep the default (verbatim absolute, BUG-3181).
+- 2026-09-28: `BackendConfig` did not exist; added a minimal frozen dataclass
+  (`provider`, `url`) in `backend.py`. FEAT-3535 owns the real field set.
+
 ## Implementation Steps
 
 1. Add `HistoryTarget`, `LocalTarget` and `RemoteTarget` (frozen dataclasses) beside `Backend` in `session_store/backend.py`.
@@ -97,11 +110,11 @@ Add `LocalTarget`/`RemoteTarget`/`HistoryTarget` in `session_store/backend.py`, 
 
 ## Acceptance Criteria
 
-- [ ] `python -m pytest scripts/tests/` exits 0 with no test changes other than annotation and fixture updates for the new target type.
-- [ ] `_resolve_once` returns a `LocalTarget` for every existing input shape, and `resolve_history_db()` returns the same `Path` as before for each.
-- [ ] `SqliteBackend.connect` called with a `RemoteTarget` raises `HistoryUnsupported`.
-- [ ] `test_history_store_chokepoint_gate.py` still passes and its `sqlite3.connect` allowlist does not grow.
-- [ ] Every hook writer path that opens the history database (`main_hooks`, `post_tool_use`, `user_prompt_submit`, `pre_compact`, `subagent_start`, `subagent_stop`, `sweep_stale_refs`, `session_start`) reaches `_resolve_once`; a test monkeypatches `_resolve_once`, drives each path, and asserts it was called.
+- [x] `python -m pytest scripts/tests/` exits 0 with no test changes other than annotation and fixture updates for the new target type.
+- [x] `_resolve_once` returns a `LocalTarget` for every existing input shape, and `resolve_history_db()` returns the same `Path` as before for each.
+- [x] `SqliteBackend.connect` called with a `RemoteTarget` raises `HistoryUnsupported`.
+- [x] `test_history_store_chokepoint_gate.py` still passes and its `sqlite3.connect` allowlist does not grow.
+- [x] Every hook writer path that opens the history database (`main_hooks`, `post_tool_use`, `user_prompt_submit`, `pre_compact`, `subagent_start`, `subagent_stop`, `sweep_stale_refs`, `session_start`) reaches `_resolve_once`; a test monkeypatches `_resolve_once`, drives each path, and asserts it was called.
 
 ## Related
 
@@ -111,6 +124,13 @@ Add `LocalTarget`/`RemoteTarget`/`HistoryTarget` in `session_store/backend.py`, 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Resolution
+
+- **Status**: Completed 2026-09-28
+- Added `LocalTarget`/`RemoteTarget`/`HistoryTarget`/`BackendConfig` to `session_store/backend.py`; `_resolve_once` returns a `HistoryTarget`; `Backend` methods take `Path | HistoryTarget`; entry points select the backend from `target.provider`; `SqliteBackend` raises `HistoryUnsupported` for a `RemoteTarget`.
+- `schema.connect`/`ensure_db` are target-aware through `_local_db_path`, which resolves via `_resolve_once(..., reresolve_absolute=True)`. All hook and plugin paths reach `_resolve_once` through this seam, so no hook module needed editing.
+- Tests: `TestHistoryTarget` in `test_session_store_backend.py`; new `test_history_target_hook_audit.py` (9 paths). Full suite: 27174 passed; 2 failures (`test_verify_evidence::test_no_new_unverifiable_evidence`, `test_claude_code_adapter::test_hooks_json_pre_done_timeout_covers_advisor_default`) fail identically on the untouched baseline.
 
 ## Status
 
@@ -126,8 +146,9 @@ _Added by `/ll:confidence-check` on 2026-09-28_
 - The hook audit (Step 5) has an unknown result: eight hook modules build a literal default-shaped path and several already wrap it in `resolve_history_db`. The test in the acceptance criteria settles which need edits.
 - `schema.connect` and `ensure_db` accept `Path | str` today, so the seam must decide how a default-shaped path resolves to a target; that rule already exists in `db.py::_resolve_db_path` and should be reused, not reimplemented.
 
-**Open** | Created: 2026-09-29 | Priority: P4
+**Completed** | Created: 2026-09-29 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T02:59:42 - `4d45d755-73ff-4de3-8bd1-bb8e866143f2.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:44:29 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`

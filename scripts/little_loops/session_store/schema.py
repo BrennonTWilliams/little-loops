@@ -16,9 +16,12 @@ import logging
 import sqlite3
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
+from little_loops.session_store.db import DEFAULT_DB_PATH
+
+if TYPE_CHECKING:
+    from little_loops.session_store.backend import HistoryTarget
 
 logger = logging.getLogger(__name__)
 
@@ -1594,7 +1597,29 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         conn.isolation_level = prior_isolation
 
 
-def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
+def _local_db_path(target: Path | str | HistoryTarget) -> Path:
+    """Resolve the target-aware seam's argument to a local database path (ENH-3650).
+
+    Routes through :func:`backend._resolve_once` with ``reresolve_absolute=True``,
+    which reproduces :func:`db._resolve_db_path`'s precedence exactly, so a
+    ``Path``/``str`` resolves as it always did. An already-typed
+    :class:`LocalTarget` is honored verbatim; a :class:`RemoteTarget` is refused
+    before anything is created (fail-closed).
+
+    Raises:
+        HistoryUnsupported: *target* is a remote target.
+    """
+    from little_loops.session_store import backend
+
+    resolved = backend._resolve_once(target, reresolve_absolute=True)
+    if not isinstance(resolved, backend.LocalTarget):
+        raise backend.HistoryUnsupported(
+            f"the local-SQLite schema seam does not support a {resolved.provider!r} target."
+        )
+    return resolved.path
+
+
+def ensure_db(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> Path:
     """Create the database at *path* (if needed) and apply pending migrations.
 
     Idempotent: safe to call on every session start. The parent directory is
@@ -1608,7 +1633,7 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
     in ``contextlib.suppress(Exception)``, which would otherwise silence
     diagnostic context).
     """
-    db_path = _resolve_db_path(path)
+    db_path = _local_db_path(path)
     legacy = db_path.parent / "session.db"
     if legacy.exists() and not db_path.exists():
         for suffix in ("", "-shm", "-wal"):
@@ -1635,7 +1660,7 @@ def ensure_db(path: Path | str = DEFAULT_DB_PATH) -> Path:
     return db_path
 
 
-def connect(path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
+def connect(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Open a connection to the session database, ensuring the schema first.
 
     Rows are returned as :class:`sqlite3.Row` so callers can index by name.

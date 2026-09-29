@@ -18,10 +18,14 @@ import pytest
 
 from little_loops.session_store.backend import (
     Backend,
+    BackendConfig,
     HistoryConnection,
     HistoryUnavailable,
     HistoryUnsupported,
+    LocalTarget,
+    RemoteTarget,
     SqliteBackend,
+    _resolve_once,
     connect_readonly,
     open_history,
     open_history_readonly,
@@ -280,3 +284,96 @@ class TestHistoryDbUnavailableSubclass:
 
         with pytest.raises(HistoryUnavailable):
             raiser()
+
+
+class TestHistoryTarget:
+    """ENH-3650: the chokepoint is target-typed; only LocalTarget is produced."""
+
+    def test_resolve_once_returns_local_target_for_absolute_path(self, tmp_path) -> None:
+        p = tmp_path / "x" / "custom.db"
+        resolved = _resolve_once(p)
+        assert resolved == LocalTarget(p)
+        assert resolved.provider == "sqlite"
+
+    def test_resolve_once_none_matches_resolve_history_db(self, tmp_path, monkeypatch) -> None:
+        from little_loops.session_store.db import resolve_history_db
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_HISTORY_DB", raising=False)
+        assert _resolve_once(None) == LocalTarget(resolve_history_db(None))
+
+    def test_resolve_once_env_override(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "env.db"))
+        assert _resolve_once(None) == LocalTarget(tmp_path / "env.db")
+
+    def test_resolve_once_passes_a_target_through(self, tmp_path) -> None:
+        local = LocalTarget(tmp_path / "a.db")
+        remote = RemoteTarget(BackendConfig(provider="libsql", url="http://x"))
+        assert _resolve_once(local) is local
+        assert _resolve_once(remote) is remote
+
+    def test_resolve_once_reresolve_absolute_matches_resolve_history_db(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        env_db = tmp_path / "env.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(env_db))
+        default_shaped = tmp_path / ".ll" / "history.db"
+        assert _resolve_once(default_shaped) == LocalTarget(default_shaped)
+        assert _resolve_once(default_shaped, reresolve_absolute=True) == LocalTarget(env_db)
+
+    def test_remote_target_provider_comes_from_config(self) -> None:
+        assert RemoteTarget(BackendConfig(provider="libsql", url="u")).provider == "libsql"
+
+    def test_sqlite_backend_rejects_remote_target(self) -> None:
+        remote = RemoteTarget(BackendConfig(provider="libsql", url="http://x"))
+        backend = SqliteBackend()
+        with pytest.raises(HistoryUnsupported):
+            backend.connect(remote)
+        with pytest.raises(HistoryUnsupported):
+            backend.connect(remote, check_same_thread=False)
+        with pytest.raises(HistoryUnsupported):
+            backend.connect_readonly(remote)
+        with pytest.raises(HistoryUnsupported):
+            backend.ensure_schema(remote)
+
+    def test_sqlite_backend_accepts_local_target_and_path(self, tmp_path) -> None:
+        backend = SqliteBackend()
+        for target in (tmp_path / "p.db", LocalTarget(tmp_path / "t.db")):
+            conn = backend.connect(target)
+            try:
+                assert conn.execute("SELECT 1").fetchone()[0] == 1
+            finally:
+                conn.close()
+        assert (tmp_path / "p.db").exists() and (tmp_path / "t.db").exists()
+
+    def test_schema_seam_rejects_remote_target_before_mutation(self, tmp_path, monkeypatch) -> None:
+        from little_loops.session_store.schema import connect, ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        remote = RemoteTarget(BackendConfig(provider="libsql", url="http://x"))
+        with pytest.raises(HistoryUnsupported):
+            ensure_db(remote)
+        with pytest.raises(HistoryUnsupported):
+            connect(remote)
+        assert not (tmp_path / ".ll").exists()
+
+    def test_schema_seam_accepts_local_target(self, tmp_path) -> None:
+        from little_loops.session_store.schema import ensure_db
+
+        assert ensure_db(LocalTarget(tmp_path / "s.db")) == tmp_path / "s.db"
+
+    def test_entry_points_select_backend_from_target_provider(self, tmp_path, monkeypatch) -> None:
+        import little_loops.session_store.backend as backend_mod
+
+        seen: list[str] = []
+        real = backend_mod.resolve_backend
+        monkeypatch.setattr(
+            backend_mod,
+            "resolve_backend",
+            lambda provider="sqlite": (seen.append(provider), real(provider))[1],
+        )
+        db = tmp_path / "e.db"
+        open_history(db).close()
+        open_history_readonly(db).close()
+        connect_readonly(db).close()
+        assert seen == ["sqlite"] * 3

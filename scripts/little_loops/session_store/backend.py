@@ -39,6 +39,7 @@ import importlib
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
@@ -65,6 +66,62 @@ class HistoryUnsupported(HistoryError):
 
 class HistoryOperationError(HistoryError):
     """A database operation failed for a reason other than the three above."""
+
+
+@dataclass(frozen=True)
+class BackendConfig:
+    """Connection settings for a non-filesystem provider (ENH-3650).
+
+    Deliberately minimal: FEAT-3535 owns the real field set (auth, timeouts).
+    Nothing produces one until a second provider is registered.
+    """
+
+    provider: str
+    url: str | None = None
+
+
+@dataclass(frozen=True)
+class LocalTarget:
+    """A history store on the local filesystem (the only target produced today)."""
+
+    path: Path
+
+    @property
+    def provider(self) -> str:
+        return "sqlite"
+
+
+@dataclass(frozen=True)
+class RemoteTarget:
+    """A history store with no filesystem path (reserved for FEAT-3535)."""
+
+    config: BackendConfig
+
+    @property
+    def provider(self) -> str:
+        return self.config.provider
+
+
+HistoryTarget = LocalTarget | RemoteTarget
+
+
+def _describe(target: HistoryTarget) -> str:
+    return str(target.path) if isinstance(target, LocalTarget) else f"{target.provider} store"
+
+
+def _local_path(target: Path | str | HistoryTarget, operation: str) -> Path:
+    """Return the filesystem path of a SQLite target, coercing a bare ``Path``.
+
+    Raises:
+        HistoryUnsupported: *target* is a :class:`RemoteTarget`.
+    """
+    if isinstance(target, RemoteTarget):
+        raise HistoryUnsupported(
+            f"SqliteBackend.{operation} does not support a {target.provider!r} target."
+        )
+    if isinstance(target, LocalTarget):
+        return target.path
+    return Path(target)
 
 
 @contextmanager
@@ -133,6 +190,10 @@ class HistoryConnection(Protocol):
 class Backend(Protocol):
     """A history-store backend: one provider's connection/migration surface.
 
+    ENH-3650: the methods take ``Path | HistoryTarget`` (a bare ``Path`` is a
+    :class:`LocalTarget`), so a remote store, which has no path, can be
+    expressed at this seam.
+
     Phase A (SQLite-only) types ``connect``/``connect_readonly`` concretely as
     :class:`sqlite3.Connection` rather than the abstract ``HistoryConnection``
     -- the only registered provider is SQLite, and every existing caller this
@@ -145,9 +206,11 @@ class Backend(Protocol):
 
     provider: str
 
-    def connect(self, path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection: ...
-    def connect_readonly(self, path: Path) -> sqlite3.Connection: ...
-    def ensure_schema(self, path: Path) -> None: ...
+    def connect(
+        self, target: Path | HistoryTarget, *, check_same_thread: bool = True
+    ) -> sqlite3.Connection: ...
+    def connect_readonly(self, target: Path | HistoryTarget) -> sqlite3.Connection: ...
+    def ensure_schema(self, target: Path | HistoryTarget) -> None: ...
     def supports(self, capability: str) -> bool: ...
 
 
@@ -166,7 +229,9 @@ class SqliteBackend:
     def supports(self, capability: str) -> bool:
         return capability in _SQLITE_CAPABILITIES
 
-    def connect(self, path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
+    def connect(
+        self, target: Path | HistoryTarget, *, check_same_thread: bool = True
+    ) -> sqlite3.Connection:
         """Open a writable connection, ensuring the schema first.
 
         ``check_same_thread=False`` opens a connection for a caller that
@@ -175,7 +240,11 @@ class SqliteBackend:
         lock, ENH-3526) -- ``schema.connect()``'s two-connection-per-call
         shape has no such parameter and stays unchanged for every other
         caller (the default path here delegates to it verbatim).
+
+        Raises:
+            HistoryUnsupported: *target* is a :class:`RemoteTarget`.
         """
+        path = _local_path(target, "connect")
         if check_same_thread:
             from little_loops.session_store.schema import connect as _connect
 
@@ -190,8 +259,9 @@ class SqliteBackend:
             raise HistoryUnavailable(f"could not open {path}: {exc}") from exc
         return conn
 
-    def connect_readonly(self, path: Path) -> sqlite3.Connection:
+    def connect_readonly(self, target: Path | HistoryTarget) -> sqlite3.Connection:
         """Strict read-only open: never creates or migrates the store (D19)."""
+        path = _local_path(target, "connect_readonly")
         try:
             conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
             conn.row_factory = sqlite3.Row
@@ -200,10 +270,10 @@ class SqliteBackend:
             raise HistoryUnavailable(f"could not open {path} read-only: {exc}") from exc
         return conn
 
-    def ensure_schema(self, path: Path) -> None:
+    def ensure_schema(self, target: Path | HistoryTarget) -> None:
         from little_loops.session_store.schema import ensure_db
 
-        ensure_db(path)
+        ensure_db(_local_path(target, "ensure_schema"))
 
 
 # Lazy-import registry: provider -> (module_path, class_name). Mirrors
@@ -230,9 +300,15 @@ def resolve_backend(provider: str = "sqlite") -> Backend:
     return getattr(module, class_name)()
 
 
-def _resolve_once(target: Path | str | None) -> Path:
-    """Resolve *target* via :func:`resolve_history_db`, except for an
-    already-absolute path, which is returned verbatim (BUG-3181).
+def _resolve_once(
+    target: Path | str | HistoryTarget | None, *, reresolve_absolute: bool = False
+) -> HistoryTarget:
+    """Resolve *target* to a :class:`HistoryTarget`. Only a :class:`LocalTarget`
+    is produced until FEAT-3535 registers a second provider.
+
+    An already-typed target passes through untouched. Otherwise the path is
+    resolved via :func:`resolve_history_db`, except for an already-absolute
+    path, which is returned verbatim (BUG-3181).
 
     An absolute path is, by construction, either a deliberate override (a
     test fixture, a scratch export target) or was already resolved by an
@@ -248,13 +324,20 @@ def _resolve_once(target: Path | str | None) -> Path:
     by a second, root-less resolution under a different (or foreign) cwd.
     Only a genuinely unresolved argument (``None``, or a relative path) goes
     through the full env -> config -> default precedence here.
+
+    ``reresolve_absolute=True`` is for the ``schema.connect``/``ensure_db``
+    seam only: it applies the full precedence to an absolute path as well,
+    which is exactly what ``ensure_db`` always did (the hooks hand it a
+    cwd-absolute ``.ll/history.db`` and rely on env/config redirecting it).
     """
-    if target is None or not Path(target).is_absolute():
-        return resolve_history_db(target)
-    return Path(target)
+    if isinstance(target, (LocalTarget, RemoteTarget)):
+        return target
+    if target is None or reresolve_absolute or not Path(target).is_absolute():
+        return LocalTarget(resolve_history_db(target))
+    return LocalTarget(Path(target))
 
 
-def connect_readonly(target: Path | str | None = None) -> sqlite3.Connection:
+def connect_readonly(target: Path | str | HistoryTarget | None = None) -> sqlite3.Connection:
     """Strict read-only open of the resolved history store (D19: never
     creates or migrates). Raises :class:`HistoryUnavailable` on failure.
 
@@ -264,11 +347,11 @@ def connect_readonly(target: Path | str | None = None) -> sqlite3.Connection:
     :func:`resolve_history_db`).
     """
     resolved = _resolve_once(target)
-    return resolve_backend().connect_readonly(resolved)
+    return resolve_backend(resolved.provider).connect_readonly(resolved)
 
 
 def open_history(
-    target: Path | str | None = None, *, check_same_thread: bool = True
+    target: Path | str | HistoryTarget | None = None, *, check_same_thread: bool = True
 ) -> sqlite3.Connection:
     """Open a writable connection, ensuring the schema first.
 
@@ -278,11 +361,11 @@ def open_history(
     long-lived cross-thread connection).
     """
     resolved = _resolve_once(target)
-    return resolve_backend().connect(resolved, check_same_thread=check_same_thread)
+    return resolve_backend(resolved.provider).connect(resolved, check_same_thread=check_same_thread)
 
 
 def open_history_readonly(
-    target: Path | str | None = None, *, ensure: bool = False
+    target: Path | str | HistoryTarget | None = None, *, ensure: bool = False
 ) -> sqlite3.Connection:
     """Open a read-only connection to the resolved history store.
 
@@ -302,10 +385,12 @@ def open_history_readonly(
             ``ensure=True``).
     """
     resolved = _resolve_once(target)
-    backend = resolve_backend()
+    backend = resolve_backend(resolved.provider)
     if ensure:
         try:
             backend.ensure_schema(resolved)
         except sqlite3.Error as exc:
-            raise HistoryUnavailable(f"could not ensure schema for {resolved}: {exc}") from exc
+            raise HistoryUnavailable(
+                f"could not ensure schema for {_describe(resolved)}: {exc}"
+            ) from exc
     return backend.connect_readonly(resolved)
