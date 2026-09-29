@@ -53,8 +53,9 @@ Brainstorm judges every idea as text, including visual ones: a "dense, warm-pape
 - **Render sandbox**: mockup HTML is untrusted LLM output. The screenshot step opens
   it via `file://` with all non-`file:` requests aborted (`page.route`), so no
   network access, CDN fonts, or beacons; deterministic screenshots follow.
-- Tournament pairs are judged from the two screenshots side by side (position
-  swapped, per the FEAT-3582 tournament specification).
+- Tournament pairs are judged from the two screenshots side by side (presentation
+  order counterbalanced, top-3 head-to-heads re-judged reversed, per the FEAT-3582
+  tournament specification).
 - Output includes a gallery section linking mockups + screenshots.
 - **Degradation, two distinct causes** (canary failure and verdict-proof failure share `html_canary_failed`), each with its own report note:
   - Playwright/node unavailable (harness fault) → judge HTML source for all
@@ -86,7 +87,7 @@ Add a gated `materialize` state to `scripts/little_loops/loops/brainstorm.yaml`,
 1. For each shortlisted idea, an LLM writes a self-contained HTML/SVG mockup to `${context.run_dir}/mockups/`.
 2. An inline `node -e` shell state (convention: `html-website-generator.yaml` `smoke_test`; `NODE_PATH="$(npm root -g)"`) captures a PNG per mockup. Harness fault → non-zero exit → `on_error` (degrade whole run); artifact failure → exit 0 with a `FAIL:` token (drop that idea).
 3. A `visual_canary` step renders a control PNG with a script-generated code word; the judge must read it back; a script compares. Mismatch → HTML-source judging. Independently, every screenshot carries a stamped code that each image-pair verdict must echo (see § Expected Behavior).
-4. `tournament` judges pairs from the two screenshots side by side, position swapped.
+4. `tournament` judges pairs from the two screenshots side by side, presentation order per the FEAT-3582 schedule.
 5. Output gains a gallery section linking mockups and screenshots, plus a degradation note naming the cause (Playwright missing vs. canary failed) when applicable.
 6. Render failures drop an idea only while ≥ 2 rendered finalists remain; below that, all finalists are judged from HTML source.
 
@@ -176,7 +177,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 1. Add the `materialize` state, gated on the resolved profile (FEAT-3583), writing only under `${context.run_dir}/mockups/`.
 2. Write the inline `node -e` screenshot step (`smoke_test` convention), resolving Playwright via `npm root -g`; add the Playwright screenshot assertion to the learning-test registry first.
 3. Add the `visual_canary` step and script comparison.
-4. Extend `tournament` to judge screenshot pairs (position swapped) and fall back to HTML-source judging on Playwright-missing, canary-failed, or render-floor, recording the `JudgeMode`.
+4. Extend `tournament` to judge screenshot pairs (schedule-fixed presentation order) and fall back to HTML-source judging on Playwright-missing, canary-failed, or render-floor, recording the `JudgeMode`.
 5. Add the gallery section to the output; drop per-idea render failures only while ≥ 2 rendered finalists remain.
 6. Validate with `ll-loop validate brainstorm`; the documented visual-mode reference run is owned by FEAT-3596. Keep browser probes out of the pytest gate.
 

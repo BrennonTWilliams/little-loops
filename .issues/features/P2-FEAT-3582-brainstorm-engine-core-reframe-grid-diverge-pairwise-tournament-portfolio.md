@@ -47,20 +47,27 @@ forced best-of hybrid.
 
 ## Expected Behavior
 
-1. `reframe` — generate N problem framings ("How might we…"), select 2–3 (skippable
-   per profile).
+1. `reframe` — generate N problem framings ("How might we…"), each with an LLM-emitted
+   1–5 `score` (specificity/usefulness as a lens on the brief); a script selects the top
+   3 by score (ties: generation order). Skippable per profile — a skipped `reframe`
+   writes one empty framing so `lenses.txt` lines stay `framing|lens`.
 2. `diverge` once per lens, with framings assigned round-robin across lenses (L
-   calls, not F×L) — prompt includes the running list of idea titles **and the
-   current per-cell occupancy**, and instructs the model to favor empty or
-   under-filled cells. Each idea is emitted with a grid cell whose two values must
-   come from the profile's enumerated axis bins. A script assigns stable IDs, normalizes each
-   cell value (strip + casefold, then map to the canonical bin spelling), and rejects
-   (flags `off_grid`) any value that still matches no bin. Off-grid ideas stay in
-   `ideas.jsonl` with `off_grid: true` but are excluded from
-   `shortlist`, `min_ideas`, and `min_cells`.
-3. `dedup` — one cheap LLM pass over titles only emits duplicate groups by idea ID;
-   a script collapses each group, keeping the **first-generated** idea as
-   representative (never "longest body"). The collapse **fails open**: unknown IDs are
+   calls, not F×L) — the prompt reads `diverge_state.md` (the running list of idea
+   titles **and the current per-cell occupancy**) and instructs the model to favor
+   empty or under-filled cells. Each idea is emitted with a grid cell whose two values
+   must come from the profile's enumerated axis bins. A per-lens `ingest` script state
+   (runs after every `diverge`) assigns stable IDs, normalizes each cell value (strip +
+   casefold, then map to the canonical bin spelling), rejects (flags `off_grid`) any
+   value that still matches no bin, and regenerates `diverge_state.md` for the next
+   lens. Off-grid ideas stay in `ideas.jsonl` with `off_grid: true` but are excluded
+   from `shortlist`, `min_ideas`, and `min_cells`; the report states the off-grid
+   share (a high share means the bins were poorly communicated in the prompt).
+3. `dedup` — one cheap LLM pass over `{id, title, body excerpt}` (first ~200 chars of
+   `body`) emits duplicate groups by idea ID. Titles alone are not enough: with
+   occupancy steering the model can relabel a paraphrase into an empty cell, which
+   would inflate `min_cells` and the finalist count. A script collapses each group,
+   keeping the **first-generated** idea as representative (never "longest body"). The
+   collapse **fails open**: unknown IDs are
    ignored, an ID appearing in more than one group stays in the first group only, groups
    with fewer than 2 valid members are ignored, and unparseable output skips dedup
    entirely (logged to `dedup.log`) — malformed output never drops ideas.
@@ -71,15 +78,24 @@ forced best-of hybrid.
    occupied (a 3×3 grid can have 9), drop the lowest-occupancy cell(s) until the cap is
    met (ties: drop the later cell in grid order); dropped cells are listed in
    `shortlist.json` and the report.
-5. `tournament` — Swiss format, script-built and script-tallied, run as a
-   **sub-loop** (one parent step); each pair is judged in two independent LLM
-   calls (one per position order). See § Tournament Specification.
-6. `portfolio` — script writes canonical `portfolio.json` (winner, runner-up, wildcard — see § Data Contract for the slot rules) and `winners.md` (the non-null portfolio members, in
-   that order; `top_k` is removed); hybrid only when `synthesize=true`.
-7. `validate_portfolio` (script, **before any sink**) — fail when post-dedup idea
-   count < `min_ideas`, occupied cells < `min_cells`, eligible finalists < 2, or
-   winner/runner-up/wildcard IDs do not resolve in `ideas.jsonl`.
-8. `verify_artifacts` — remains after sinks as a report-integrity check.
+5. `check_floors` (script, **before `tournament`**) — the generation and finalist floors
+   (post-dedup on-grid ideas ≥ `min_ideas`, occupied cells ≥ `min_cells`, finalists ≥ 2)
+   are checked as soon as `shortlist` has run, so a doomed run (0 ideas, 1 finalist)
+   fails before spending any judge call and never reaches a 0- or 1-player tournament.
+   Routes to `finalize_failed`. It shares **one script body** with `validate_portfolio`
+   (invoked with a stage argument) so the two checks cannot drift.
+6. `tournament` — full **round-robin** over the finalists, script-built and
+   script-ranked, run as a **sub-loop** (one parent step); one LLM judge call per pair
+   with the presentation order counterbalanced across finalists, plus a reversed-order
+   probe of the top-3 head-to-heads. See § Tournament Specification.
+7. `portfolio` — script writes canonical `portfolio.json` (winner, runner-up, wildcard — see § Data Contract for the slot rules) and `winners.md` (the non-null portfolio members, in
+   that order, each line carrying a `role` key of `winner`/`runner_up`/`wildcard`;
+   `top_k` is removed); hybrid only when `synthesize=true`.
+8. `validate_portfolio` (script, **before any sink**) — reruns the `check_floors` body
+   (post-dedup idea count < `min_ideas`, occupied cells < `min_cells`, eligible
+   finalists < 2 all fail) and adds reference integrity: winner/runner-up/wildcard IDs
+   must resolve in `ideas.jsonl`.
+9. `verify_artifacts` — remains after sinks as a report-integrity check.
 
 Sinks (`none|file|issue|decision`) keep their contract and read `winners` from the
 portfolio. No sink executes unless `validate_portfolio` passed.
@@ -92,7 +108,7 @@ portfolio. No sink executes unless `validate_portfolio` passed.
 
 **Goal**: Get a diverse, de-duplicated set of ideas ranked by structured pairwise judgment.
 
-**Outcome**: `brainstorm.md` presents a portfolio (winner, runner-up from a different grid cell, wildcard) plus the grid map, and the run fails loudly if too few ideas or cells were produced.
+**Outcome**: `brainstorm.md` presents a portfolio (winner, runner-up, and a wildcard that differs from the winner on both grid axes) plus the grid map, and the run fails loudly if too few ideas or cells were produced.
 
 ## Motivation
 
@@ -109,15 +125,17 @@ This feature is the core (C + B + A) that every other EPIC-3581 child builds on.
 
 Rewrite the state graph in `scripts/little_loops/loops/brainstorm.yaml` (keep `init`, sinks, `finalize_*`, `on_handoff: spawn`):
 
-1. `reframe` — LLM emits N "How might we…" framings; a script selects 2–3.
-2. `diverge` — one call per lens (framing assigned round-robin; `lenses.txt` lines pair `framing|lens`); prompt carries the running list of idea titles and per-cell occupancy and asks for empty/under-filled cells; each idea is emitted as a tagged JSON line with `cell` (2 values, each from the profile's axis bins). A script assigns IDs and flags off-grid cells; off-grid ideas do not count toward `min_cells`.
-3. `dedup` — an LLM pass over `{id, title}` pairs only emits duplicate groups (`DUP_GROUPS_JSON:`); a Python heredoc collapses each group to its first-generated member. Duplicate detection and per-cell representative selection are separate steps.
+1. `reframe` — LLM emits N "How might we…" framings with a 1–5 `score` each; a script selects the top 3 (ties: generation order) and seeds `diverge_state.md` (empty titles, zero occupancy).
+2. `diverge` — one call per lens (framing assigned round-robin; `lenses.txt` lines pair `framing|lens`); the prompt reads `diverge_state.md` (running idea titles + per-cell occupancy) and asks for empty/under-filled cells; each idea is emitted as a tagged JSON line with `cell` (2 values, each from the profile's axis bins). **`ingest`** (script, after every `diverge`, routes back to `pop_lens`) assigns IDs, flags off-grid cells, appends `ideas.jsonl`, and rewrites `diverge_state.md`; off-grid ideas do not count toward `min_cells`.
+3. `dedup` — an LLM pass over `{id, title, body excerpt}` emits duplicate groups (`DUP_GROUPS_JSON:`); a Python heredoc collapses each group to its first-generated member. Duplicate detection and per-cell representative selection are separate steps.
 4. `shortlist` — script takes single-idea cells; one batched LLM call picks a representative for every multi-idea cell (fallback: first-generated). Cap at `max_finalists` (lowest-occupancy cell dropped first; see Expected Behavior 4); writes `finalists.json` for the tournament child.
-5. `tournament` — a sub-loop state (`loop:`; the child runs its own executor and `max_steps`, so the parent spends one step). Swiss bracket per § Tournament Specification; script builds pairings, two independent judge calls per pair (order `ab`, then order `ba`, neither sees the other), script tallies. The child is `brainstorm-tournament.yaml` (see § Tournament Specification → Child loop); verify it against `ll-loop list`, `ll-verify-package-data`, and the built-in loop count in `README.md`.
-6. `portfolio` — script writes `portfolio.json` (the one canonical portfolio format) and `winners.md`; hybrid only when `synthesize=true`. A profile's `output_shape` affects only how `brainstorm.md` is rendered, never `portfolio.json`.
-7. `resolve_profile` (script, after `init`) — owned here so FEAT-3583 only adds presets and the classifier: reads the profile named by context `mode` (default `artifact` until FEAT-3583 flips it to `auto`), validates it, writes `${context.run_dir}/profile.json`. Ships with the built-in `artifact` profile only. Every later state reads resolved values from `profile.json`; no state hardcodes profile behavior.
-8. `validate_portfolio` — gate before `route_sink`; enforces generation and finalist floors (§ Data Contract) and winner-reference integrity. Fails to `finalize_failed` with no sink executed.
-9. `verify_artifacts` — report-integrity check after sinks.
+5. `check_floors` — script gate between `shortlist` and `tournament` (Expected Behavior 5); failure → `finalize_failed`.
+6. `tournament` — a sub-loop state (`loop:`; the child runs its own executor and `max_steps`, so the parent spends one step). Round-robin per § Tournament Specification; script builds the pair schedule, one judge call per pair, script ranks. The child is `brainstorm-tournament.yaml` (see § Tournament Specification → Child loop); verify it against `ll-loop list`, `ll-verify-package-data`, and the built-in loop count in `README.md`.
+7. `portfolio` — script writes `portfolio.json` (the one canonical portfolio format) and `winners.md`; hybrid only when `synthesize=true`. A profile's `output_shape` affects only how `brainstorm.md` is rendered, never `portfolio.json`.
+8. `resolve_profile` (script, after `init`) — owned here so FEAT-3583 only adds presets and the classifier: reads the profile named by context `mode` (default `artifact` until FEAT-3583 flips it to `auto`), validates it, writes `${context.run_dir}/profile.json`. Ships with the built-in `artifact` profile only. Every later state reads resolved values from `profile.json`; no state hardcodes profile behavior.
+9. `validate_portfolio` — gate before `route_sink`; reruns the `check_floors` body (§ Data Contract floors) and adds winner-reference integrity. Fails to `finalize_failed` with no sink executed.
+10. `verify_artifacts` — report-integrity check after sinks.
+11. `finalize_done` / `finalize_failed` — rewrite the prompts that name `ranked.md`/`clusters.md`/saturation artifacts (they no longer exist) to name `portfolio.json`, `ideas.jsonl`, `tournament.json`, and the grid map.
 
 Reuse `parse_tagged_json` and `queue_pop` from `lib/common.yaml`. Remove difflib, `novelty_threshold`, `max_saturation`, `novelty_backend`, `saturation.txt`.
 
@@ -131,52 +149,54 @@ Owned by this issue; FEAT-3583..3586 extend it, never redefine it.
 - **Cell vocabulary**: each profile declares `axes: [{name, bins: [str, …]}, {name, bins: [str, …]}]` (FEAT-3583). A cell is valid only if both values are in the bins. The core ships a default 3×3 grid for runs without a profile.
 - **Floor defaults** (pinned 2026-09-28; a profile may lower them): `min_ideas: 12`, `min_cells: 4` (default 3×3 grid), framings selected by `reframe`: 3 (ties broken by generation order), `max_finalists: 8`.
 - **Floors**: generation floor `min_ideas` counts post-dedup, on-grid ideas; `min_cells` counts distinct on-grid cells; finalist floor = at least 2 finalists in `eligible`. `eligible` is reduced only by *filtering* steps (ground, materialize); it is **never reduced by premortem concession** — a conceded finalist stays in `eligible` and is also listed in `conceded`, so FEAT-3586's all-conceded outcome (`winner: null`, `conceded == eligible`) is valid and not a floor violation. Floors are rechecked in `validate_portfolio`, not only after `diverge`.
-- **`portfolio.json`**: `{winner: id | null, runner_up: id | null, wildcard: id | null, ranking: [id], eligible: [id], conceded: [id], flags: {id: [str]}, tie_rate: float, low_confidence: bool}` (`tie_rate`/`low_confidence` copied from `tournament.json` so the report and FEAT-3596 read them from one file). `winner` is non-null for every run that reaches `portfolio`; it becomes null **only** when FEAT-3586 concedes every finalist (`conceded` then equals `eligible`). Runner-up/wildcard are null only when no qualifying candidate exists (recorded in the report). **Slot rules** (used by `portfolio` and by any post-`portfolio` rewrite such as FEAT-3586 demotion): winner = first non-conceded id in `ranking`; runner-up = next non-conceded id in `ranking`. Because `shortlist` keeps one finalist per cell, every finalist already occupies a distinct cell, so a different-cell test alone would make the wildcard merely third place. **Wildcard** = the highest-ranked remaining non-conceded finalist whose cell differs from the winner's on **both** axes; if none exists, fall back to the highest-ranked remaining non-conceded finalist and add `wildcard_fallback` to that id's `flags`. Recompute always applies these same rules.
+- **`portfolio.json`**: `{winner: id | null, runner_up: id | null, wildcard: id | null, ranking: [id], eligible: [id], conceded: [id], flags: {id: [str]}, tie_rate: float, low_confidence: bool, partial: bool}` (`tie_rate`/`low_confidence`/`partial` copied from `tournament.json` so the report and FEAT-3596 read them from one file). `winner` is non-null for every run that reaches `portfolio`; it becomes null **only** when FEAT-3586 concedes every finalist (`conceded` then equals `eligible`). Runner-up/wildcard are null only when no qualifying candidate exists (recorded in the report). **Slot rules** (used by `portfolio` and by any post-`portfolio` rewrite such as FEAT-3586 demotion): winner = first non-conceded id in `ranking`; runner-up = next non-conceded id in `ranking`. Because `shortlist` keeps one finalist per cell, every finalist already occupies a distinct cell, so a different-cell test alone would make the wildcard merely third place. **Wildcard** = the highest-ranked remaining non-conceded finalist whose cell differs from the winner's on **both** axes; if none exists, fall back to the highest-ranked remaining non-conceded finalist and add `wildcard_fallback` to that id's `flags`. Recompute always applies these same rules.
 - **`top_k`**: removed. `winners.md` = the non-null portfolio members (winner, runner-up, wildcard); `sink_decision`/`sink_issue` iterate its lines instead of reading `top_k`.
 
 ### Tournament Specification
 
-- **Format**: Swiss, `ceil(log2 N)` rounds (minimum 1) over N ≤ `max_finalists` (8) finalists — at most 3 rounds × 4 pairs × 2 orders = 24 judge calls. Runs as a sub-loop so the parent `max_steps` is unaffected; the child sets its own `max_steps` (worst case ≈ 3 rounds × (8 judge + 2 bookkeeping) + setup ≈ 40; pin 60).
-- **Child loop**: `scripts/little_loops/loops/brainstorm-tournament.yaml` (top level, alongside `brainstorm.yaml`; `ll-loop list` uses `rglob`, so it is discoverable and runnable — accepted, and it declares `required_inputs: []` with a `description:` saying it is an internal child of `brainstorm`). The parent state is `loop: brainstorm-tournament` with `with:` bindings for `run_dir` and `brief` (the `with:` branch re-injects the parent `run_dir` via `setdefault`, `executor.py:1186`). Contract: the child reads `${context.run_dir}/finalists.json` (written by `shortlist`), reads the rubric from `profile.json`, appends `tournament.jsonl`, writes `tournament.json`, and **never** re-runs `init` or touches `ideas.jsonl`. Child `timeout: 1800` and matching state-level `timeout: 1800` on the parent `tournament` state (the child inherits the parent's remaining budget; ≈24 sequential judge calls ≈ 12–24 min wall-clock). Parent routing: `on_yes` → `portfolio`; `on_no` and `on_error` → `finalize_failed`. The judge prompts interpolate `${context.brief}` and must use the `<<<BRIEF … BRIEF>>>` fence (register in `FENCE_ROLES` under `brainstorm-tournament.yaml`).
-- **Swiss pairing** (`build_bracket`, deterministic): (1) if N is odd, the lowest-seeded player without a prior bye gets the bye (removed before pairing); (2) sort remaining players by points descending, then seed; (3) pair by adjacent position in that order, choosing via backtracking search the first full pairing in sorted order that repeats **no** previous pairing; (4) if no rematch-free pairing exists, take the first pairing with the fewest rematches and record `rematch: true` in `tournament.jsonl`. Round 1 has all-zero points, so it pairs by seed (1v2, 3v4, …).
-- **Seeding**: grid order (axis-1 bin index, then axis-2 bin index, then idea ID).
-- **Byes**: odd N → the lowest-seeded player without a prior bye gets a bye worth 1 point.
-- **Scoring per pair**: both orders agree → winner 1, loser 0; orders disagree → 0.5 each (tie); abstention or malformed vote in either order → 0.5 each, logged in `tournament.jsonl`.
-- **Independence**: order `ab` and order `ba` for a round are two separate LLM calls; the second call's prompt contains no verdicts from the first.
-- **Tie-break**: total points, then Buchholz (sum of opponents' points), then seed.
-- **Judge reliability**: `tournament.json` records `tie_rate` (share of pairs whose two orders disagreed or abstained). When `tie_rate > 0.5` the ranking is `low_confidence` (seed order is then decisive and arbitrary); `portfolio` copies `tie_rate` and `low_confidence` into `portfolio.json` and the report states it. FEAT-3596 reports `tie_rate` in the old-vs-new comparison.
+- **Format**: full **round-robin** over N ≤ `max_finalists` (8) finalists — every pair exactly once, C(N,2) ≤ 28 judge calls (one per pair), plus ≤ 3 probe calls (§ Probe) ≈ 31 calls. Runs as a sub-loop so the parent `max_steps` is unaffected. *Why not Swiss* (the earlier draft): 3 Swiss rounds give each finalist only ~3 comparisons and do not reliably order ranks 2–3, which the runner-up and wildcard slots depend on; and with tie-on-disagree scoring, LLM position bias on close finalists turns into ties, leaving seed order to decide the ranking. Round-robin gives every finalist N−1 comparisons at about the same call count as a two-order Swiss (24), and deletes the pairing algorithm, byes, rematch fallback, and Buchholz. **Cost is quadratic, so `max_finalists` must not be raised above 8** (a profile may lower it, never raise it).
+- **Child loop**: `scripts/little_loops/loops/brainstorm-tournament.yaml` (top level, alongside `brainstorm.yaml`; `ll-loop list` uses `rglob`, so it is discoverable and runnable — accepted, and it declares `required_inputs: []` with a `description:` saying it is an internal child of `brainstorm`). The parent state is `loop: brainstorm-tournament` with `with:` bindings for `run_dir` and `brief` (the `with:` branch re-injects the parent `run_dir` via `setdefault`, `executor.py:1186`). Contract: the child reads `${context.run_dir}/finalists.json` (written by `shortlist`), reads the rubric from `profile.json`, **appends every verdict to `tournament.jsonl` as it is judged**, writes `tournament.json`, and **never** re-runs `init` or touches `ideas.jsonl`. The judge prompts interpolate `${context.brief}` and must use the `<<<BRIEF … BRIEF>>>` fence (register in `FENCE_ROLES` under `brainstorm-tournament.yaml`).
+- **Budgets** (pinned 2026-09-28): child `max_steps: 100` (a pop + judge state per pair ≈ 2 × 28, plus 3 probe pairs × 2 and ≈ 10 setup/finalize ≈ 72; the verdict-recording step is folded into the next pop). Child `timeout: 2700` with matching state-level `timeout: 2700` on the parent `tournament` state (≈ 31 sequential judge calls ≈ 15–31 min); the child is clamped to the parent's remaining budget (`executor.py:1353-1358`), so the parent `timeout` rises from 3600 to **5400** to keep headroom after up to 9 sequential `diverge` calls.
+- **Routing**: `on_yes` → `portfolio`; `on_no` and `on_error` → `finalize_failed`; **`on_timeout`** (`extra_routes["timeout"]`, `executor.py:1434`) → `salvage_tournament`. `salvage_tournament` (script) rebuilds `tournament.json` from the verdicts already in `tournament.jsonl`, counting only **complete rounds** (§ Schedule), with `partial: true` and `low_confidence: true`; fewer than 3 complete rounds → `finalize_failed`. `portfolio` copies `partial` into `portfolio.json`, and the report says the ranking is partial (distinct from `low_confidence` alone).
+- **Schedule** (`build_schedule`, deterministic): circle-method round-robin over finalists indexed in **generation order** (idea ID) — never grid order. N even → N−1 rounds of N/2 pairs; N odd → a phantom player is added and its pair skipped (N rounds). Pairs are emitted **in round order**, so every finalist plays once per round and a timeout leaves every finalist with equal games. The schedule fixes the presentation order (`a` = shown first) using standard home/away alternation, so each finalist is shown first in ⌊(N−1)/2⌋ or ⌈(N−1)/2⌉ of its games — position bias is counterbalanced across the field rather than measured per pair.
+- **Scoring per pair**: judge picks `a` or `b` → winner 1, loser 0; abstention or malformed vote → 0.5 each, logged in `tournament.jsonl`. Each verdict carries a rubric-based `rationale` so the report can explain the ranking.
+- **Probe** (position-sensitivity check): after the round-robin, take the top 3 by the ranking below and re-judge the ≤ 3 head-to-heads among them in the **reversed** presentation order as independent calls (the prompt contains no verdict from the first call). For a probed pair: both orders agree → 1/0; orders disagree or either abstains → 0.5 each (replacing that pair's single-order score). Re-rank once; the probe set is not re-run.
+- **Ranking** (`rank`): Copeland score (sum of pair scores) descending; ties → head-to-head result among the tied set (a mini-league over the pairs between tied players; a 2-way tie is decided by their direct result); still tied (a cycle, or all 0.5) → generation order, first-generated first. **Seed/grid order is never a tie-break.**
+- **Judge reliability**: `tournament.json` records `tie_rate` = share of *probed* pairs whose two orders disagreed or abstained — a measure of position sensitivity where the podium is decided, not over all pairs. `low_confidence` is true when `tie_rate > 0.5` **or** the winner or runner-up slot was decided by the generation-order fallback; `partial: true` implies `low_confidence`. `portfolio` copies `tie_rate`, `low_confidence`, and `partial` into `portfolio.json` and the report states them. FEAT-3596 reports `tie_rate` (with this definition) in the old-vs-new comparison; measure it there before revisiting the tournament format.
+- **`tournament.json`**: `{ranking: [id], scores: {id: float}, tie_rate: float, low_confidence: bool, partial: bool, fallback_decided: bool}`.
 - **Wildcard**: per the § Data Contract slot rules (differs from the winner on both axes; fallback flagged).
-- **Verdicts** carry a rubric-based `rationale` so the report can explain the ranking.
 
 ## Program Design
 
 ### Types
 
 - `IdeaRecord`: `{id: str, title: str, body: str, framing: str, lens: str, cell: [str, str], off_grid: bool, extra: dict}` — one JSON line per idea in `ideas.jsonl`
-- `PairVerdict`: `{a: str, b: str, winner: str | null, order: "ab" | "ba", rationale: str}` — `winner: null` = abstention
+- `PairVerdict`: `{a: str, b: str, winner: str | null, probe: bool, rationale: str}` — `a` is the idea shown first; `winner: null` = abstention; `probe: true` = reversed-order re-judgment of a top-3 head-to-head
 - `Portfolio`: see § Data Contract
 
 ### Signatures
 
 - `collapse_duplicates(ideas: list[IdeaRecord], groups: list[list[str]]) -> list[IdeaRecord]` — keeps the first-generated member of each duplicate group
-- `build_bracket(finalists: list[IdeaRecord], standings: dict[str, float], round_no: int) -> list[tuple[str, str]]` — deterministic Swiss pairing with byes, no rematches where avoidable (§ Tournament Specification → Swiss pairing)
-- `tally(verdicts: list[PairVerdict]) -> list[str]` — idea IDs ranked by points, then Buchholz, then seed
+- `ingest_ideas(raw: str, ideas: list[IdeaRecord], profile: dict) -> list[IdeaRecord]` — assigns stable IDs, normalizes and validates cells, flags `off_grid`, appends to the run's ideas
+- `build_schedule(finalists: list[IdeaRecord]) -> list[tuple[str, str]]` — deterministic circle-method round-robin in round order; each `(a, b)` fixes the presentation order (§ Tournament Specification → Schedule)
+- `rank(verdicts: list[PairVerdict], finalists: list[IdeaRecord]) -> list[str]` — idea IDs by Copeland score, then head-to-head, then generation order
+- `check_floors(ideas: list[IdeaRecord], finalists: list[str], profile: dict) -> bool` — generation and finalist floors, exit 1 on violation; one body shared by the pre-tournament gate and `validate_portfolio`
 - `validate_portfolio(portfolio: dict, ideas: list[IdeaRecord]) -> bool` — floors + reference integrity, exit 1 on violation
 
 ### Call Path
 
-`init` -> `resolve_profile` -> `frame` -> `reframe` -> `pop_lens` -> `diverge` (loop over lenses) -> `dedup` -> `shortlist` -> `tournament` (sub-loop) -> `portfolio` -> `validate_portfolio` -> `route_sink` -> `verify_artifacts` -> `finalize_done`
+`init` -> `resolve_profile` -> `frame` -> `reframe` -> `pop_lens` -> `diverge` -> `ingest` (loop over lenses) -> `dedup` -> `shortlist` -> `check_floors` -> `tournament` (sub-loop; `on_timeout` -> `salvage_tournament`) -> `portfolio` -> `validate_portfolio` -> `route_sink` -> `verify_artifacts` -> `finalize_done`
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- Anchor-resolvable identifiers today: state names in `scripts/little_loops/loops/brainstorm.yaml` (`frame`, `pop_lens`, `diverge`, `dedup_novelty`, `verify_artifacts`, `route_sink`) and `parse_tagged_json`/`queue_pop` in `scripts/little_loops/loops/lib/common.yaml`. `dedup_cells`, `build_bracket`, `tally` do not exist yet — they are inline Python inside shell states, so their signatures are contracts, not importable symbols.
+- Anchor-resolvable identifiers today: state names in `scripts/little_loops/loops/brainstorm.yaml` (`frame`, `pop_lens`, `diverge`, `dedup_novelty`, `verify_artifacts`, `route_sink`) and `parse_tagged_json`/`queue_pop` in `scripts/little_loops/loops/lib/common.yaml`. `ingest_ideas`, `build_schedule`, `rank`, `check_floors` do not exist yet — they are inline Python inside shell states, so their signatures are contracts, not importable symbols.
 - `parse_tagged_json` supplies no default action (`lib/common.yaml` design note: interpolation is single-pass, no nested `${captured.${…}}`); each consuming state writes its own extraction, and the tag today is `IDEAS_JSON:` with keys `text`/`rationale`. The `IdeaRecord` shape (`title`/`body`/`cell`/`cluster`) is a schema change from `text`/`rationale` — `winners.md` consumers still read `text`/`rationale`, so the mapping (`title`→`text`, `body`→`rationale`) must be pinned.
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- Decision Rules still unpinned (implementer must fix and document): default values of `min_ideas` and `min_cells`; how many framings `reframe` selects and the tie rule for that selection; the escape hatch, if any, for intentionally small runs (e.g. a profile that lowers the minimums — FEAT-3583 consumes this). _Resolved 2026-09-25 (Astra review): floors count post-dedup on-grid ideas (§ Data Contract); bracket is Swiss with disagreeing orders scored as a tie (§ Tournament Specification)._
+- Decision Rules still unpinned (implementer must fix and document): default values of `min_ideas` and `min_cells`; how many framings `reframe` selects and the tie rule for that selection; the escape hatch, if any, for intentionally small runs (e.g. a profile that lowers the minimums — FEAT-3583 consumes this). _Resolved 2026-09-25 (Astra review): floors count post-dedup on-grid ideas (§ Data Contract); bracket is Swiss with disagreeing orders scored as a tie (§ Tournament Specification)._ _Superseded 2026-09-28 (second-opinion review): the format is now a round-robin (Review Decisions 15–16); `reframe` selects the top 3 by an LLM-emitted score, ties by generation order (Expected Behavior 1)._
 
 ## Integration Map
 
@@ -187,10 +207,10 @@ Behaviors of `scripts/little_loops/loops/brainstorm.yaml` and their disposition:
 | Artifact | Behavior | Disposition |
 |----------|----------|-------------|
 | `scripts/little_loops/loops/brainstorm.yaml` | `frame` selects lenses; `pop_lens` queues them | preserved (lens queue feeds `diverge`; `reframe` added before it) |
-| `scripts/little_loops/loops/brainstorm.yaml` | `diverge` generates `ideas_per_round` ideas per lens | changed — sees running idea titles and tags a two-value `cell` from the profile's axis bins (per-idea `IdeaRecord` in `ideas.jsonl`) |
-| `scripts/little_loops/loops/brainstorm.yaml` | `dedup_novelty` difflib dedup at `novelty_threshold` | dropped — replaced by `dedup`: an LLM pass over `{id, title}` pairs emits duplicate groups, a script collapses each group to its first-generated member (per-cell representative selection is the separate `shortlist` step) |
+| `scripts/little_loops/loops/brainstorm.yaml` | `diverge` generates `ideas_per_round` ideas per lens | changed — sees running idea titles and per-cell occupancy (`diverge_state.md`) and tags a two-value `cell` from the profile's axis bins; a new per-lens `ingest` state assigns IDs and flags off-grid (per-idea `IdeaRecord` in `ideas.jsonl`) |
+| `scripts/little_loops/loops/brainstorm.yaml` | `dedup_novelty` difflib dedup at `novelty_threshold` | dropped — replaced by `dedup`: an LLM pass over `{id, title, body excerpt}` emits duplicate groups, a script collapses each group to its first-generated member (per-cell representative selection is the separate `shortlist` step) |
 | `scripts/little_loops/loops/brainstorm.yaml` | `saturation_gate` early exit after `max_saturation` zero-novel rounds | dropped — never fired in observed runs |
-| `scripts/little_loops/loops/brainstorm.yaml` | `cluster` / `rank` single listwise LLM passes | changed — per-cell `shortlist` + pairwise `tournament` |
+| `scripts/little_loops/loops/brainstorm.yaml` | `cluster` / `rank` single listwise LLM passes | changed — per-cell `shortlist`, a `check_floors` gate, then a round-robin pairwise `tournament` |
 | `scripts/little_loops/loops/brainstorm.yaml` | `converge` synthesizes best-of hybrid | changed — `portfolio`; hybrid only when `synthesize=true` |
 | `scripts/little_loops/loops/brainstorm.yaml` | `route_sink` + `sink_file`/`sink_issue`/`sink_decision` contract | preserved — sinks read `winners` from the portfolio |
 | `scripts/little_loops/loops/brainstorm.yaml` | sinks run before `verify_artifacts` (a failing run can already create issues/decisions) | changed — `validate_portfolio` gates `route_sink`; no sink fires on an invalid run |
@@ -198,8 +218,8 @@ Behaviors of `scripts/little_loops/loops/brainstorm.yaml` and their disposition:
 | `scripts/little_loops/loops/brainstorm.yaml` | `on_handoff: spawn`, `scope`, artifacts under `${context.run_dir}` | preserved |
 
 ### Files to Modify
-- `scripts/little_loops/loops/brainstorm.yaml` — replace `frame`/`diverge`/`dedup_novelty`/`saturation_gate`/`cluster`/`rank`/`converge` with the new state graph; tighten `verify_artifacts`; update `description:` and `context:` keys
-- `scripts/little_loops/loops/brainstorm-tournament.yaml` — **new** child loop (Swiss tournament; see § Tournament Specification → Child loop); add to `test_builtin_loops.py` built-in set, `scripts/little_loops/loops/README.md`, and the `README.md` loop count (mirror `scripts/README.md`)
+- `scripts/little_loops/loops/brainstorm.yaml` — replace `frame`/`diverge`/`dedup_novelty`/`saturation_gate`/`cluster`/`rank`/`converge` with the new state graph (adds `ingest`, `check_floors`, `salvage_tournament`); tighten `verify_artifacts`; rewrite the `finalize_*` prompts; raise `timeout` to 5400; update `description:` and `context:` keys
+- `scripts/little_loops/loops/brainstorm-tournament.yaml` — **new** child loop (round-robin tournament; see § Tournament Specification → Child loop); add to `test_builtin_loops.py` built-in set, `scripts/little_loops/loops/README.md`, and the `README.md` loop count (mirror `scripts/README.md`)
 - `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entries for `reframe` and the child's judge states
 
 ### Dependent Files (Callers/Importers)
@@ -212,7 +232,7 @@ Behaviors of `scripts/little_loops/loops/brainstorm.yaml` and their disposition:
 ### Tests
 - `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
 - `scripts/tests/test_builtin_loops.py` — built-in loop validation (`ll-loop validate`)
-- New tests: duplicate-group collapse (3 fixtures in § Acceptance Criteria) plus malformed-group fail-open, off-grid flagging and case/whitespace normalization, cap-selection at 9 occupied cells, wildcard slot rule and fallback, Swiss no-rematch pairing and rematch fallback, generation/finalist floors in `validate_portfolio`, Swiss bracket determinism + byes, position-swap tally with tie/abstention scoring
+- New tests: duplicate-group collapse (3 fixtures in § Acceptance Criteria) plus malformed-group fail-open, off-grid flagging and case/whitespace normalization, cap-selection at 9 occupied cells, wildcard slot rule and fallback, `reframe` top-3 selection with tie-break, `ingest` ID assignment and `diverge_state.md` regeneration, `build_schedule` (every pair exactly once, every finalist once per round, first-position counts differ by ≤ 1, N odd/even, deterministic), `rank` (Copeland, head-to-head tie-break, 3-cycle → generation-order fallback, never grid order), probe rescoring (agree → 1/0, disagree → 0.5) and `tie_rate`/`low_confidence`, abstention scoring, `salvage_tournament` (≥ 3 complete rounds → partial ranking; fewer → failed), generation/finalist floors in both `check_floors` and `validate_portfolio` (one shared body — a test asserts both states invoke it), dedup paraphrase-relabeled-into-empty-cell fixture
 
 ### Documentation
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
@@ -252,23 +272,24 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Configuration / validator constraints**
 - `scripts/tests/data/loop_interpolation_baseline.json` — regenerate for removed `dedup_novelty` and new heredoc states [Agent 2]
 - Validator rules the new states must satisfy: MR-10 parse-swallow (`json.loads`+`except`+`sys.exit(0)` without `on_error` warns — keep exit-2 crash contract), abstention route (an `llm_structured` pair judge needs `on_error`/`cannot_judge`), classify `default:` route, capture reachability/dominance for new `${captured.*}` [Agent 2]
-- **Step budget** (pinned 2026-09-28): fixed parent states ≈ 13 (incl. `resolve_profile`) + (L+1) `pop_lens` (the final pop returns the empty-queue exit) + L `diverge` (L ≤ 9 → 19) + 1 for the `tournament` sub-loop ≈ 33, under `max_steps: 60`, so `test_max_steps_is_60` stays valid for the core. Framing×lens is **not** a cross product (round-robin), and the tournament's ~24 judge calls live in the child loop's own budget. The combined all-features budget (ground + materialize + premortem) is owned by FEAT-3596.
+- **Step budget** (re-pinned 2026-09-28): fixed parent states ≈ 13 (incl. `resolve_profile`) + 1 `check_floors` + (L+1) `pop_lens` (the final pop returns the empty-queue exit) + L `diverge` + L `ingest` (L ≤ 9 → 28) + 1 for the `tournament` sub-loop ≈ **43**, under `max_steps: 60`, so `test_max_steps_is_60` stays valid for the core (`salvage_tournament` adds 1 only on the timeout path). The occupancy/title render is folded into `ingest` (it rewrites `diverge_state.md`); a separate per-lens render state would cost 9 more (≈ 52) — do not add one. Framing×lens is **not** a cross product (round-robin), and the tournament's ~31 judge calls live in the child loop's own budget (`max_steps: 100`). The combined all-features budget (ground + materialize + premortem) is owned by FEAT-3596.
 
 ## Implementation Steps
 
 1. Define the idea record schema and grid-cell tagging contract.
 2. Rewrite states per Expected Behavior; reuse `lib/common.yaml` fragments
    (`parse_tagged_json`, `queue_pop`).
-3. Write the tournament bracket/tally script inline (or as a small helper under the
-   loop) with position-swap handling.
-4. Tighten `verify_artifacts`.
+3. Write the `ingest`, `check_floors`, and tournament schedule/rank scripts inline (or as a
+   small helper under the loop); the floor body is shared by `check_floors` and
+   `validate_portfolio`.
+4. Tighten `verify_artifacts`; rewrite the `finalize_*` prompts (drop `ranked.md`/`clusters.md`/saturation references).
 5. Update tests and the loop's description/docs.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Budget pinned (see Review Decisions); keep `test_max_steps_is_60` valid, add a test asserting the child tournament loop's `max_steps` and that the parent reaches it via a `loop:` state
+- Budget pinned (see Review Decisions); keep `test_max_steps_is_60` valid, add a test asserting the child tournament loop's `max_steps: 100`/`timeout: 2700`, the parent `timeout: 5400`, that the parent reaches the child via a `loop:` state, and that its `on_timeout` route reaches `salvage_tournament`
 - Verify the child tournament loop's placement against loop discovery scanners and `ll-verify-package-data`
 - Drop `top_k` from context and from `sink_decision`/`sink_issue` prompts; update `test_context_*` tests
 - Update `scripts/tests/test_builtin_loops.py` fence/MR-11/heredoc-site/warning-budget assertions and `scripts/tests/data/loop_interpolation_baseline.json`
@@ -292,44 +313,65 @@ _These touchpoints were identified by wiring analysis and must be included in th
   insufficient cells, and fewer than 2 eligible finalists each route to
   `failed` with no sink executed; an all-conceded portfolio (`winner: null`,
   `conceded == eligible`) passes `validate_portfolio`.
-- Tournament bracket construction and scoring are deterministic shell/Python; only
-  individual pair verdicts are LLM calls; each pair is judged in both orders via
-  two independent calls; every verdict carries a `rationale`.
-- Swiss pairing, byes, tie scoring, and Buchholz tie-break are covered by
+- `check_floors` runs between `shortlist` and `tournament`: fixtures for zero ideas,
+  insufficient cells, and fewer than 2 finalists route to `finalize_failed` before any
+  judge call, and the tournament child never runs with fewer than 2 finalists.
+- Tournament schedule construction and ranking are deterministic shell/Python; only
+  individual pair verdicts are LLM calls; the round-robin covers every finalist pair
+  exactly once, with presentation order counterbalanced (first-position counts differ
+  by ≤ 1); the top-3 head-to-heads are re-judged in reversed order by independent
+  calls; every verdict carries a `rationale`.
+- Round-robin schedule, Copeland ranking, head-to-head tie-break, generation-order
+  fallback (never grid order), probe rescoring, and abstention scoring are covered by
   deterministic tests.
+- A tournament timeout routes to `salvage_tournament`: ≥ 3 complete rounds yield a
+  `partial: true`, `low_confidence: true` portfolio; fewer route to `finalize_failed`.
 - Off-grid cell values are flagged (after case/whitespace normalization) and excluded from `min_ideas`, `min_cells`, and `shortlist`.
 - Malformed dedup output (unknown IDs, overlapping groups, unparseable text) never drops ideas.
-- `portfolio.json` carries `tie_rate` and `low_confidence`; the wildcard differs from the winner on both axes or is flagged `wildcard_fallback`.
-- The tournament child `brainstorm-tournament.yaml` has `max_steps: 60` and `timeout: 1800`, is reached via a `loop:` state, and a child failure routes to `finalize_failed`.
+- `portfolio.json` carries `tie_rate`, `low_confidence`, and `partial`; `winners.md` lines carry a `role`; the report states the off-grid share; the wildcard differs from the winner on both axes or is flagged `wildcard_fallback`.
+- The tournament child `brainstorm-tournament.yaml` has `max_steps: 100` and `timeout: 2700`, is reached via a `loop:` state, and a child failure routes to `finalize_failed`; the parent `timeout` is 5400.
 - Output `brainstorm.md` presents a portfolio + the grid map; `portfolio.json` is
   written for every run; `ideas.jsonl` records `id`, `cell`, `framing`, `lens` per
   idea.
 - `ll-loop validate brainstorm` passes; artifacts only under `${context.run_dir}/`.
 - Existing brainstorm tests updated; new dedup fixtures cover: distinct ideas that
   share a cell (both kept), paraphrases in different cells (collapsed), and a
-  concise representative kept over a longer duplicate (first-generated wins).
+  concise representative kept over a longer duplicate (first-generated wins), a
+  paraphrase relabeled into an empty cell (collapsed via the body excerpt), and two ideas
+  that share a framing but differ in mechanism (both kept).
 
 ## Review Decisions
 
 _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 
-1. **Tournament as a sub-loop** — per-pair independent judging needs ~24 calls (8 finalists); as parent states it would blow `max_steps: 60`. `loop:` states run a child executor and cost the parent one step (`executor.py:_execute_sub_loop`). Finalists capped at 8; rounds `ceil(log2 N)`.
-2. **Round-robin framings** — one `diverge` per lens with a rotating framing, not F×L calls; keeps old-loop cost and pins the core budget at ≈ 32 parent steps.
+1. **Tournament as a sub-loop** — pairwise judging needs ~31 calls (8 finalists, round-robin + probe); as parent states it would blow `max_steps: 60`. `loop:` states run a child executor and cost the parent one step (`executor.py:_execute_sub_loop`). Finalists capped at 8 (quadratic cost — never raised).
+2. **Round-robin framings** — one `diverge` per lens with a rotating framing, not F×L calls; keeps old-loop cost and keeps the core budget at ≈ 43 parent steps (re-pinned, item 19).
 3. **`top_k` removed** — `winners.md` = portfolio members; sinks iterate lines.
 4. **`shortlist` resolved** — script for single-idea cells, one batched LLM pick for multi-idea cells, first-generated fallback.
 5. **`portfolio.json` nullability + recompute rule** — `winner: null` only via FEAT-3586 all-conceded; slots recomputed by the stated rules.
 6. **Occupancy-aware `diverge`** — per-cell counts fed into the prompt so the grid steers generation rather than only tagging it.
 7. **Defaults pinned** — `min_ideas: 12`, `min_cells: 4`, 3 framings, `max_finalists: 8`.
 8. **`resolve_profile` + `profile.json` schema move here** (with the `artifact` profile) so FEAT-3583 does not rewrite `diverge`/`reframe`/`tournament` prompts a second time.
-9. **Judge reliability** — `tie_rate` recorded; `low_confidence` flag above 0.5.
+9. **Judge reliability** — `tie_rate` recorded (over probe pairs since item 16); `low_confidence` above 0.5.
 
 10. **Wildcard redefined** — finalists occupy distinct cells, so the different-cell rule was vacuous; wildcard now differs from the winner on both axes (fallback flagged). FEAT-3586 recompute reuses these slot rules.
-11. **Swiss pairing pinned** — adjacent pairing in points/seed order, backtracking no-rematch search, fewest-rematch fallback; byes to the lowest-seeded player without one.
+11. **Swiss pairing pinned** — _superseded by item 15._
 12. **Cap rule** — over-cap cells: drop lowest-occupancy first, ties by later grid order.
 13. **Eligible floor vs concession** — `eligible` is never reduced by premortem concession; all-conceded is valid.
-14. **Child loop named** — `brainstorm-tournament.yaml`, `with:` bindings, `timeout: 1800`, failure → `finalize_failed`; off-grid normalization and dedup fail-open added.
+14. **Child loop named** — `brainstorm-tournament.yaml`, `with:` bindings, `timeout: 1800` (raised to 2700, item 18), failure → `finalize_failed`; off-grid normalization and dedup fail-open added.
 
-The two Confidence Check concerns below (unpinned defaults, `max_steps`) are resolved by items 2 and 7; re-run `/ll:confidence-check`.
+_Added 2026-09-28 (second-opinion review, `/ll:advise` with Opus; nothing here has been measured):_
+
+15. **Round-robin replaces Swiss** — 3 Swiss rounds over ≤ 8 finalists give ~3 comparisons each, do not order ranks 2–3 reliably (runner-up and wildcard depend on them), and tie-on-disagree turns position bias into ties so seed order decides. Round-robin: every finalist gets N−1 comparisons at ≈ Swiss's call count, with no pairing algorithm, byes, rematch handling, or Buchholz. Ranking = Copeland → head-to-head → generation order, **never grid/seed order** (grid order systematically favored low-index bins). Dissent recorded: if the judge proves order-consistent, Swiss + two orders would have been defensible; a cheaper middle path was Swiss with head-to-head + a decider call. Round-robin was preferred for simplicity and for ranking quality where slots are decided.
+16. **Position bias: counterbalance, then probe** — one call per pair with presentation order counterbalanced across the field; only the top-3 head-to-heads are re-judged reversed. `tie_rate` therefore measures position sensitivity on the podium, and FEAT-3596 should measure it before any further format change.
+17. **`check_floors` before `tournament`** — a doomed run (0 ideas, 1 finalist) must not spend judge calls or reach a 0/1-player tournament; one floor body is shared with `validate_portfolio`.
+18. **Timeout headroom + salvage** — child `2700`, parent `5400`; a tournament `on_timeout` rebuilds a `partial` ranking from complete rounds (schedule is round-ordered so every finalist has equal games) instead of discarding them.
+19. **Step budget re-pinned** — the per-lens `ingest` state (IDs, cell normalization, `diverge_state.md`) was uncounted; core ≈ 43 (was ≈ 32/33, an inconsistent pair). Render is folded into `ingest`.
+20. **`reframe` scoring pinned** — LLM emits a 1–5 score per framing; script takes the top 3, ties by generation order.
+21. **Dedup sees a body excerpt** — title-only dedup plus occupancy steering lets paraphrases be relabeled into empty cells, inflating `min_cells` and the finalist count.
+22. **Minor** — off-grid share reported; `winners.md` lines carry `role`; runner-up "from a different cell" dropped from the Use Case (true by construction); `finalize_*` prompt rewrites are an explicit step.
+
+The two Confidence Check concerns below (unpinned defaults, `max_steps`) are resolved by items 2, 7, and 19; re-run `/ll:confidence-check` — the scores below predate the round-robin rewrite (items 15–22).
 
 ## Related Key Documentation
 
@@ -347,6 +389,7 @@ _Added by `/ll:confidence-check` on 2026-09-28 (re-run after review-fold)_
 **Outcome Confidence**: 70/100 → MODERATE
 
 ### Concerns
+- **Stale:** scores predate the 2026-09-28 round-robin rewrite (Review Decisions 15–22); re-run `/ll:confidence-check`.
 - Prior concerns resolved: child loop named (`brainstorm-tournament.yaml`, § Tournament Specification → Child loop) and `eligible` vs premortem concession pinned (§ Data Contract).
 - Program Design, dependency, claim, and learning-test gates are all clean.
 

@@ -62,15 +62,15 @@ old loop.
   new `winners.md` (still `text`/`rationale` keys) unchanged; conceded ideas never
   reach a sink.
 - **Combined budget**: pin `max_steps` and `timeout` for the worst case (all
-  features on, F framings × L lenses, Swiss rounds, per-finalist materialize,
+  features on, F framings × L lenses, round-robin pairs + probe, per-finalist materialize,
   `premortem_rounds`) and update `test_max_steps_is_60` deliberately.
 - **Comparison vs old loop** on 2 fixed briefs: duplicates retained, occupied grid
   cells, LLM call count, total input/output tokens, wall-clock runtime, and the
-  tournament `tie_rate` (judge reliability; FEAT-3582). No LLM-judged "usefulness"
+  tournament `tie_rate` (judge position sensitivity on the top-3 head-to-heads; FEAT-3582 — measure it here before revisiting the round-robin format). No LLM-judged "usefulness"
   metric.
 - **Cost ceiling**: a default (`mode=artifact`) run makes ≤ 45 LLM calls (old loop
   ≈ 12; estimate for the new core ≈ 1 frame + 1 reframe + 9 diverge + 1 dedup + 1
-  shortlist + ≤ 24 judge ≈ 38). A run exceeding it fails the comparison and needs
+  shortlist + ≤ 31 judge (28 round-robin pairs + ≤ 3 probes) ≈ 44 — one call under the ceiling, so `max_finalists` must not rise above 8). A run exceeding it fails the comparison and needs
   a documented reason.
 
 ## Program Design

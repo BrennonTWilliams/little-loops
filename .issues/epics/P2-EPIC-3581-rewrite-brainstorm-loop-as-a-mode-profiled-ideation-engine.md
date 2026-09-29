@@ -67,7 +67,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 |----------|----------|-------------|
 | `scripts/little_loops/loops/brainstorm.yaml` | lens queue (`frame`/`pop_lens`) feeding `diverge` | preserved |
 | `scripts/little_loops/loops/brainstorm.yaml` | difflib novelty dedup + saturation early exit | dropped — duplicate-group dedup |
-| `scripts/little_loops/loops/brainstorm.yaml` | listwise `cluster`/`rank`/`converge` hybrid | changed — Swiss tournament + portfolio |
+| `scripts/little_loops/loops/brainstorm.yaml` | listwise `cluster`/`rank`/`converge` hybrid | changed — round-robin tournament + portfolio |
 | `scripts/little_loops/loops/brainstorm.yaml` | sinks run before `verify_artifacts` | changed — `validate_portfolio` gates sinks |
 | `scripts/little_loops/loops/brainstorm.yaml` | sink contract (`none`/`file`/`issue`/`decision`, `winners.md` `text`/`rationale`) | preserved |
 
@@ -95,7 +95,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 - **Profile precedence**: mode selects the base profile, explicit knobs override it, `""` means inherit (FEAT-3583).
 - **Ordering**: FEAT-3582 → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586}; FEAT-3596 is hard-blocked only by FEAT-3582/3583 (so P4 FEAT-3586 does not gate it) but cannot close until all optional children are done.
 - **Profile plumbing** (2026-09-28 review): FEAT-3582 owns `resolve_profile`, the `profile.json` schema, and the `artifact` profile; FEAT-3583 extends them (presets, classifier, overrides).
-- **Tournament runs as a sub-loop** (one parent `max_steps` step; finalists ≤ 8, rounds `ceil(log2 N)`); `diverge` runs once per lens with round-robin framings. `top_k` is removed; `winners.md` = portfolio members.
+- **Tournament runs as a sub-loop** (one parent `max_steps` step; finalists ≤ 8, full round-robin ≈ 28 pair calls + ≤ 3 probe calls); `diverge` runs once per lens with round-robin framings. `top_k` is removed; `winners.md` = portfolio members.
 - **Grounding shape** (FEAT-3584): `touchpoints` (must exist) vs `creates` (must not collide); `shortlist` keeps a reserve so no back-edge into `ground`/`materialize`.
 - **Concession is script-determined** (FEAT-3586): fatal risk with no mitigation. `winner: null` is legal only for all-conceded.
 
@@ -120,7 +120,7 @@ not.
 In scope:
 
 - Core engine: reframe → grid-tagged diverge (enumerated axis bins) → duplicate-group
-  dedup → per-cell shortlist → Swiss pairwise tournament → portfolio →
+  dedup → per-cell shortlist → floor gate → round-robin pairwise tournament → portfolio →
   `validate_portfolio` before sinks; hard generation and finalist floors. Replaces
   difflib novelty and the saturation counter.
 - Mode profiles (`artifact`, `visual`, `functional`, `business`, `auto`) as data:
@@ -166,8 +166,9 @@ Out of scope:
 - A run with fewer than the configured minimum ideas routes to `failed`, never `done`,
   and no sink executes on a failed run.
 - Diversity is measured non-LLM: occupied grid cells ≥ a configured floor.
-- Finalists are ranked by pairwise matches with position-swapped judging in
-  independent calls; the Swiss bracket is built and scored by script.
+- Finalists are ranked by a full round-robin of pairwise matches with
+  counterbalanced presentation order (top-3 head-to-heads re-judged reversed in
+  independent calls); the schedule is built and scored by script.
 - Versus the old loop on 2 fixed briefs (FEAT-3596): fewer retained duplicates, more
   occupied cells, token/runtime cost recorded.
 - Each of the 4 modes has a profile and at least one reference run producing its
