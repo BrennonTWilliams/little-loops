@@ -130,8 +130,10 @@ def default_hosts(project_root: Path, existing_config: dict[str, Any] | None = N
     slot — persisted as ``orchestration.host_cli`` — is chosen as:
 
     1. the existing config's ``orchestration.host_cli``;
-    2. else ``resolve_host()`` (``LL_HOST_CLI``, then the runner probe order),
-       provided it was detected and has a wired adapter;
+    2. else ``resolve_host(project_root=...)`` (``LL_HOST_CLI``/``LL_HOOK_HOST``, then
+       this root's ``orchestration.host_cli``, then the runner probe order), provided
+       it was detected and has a wired adapter — skipped when the configured key is
+       present but unregistered;
     3. else the first detected host with a wired adapter;
     4. else ``claude-code``.
     """
@@ -146,7 +148,7 @@ def default_hosts(project_root: Path, existing_config: dict[str, Any] | None = N
         primary = configured
     else:
         try:
-            resolved = resolve_host().name
+            resolved = resolve_host(project_root=project_root).name
         except HostNotConfigured:
             resolved = None
         if resolved in detected and resolved not in _ADAPTER_PENDING_HOSTS:
@@ -263,7 +265,8 @@ def _dispatch_host_adapters(
         elif host == "claude-code":
             # No adapter file needed; plugin hooks fire when globally enabled.
             # Auto-install the plugin from the marketplace when it's absent —
-            # resolve_host() honors LL_HOST_CLI/orchestration.host_cli, so in a
+            # resolve_host() honors LL_HOST_CLI/orchestration.host_cli (cwd
+            # project; ``project_root=`` selects another root), so in a
             # codex-configured project this probes the codex binary instead;
             # only meaningful when the active host is claude-code (same caveat
             # as detect_installation()).

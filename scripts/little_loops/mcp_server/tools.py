@@ -221,7 +221,7 @@ def _tool_capabilities(_arguments: dict[str, Any], *, project_root: Path) -> Any
     """
     from little_loops.host_runner import resolve_host
 
-    report = resolve_host().describe_capabilities()
+    report = resolve_host(project_root=project_root).describe_capabilities()
     return {
         "host": report.host,
         "binary": report.binary,

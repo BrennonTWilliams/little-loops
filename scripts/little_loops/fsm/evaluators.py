@@ -1623,7 +1623,7 @@ def evaluate_contract(
             return EvaluationResult(
                 verdict="error",
                 details={
-                    "error": f"{invocation.binary} CLI not found. Install the active host CLI (see LL_HOST_CLI).",
+                    "error": f"{invocation.binary} CLI not found. Install the active host CLI (see LL_HOST_CLI / orchestration.host_cli).",
                     "missing_dependency": True,
                 },
             )

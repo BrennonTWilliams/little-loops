@@ -264,6 +264,42 @@ class ProjectConfig:
         )
 
 
+def load_raw_config(project_root: Path) -> dict[str, Any]:
+    """Load the raw merged config dict for *project_root*.
+
+    Uses :func:`resolve_config_path` which checks ``.ll/ll-config.json``
+    first then falls back to a root-level ``ll-config.json`` (parity with
+    ``hooks/scripts/lib/common.sh:ll_resolve_config``).
+
+    If ``.ll/ll.local.md`` exists, its YAML frontmatter is deep-merged on
+    top of the base config (BUG-3123) — the same override mechanism the
+    SessionStart hook has always applied, but previously scoped to that
+    hook's own process-local ``merged_config`` and never reaching
+    ``BRConfig``.
+
+    Pure apart from the env reads inside :func:`resolve_config_path`: never
+    writes ``os.environ``. Raises ``OSError``/``json.JSONDecodeError`` on an
+    unreadable or malformed base config.
+    """
+    config: dict[str, Any] = {}
+    config_path = resolve_config_path(project_root)
+    if config_path is not None:
+        with open(config_path, encoding="utf-8") as f:
+            config = cast(dict[str, Any], json.load(f))
+
+    local_file = project_root / CONFIG_DIR / LOCAL_OVERRIDE_FILENAME
+    if local_file.is_file():
+        try:
+            override_text = local_file.read_text(encoding="utf-8")
+        except OSError:
+            override_text = ""
+        local_overrides = parse_local_override_frontmatter(override_text)
+        if local_overrides:
+            config = deep_merge(config, local_overrides)
+
+    return config
+
+
 class BRConfig:
     """Main configuration class for little-loops.
 
@@ -297,33 +333,9 @@ class BRConfig:
     def _load_config(self) -> dict[str, Any]:
         """Load configuration from file, merged with local overrides.
 
-        Uses :func:`resolve_config_path` which checks ``.ll/ll-config.json``
-        first then falls back to a root-level ``ll-config.json`` (parity with
-        ``hooks/scripts/lib/common.sh:ll_resolve_config``).
-
-        If ``.ll/ll.local.md`` exists, its YAML frontmatter is deep-merged on
-        top of the base config (BUG-3123) — the same override mechanism the
-        SessionStart hook has always applied, but previously scoped to that
-        hook's own process-local ``merged_config`` and never reaching
-        ``BRConfig``.
+        Delegates to :func:`load_raw_config` (shared with host resolution).
         """
-        config: dict[str, Any] = {}
-        config_path = resolve_config_path(self.project_root)
-        if config_path is not None:
-            with open(config_path, encoding="utf-8") as f:
-                config = cast(dict[str, Any], json.load(f))
-
-        local_file = self.project_root / CONFIG_DIR / LOCAL_OVERRIDE_FILENAME
-        if local_file.is_file():
-            try:
-                override_text = local_file.read_text(encoding="utf-8")
-            except OSError:
-                override_text = ""
-            local_overrides = parse_local_override_frontmatter(override_text)
-            if local_overrides:
-                config = deep_merge(config, local_overrides)
-
-        return config
+        return load_raw_config(self.project_root)
 
     def _parse_config(self) -> None:
         """Parse raw config into typed dataclasses."""

@@ -141,7 +141,7 @@ def _default_llm_call(prompt: str) -> str:
         return ""
     except FileNotFoundError:
         logger.warning(
-            "_default_llm_call: host CLI not found. Install the active host CLI (see LL_HOST_CLI)."
+            "_default_llm_call: host CLI not found. Install the active host CLI (see LL_HOST_CLI / orchestration.host_cli)."
         )
         return ""
 

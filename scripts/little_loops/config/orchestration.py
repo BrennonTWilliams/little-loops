@@ -93,10 +93,10 @@ def _validate_model_hints(raw: Any) -> dict[str, dict[str, str | Literal[False]]
 class OrchestrationConfig:
     """Orchestration settings, primarily host CLI selection.
 
-    ``host_cli`` mirrors the ``LL_HOST_CLI`` environment variable and is used
-    by :func:`~little_loops.host_runner.apply_host_cli_from_config` to export
-    the config value into the environment before :func:`~little_loops.host_runner.resolve_host`
-    runs. The env var takes precedence if already set.
+    ``host_cli`` mirrors the ``LL_HOST_CLI`` environment variable and is read
+    directly by :func:`~little_loops.host_runner.resolve_host` (ambient-env path
+    only; nothing is exported to ``os.environ``). Precedence: ``LL_HOST_CLI`` >
+    ``LL_HOOK_HOST`` > this key > binary probe.
 
     ``request_path`` (FEAT-2673, EPIC-2456 F1) selects between the existing
     CLI shell-subprocess path (``"cli"``, default — unchanged behavior), the

@@ -2376,6 +2376,138 @@ class TestDescribeCapabilities:
         assert by_name["tool_allowlist"].status == "partial"  # ENH-1529
 
 
+@pytest.mark.host_config
+class TestResolveHostConfig:
+    """BUG-3644: ``resolve_host()`` reads ``orchestration.host_cli`` on the ambient-env path."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, isolated_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        # Every binary "on PATH": the probe winner is always claude-code.
+        monkeypatch.setattr("little_loops.host_runner.shutil.which", lambda b: f"/usr/bin/{b}")
+
+    @staticmethod
+    def _write_config(root: Path, host_cli: object, *, subdir: str = ".ll") -> Path:
+        (root / subdir).mkdir(parents=True, exist_ok=True)
+        path = root / subdir / "ll-config.json"
+        path.write_text(json.dumps({"orchestration": {"host_cli": host_cli}}))
+        return path
+
+    def test_config_beats_probe(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path, "codex")
+        monkeypatch.chdir(tmp_path)
+        assert resolve_host().name == "codex"
+
+    def test_env_beats_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path, "codex")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        assert resolve_host().name == "claude-code"
+
+    def test_hook_host_beats_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path, "codex")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("LL_HOOK_HOST", "gemini")
+        assert resolve_host().name == "gemini"
+
+    def test_local_md_overrides_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_config(tmp_path, "codex")
+        (tmp_path / ".ll" / "ll.local.md").write_text(
+            "---\norchestration:\n  host_cli: gemini\n---\n\n# notes\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        assert resolve_host().name == "gemini"
+
+    def test_malformed_config_falls_through_to_probe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{not json")
+        monkeypatch.chdir(tmp_path)
+        assert resolve_host().name == "claude-code"
+
+    def test_missing_config_falls_through_to_probe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        assert resolve_host().name == "claude-code"
+
+    @pytest.mark.parametrize("value", ["", None, 7])
+    def test_empty_or_non_string_value_is_unset(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: object
+    ) -> None:
+        self._write_config(tmp_path, value)
+        monkeypatch.chdir(tmp_path)
+        assert resolve_host().name == "claude-code"
+
+    def test_unregistered_value_raises_naming_key_and_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = self._write_config(tmp_path, "xyz")
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(HostNotConfigured) as exc:
+            resolve_host()
+        assert "orchestration.host_cli = 'xyz'" in str(exc.value)
+        assert str(path) in str(exc.value)
+
+    def test_environ_not_mutated(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._write_config(tmp_path, "codex")
+        monkeypatch.chdir(tmp_path)
+        before = dict(os.environ)
+        resolve_host()
+        assert dict(os.environ) == before
+
+    def test_explicit_env_skips_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_config(tmp_path, "codex")
+        monkeypatch.chdir(tmp_path)
+        assert resolve_host(env={}).name == "claude-code"
+
+    def test_resolve_host_named_ignores_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_config(tmp_path, "codex")
+        monkeypatch.chdir(tmp_path)
+        assert resolve_host_named("gemini").name == "gemini"
+
+    def test_project_root_selects_lookup_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        a, b = tmp_path / "a", tmp_path / "b"
+        self._write_config(a, "codex")
+        (b / ".ll").mkdir(parents=True)
+        monkeypatch.chdir(b)
+        assert resolve_host(project_root=a).name == "codex"
+
+    def test_project_root_ignored_with_explicit_env(self, tmp_path: Path) -> None:
+        self._write_config(tmp_path, "codex")
+        assert resolve_host(env={}, project_root=tmp_path).name == "claude-code"
+
+    def test_explicit_project_root_is_not_walked_upward(self, tmp_path: Path) -> None:
+        self._write_config(tmp_path / "a", "codex")
+        sub = tmp_path / "a" / "sub"
+        (sub / ".ll").mkdir(parents=True)  # config-less stray .ll/
+        assert resolve_host(project_root=sub).name == "claude-code"
+
+    def test_state_dir_selects_host_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_config(tmp_path, "gemini", subdir=".codex")
+        monkeypatch.setenv("LL_STATE_DIR", ".codex")
+        assert resolve_host(project_root=tmp_path).name == "gemini"
+
+    def test_state_dir_prefers_host_config_over_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._write_config(tmp_path, "codex")
+        self._write_config(tmp_path, "gemini", subdir=".codex")
+        monkeypatch.setenv("LL_STATE_DIR", ".codex")
+        assert resolve_host(project_root=tmp_path).name == "gemini"
+
+
 class TestApplyHostCliFromConfig:
     """apply_host_cli_from_config exports orchestration.host_cli as LL_HOST_CLI."""
 

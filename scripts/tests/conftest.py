@@ -1203,6 +1203,25 @@ _CMD_RUN_ENV_VARS = (
 
 
 @pytest.fixture(autouse=True)
+def _stub_config_host_cli(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the repo's own ``orchestration.host_cli`` out of ``resolve_host()`` (BUG-3644).
+
+    ``resolve_host()`` reads ``orchestration.host_cli`` from the project config on
+    the ambient-env path. This repo's tracked ``.ll/ll-config.json`` sets it, so
+    without the stub every ``env is None`` test run from the repo cwd would resolve
+    that host before the PATH probe — passing locally for the wrong reason and
+    diverging on CI runners without ``claude``. Tests that exercise the config
+    step opt out with ``@pytest.mark.host_config``.
+
+    Covers in-process calls only; a test that runs an ``ll-*`` CLI as a
+    subprocess should use ``cwd=tmp_path``.
+    """
+    if request.node.get_closest_marker("host_config") is not None:
+        return
+    monkeypatch.setattr("little_loops.host_runner._config_host_cli", lambda project_root=None: None)
+
+
+@pytest.fixture(autouse=True)
 def _restore_cmd_run_env_vars(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     """Scrub env vars that leak into or out of a test via raw os.environ."""
     for var in _CMD_RUN_ENV_VARS:

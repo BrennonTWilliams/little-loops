@@ -1615,6 +1615,20 @@ class TestBRConfigLocalOverrides:
 
         assert config.project.test_cmd == "echo overridden"
 
+    def test_load_raw_config_merges_local_override(self, temp_project_dir: Path) -> None:
+        """BUG-3644: ``load_raw_config`` is the shared loader BRConfig delegates to."""
+        from little_loops.config.core import load_raw_config
+
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(
+            json.dumps({"orchestration": {"host_cli": "codex"}, "project": {"name": "x"}})
+        )
+        self._write_local(temp_project_dir, "orchestration:\n  host_cli: gemini\n")
+
+        raw = load_raw_config(temp_project_dir)
+
+        assert raw["orchestration"]["host_cli"] == "gemini"
+        assert raw["project"]["name"] == "x"
+
     def test_no_local_override_file_is_noop(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:

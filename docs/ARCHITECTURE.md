@@ -916,12 +916,12 @@ FSM handoff.
 | `PiRunner` | Frozen stub for the vanilla pi-mono `pi` CLI (cancelled — ARCHITECTURE-050; superseded by `OmpRunner`) |
 | `FakeHostRunner` | Test-only runner for the `ll-fake-host` console script — a real executable driven through the untouched `subprocess.Popen` spawn path so a scripted "directives" prompt exercises event ordering, abort, idle-timeout, and failed-start paths with no live host CLI and no model (FEAT-3454). Registered in `_HOST_RUNNER_REGISTRY` under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`; never appears in user-facing host lists. |
 | `FakeMinimalHostRunner` | Second test-only runner, deliberately divergent from `FakeHostRunner` (subcommand-style `["run", prompt]` argv, always-empty `env`, all-six-flags-`False` default capabilities) — proves the executor reads only the abstract `HostRunner`/`HostInvocation` surface rather than either fake's shape (ENH-3459). Registered in `_HOST_RUNNER_REGISTRY` under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`; never appears in user-facing host lists. |
-| `resolve_host()` | Discovery entry point — honors `LL_HOST_CLI` / `orchestration.host_cli` overrides, then probes `PATH` for known host binaries |
+| `resolve_host()` | Discovery entry point — reads `LL_HOST_CLI`, then `LL_HOOK_HOST`, then `orchestration.host_cli` from the project config (ambient-env path only, never exported to `os.environ`), then probes `PATH` for known host binaries |
 | `HostNotConfigured` | Raised when no runner can be resolved — error includes `LL_HOST_CLI` remediation hint |
 | `CapabilityNotSupported` | `UserWarning` subclass emitted when a caller requests a capability the active host lacks |
 | `CapabilityReport` (frozen dataclass) | Structured preflight report returned by `describe_capabilities()` — holds `host`, `binary`, `version`, and `capabilities`; consumed by `ll-doctor` and `ll-action`. `ll-doctor --json`'s payload is a superset of this dataclass — it also adds `analytics_capture`/`issues` keys sourced from `BRConfig` (ENH-2762), plus install-surface keys (`entry_points`, `skills_commands`, `decisions_store`, `history_db`, `loop_validity`, `schema_drift`, `advisor`, `model_hints`, and `full` under `--full`) covering little-loops' own project state, none of which come from `CapabilityReport` itself (FEAT-2793/FEAT-2795/ENH-3242/FEAT-3122) |
 | `CapabilityEntry` (frozen dataclass) | One capability's name and `"full"` / `"partial"` / `"unsupported"` status |
-| `apply_host_cli_from_config()` | Reads `orchestration.host_cli` from `BRConfig` and exports it as `LL_HOST_CLI` before `resolve_host()` runs |
+| `apply_host_cli_from_config()` | **Deprecated** (BUG-3644) — exported `orchestration.host_cli` as `LL_HOST_CLI`; `resolve_host()` now reads the config key itself. No production callers; kept for compatibility |
 
 New host-CLI call sites MUST go through `resolve_host()` rather than
 adding new `"claude"` literals. See

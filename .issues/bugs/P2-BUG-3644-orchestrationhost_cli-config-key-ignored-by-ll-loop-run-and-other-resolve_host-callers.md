@@ -4,10 +4,11 @@ type: BUG
 title: orchestration.host_cli config key ignored by ll-loop run and other resolve_host()
   callers
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T22:31:27Z'
+completed_at: '2026-09-29T01:46:59Z'
 labels:
 - multi-host
 - host-runner
@@ -328,9 +329,33 @@ Graph: provider=`codegraph` freshness=`fresh` (not needed to decide any verdict;
 - Decisions rules: no active required rules. `ll-verify-evidence`: clean.
 - Proposal-vs-code check (B6): no new findings beyond those already recorded in Review Decisions.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-28
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/host_runner.py`: `resolve_host()` gains keyword-only `project_root` and a config step (`_config_host_cli`) on the `env is None` path, between `LL_HOOK_HOST` and the PATH probe; unregistered config value raises `HostNotConfigured` naming the key and config path; `apply_host_cli_from_config` marked deprecated; "CLI not found" messages cite `orchestration.host_cli`.
+- `scripts/little_loops/config/core.py`: `BRConfig._load_config` body extracted to `load_raw_config(project_root)`.
+- `cli/doctor.py`: dropped the `apply_host_cli_from_config` call; advisor floor row collapsed to `resolve_host(project_root=...)`.
+- `init/cli.py`, `mcp_server/tools.py`: pass their own `project_root`.
+- `fsm/evaluators.py`, `learning_tests/extractor.py`, `session_store/lifecycle.py`: error-message wording.
+- `config/orchestration.py`, `config-schema.json`, `docs/{ARCHITECTURE,reference/API,reference/CONFIGURATION,reference/HOST_COMPATIBILITY,development/TROUBLESHOOTING}.md`: mechanism wording.
+- Tests: autouse `_stub_config_host_cli` + `host_config` marker (`conftest.py`, `pyproject.toml`); `TestResolveHostConfig` (16 cases); `load_raw_config` test; doctor resolution tests reshaped (+ `LL_HOOK_HOST` case); new `test_host_resolution_chokepoint_gate.py`.
+
+### Rollout Survey (Review Decision 11)
+Scanned `~/AIProjects/*/.ll/ll-config.json` (depth ≤4): every local project that sets `orchestration.host_cli` (3 of 20 found, including this repo) sets `claude-code`, and `claude` is on PATH; no `ll.local.md` overrides. All other projects leave it unset (probe unchanged). No mismatches to fix.
+
+### Verification Results
+- Tests: PASS (27156 passed, 292 skipped)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
+
 ## Status
 
-**Open** | Created: 2026-09-28 | Priority: P2
+**Completed** | Created: 2026-09-28 | Priority: P2
 
 
 ## Confidence Check Notes
@@ -348,6 +373,8 @@ Score movement: Ambiguity 18 → 25 (Decisions 13/14 close the last open semanti
 - Behavior change for every initialized project: `_persist_host_selection` writes `orchestration.host_cli` on `ll-init`, so config replaces the probe almost everywhere (and shifts `conditions_fp` in `cli/harness.py`). De-risk by landing the helper + `TestResolveHost` cases first and running the full suite before the doc sweep; gate the merge on the Review Decision 11 rollout survey.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T01:46:58 - `083e9096-64a0-41d2-8dde-b6d0ec1e2e44.jsonl`
+- `/ll:ready-issue` - 2026-09-29T01:29:34 - `1013e801-d276-4228-8348-a1b6dae0e673.jsonl`
 - `/ll:confidence-check` - 2026-09-29T01:27:01 - `fc5cf224-27c3-40f1-8803-a8425dc67494.jsonl`
 - `/ll:confidence-check` - 2026-09-29T01:23:09 - `c5893263-4612-4e05-8393-5c50bbf6e762.jsonl`
 - `/ll:confidence-check` - 2026-09-29T01:16:27 - `131c2394-4cc5-4b4d-9669-297e9e6feb30.jsonl`

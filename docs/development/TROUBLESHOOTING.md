@@ -382,7 +382,7 @@ is considered timed out.
 
 **Symptom**: `HostNotConfigured: <host> orchestration not yet wired` (or `No host CLI detected on PATH`) when running `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-action`, `ll-loop`, or an FSM evaluator.
 
-**Cause**: `resolve_host()` in `scripts/little_loops/host_runner.py` could not find a runnable host. Either no supported host binary is on `PATH`, or `LL_HOST_CLI` / `LL_HOOK_HOST` explicitly selected a host (e.g., `opencode`, `pi`) whose runner is still a stub.
+**Cause**: `resolve_host()` in `scripts/little_loops/host_runner.py` could not find a runnable host. Either no supported host binary is on `PATH`, or `LL_HOST_CLI` / `LL_HOOK_HOST` / `orchestration.host_cli` explicitly selected a host (e.g., `opencode`, `pi`) whose runner is still a stub, or `orchestration.host_cli` names a host that is not registered (the error names the key and config file).
 
 **Solution**:
 1. Force Claude Code as the orchestration host:

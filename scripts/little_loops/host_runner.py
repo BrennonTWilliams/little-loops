@@ -2634,7 +2634,40 @@ def _remediation_hint() -> str:
     )
 
 
-def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
+def _config_host_cli(project_root: Path | None = None) -> tuple[str, Path] | None:
+    """Return ``(orchestration.host_cli, config_path)`` from the project config, or ``None``.
+
+    An explicit *project_root* is read as-is (no upward walk); when omitted the
+    project root is resolved upward from ``Path.cwd()``. The merged config
+    (``ll-config.json`` + ``.ll/ll.local.md`` frontmatter) comes from
+    :func:`little_loops.config.core.load_raw_config`. Never raises and never
+    writes ``os.environ``; an empty or non-string value counts as unset.
+    """
+    try:
+        # Function-local: config.core -> parallel.types -> worker_pool -> host_runner
+        # would close an import cycle at module level.
+        from little_loops.config.core import load_raw_config, resolve_config_path
+        from little_loops.paths import resolve_ll_dir
+
+        root = project_root
+        if root is None:
+            ll_dir = resolve_ll_dir(start=Path.cwd())
+            if ll_dir is None:
+                return None
+            root = ll_dir.parent
+        raw = load_raw_config(root)
+        value = raw.get("orchestration", {}).get("host_cli")
+        if not isinstance(value, str) or not value:
+            return None
+        config_path = resolve_config_path(root) or (root / ".ll" / "ll-config.json")
+        return value, config_path
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def resolve_host(
+    env: dict[str, str] | None = None, *, project_root: Path | None = None
+) -> HostRunner:
     """Resolve the active :class:`HostRunner`.
 
     Detection order (first match wins):
@@ -2643,13 +2676,21 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
     2. ``LL_HOOK_HOST`` environment variable — falls back to the hooks-layer
        host identifier so users with an existing hook config don't need a
        second knob.
-    3. Binary probe: ``claude`` → ``codex`` → ``pi`` → ``gemini`` → ``omp``
+    3. ``orchestration.host_cli`` from the project config (``ll-config.json``
+       merged with ``.ll/ll.local.md``) — only on the ambient-env path
+       (``env is None``); read by this function, never exported to
+       ``os.environ``.
+    4. Binary probe: ``claude`` → ``codex`` → ``pi`` → ``gemini`` → ``omp``
        → ``kimi`` → ``qwen`` (see ``_PROBE_ORDER`).
-    4. Raise :class:`HostNotConfigured` with a remediation hint.
+    5. Raise :class:`HostNotConfigured` with a remediation hint.
 
     Args:
         env: Optional environment dict for testability. Defaults to
-            ``os.environ`` when omitted.
+            ``os.environ`` when omitted. An explicit *env* skips the config
+            step (as does :func:`resolve_host_named`).
+        project_root: Root whose config is consulted for step 3, used as-is
+            (no upward walk). Defaults to the project resolved from
+            ``Path.cwd()``. Ignored when *env* is passed.
 
     Returns:
         A :class:`HostRunner` instance ready to build invocations.
@@ -2658,6 +2699,7 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
         HostNotConfigured: if no host can be resolved.
     """
 
+    use_config = env is None
     if env is None:
         env = dict(os.environ)
 
@@ -2670,6 +2712,18 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
             f"Host {explicit!r} is not registered. Available: "
             f"{sorted(_HOST_RUNNER_REGISTRY)}. {_remediation_hint()}"
         )
+
+    if use_config:
+        configured = _config_host_cli(project_root)
+        if configured is not None:
+            name, config_path = configured
+            runner_cls = _HOST_RUNNER_REGISTRY.get(name)
+            if runner_cls is not None:
+                return runner_cls()
+            raise HostNotConfigured(
+                f"orchestration.host_cli = {name!r} in {config_path} is not a registered "
+                f"host. Available: {sorted(_HOST_RUNNER_REGISTRY)}. {_remediation_hint()}"
+            )
 
     for host_name, binary in _PROBE_ORDER:
         if shutil.which(binary) is None:
@@ -2837,11 +2891,11 @@ def run_blocking_json(
             ) from None
         except FileNotFoundError:
             raise BlockingJsonError(
-                f"{invocation.binary} CLI not found. Install the active host CLI (see LL_HOST_CLI).",
+                f"{invocation.binary} CLI not found. Install the active host CLI (see LL_HOST_CLI / orchestration.host_cli).",
                 {
                     "error": (
                         f"{invocation.binary} CLI not found. Install the active host CLI "
-                        "(see LL_HOST_CLI)."
+                        "(see LL_HOST_CLI / orchestration.host_cli)."
                     ),
                     "missing_dependency": True,
                 },
@@ -2936,6 +2990,11 @@ def run_blocking_json(
 
 def apply_host_cli_from_config(config: object) -> None:
     """Export ``orchestration.host_cli`` from *config* as ``LL_HOST_CLI``.
+
+    .. deprecated::
+        :func:`resolve_host` now reads ``orchestration.host_cli`` itself on the
+        ambient-env path (BUG-3644), without mutating ``os.environ``. This
+        helper has no production callers and is kept only for compatibility.
 
     Reads ``config.orchestration.host_cli`` (a :class:`~little_loops.config.OrchestrationConfig`
     attribute) and sets ``LL_HOST_CLI`` in the process environment so that a

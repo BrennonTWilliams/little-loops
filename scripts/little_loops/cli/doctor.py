@@ -764,12 +764,11 @@ def _advisor_data() -> list[dict[str, Any]]:
     severity: an unconfigured or cross-host advisor is a deliberate
     configuration, not a broken install (D1-D8).
     """
-    import os
 
     from little_loops.advisor import check_floor
     from little_loops.config import BRConfig
     from little_loops.fsm.schema import DEFAULT_LLM_MODEL
-    from little_loops.host_runner import HostNotConfigured, resolve_host, resolve_host_named
+    from little_loops.host_runner import HostNotConfigured, resolve_host
 
     cfg = BRConfig(Path.cwd())
     advisor = cfg.advisor
@@ -813,9 +812,8 @@ def _advisor_data() -> list[dict[str, Any]]:
     }
 
     main_model = DEFAULT_LLM_MODEL
-    name = os.environ.get("LL_HOST_CLI") or cfg.orchestration.host_cli
     try:
-        main_host = (resolve_host_named(name) if name else resolve_host()).name
+        main_host = resolve_host(project_root=Path.cwd()).name
     except HostNotConfigured:
         floor_row = {
             "name": "advisor_floor",
@@ -1613,7 +1611,7 @@ def main_doctor(argv: list[str] | None = None) -> int:
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-doctor", sys.argv[1:]):
         from little_loops.config import BRConfig
-        from little_loops.host_runner import apply_host_cli_from_config, resolve_host
+        from little_loops.host_runner import resolve_host
 
         parser = argparse.ArgumentParser(
             prog="ll-doctor",
@@ -1665,8 +1663,7 @@ not a broken install.
         Logger(use_color=use_color_enabled())
 
         cfg = BRConfig(Path.cwd())
-        apply_host_cli_from_config(cfg)
-        runner = resolve_host()
+        runner = resolve_host(project_root=cfg.project_root)
         report = runner.describe_capabilities()
         version = _probe_version(runner)
 

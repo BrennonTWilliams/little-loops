@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -812,51 +813,62 @@ class TestAdvisor:
         assert host_row["status"] == "unsupported"
         assert host_row["severity"] == "informational"
 
+    def _main_host_seen(self, tmp_path: Path, monkeypatch, config_host: str | None) -> str:
+        """Run ``_advisor_data`` with real ``resolve_host`` and return the main host it saw."""
+        import little_loops.advisor as advisor_mod
+        import little_loops.cli.doctor as doctor_mod
+        from little_loops.advisor import FloorResult
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        if config_host is not None:
+            (tmp_path / ".ll").mkdir()
+            (tmp_path / ".ll" / "ll-config.json").write_text(
+                json.dumps({"orchestration": {"host_cli": config_host}})
+            )
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
+            _FakeOrchestrationConfig(host_cli=config_host),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
+        seen: dict[str, str] = {}
+
+        def _fake_floor(advisor_host, advisor_model, main_host, main_model):
+            seen["main_host"] = main_host
+            return FloorResult(status="ok", detail="")
+
+        monkeypatch.setattr(advisor_mod, "check_floor", _fake_floor)
+        doctor_mod._advisor_data()
+        return seen["main_host"]
+
+    @pytest.mark.host_config
     def test_independent_main_vs_advisor_resolution_env_first(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        import little_loops.cli.doctor as doctor_mod
-
-        monkeypatch.chdir(tmp_path)
-        fake_cfg = _FakeBRConfig(
-            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
-            _FakeOrchestrationConfig(host_cli="codex"),
-        )
-        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
-        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
         monkeypatch.setenv("LL_HOST_CLI", "opencode")
-        seen = {}
-        monkeypatch.setattr(
-            "little_loops.host_runner.resolve_host_named",
-            lambda name: (seen.__setitem__("main_host_name", name), _FakeHostRunner(name))[1],
-        )
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
 
-        doctor_mod._advisor_data()
+        assert self._main_host_seen(tmp_path, monkeypatch, "codex") == "opencode"
 
-        assert seen["main_host_name"] == "opencode"
-
+    @pytest.mark.host_config
     def test_independent_main_vs_advisor_resolution_config_second(
         self, tmp_path: Path, monkeypatch
     ) -> None:
-        import little_loops.cli.doctor as doctor_mod
-
-        monkeypatch.chdir(tmp_path)
-        fake_cfg = _FakeBRConfig(
-            _FakeAdvisorConfig(enabled=True, host="claude-code", model="opus"),
-            _FakeOrchestrationConfig(host_cli="codex"),
-        )
-        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
-        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
         monkeypatch.delenv("LL_HOST_CLI", raising=False)
-        seen = {}
-        monkeypatch.setattr(
-            "little_loops.host_runner.resolve_host_named",
-            lambda name: (seen.__setitem__("main_host_name", name), _FakeHostRunner(name))[1],
-        )
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
 
-        doctor_mod._advisor_data()
+        assert self._main_host_seen(tmp_path, monkeypatch, "codex") == "codex"
 
-        assert seen["main_host_name"] == "codex"
+    @pytest.mark.host_config
+    def test_independent_main_vs_advisor_resolution_hook_host_beats_config(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """BUG-3644: doctor ranks LL_HOOK_HOST above config, like every other path."""
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+        monkeypatch.setenv("LL_HOOK_HOST", "opencode")
+
+        assert self._main_host_seen(tmp_path, monkeypatch, "codex") == "opencode"
 
     def test_independent_main_vs_advisor_resolution_both_unset_falls_back(
         self, tmp_path: Path, monkeypatch

@@ -1827,7 +1827,7 @@
     },
     "orchestration": {
       "type": "object",
-      "description": "Orchestration settings, primarily host CLI selection. Values here are read by apply_host_cli_from_config() before resolve_host() runs.",
+      "description": "Orchestration settings, primarily host CLI selection. Values here are read by resolve_host() itself (LL_HOST_CLI > LL_HOOK_HOST > orchestration.host_cli > binary probe).",
       "properties": {
         "host_cli": {
           "type": "string",

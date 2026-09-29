@@ -10894,7 +10894,7 @@ def render_capability_report(entry: RuntimeHostEntry) -> CapabilityReport: ...
 
 ### apply_host_cli_from_config
 
-Apply the `orchestration.host_cli` config key (or `LL_HOST_CLI` env var) to the runner selection before the binary probe runs. Typically called once at startup by orchestration entry points.
+**Deprecated.** Exports the `orchestration.host_cli` config key as `LL_HOST_CLI` (env var wins if already set). [`resolve_host`](#resolve_host) now reads the config key itself on the ambient-env path without mutating `os.environ`, so nothing needs to call this at startup; it is kept only for compatibility.
 
 ```python
 def apply_host_cli_from_config(config: object) -> None: ...
@@ -10905,7 +10905,7 @@ def apply_host_cli_from_config(config: object) -> None: ...
 Discovery entry point. Returns a `HostRunner` instance ready to build invocations.
 
 ```python
-def resolve_host(env: dict[str, str] | None = None) -> HostRunner: ...
+def resolve_host(env: dict[str, str] | None = None, *, project_root: Path | None = None) -> HostRunner: ...
 ```
 
 **Behavior:**
@@ -10913,8 +10913,9 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner: ...
 Detection order (first match wins):
 1. `LL_HOST_CLI` environment variable — explicit override.
 2. `LL_HOOK_HOST` environment variable — falls back to the hooks-layer host identifier so users with an existing hook config don't need a second knob.
-3. Binary probe: `claude` → `codex` → `pi` → `gemini` → `omp` (see `_PROBE_ORDER`).
-4. Raise `HostNotConfigured` with a remediation hint.
+3. `orchestration.host_cli` from the project config (`ll-config.json` merged with `.ll/ll.local.md`). Consulted only on the ambient-env path (`env is None`) and never exported to `os.environ`; an unregistered value raises `HostNotConfigured` naming the key and config path. `project_root` selects the config root (used as-is, no upward walk); it defaults to the project resolved from the current directory and is ignored when `env` is passed.
+4. Binary probe: `claude` → `codex` → `pi` → `gemini` → `omp` → `kimi` → `qwen` (see `_PROBE_ORDER`).
+5. Raise `HostNotConfigured` with a remediation hint.
 
 ```python
 from little_loops.host_runner import resolve_host

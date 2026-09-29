@@ -173,7 +173,7 @@ def _call_llm_for_summary(
     except FileNotFoundError:
         logger.error(
             "_call_llm_for_summary: %s CLI not found. Install the active host CLI "
-            "(see LL_HOST_CLI).",
+            "(see LL_HOST_CLI / orchestration.host_cli).",
             inv.binary,
         )
         return None
