@@ -9,8 +9,14 @@ discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:46:29Z'
 learning_tests_required:
 - hrana-http
-verify_verdict: DIRECTIVE_DRIFT
+verify_verdict: VALID
 reconcile_attempted: true
+confidence_score: 80
+outcome_confidence: 45
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 0
 ---
 
 # FEAT-3535: Remote libSQL history backend via stdlib Hrana-over-HTTP client
@@ -158,6 +164,7 @@ or CI runners have no shared history/analytics store.
 
 ### Documentation
 - `docs/reference/CONFIGURATION.md` (`history.backend`), `docs/reference/CLI.md`
+  <!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
   (`ll-session migrate`), `skills/configure/areas.md` `## Area: history` (decide knowingly
   whether `backend` follows the fuller or thinner `workspace_manifest_path` precedent);
   skill/README edits trip the mirror gates (`ll-adapt --host <gemini|kimi-code|qwen> --apply`).
@@ -198,7 +205,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - **Row/cursor surface a Hrana-backed connection must satisfy** (verified consumption): `row["col"]`/`row[i]` and `row.keys()` (about 120 subscripts in `history_reader/`, plus `_base.py::_row_to_dataclass`), `dict(row)` (about 15 sites across `mcp_server/tools.py`, `session_store/queries.py`, `lifecycle.py`, `cli/history.py`, `cli/session.py`, `history_reader/{usage,subagents,formatting,sessions}.py`), `cursor.lastrowid` (4 sites each in `lifecycle.py` and `writers.py`), `executemany` (one site each), and `cursor.rowcount` (`hooks/post_tool_use.py`). `in_transaction`, `cursor.description`, `executescript`, `.backup`, and `iterdump` are declared or historically feared but have no consumer in `little_loops` outside `backend.py`/`schema.py`.
 - **Error-handling split that bounds "clear capability limitation" and "HistoryError classification".** About 127 `except sqlite3.(Error|OperationalError)` sites across 29 files remain, versus about 33 `HistoryError`/`translate_sqlite_errors` uses across 8 files. `writers.py::SQLiteTransport` catches `HistoryError`, but `writers.py::record_hook_event` in the same file still catches `sqlite3.Error`; `cli/doctor.py::_history_db_data` catches `(sqlite3.Error, HistoryUnavailable)` together. A non-sqlite backend raising only `HistoryError` subclasses will not be caught by the `sqlite3.Error` sites, which is either the intended behavior or a gap depending on each site's best-effort role.
 - **In-repo spike is a completed FEAT-3524 artifact and proves only local mechanics.** `scripts/tests/spike/session_store_backend_dialect/` (with plan `.ll/spikes/spike-FEAT-3524.md`) has a `StubRemoteBackend` that is a `sqlite3` connection with an empty capability set and DDL lacking `AUTOINCREMENT`. It proves the migration locking sequence works with per-dialect DDL, `ensure_schema` idempotency, four-thread race convergence, and a capability-gate error that names the capability and backend. It contains no socket, HTTP, batch, or baton code; FEAT-3524's Spike Results state it does not establish remote behavior. Its capability names (`fts5`, `wal`, `vacuum`) differ from production `_SQLITE_CAPABILITIES` (`attach`, `vacuum`, `create_function`); production analogues live in `test_session_store_backend.py` (`TestDialectMigration`, `TestCapabilityGate`, `TestConcurrentMigration`). FEAT-3535 does not currently cite the spike.
-- **Migration facts a remote path must preserve (verified).** `schema.SCHEMA_VERSION` is 55 (the `libsql-remote` learning record's 52-migration count is stale). `_configure_connection` issues `busy_timeout` and `journal_mode = WAL` pragmas, which the learning record found rejected on sqld/Turso, and swallows the failure at debug level. `_current_version` detects a missing schema by matching "no such table" in the error message, and re-raises anything else. Above-current stamps trigger a `_schema_manifest`/`_reference_manifest_at` structural comparison built from `PRAGMA table_info`/`index_list`/`index_info`; that comparison has no remote analogue defined yet. `schema.connect` opens two connections per call (one to migrate, one with `row_factory = sqlite3.Row`).
+- **Migration facts a remote path must preserve (verified).** `schema.SCHEMA_VERSION` is 55 (the `libsql-remote` learning record's 52-migration count is out of date). `_configure_connection` issues `busy_timeout` and `journal_mode = WAL` pragmas, which the learning record found rejected on sqld/Turso, and swallows the failure at debug level. `_current_version` detects a missing schema by matching "no such table" in the error message, and re-raises anything else. Above-current stamps trigger a `_schema_manifest`/`_reference_manifest_at` structural comparison built from `PRAGMA table_info`/`index_list`/`index_info`; that comparison has no remote analogue defined yet. `schema.connect` opens two connections per call (one to migrate, one with `row_factory = sqlite3.Row`).
 - **Test files the change must keep green** (in addition to the inherited list): `scripts/tests/test_session_store_backend.py` (`TestResolveBackend`, `TestProtocolConformance` — its docstring anticipates a `libsql` provider — `TestCapabilityGate`), `test_history_store_chokepoint_gate.py`, `test_session_store_writers.py` (ENH-3526 translation test), `test_session_store_lifecycle.py` (monkeypatches `open_history`), `test_config_schema.py` (history block has `additionalProperties: false`, so an undeclared `backend` key is rejected until declared), `test_config.py::TestHistoryConfig`, and `test_wiring_reference_docs.py` / `test_wiring_init_and_configure.py`, which pin per-key doc strings.
 - **Conventions in force for the new pieces** (rule first, files as evidence):
   - Provider registries are lazy `(module_path, class_name)` maps whose resolver raises the domain error listing sorted registered names (`session_store/backend.py::_BACKEND_MAP`, `codequery/core.py::_PROVIDER_MAP`, `adapters/core.py::_EMITTER_MAP`); providers satisfy a `@runtime_checkable` Protocol structurally. Contested: `host_runner._HOST_RUNNER_REGISTRY` is an eager class dict and `transport._TRANSPORT_REGISTRY` warns rather than raises on unknown names.
@@ -210,7 +217,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
   - Doctor checks: a `_X_data()` dict plus a `@register_check` function, a JSON payload key, and a `_print_X_section()`; an absent optional feature is `unsupported` + `informational`, and only error-severity unsupported yields exit 1. `_history_db_data` currently hard-codes `Path.cwd() / DEFAULT_DB_PATH` and a 16-byte SQLite-header file check before `resolve_backend().connect_readonly`, so a remote target needs its own probe branch.
   - A new `history.*` key touches `config-schema.json`, `HistoryConfig.from_dict` (lenient), `config/core.py` wiring, `docs/reference/CONFIGURATION.md`, and the structural asserts in `test_config_schema.py`/`test_config.py`. Contested: the recent `history.db_path` and `workspace_manifest_path` keys were *not* added to `config/core.py::to_dict()`, `skills/configure/areas.md` `## Area: history`, or `skills/configure/show-output.md`; the inherited Files-to-Modify list (step 7 "configure history-area mirrors") should decide knowingly whether `backend` follows the fuller or the thinner precedent. Skill/README edits trip the mirror gates (`ll-adapt --host <gemini|kimi-code|qwen> --apply`).
   - Test placement: network-client tests use a real stdlib server on `127.0.0.1` port 0 in a daemon thread with `shutdown()` then `server_close()` (`test_flux_image_generator.py::flux_stub`), whereas `test_link_checker.py` mocks `urlopen`; no existing test blackholes a connect. Live-endpoint tests are `pytest.mark.integration` (excluded by `-m "not integration and not conformance"`) and env-gated via a predicate read at fixture time (`tests/conftest.py::_live_conformance_allowed`). `conftest.py` autouse fixtures set `LL_HISTORY_DB` and guard against opening the real `.ll/history.db`, so any non-sqlite test runs with that env already set.
-- **Learning-test gate is enforced.** FEAT-3535 declares `learning_tests_required: [hrana-http]` (FEAT-3524 declared `[libsql, libsql-remote]`), enforced by `learning_tests/gate.py`/`ll-learning-tests assess`. `hrana-http.md` exists and is proven (2026-09-28); like the stdlib-target record `httpserver.md` it omits `proven_package`/`proven_version` and uses age-based staleness.
+- **Learning-test gate is enforced.** This issue's frontmatter `learning_tests_required` key lists `hrana-http`; its cancelled predecessor listed `libsql` and `libsql-remote`. The key is enforced by `learning_tests/gate.py`/`ll-learning-tests assess`. `hrana-http.md` exists and is proven (2026-09-28); like the stdlib-target record `httpserver.md` it omits `proven_package`/`proven_version` and uses age-based staleness.
 - **No other open issue gates this one.** FEAT-3524 is `cancelled` (predecessor), ENH-3525 and ENH-3526 are `done`; no open issue mentions `HistoryTarget`, `history.backend`, or Hrana beyond this one.
 
 ## Acceptance Criteria
@@ -232,6 +239,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 - `HranaClient`: stdlib `http.client` client for `/v3/pipeline` holding base URL, auth token, connect/read timeouts, and the current baton
 - `HranaError(HistoryError)`: carries the structured Hrana error `code` and message; a retryable stream-lost subclass covers `STREAM_EXPIRED` and idle-transaction `SQLITE_BUSY`
+- `LibsqlBackend`: `Backend` implementation built on `HranaClient`; `supports()` returns False for FTS5, maintenance, `ATTACH`, `create_function`, and snapshot export
 
 ### Error Code Mapping
 
@@ -248,7 +256,6 @@ Observed in `.ll/learning-tests/hrana-http.md` (2026-09-28). Errors arrive in `r
 | second `BEGIN IMMEDIATE` under contention | both | no error; blocks until the holder is reaped, so the client read timeout bounds it |
 
 The client must parse both the per-result `error` and the top-level HTTP-error body. Turso cannot distinguish busy from expired by code, so the one stream-lost class is deliberate. Migrations use an atomic `batch` (`begin immediate`, conditional statements, conditional `commit`, `not ok` conditional `rollback`), which serialized four concurrent runs with one schema row.
-- `LibsqlBackend`: `Backend` implementation built on `HranaClient`; `supports()` returns False for FTS5, maintenance, `ATTACH`, `create_function`, and snapshot export
 
 ### Signatures
 
@@ -266,7 +273,7 @@ The client must parse both the per-result `error` and the top-level HTTP-error b
 _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 
 - `HistoryConnection` (protocol in `session_store/backend.py`) declares only `in_transaction`, `execute`, `executemany`, `commit`, `rollback`, `close`, and forbids consumers assigning `row_factory`. `HistoryCursor` requires `description`, `lastrowid`, `rowcount`, `fetchone/fetchall/fetchmany`, `__iter__`; `HistoryRow` requires `keys()` and `__getitem__`. A Hrana-backed connection and cursor must satisfy exactly these, including name and index access on rows.
-- `HistoryTarget` does not exist in code; the signatures above reference it as a type from FEAT-3524 §1a. Until Step 2 lands, `Backend.connect` takes `Path`.
+- `HistoryTarget` is not yet in code; the signatures above reference it as a type from FEAT-3524 §1a. Until Step 2 lands, `Backend.connect` takes `Path`.
 - `resolve_backend(provider: str = "sqlite")` imports lazily through `_BACKEND_MAP` entries of the form (module path, class name) and raises `HistoryUnsupported` for unknown providers; the entry points do not currently accept a provider, so the provider must be sourced from config inside the chokepoint.
 - Decision Rules (advisory): capability strings consulted through `supports()` today are `attach`, `vacuum`, `create_function`; the limitation list in Expected Behavior needs a defined capability name per operation, and the raised error must name the operation.
 
@@ -275,7 +282,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - **Signature drift to reconcile.** `Backend.connect`/`connect_readonly`/`ensure_schema` currently take `Path` and return `sqlite3.Connection` (`session_store/backend.py`); the Signatures above assume `Path | HistoryTarget` and `HistoryConnection`. `HistoryTarget` is not in code, and `_resolve_once` returns `Path`, so the target-type change also lands in `open_history`, `open_history_readonly`, and `connect_readonly`.
 - **Provider selection has no seam yet.** The three module entry points and four direct callers call `resolve_backend()` with the default provider; `BackendProvider` is `Literal["sqlite"]`. Any design must state where config selects the provider so those callers pick it up without each passing an argument.
 - **Capability names to define.** Production `supports()` knows `attach`, `vacuum`, `create_function`; the spike used `fts5`, `wal`, `vacuum`. The Expected Behavior limitations (FTS5, maintenance, snapshot export) need one capability string each, and `HistoryUnsupported` has no field for the operation name, so the naming requirement in Acceptance Criteria implies either a message convention or a new field.
-- **Decision Rules (advisory).** Hrana error-code to `HistoryError` class mapping is new decision logic: the four codes named in Acceptance Criteria (`SQLITE_CONSTRAINT`, `SQLITE_BUSY`, `STREAM_EXPIRED`, auth failure) must each land on a distinct class, and the current taxonomy has no class for busy/expired-stream; `HistoryOperationError` and `HistoryUnavailable` are the only candidates today without adding subclasses. The exact class per code is left to the `hrana-http` learning test's observed codes.
+- **Decision Rules (advisory) — resolved 2026-09-28.** Hrana error-code to `HistoryError` class mapping is settled by the `hrana-http` learning test: see Error Code Mapping under Program Design. Busy and expired share one retryable stream-lost subclass (Turso reports an expired idle transaction as `SQLITE_BUSY`), so the four codes do not each get a distinct class.
 
 ## Implementation Steps
 
@@ -328,8 +335,30 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-24 | Priority: P4
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-28_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION (below the 85 config gate)
+**Outcome Confidence**: 45/100 → LOW
+
+### Concerns
+- The `hrana-http` record is `proven` but carries 2 contradicted claims (stream-expired code on Turso; `SQLITE_BUSY` under write contention). The issue's criteria already absorb both, but the rubric applies a -5 modifier to duplicate-implementation scoring until they are treated as settled.
+- Requirements clarity relies on FEAT-3524 sections (§1 config precedence, §1a `HistoryTarget`, §1b env relay, §7 operation matrix, §7a ingestion watermark, §8 telemetry budget, §9 migrate, §10 identity stamp). That issue is cancelled, so its design is not restated here.
+- New conventions still to decide: `url_env`/`auth_token_env` config naming, and whether `HistoryUnsupported` gains an operation field or uses a message convention.
+
+### Gaps to Address
+- Restate the FEAT-3524 sections that Implementation Steps 5-7 depend on directly in this issue, so it can be implemented without the cancelled predecessor.
+
+### Outcome Risk Factors
+- Broad enumeration across 12+ files in Files to Modify, plus 50+ history call sites that bypass the chokepoint and stay hard-sqlite unless moved.
+- Deep per-site complexity for the chokepoint retype: `Backend`, `open_history`, `open_history_readonly` and `connect_readonly` move from `Path`/`sqlite3.Connection` to `HistoryTarget`/`HistoryConnection`.
+- Wide blast radius: 15+ dependents of the chokepoint entry points must keep working unchanged for `sqlite`.
+- Unresolved scope decision: which bypassing call sites migrate is deferred to an operation matrix that is not restated in this issue.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T02:35:02 - `73686e01-7e81-40c2-bf94-43634394b513.jsonl`
+- `/ll:verify-issues` - 2026-09-29T02:33:55 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:reconcile-issue` - 2026-09-29T02:31:02 - `efa5da7e-d183-4626-be25-08b53ab75362.jsonl`
 - `/ll:verify-issues` - 2026-09-29T02:24:24 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:refine-issue` - 2026-09-29T01:36:58 - `53ec1cbf-a55d-477a-91f3-8081b28d4c2d.jsonl`
