@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import little_loops.session_store as _pkg
+from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.schema import _KIND_TABLE, VALID_KINDS
 
@@ -297,6 +298,7 @@ def build_snapshot_db(
         The source DB's recorded ``schema_version``, read on the same read-only
         connection (D19), or None when it cannot be determined.
     """
+    refuse_on_remote(db, "snapshot_export")
     unknown = [t for t in tables if t not in _EXPORT_TABLE_MAP]
     if unknown:
         raise ValueError(

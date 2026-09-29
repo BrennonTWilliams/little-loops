@@ -11,15 +11,77 @@ from __future__ import annotations
 import re
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from little_loops.history_reader._base import DEFAULT_DB_PATH, _connect_readonly, logger
 from little_loops.history_reader.models import GrepResult, SummaryNode
+from little_loops.session_store.backend import HistoryError
 
 __all__ = [
     "ll_describe",
     "ll_expand",
     "ll_grep",
 ]
+
+# A remote connection has no ``create_function`` (FEAT-3535), so ``ll_grep`` cannot register
+# a SQL regexp there. It prefilters with a plain ``LIKE`` on a literal the pattern requires
+# and applies the regex in Python; with no usable literal it scans a bounded recent window.
+_REMOTE_GREP_SCAN_CAP = 5000
+_REGEX_META = frozenset("|()[]{}?*+\\^$.")
+
+
+def _required_literal(pattern: str) -> str | None:
+    """The pattern itself when it is a pure literal every match must contain, else ``None``.
+
+    Deliberately conservative: any regex metacharacter (alternation, groups, classes,
+    quantifiers, anchors, escapes) makes the pattern non-literal, so it is scanned over the
+    bounded window rather than partially parsed for a "required" fragment.
+    """
+    if len(pattern) >= 3 and not (_REGEX_META & set(pattern)):
+        return pattern
+    return None
+
+
+def _grep_remote(conn, pattern: str, summary_id: int | None, limit: int) -> list:
+    try:
+        compiled = re.compile(pattern, re.IGNORECASE)
+    except re.error:
+        return []
+    literal = _required_literal(pattern)
+    where = "1 = 1"
+    params: list[Any] = []
+    if literal:
+        escaped = literal.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where, params = "me.content LIKE ? ESCAPE '\\'", [f"%{escaped}%"]
+    if summary_id is not None:
+        sql = (
+            "WITH RECURSIVE descendants AS ("
+            "  SELECT id, kind FROM summary_nodes WHERE id = ?"
+            "  UNION ALL"
+            "  SELECT sn.id, sn.kind FROM summary_nodes sn"
+            "  JOIN descendants d ON sn.parent_id = d.id"
+            ") SELECT me.id, me.session_id, me.ts, me.content,"
+            " sn.id AS summary_id, sn.kind AS summary_kind"
+            " FROM message_events me"
+            " JOIN summary_spans ss ON ss.message_event_id = me.id"
+            " JOIN descendants leaf ON leaf.id = ss.summary_id"
+            " JOIN summary_nodes sn ON sn.id = leaf.id"
+            f" WHERE {where} ORDER BY me.ts DESC, me.id DESC LIMIT ?"
+        )
+        params = [summary_id, *params]
+    else:
+        sql = (
+            "SELECT me.id, me.session_id, me.ts, me.content,"
+            " sn.id AS summary_id, sn.kind AS summary_kind"
+            " FROM message_events me"
+            " LEFT JOIN summary_spans ss ON ss.message_event_id = me.id"
+            " LEFT JOIN summary_nodes sn ON sn.id = ss.summary_id"
+            f" WHERE {where} ORDER BY me.ts DESC, me.id DESC LIMIT ?"
+        )
+    rows = conn.execute(sql, [*params, _REMOTE_GREP_SCAN_CAP]).fetchall()
+    matched = [r for r in rows if compiled.search(r["content"] or "")]
+    matched.sort(key=lambda r: (r["ts"], r["id"]))
+    return matched[:limit]
 
 
 def ll_grep(
@@ -52,8 +114,12 @@ def ll_grep(
             return False
 
     try:
-        conn.create_function("regexp_match", 2, _regexp)
-        if summary_id is not None:
+        remote = not hasattr(conn, "create_function")
+        if not remote:
+            conn.create_function("regexp_match", 2, _regexp)
+        if remote:
+            rows = _grep_remote(conn, pattern, summary_id, limit)
+        elif summary_id is not None:
             # Recursive CTE walks the full N-level DAG from the starting node
             # through all descendants, terminating at leaf nodes that have
             # summary_spans entries.  Works uniformly for both kind='leaf'
@@ -87,7 +153,7 @@ def ll_grep(
                 " ORDER BY me.ts, me.id LIMIT ?",
                 (pattern, limit),
             ).fetchall()
-    except sqlite3.Error:
+    except (sqlite3.Error, HistoryError):
         logger.warning("history_reader: ll_grep query failed", exc_info=True)
         return []
     finally:

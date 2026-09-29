@@ -85,6 +85,33 @@ class HistoryOperationError(HistoryError):
     """A database operation failed for a reason other than the three above."""
 
 
+# Why each operation is rejected under a remote store (Proposed Design, operation matrix).
+_REMOTE_REFUSALS = {
+    "rebuild": "it deletes derived tables globally with no concurrency guarantee",
+    "backfill": "a full backfill overwrites rows other machines wrote",
+    "prune": "it deletes raw_events other machines still use",
+    "compact": "it rewrites raw_events other machines still use",
+    "recompress": "it rewrites raw_events other machines still use",
+    "snapshot_export": "it needs ATTACH to a local destination, which a remote store lacks",
+}
+
+
+def refuse_on_remote(db: Path | str | HistoryTarget | None, operation: str) -> None:
+    """Raise :class:`HistoryUnsupported` naming *operation* when *db* resolves to a remote
+    store, before anything is read or written (no network call is made).
+
+    Local targets, including an explicit non-default path under a remote provider, pass.
+    """
+    target = resolve_history_target(db)
+    if isinstance(target, RemoteTarget):
+        why = _REMOTE_REFUSALS.get(operation, "it is a local-file operation")
+        raise HistoryUnsupported(
+            f"{operation} is not supported under history.backend provider "
+            f"{target.provider!r}: {why}",
+            operation=operation,
+        )
+
+
 def _describe(target: HistoryTarget) -> str:
     return str(target.path) if isinstance(target, LocalTarget) else f"{target.provider} store"
 

@@ -31,7 +31,11 @@ from typing import TYPE_CHECKING, Any
 
 import little_loops.session_store as _pkg
 from little_loops.host_runner import project_child_env, resolve_host
-from little_loops.session_store.backend import HistoryError, translate_sqlite_errors
+from little_loops.session_store.backend import (
+    HistoryError,
+    refuse_on_remote,
+    translate_sqlite_errors,
+)
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.schema import SCHEMA_VERSION
 from little_loops.session_store.sessions import (
@@ -877,6 +881,7 @@ def recompress_raw_events(
 
     Returns ``{"recompressed": int, "size_before_mb": float, "size_after_mb": float}``.
     """
+    refuse_on_remote(db, "recompress")
     db_path = _pkg.ensure_db(db)  # unified env→config→default resolution + schema (ENH-2623)
     size_before = db_path.stat().st_size if db_path.exists() else 0
     conn = _pkg.connect(db_path)
@@ -974,6 +979,7 @@ def rebuild(
     Issue/loop/commit/cli/file/test_run tables are outside ``raw_events``'s
     scope for this issue (ENH-2581) and are left untouched.
     """
+    refuse_on_remote(db, "rebuild")
     conn = _pkg.connect(db)
     counts: dict[str, int] = {
         "sessions": 0,
@@ -1089,6 +1095,7 @@ def backfill(
     Returns a per-kind count of rows inserted/derived. Sources that are
     absent are skipped silently.
     """
+    refuse_on_remote(db, "backfill")
     if jsonl_files is not None and handles is not None:
         raise ValueError("backfill: pass jsonl_files or handles, not both")
     issues_dir = issues_dir if issues_dir is not None else Path(".issues")
@@ -1176,6 +1183,8 @@ def backfill_incremental(
     Errors are not suppressed — the caller (session hook) catches them and
     logs a warning.
     """
+    if also_rebuild:
+        refuse_on_remote(db, "rebuild")
     if since_ts is None:
         conn = _pkg.connect(db)
         try:
@@ -1222,6 +1231,7 @@ def compact(
     If *and_prune*, calls :func:`prune` afterward and folds its deleted-row
     count into the return value.
     """
+    refuse_on_remote(db, "compact")
     from little_loops.config.features import RetentionConfig
 
     raw = (config or {}).get("analytics", {}).get("retention", {})
@@ -1323,6 +1333,7 @@ def prune(
         - ``deleted`` (dict[str, int]): ``{"raw_events": count}`` (actual or projected)
         - ``vacuumed`` (bool): whether VACUUM ran (always False in dry_run)
     """
+    refuse_on_remote(db, "prune")
     from little_loops.config.features import RetentionConfig
 
     raw = (config or {}).get("analytics", {}).get("retention", {})

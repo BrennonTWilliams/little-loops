@@ -470,13 +470,15 @@ def _main_migrate() -> int:
             )
             before, after, where = report.before, report.after, f"remote ({cfg.provider})"
         else:
-            import sqlite3
+            from little_loops.session_store.backend import HistoryUnavailable, connect_readonly
 
             path = target.path
             before = 0
-            if path.exists():
-                with contextlib.closing(sqlite3.connect(str(path))) as probe:
+            try:  # strict read-only probe: never creates or migrates the file
+                with contextlib.closing(connect_readonly(path)) as probe:
                     before = _current_version(probe)
+            except HistoryUnavailable:
+                pass
             ensure_db(path)
             after, where = SCHEMA_VERSION, str(path)
     except HistoryError as exc:
