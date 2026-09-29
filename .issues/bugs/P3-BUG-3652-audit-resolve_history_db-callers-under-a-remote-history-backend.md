@@ -279,12 +279,13 @@ Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the s
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-29 (re-run on the narrowed scope)_
+_Added by `/ll:confidence-check` on 2026-09-29 (re-run on the narrowed scope; re-scored after the writer-level fail-soft plan — scores unchanged, call sites and test files spot-checked against the code)_
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 56/100 → LOW
 
 ### Concerns
+- The writer-widening count is loose: the issue says "~19 fail-soft writers" but `session_store/writers.py` has 15 `except sqlite3.Error` clauses. Enumerate the exact `write_*` set at implementation time so the parametrized dead-stub test covers every writer.
 - Guard style disagrees across the codebase (narrow tuple in `set_status.py` vs broad `Exception` elsewhere); the issue picks `HistoryError`, which is consistent with the Decision Rules.
 - ~~Two open judgment calls remain in the body: whether cascade children get their own history rows in `apply_status_transition`, and the "stated ceiling" for slow-but-alive endpoint overhead (no number chosen).~~ **Resolved** (second `/ll:advise` review, 2026-09-29): cascade children are unchanged (only the parent gets rows), and the ceiling is a fixed request count per write kind with wall time ≤ count × budget (see Acceptance Criteria).
 
@@ -294,6 +295,7 @@ _Added by `/ll:confidence-check` on 2026-09-29 (re-run on the narrowed scope)_
 - Two premises are inferred from code, not executed against `HranaStub` (remote `read_base_sha`; lazy network-free `SQLiteTransport` construction). Prove both first (Step 4 note) — if either fails, the prepatch and transport fixes change shape.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T06:11:48 - `236872ac-1b8a-494a-8a4f-024f9ae7329e.jsonl`
 - `/ll:confidence-check` - 2026-09-29T05:54:19 - `84b20094-435f-46d0-882f-cf08768d6a92.jsonl`
 - `/ll:confidence-check` - 2026-09-29T05:15:44 - `bf65814b-8af2-43a0-8fe0-ec16e1b4857f.jsonl`
 - `/ll:verify-issues` - 2026-09-29T05:14:12 - `ae0846b5-655f-4247-a75a-7ca807ba2469.jsonl`
