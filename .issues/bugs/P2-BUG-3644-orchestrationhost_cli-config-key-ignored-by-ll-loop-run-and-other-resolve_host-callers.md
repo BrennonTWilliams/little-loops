@@ -348,6 +348,7 @@ Score movement: Ambiguity 18 → 25 (Decisions 13/14 close the last open semanti
 - Behavior change for every initialized project: `_persist_host_selection` writes `orchestration.host_cli` on `ll-init`, so config replaces the probe almost everywhere (and shifts `conditions_fp` in `cli/harness.py`). De-risk by landing the helper + `TestResolveHost` cases first and running the full suite before the doc sweep; gate the merge on the Review Decision 11 rollout survey.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T01:27:01 - `fc5cf224-27c3-40f1-8803-a8425dc67494.jsonl`
 - `/ll:confidence-check` - 2026-09-29T01:23:09 - `c5893263-4612-4e05-8393-5c50bbf6e762.jsonl`
 - `/ll:confidence-check` - 2026-09-29T01:16:27 - `131c2394-4cc5-4b4d-9669-297e9e6feb30.jsonl`
 - `/ll:confidence-check` - 2026-09-29T00:50:34 - `9a024917-61ed-49b3-a021-72845a8bcfc2.jsonl`
