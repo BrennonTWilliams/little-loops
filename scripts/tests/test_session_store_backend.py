@@ -377,3 +377,27 @@ class TestHistoryTarget:
         open_history_readonly(db).close()
         connect_readonly(db).close()
         assert seen == ["sqlite"] * 3
+
+
+class TestUnsupportedOperationAndCapabilities:
+    """FEAT-3535: the raised error names the operation; capabilities are a closed set."""
+
+    def test_operation_attribute_is_optional_and_keyword_only(self) -> None:
+        from little_loops.session_store.backend import HistoryUnsupported
+
+        assert HistoryUnsupported("x").operation is None
+        err = HistoryUnsupported("no", operation="rebuild")
+        assert err.operation == "rebuild" and str(err) == "no"
+        with pytest.raises(TypeError):
+            HistoryUnsupported("no", "rebuild")  # type: ignore[misc]
+
+    def test_backend_not_local_is_an_unsupported_error(self) -> None:
+        from little_loops.session_store.backend import HistoryBackendNotLocal
+
+        assert issubclass(HistoryBackendNotLocal, HistoryUnsupported)
+
+    def test_capability_set_is_closed_and_sqlite_supports_all(self) -> None:
+        from little_loops.session_store.backend import CAPABILITIES
+
+        assert CAPABILITIES == {"attach", "vacuum", "create_function", "wal", "snapshot_export"}
+        assert all(SqliteBackend().supports(c) for c in CAPABILITIES)

@@ -61,7 +61,19 @@ class HistoryIntegrityError(HistoryError):
 
 
 class HistoryUnsupported(HistoryError):
-    """The current backend does not support a requested capability."""
+    """The current backend does not support a requested capability.
+
+    ``operation`` (FEAT-3535, keyword-only, optional) names the refused operation so a
+    caller or user sees *what* was rejected, not just that something was.
+    """
+
+    def __init__(self, message: str = "", *, operation: str | None = None) -> None:
+        super().__init__(message)
+        self.operation = operation
+
+
+class HistoryBackendNotLocal(HistoryUnsupported):
+    """A filesystem path was requested for a store that has none (a remote target)."""
 
 
 class HistoryOperationError(HistoryError):
@@ -214,9 +226,11 @@ class Backend(Protocol):
     def supports(self, capability: str) -> bool: ...
 
 
-# SQLite-only features gated behind supports(), not the Backend protocol
-# itself — the seam FEAT-3524's libSQL remote backend (no ATTACH) needs.
-_SQLITE_CAPABILITIES = frozenset({"attach", "vacuum", "create_function"})
+# Closed set of capability names (FEAT-3535). ``wal`` covers the ``journal_mode`` and
+# ``busy_timeout`` pragmas; ``snapshot_export`` covers exporting a local copy (ATTACH to a
+# local destination). Gated behind supports(), not the Backend protocol itself.
+CAPABILITIES = frozenset({"attach", "vacuum", "create_function", "wal", "snapshot_export"})
+_SQLITE_CAPABILITIES = CAPABILITIES
 
 
 class SqliteBackend:
