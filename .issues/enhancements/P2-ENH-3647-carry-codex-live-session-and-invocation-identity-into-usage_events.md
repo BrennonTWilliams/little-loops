@@ -29,7 +29,8 @@ Capture the Codex host-observed session ID (`thread.started.thread_id`) and a lo
 ## Current Behavior
 
 - `record_usage_event` (`little_loops.session_store.writers`) has no `session_id` parameter; it accepts `invocation_id`, but `FSMExecutor._finish` never passes it. Live rows therefore carry neither identity.
-- Nothing in `subprocess_utils.py` or `fsm/runners.py` reads `thread.started`; `usage_from_event` parses only the terminal `turn.completed` usage block.
+- The FSM runners do not read `thread.started`.
+- `usage_from_event` (`subprocess_utils.py`) parses only the terminal `turn.completed` usage block.
 - Fixtures already establish the identity: `exec-json-turn.jsonl` / `exec-json-resume.jsonl` emit `thread.started.thread_id = 01a0d1da-…`, equal to the rollout's `session_meta.payload.session_id` in `rollout-exec-resume.jsonl`.
 - `issue_history/quality_regressions.py` weights model composition with `SELECT session_id, model, COUNT(*) FROM usage_events WHERE session_id IS NOT NULL GROUP BY session_id, model`. Today only transcript rows have a `session_id` (v53 set `channel='transcript'` exactly where `session_id IS NOT NULL`), so that predicate is a de-facto channel filter. `test_usage_selection_chokepoint_gate.py::test_quality_regressions_query_is_not_flagged` exempts it from the chokepoint.
 

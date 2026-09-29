@@ -51,6 +51,10 @@ A Claude-shaped event is not host evidence. Live eligibility must be evaluated w
 
 Legacy observations remain unknown after rebuild, not only after migration. Rebuild deletes and reconstructs derived transcript usage, so an insertion timestamp is not evidence of a newly qualified source. Define a durable capture/contract eligibility discriminator that replay preserves, or an equivalent rule retaining legacy uncertainty; `host_basis='handle'` alone proves host attribution, not producer-version eligibility. Missing evidence stays unknown. Any new persisted discriminator requires an append-only migration and manifest update.
 
+**Where the discriminator lives (2026-09-28):** `rebuild()` deletes and regenerates transcript `usage_events` from `raw_events`, so a discriminator stored only on `usage_events` is lost on rebuild. Store it on **`raw_events`** at ingest time and copy it to `usage_events` on replay — the same pattern BUG-3542 used for `host_basis` (v55 added it to both tables). The migration is ordered in the epic's § Schema coordination with ENH-3532 (which also adds a `raw_events` column).
+
+**Evidence capture is step one.** No `scripts/tests/fixtures/claude/` directory exists. Capture a headless `claude -p --output-format stream-json` run (live `result` path) and the matching on-disk transcript (`message.usage` path), with the Claude Code version recorded, before any code change. Include at least one cache-hit turn so `cache_read_input_tokens` is non-zero.
+
 ## Scope Boundaries
 
 - **In scope**: producer-contract evidence and `measured` eligibility for Claude live `result.usage` and transcript `message.usage`.

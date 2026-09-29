@@ -54,6 +54,23 @@ Hosts whose CLI is not installed or cannot be driven get `unknown` with the reas
 - **In scope**: evidence capture, fixtures, per-host findings, and a recommendation per host (ingest / defer / unsupported).
 - **Out of scope**: normalizers, ingestion, refresh/re-ingestion and reporting (ENH-3534); the capability vocabulary itself (ENH-3544); Claude (ENH-3546); Codex (ENH-3532).
 
+## Program Design
+
+Evidence-only; no production code ships here.
+
+### Types
+
+- Per-host findings row: `host`, `cli_version`, `channel` (`live` | `transcript`), `fields`, `input_semantics` (inclusive | exclusive | unknown), `cache_write` (reported | omitted | unknown), `grain` (request | turn | invocation | cumulative | unknown), `identity`, `reasoning_in_output`, `evidence_class` (`supported` | `unsupported` | `unknown`), `recommendation`.
+
+### Signatures
+
+- `normalize_host_usage(record: UsageReplayRecord, *, state: HostUsageState) -> list[UsageObservation]` — ENH-3534's consumer of these findings (not implemented here).
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` — existing; the survey reads captured on-disk sessions through it to confirm what each host's parser currently strips.
+
+### Call Path
+
+- captured fixture → `iter_events` → payload inspection → findings table → ENH-3544 entries / ENH-3534 `normalize_host_usage`
+
 ## Integration Map
 
 - `scripts/tests/fixtures/{opencode,pi,qwen,gemini,omp,kimi-code}/` — new or extended captures + README.

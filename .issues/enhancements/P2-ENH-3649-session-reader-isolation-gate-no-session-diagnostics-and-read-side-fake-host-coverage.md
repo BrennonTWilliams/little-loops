@@ -18,6 +18,9 @@ relates_to:
 - ENH-3428
 - ENH-3429
 - ENH-3430
+unproven_mechanism: true
+spike_attempted: true
+spike_completed: true
 ---
 
 # ENH-3649: Session-reader isolation gate, no-session diagnostics and read-side fake-host coverage
@@ -31,7 +34,8 @@ Finish read-side session isolation that does not depend on stored usage: a mecha
 - Discovery in `ll-messages`, `ll-ctx-stats` and `ll-logs` already goes through `detect_sessions`/`iter_events` (ENH-3428/3429/3430). There is no `SessionWatcher` symbol; the seam is `SessionHandle`/`detect_sessions`/`iter_events` in `session_store/sessions.py`.
 - Direct host-root joins remain in `user_messages._get_claude_project_folder` (plus `.opencode`/`.pi`/`.qwen` `projects` joins and gemini/kimi/omp probes), `sessions._list_claude_workspaces`, `sessions._explain_encoded_dir_host`, the `_ENCODED_DIR_HOSTS` root, and `writers.host_layout_for` / the qwen `projects_root` in `writers.py`. These are legitimate seam/layout internals, but nothing mechanically stops new readers from adding more.
 - Non-reader `.claude` joins also exist and are not violations: `cli/messages.py` output dir, `init/tui.py`, `init/writers.py`, `worktree_utils.py`.
-- `main_ctx_stats` does not call `explain_no_sessions` when discovery is empty; `cli/messages.py` and `cli/logs.py` do (two `print(..., file=sys.stderr)` lines).
+- `main_ctx_stats` does not call the no-sessions explainer when discovery is empty.
+- The messages and logs CLIs already do (two `print(..., file=sys.stderr)` lines each).
 - The spike at `scripts/tests/spike/enh3549_read_side_fake_hosts/` proves fake-host injection at the seam layer only (`_PARSERS`, `_REGISTERED_HOSTS`, `_LAYOUT_HOSTS`, `sessions._project_folder_for_layout_host`, `writers.host_layout_for`, all via `monkeypatch`). `user_messages.extract_user_messages` gates on `_CLAUDE_SHAPED_HOSTS` and skips unknown hosts, so fakes never reach the actual message reader.
 - `cli/logs.py:_cmd_extract` keeps a pre-`iter_events` raw probe so unreadable files land in `skipped` (`test_extract_unreadable_file_reported`).
 
@@ -56,8 +60,10 @@ Finish read-side session isolation that does not depend on stored usage: a mecha
 
 ### Signatures
 
-- `detect_sessions`, `iter_events`, `explain_no_sessions` — unchanged.
-- `extract_user_messages` — public signature unchanged; internal dispatch becomes per-host explicit rather than a `_CLAUDE_SHAPED_HOSTS` membership gate.
+- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` — unchanged.
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` — unchanged.
+- `explain_no_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, home: Path | None = None) -> tuple[NoSessionsCause, str]` — unchanged; newly called from `main_ctx_stats`.
+- `extract_user_messages(handles: list[SessionHandle], limit: int | None = None, since: datetime | None = None, include_agent_sessions: bool = True, include_response_context: bool = False) -> list[UserMessage]` — public signature unchanged; internal dispatch becomes per-host explicit rather than a `_CLAUDE_SHAPED_HOSTS` membership gate.
 
 ### Call Path
 
@@ -91,6 +97,35 @@ Finish read-side session isolation that does not depend on stored usage: a mecha
 - [ ] The isolation gate catches a stray transcript-root join, fails on a stale allowlist entry, and does not flag config/output-dir joins.
 - [ ] `ll-ctx-stats` empty discovery emits named-cause diagnostics to stderr; `--json` stdout parses.
 - [ ] Unit-level fixture tests run without installed host CLIs; the spike directory is removed after promotion.
+
+## Preserved Research Context (moved from ENH-3549)
+
+_From `/ll:refine-issue` 2026-09-25 on ENH-3549; line numbers are as of that date._
+
+- **Per-host joins are wider than one host.** `user_messages.py` carries `.opencode`/`.pi`/`.qwen` `projects` joins (`:516`, `:522`, `:580`) plus gemini/kimi/omp probes; `session_store/sessions.py` carries opencode/pi/qwen joins (`:586`, `:590`, `:595`) and the `_ENCODED_DIR_HOSTS` root (`:783`), and imports six per-host `_get_<host>_project_folder` probes from `user_messages` (`:48-53`, used `:361-375`). `writers.py` has a qwen `projects_root` (`:2717`) beside the `:2768` table. The gate's scan must cover all of these or allowlist them with reasons.
+- **Session-registry constants:** `_REGISTERED_HOSTS` (`sessions.py:294`), `_LAYOUT_HOSTS` (`:308`), `_PARSERS` (`:1183`). `iter_events` yields nothing for a host absent from `_PARSERS`; `detect_sessions` returns `[]` for an unregistered host. The fakes are registered only in `_HOST_RUNNER_REGISTRY` under `TEST_ONLY_HOSTS`; `fake_host.py` has no transcript/session surface.
+- **Existing read-side fixtures:** `scripts/tests/fixtures/codex/`, `fixtures/qwen/`, `fixtures/gemini/`, `fixtures/omp/`, Claude-shaped `fixtures/streaming_parity/trace_*/recorded.jsonl`. No `claude`, `opencode`, `pi` or `kimi` fixture directories. Neighbours: `scripts/tests/conformance/conftest.py`, `conformance/test_host_conformance.py`, `scripts/tests/spike/enh3430_workspace_union/` (`fixtures.py:37` references `_get_claude_project_folder`).
+- **Tests referencing the seam:** `test_session_discovery.py:_write_claude_session` (`:1268`), `test_detect_sessions_claude_code_resolves_via_home_not_get_project_folder` (`:257`); `test_user_messages.py` per-host `get_project_folder` tests (`:106-594`); `test_session_store_lifecycle.py`, `test_enh3538_token_observations.py`, `test_enh_3393_gemini_normalizer.py`, `test_cli.py`. `test_verify_private_refs.py` and `test_verify_skill_prose.py` hold `.claude/projects` literals for the two lint tools the gate must exclude.
+- **Docs holding seam symbols or `.claude/projects` literals:** `docs/reference/API.md` (`_get_claude_project_folder` `:3473`, `get_sessions_folder` `:3512-3526`), `docs/reference/HOST_COMPATIBILITY.md` (`:544`, `:566`, `:629`), `docs/codex/usage.md:95`, `docs/ARCHITECTURE.md` (fakes at `:880-881`), `docs/guides/HISTORY_SESSION_GUIDE.md`, `EXAMPLES_MINING_GUIDE.md`, `docs/reference/EVENT-SCHEMA.md`, `docs/claude-code/*`. `skills/audit-claude-config/` and `agents/consistency-checker.md` (with `.qwen`/`.kimi-code`/`.gemini` mirrors) also carry the literal; editing any trips the mirror gates.
+- **Convention — gate tests** scan `scripts/little_loops/**/*.py` with `ast.parse`, hold a module-level allowlist with a reason per entry, and assert collected `rel:lineno` violations equal `[]`. File-keyed (`test_history_store_chokepoint_gate.py`, has a stale-entry test) and `(file, enclosing function)`-keyed (`test_usage_selection_chokepoint_gate.py`, has `test_gate_detects_a_stray_site`). This issue needs both behaviours.
+- **Convention — named-cause warnings** are two `print(..., file=sys.stderr)` lines — `cli/messages.py:188-196`, `cli/logs.py:583-589`, `cli/session.py:697-771`. `messages`/`logs` do not thread `home=` into `detect_sessions`, so CLI tests patch `Path.home`; the autouse `_isolate_session_log_dir` fixture already redirects it. `ctx_stats`/`logs` import `detect_sessions` at module level; `messages.py` imports lazily from `little_loops.session_store`.
+- **Contested: unreadable-file handling.** `_cmd_extract` keeps a raw probe to report unreadable files (`cli/logs.py:721-730`, `test_extract_unreadable_file_reported`); `iter_events` yields nothing on `OSError`. Preserve the reporting contract.
+
+## Spike Results (moved from ENH-3549)
+
+_Added by `/ll:spike` on 2026-09-24_
+
+| Risk | Proven by | Result |
+|------|-----------|--------|
+| No precedent injects a fake host into session discovery | `TestDiscovery::test_both_fakes_discovered_via_real_detect_sessions`, `test_union_discovery_carries_both_fake_hosts` | ✓ pass |
+| Read side not proven host-agnostic across divergent shapes | `TestHostAgnosticRead::test_divergent_shapes_yield_same_observation`, `test_raw_payloads_really_diverge` | ✓ pass |
+| Injection must not regress real hosts or named-cause warnings | `test_real_hosts_still_resolve_with_fakes_installed`, `TestNamedCause::*` | ✓ pass |
+
+**Injection surface (all via `monkeypatch`)**: `_PARSERS`, `_REGISTERED_HOSTS`, `_LAYOUT_HOSTS`, `sessions._project_folder_for_layout_host`, `writers.host_layout_for`. No production change needed at the seam layer.
+
+**Finding**: `user_messages.extract_user_messages` gates on `_CLAUDE_SHAPED_HOSTS` and skips unknown hosts; a read-side composition test through it needs a Claude-shaped fake or a dispatch hook. The spike proves `detect_sessions`/`iter_events`/`explain_no_sessions` only.
+
+**Location**: `scripts/tests/spike/enh3549_read_side_fake_hosts/` (plan: `.ll/spikes/spike-ENH-3549.md`). **Verification**: 10 spike tests + 196 regression tests passed.
 
 ## Status
 
