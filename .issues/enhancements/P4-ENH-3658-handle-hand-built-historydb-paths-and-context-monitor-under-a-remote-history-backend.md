@@ -11,7 +11,7 @@ captured_at: '2026-09-29T05:29:44Z'
 decision_needed: false
 reconcile_attempted: true
 verify_verdict: VALID
-confidence_score: 95
+confidence_score: 85
 outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
@@ -290,21 +290,16 @@ The Confidence Check concerns about the `collect_trim_report` mechanism and the 
 
 _Added by `/ll:confidence-check` on 2026-09-29_
 
-**Readiness Score**: 95/100 → PROCEED
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 68/100 → MODERATE
 
 ### Concerns
-- Summary, Effort ("four sites") and the Codebase Research Findings disagree on scope: five hand-built sites (serve.py ×2, dashboard.py, doctor_trim.py, run.py) plus the hook; Integration Map and Acceptance Criteria are the authoritative list.
-- `collect_trim_report` skip mechanism is left as "handler in `main_doctor` or skip inside `collect_trim_report`" — pick one before coding (Decision Rules favor skip-with-reason to keep `--trim` advisory).
-- The `serve.py` "stated reason" must fit the route's payload/status contract (`make_history_route` catches only `ValueError` → 413, takes no Logger); the concrete response shape is not specified.
-- Refusal/catcher conventions are explicitly contested across the repo; per-site choice is left to the implementer.
-
-### Outcome Risk Factors
-- Broad enumeration across 6 code sites (plus a shell hook, 6+ test files and 4 doc files), each with a slightly different outcome class (refuse vs skip).
-- Coverage gaps: no test drives `context-monitor.sh` under a remote backend, `_make_page_html_factory` has no direct test, and the `ll-loop run --serve` render has none — the new remote-stub tests are the only safety net.
-- Shell-hook change is validated only through a `HranaStub` subprocess fixture that does not exist yet; hook `timeout: 5` bounds remote-write latency.
+- Summary/Current Behavior say all five hand-built sites test `is_file()` / `.exists()`, but `cli/loop/run.py:691` only builds the path (degrade is via `serve_context`/`allow_missing`) — `format-check` flags `is_file (claimed in cli/loop/run.py)`; reword to "build the path by hand" (caps Criterion 4).
+- Step 2's detached-write mechanism for `context-monitor.sh` (`( record_* ) </dev/null >/dev/null 2>&1 &`) has no precedent in `hooks/scripts/` and its behavior under Claude Code is explicitly unverified; the stated fallback (synchronous writes ordered after the reminder) is the safe path if it blocks.
+- Refusal/catcher conventions remain contested repo-wide; the per-site outcomes are now fixed in Decision Rules (`main_doctor` guard via `_remote_target()`, HTTP 501 JSON for `make_history_route`, refuse in `cmd_dashboard`), but the `_make_page_html_factory` / `run.py --serve` "skip the history panel" shape is still described only loosely.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T15:35:24 - `4e126c30-e610-4bf7-836c-7acf607ff2dd.jsonl`
 - `/ll:advise` - 2026-09-29 - Opus consult (user_requested); amendments applied
 - `/ll:refine-issue` - 2026-09-29T06:53:44 - `ba092082-4ae3-43dd-9062-e948c741ef8f.jsonl`
 - `/ll:decide-issue` - 2026-09-29T06:52:11 - `b6e8b863-de04-439b-86a0-163f69ae4ae5.jsonl`

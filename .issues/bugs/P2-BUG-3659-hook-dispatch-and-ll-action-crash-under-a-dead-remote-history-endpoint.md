@@ -7,6 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T06:51:55Z'
+verify_verdict: NON_VALID
 ---
 
 # BUG-3659: Hook dispatch and ll-action crash under a dead remote history endpoint
@@ -22,6 +23,12 @@ Under `history.backend.provider: libsql`, a dead or unreachable remote endpoint 
 - `skill_event_context`'s enter handler (`writers.py:733`) catches only `sqlite3.Error`, so the exception escapes before `yield`. `cli/action.py:232` (`ll-action`) never runs the skill. The exit-update handler (`:766`) has the same gap.
 - Verified 2026-09-29 against `HranaStub` after `remote.stop()`: `hook_event_context` raised `HranaUnavailable` after the body ran; `skill_event_context` raised `HranaUnavailable` before the body ran.
 - Why no test caught it: `test_remote_hooks.py::TestPostToolUse::test_a_dead_endpoint_never_fails_the_hook` (`:134`) calls `post_tool_use.handle()` directly, bypassing the dispatcher and `hook_event_context`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
+
+- Anchor drift: `main_hooks` is defined at `scripts/little_loops/hooks/__init__.py:198`; the `hook_event_context` wrap is at `:238-249` (the `:234` citation above now lands on the `LLHookEvent(...)` close paren). `result` is bound inside the `with` body at `:248`, so an exception from the wrap's `__exit__` (the `record_hook_event` call in `hook_event_context`'s `finally`, `writers.py:891-903`) arrives after `result` is bound, while a handler exception arrives with `result` unbound. That difference is what lets a guard swallow only telemetry failures.
 
 ## Steps to Reproduce
 
@@ -51,9 +58,23 @@ Hooks run on every tool call. During any remote outage, every libsql user with h
 - `scripts/little_loops/session_store/writers.py`: add `_DEGRADE_ERRORS`; widen `record_hook_event` (connect and insert handlers) and `skill_event_context` (enter and exit-update handlers).
 - `scripts/little_loops/hooks/__init__.py`: `main_hooks`, the `hook_event_context` wrap.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/writers.py:hook_event_context` (`finally`, `:891-903`) — `record_hook_event` runs in an unguarded `finally`. If it raises while the handler's own exception propagates, the new exception replaces it (handler's survives only as `__context__`). A guard placed only in `main_hooks` cannot tell the two apart; guard the `finally` call itself (or check `result` is bound) so the handler's exception keeps propagating. [Agent 2 finding]
+- `scripts/little_loops/session_store/writers.py:skill_event_context` — the exit `finally` has an unguarded `conn.close()`, and `resolve_history_store` plus the config gate sit in an unguarded prefix before the enter `try`. Widening the enter/exit-update handlers does not cover these. [Agent 2 finding]
+- `scripts/little_loops/hooks/__init__.py` module docstring (`:44`, "The wrap is best-effort and never alters the handler's exit code or exception propagation") and `scripts/little_loops/hooks/post_tool_use.py:12` ("the `__init__.main_hooks` dispatcher has no try/except") — in-code prose that goes stale once `main_hooks` gains a guard. [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/action.py:232`: `ll-action`, the only `skill_event_context` caller. No edit needed.
 - `hook_event_context` has one caller, `main_hooks`. Every intent in `_dispatch_table()` is affected.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/session.py:1215` (`record-hook-event` branch) and `hooks/scripts/record-hook-event.sh:57` — second `record_hook_event` caller. Already wrapped in `except Exception` and `|| true`, so it stays safe; no edit, but it inherits the widened handler. [Agent 1 finding]
+- `scripts/little_loops/hooks/__main__.py:6` — `raise SystemExit(main_hooks())`, the only `main_hooks` entry point. Reached via every adapter shim: `hooks/adapters/claude-code/*.sh` (`pre-tool-use.sh` uses exit 2 as the block signal), `scripts/little_loops/hooks/adapters/{codex,gemini,kimi,qwen}/*.sh`, `hooks/hooks.json`, and `hooks/adapters/opencode/index.ts:spawnIntent` (throws on exit 2 in `session.created` and on any non-0/2 exit in `session.compacted`, so today's crash exit 1 surfaces there as a thrown error). [Agent 1, Agent 2 findings]
+- `scripts/little_loops/loops/migrate-sdk-version.yaml` and `scripts/little_loops/loops/assumption-firewall.yaml` — shell out to `ll-action invoke explore-api` with `check=False` and ignore its exit code; an `ll-action` that exits before the skill runs silently skips the learning-test record. Fixed by this issue, no edit needed. [Agent 2 finding]
+- `scripts/little_loops/cli/advise.py` — additional `cmd_invoke` consumer. [Agent 1 finding]
+- `scripts/little_loops/session_store/backend.py:56` defines `HistoryError`; `writers.py:36-38` already imports `HistoryError` and `HistorySuppressed` and `writers.py:21` imports `sqlite3`. No new import and no circular-import risk for `_DEGRADE_ERRORS`. [Agent 1 finding]
+- Not covered by `_DEGRADE_ERRORS`: `hrana.normalize_url` raises a plain `ValueError` for a malformed `history.backend.url`, and it escapes the connect handler on the `_connect_telemetry` route. Out of scope for this bug, but the `main_hooks` defense-in-depth guard is what protects hooks from it. [Agent 2 finding]
+- Sibling writers with the same `except sqlite3.Error`-only gap, for BUG-3652 (do not change here): `record_session_lifecycle_event`, `record_context_pressure_event`, `write_advisor_consult`, `write_research_triage`, `write_credential_scope`, `record_subagent_run_start`, `record_subagent_run_stop`, `reconcile_stale_subagent_runs`. Hook-called writers with no guard at all: `record_correction` and `record_skill_event` (`hooks/user_prompt_submit.py`), `write_file_event` (`hooks/post_tool_use.py`). [Agent 2 finding]
 
 ### Similar Patterns
 - `writers.py:cli_event_context` already catches `Exception` on enter and exit, and debug-logs `HistorySuppressed`. That is the template.
@@ -62,8 +83,27 @@ Hooks run on every tool call. During any remote outage, every libsql user with h
 - `scripts/tests/test_remote_hooks.py`: new dispatcher-level and `ll-action` dead-endpoint cases.
 - `scripts/tests/test_remote_ingestion_telemetry.py::TestBestEffortNeverAborts`: covers only `cli_event_context` today; pattern reference.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_hook_intents.py::TestHooksMainModule::test_record_hook_event_in_dispatch` — template for the in-process `main_hooks` test (writes `{"analytics": {"enabled": true, "capture": {"hooks": true}}}`, stubs `_dispatch_table`, sets `sys.argv` and `sys.stdin`, `monkeypatch.chdir(tmp_path)`). A stub handler can return `LLHookResult(exit_code=N, stdout=..., feedback=...)`. Also the happy-path regression guard for the `main_hooks` restructure. [Agent 3 finding]
+- `scripts/tests/test_hook_usage_stop.py::test_dispatcher_does_not_open_hook_telemetry` — pins the `intent != "usage_stop"` short-circuit ahead of `_hooks_telemetry_enabled`; keep it intact when restructuring `main_hooks`. [Agent 3 finding]
+- `scripts/tests/test_remote_hooks.py::remote` fixture (`:28`) — writes only `history.backend` to `ll-config.json`, so `_hooks_telemetry_enabled` returns False against it. New `main_hooks` cases must add `analytics.enabled` and `analytics.capture.hooks` (plus `telemetry_timeout_ms` to keep a dead endpoint fast), then call `db_mod.clear_backend_config_cache()`. Model on `TestPostToolUse::test_writes_the_tool_event_to_the_remote_store`. [Agent 3 finding]
+- `scripts/tests/test_remote_hooks.py` — suppression-window case: with the stub already stopped, `remote.requests` cannot grow, so "no stub request" is unassertable. Force `HistorySuppressed` with `remote_telemetry.mark_unreachable(remote.url)` (marker is per `.ll/` dir, so tests do not bleed), or use a live stub with `remote.delay` for a real first failure as in `test_a_failure_writes_an_unreachable_marker_and_later_writes_skip`. [Agent 3 finding]
+- `scripts/tests/test_remote_hooks.py` (or `test_session_store_writers.py`) — direct `record_hook_event` / `skill_event_context` cases against a stopped stub with `caplog` at DEBUG: `HistorySuppressed` yields a DEBUG record with falsy `exc_info`; other `HistoryError`s yield one WARNING; assert `TOKEN` absent from messages. No existing test asserts on `exc_info` or the debug/warning split, so `record.exc_info` must be read directly. Cover the `skill_event_context` exit-update handler by stopping the stub or calling `mark_unreachable` inside the body. [Agent 3 finding]
+- `scripts/tests/test_action.py::TestCmdInvokeStreamJson` — pattern for the `ll-action` case: `_make_namespace(...)`, `patch("little_loops.subprocess_utils.run_claude_command", return_value=_make_completed(N))`, assert the mock was called and `cmd_invoke(args)` returns N. The `remote` fixture lives in `test_remote_hooks.py`, so the new case belongs there or must import it. [Agent 3 finding]
+- Local-twin regression guards that must keep passing (they rely on `sqlite3.Error` staying in `_DEGRADE_ERRORS`): `scripts/tests/test_session_store_writers.py::TestRecordHookEvent::test_best_effort_on_unopenable_db`, `TestHookEventContext::test_best_effort_on_unopenable_db`, `TestHookEventContext::test_raise_path_records_exit_code_one_and_propagates`, `TestSkillEventContext::test_best_effort_on_unopenable_db`, and `scripts/tests/test_action.py` `test_best_effort_on_unopenable_db` (verdict and review-event classes). [Agent 1, Agent 3 findings]
+- `scripts/tests/test_history_target_hook_audit.py::test_hook_path_reaches_resolve_once[main_hooks]` — drives `hook_event_context` under a `_resolve_once` spy; confirm the restructure keeps it reaching the resolver once. [Agent 3 finding]
+- No existing test breaks: nothing asserts the `sqlite3.Error`-only handling or the log strings `record_hook_event: connect failed`, `record_hook_event: insert failed`, `skill_event_context: insert failed`, `skill_event_context: update failed`. [Agent 1, Agent 3 findings]
+- New coverage gaps: no dispatcher-level test against a libsql store; no `capsys` assertion on `main_hooks` output; no `hook_events` or `skill_events` row asserted in a remote stub; no test that a non-`sqlite3.Error` from the connect or execute path is swallowed. [Agent 3 finding]
+
 ### Documentation
 - None required. Optionally, add to `docs/reference/CONFIGURATION.md` § `Remote history backend` that hook telemetry skips silently while the endpoint is unreachable.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` § `record_hook_event` — "Best-effort: a missing/locked database logs and returns rather than raising"; add unreachable remote endpoint. [Agent 2 finding]
+- `docs/reference/API.md` § `hook_event_context` and § `skill_event_context` — best-effort sentences ("never alters the wrapped hook's exit code or exception propagation", "never blocks the wrapped skill body"); add a clause for remote errors. § `cli_event_context` is the wording template. [Agent 2 finding]
+- `docs/reference/API.md` `HistoryError` / `translate_sqlite_errors` section (~`:9987-9990`) — "a best-effort writer that used to catch `sqlite3.Error` catches `HistoryError` instead"; mention `_DEGRADE_ERRORS` as the shared tuple. [Agent 1, Agent 2 findings]
+- `docs/reference/CONFIGURATION.md:738` § `Remote history backend`, "Never stalls a hook" bullet — describes the 60 s `.ll/libsql-<hash>.unreachable.lock` marker and "Dropped telemetry is not buffered or replayed"; the optional sentence belongs here. [Agent 1, Agent 2 findings]
+- No edit needed: `docs/guides/BUILTIN_HOOKS_GUIDE.md` (shim section is about the bash shim), `docs/ARCHITECTURE.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/HOST_COMPATIBILITY.md`. [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -95,6 +135,17 @@ Hooks run on every tool call. During any remote outage, every libsql user with h
    - Fire a second hook inside the 60 s `HistorySuppressed` window with the same assertions.
    - `ll-action` against a stopped stub runs the skill (mock the runner) and returns its exit code.
    - Local-store twin: a hook row is still written on the happy path.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Guard the `record_hook_event` call in `hook_event_context`'s `finally` (or check in `main_hooks` that `result` is bound) so a telemetry failure cannot replace a propagating handler exception; `writers.py:hook_event_context`
+- Guard `skill_event_context`'s unguarded prefix (`resolve_history_store`, config gate) and exit-`finally` `conn.close()` in `writers.py`, not only the enter and exit-update handlers
+- Update the `hooks/__init__.py` module docstring and `hooks/post_tool_use.py:12` ("dispatcher has no try/except") to match the new guard
+- Update `docs/reference/API.md` § `record_hook_event`, `hook_event_context`, `skill_event_context`, and the `HistoryError` best-effort paragraph; add the optional sentence to `docs/reference/CONFIGURATION.md:738`
+- New tests in `scripts/tests/test_remote_hooks.py`: extend the `remote` fixture config with `analytics.enabled` and `analytics.capture.hooks`, force the suppression window with `remote_telemetry.mark_unreachable(remote.url)`, and assert on `caplog` record level and `exc_info` directly
+- Keep `test_hook_usage_stop.py::test_dispatcher_does_not_open_hook_telemetry` and `test_hook_intents.py::test_record_hook_event_in_dispatch` green when restructuring `main_hooks`
 
 ## Impact
 
@@ -131,6 +182,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue:gap-analysis` - 2026-09-29T15:43:04 - `b286ef2e-43a0-42ba-b50e-dd67b7f3b73e.jsonl`
+- `/ll:verify-issues` - 2026-09-29T15:42:12 - `0e078dec-faf0-4ff3-87ed-dcbdd276697c.jsonl`
+- `/ll:wire-issue` - 2026-09-29T15:40:24 - `f3f502cb-ad8a-484f-9e72-65b0f5fb4d73.jsonl`
 - `/ll:refine-issue` - 2026-09-29T15:34:43 - `6038439a-4a88-4017-a873-b730adce0fef.jsonl`
 - `/ll:format-issue` - 2026-09-29T15:33:38 - `9a90bf56-499f-485e-aa0b-df712bf8e9cd.jsonl`
 - `/ll:capture-issue` - 2026-09-29T06:52:01 - `5f8d5762-5341-43fe-88c8-0e9ad90d90b3.jsonl`
