@@ -33,22 +33,33 @@ Brainstorm performs no evidence check: an idea that cites a nonexistent file, sy
 
 ## Expected Behavior
 
-- `codebase`: each idea must cite concrete anchors (file paths, symbols, issue IDs);
-  a script verifies **only that they exist** (git-tracked files, `git grep` for
-  symbols, `ll-issues show` for IDs). Existence is anchor validation, not proof the
+- `codebase`: each idea declares `extra.touchpoints` (existing anchors it builds on:
+  file paths, symbols, issue IDs) and `extra.creates` (new paths it would add). A
+  script verifies **only that touchpoints exist** (git-tracked files, `git grep` for
+  symbols, `ll-issues show` for IDs) and that each `creates` path does not already
+  exist and its parent directory does. New things are therefore never penalized for
+  not existing yet. An idea with **zero touchpoints** is `grounded: unknown`
+  (flagged `no_anchors`), not `false`. Existence is anchor validation, not proof the
   anchor supports the idea; semantic support and conflicts with open issues are out
   of scope for the gate.
 - `web`: an LLM searches for competitors, prior art, and demand signals and cites
   sources with a quoted snippet each; a **non-LLM probe** then fetches every cited
   URL and checks that it loads and that the quoted snippet appears on the page.
+  The probe fetches with `curl --proto '=http,https' --max-time 15 --max-filesize 2000000`,
+  refuses hosts resolving to loopback/private ranges, and normalizes both page and
+  quote before matching (strip tags, decode entities, collapse whitespace,
+  case-fold). HTTP 401/403/429, timeouts, and DNS failures are `unknown`; only a
+  successfully loaded page lacking the quote is `false`.
   Each idea also carries an explicit assumption list.
 - `grounded` is tri-state: `true` (all anchors/sources verified), `false` (an
   anchor or source failed verification), `unknown` (retrieval failed, network
   unavailable, or the host lacks web tools). `false` ideas are excluded from the
   tournament; `unknown` ideas stay eligible and are flagged in the report.
-- Web grounding runs on **shortlisted** ideas only (cost); an excluded finalist is
-  replaced by the next-best idea from the same cell, and the FEAT-3582 finalist
-  floor is rechecked in `validate_portfolio`.
+- Web grounding runs on **shortlisted** ideas only (cost). To avoid a back-edge into
+  `ground`/`materialize`, the `shortlist` keeps a **reserve** (top 2 per cell when
+  `ground=web`) and grounds both; the first grounded candidate per cell becomes
+  the finalist. If a cell has no eligible candidate it is dropped, and the
+  FEAT-3582 finalist floor is rechecked in `validate_portfolio`.
 - Skipped entirely when the resolved `ground` is `none`.
 
 ## Use Case
@@ -69,9 +80,10 @@ EPIC-3581 notes that functional designs need codebase grounding and business opp
 
 Add a gated `ground` state to `scripts/little_loops/loops/brainstorm.yaml`, skipped when the resolved `ground` is `none`:
 
-- `codebase` (between `dedup` and `shortlist`; cheap, runs on all ideas): a script verifies files with `git ls-files`, symbols with `git grep`, issue IDs with `ll-issues show`. Existence only — no semantic-support or open-issue-conflict judgement.
-- `web` (after `shortlist`; runs on finalists only): an LLM step searches and emits `{url, quote}` sources plus an assumption list per idea; a non-LLM probe (`curl` fetch + fixed-string match of `quote`) verifies each source. Retrieval failure or missing web capability yields `grounded: unknown`, never a silent drop.
-- `grounded: false` ideas are excluded from the tournament and backfilled from the same cell; the finalist floor is rechecked by `validate_portfolio` (FEAT-3582).
+- Two states, named for their placement: `ground_codebase` (between `dedup` and `shortlist`; cheap, runs on all ideas) and `ground_web` (after `shortlist`; runs on the shortlist reserve only). A script in `ground_codebase` verifies files with `git ls-files`, symbols with `git grep`, issue IDs with `ll-issues show`; `creates` paths are checked for non-collision. Existence only — no semantic-support or open-issue-conflict judgement.
+- `codebase` mode also feeds a **bounded repo summary** (top-level `git ls-files` tree, capped ~200 lines) into `diverge` via the profile, so ideas cite real anchors instead of guessing. This is a cheap slice of the pre-ideation context pass; a fuller pass stays a follow-up.
+- `web` (`ground_web`): an LLM step searches and emits `{url, quote}` sources plus an assumption list per idea; a non-LLM probe (hardened `curl` fetch + normalized fixed-string match of `quote`, see § Expected Behavior) verifies each source. Retrieval failure or missing web capability yields `grounded: unknown`, never a silent drop.
+- `grounded: false` ideas are excluded from the tournament; the shortlist reserve replaces them within the same cell; the finalist floor is rechecked by `validate_portfolio` (FEAT-3582).
 
 Issue-ID probing activates only when `.issues/` / `ll-issues` is available so the core stays decoupled from the Issue system.
 
@@ -83,7 +95,7 @@ Issue-ID probing activates only when `.issues/` / `ll-issues` is available so th
 
 - `Source`: `{url: str, quote: str, verified: bool | null}` — `null` = retrieval failed
 - `Evidence`: `{anchors: [str], sources: [Source], assumptions: [str]}`
-- `IdeaRecord.extra` gains `evidence: Evidence` and `grounded: true | false | "unknown"`
+- `IdeaRecord.extra` gains `touchpoints: [str]`, `creates: [str]`, `evidence: Evidence` and `grounded: true | false | "unknown"`
 
 ### Signatures
 
@@ -175,18 +187,31 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- Codebase probes are deterministic and cover: missing file, missing symbol,
-  unknown issue ID.
-- Web source probe is non-LLM and covers: URL loads with quote present (pass),
-  URL loads without quote (fail), retrieval failure (`unknown`), no web capability
-  (`unknown`, not dropped).
+- Codebase probes are deterministic and cover: missing touchpoint file, missing
+  symbol, unknown issue ID, `creates` path that already exists, `creates` with a
+  missing parent dir, and zero-touchpoint idea (`unknown`, not `false`).
+- Web source probe is non-LLM and covers: URL loads with quote present (pass, incl.
+  after whitespace/entity/case normalization), URL loads without quote (fail),
+  retrieval failure and HTTP 401/403/429 (`unknown`), non-http(s) scheme and
+  private-range host (rejected → `unknown`), no web capability (`unknown`, not
+  dropped).
 - Grounding results recorded per idea in `ideas.jsonl` (`evidence`, tri-state
   `grounded`).
-- A `grounded: false` finalist is backfilled from its cell; if that leaves fewer
-  than 2 eligible finalists, `validate_portfolio` fails the run before any sink.
+- A `grounded: false` finalist is replaced by its cell's reserve candidate (no
+  back-edge); if that leaves fewer than 2 eligible finalists, `validate_portfolio` fails the run before any sink.
 - Core loop stays decoupled from the Issue system: issue-ID probing is only active
   when `.issues/` / `ll-issues` is available.
 - Tests cover probe pass/fail with fixture ideas.
+
+## Review Decisions
+
+_Added 2026-09-28 (EPIC-3581 sub-issue review):_
+
+- `touchpoints` vs `creates` split so functional ideas proposing new files aren't marked ungrounded; zero-touchpoint ideas are `unknown`.
+- Bounded repo summary fed to `diverge` in codebase mode (ideas were previously generated with no repo context).
+- Web probe hardening: scheme allowlist, private-range block, timeout/size caps, 401/403/429 → `unknown`, quote normalization.
+- No backfill back-edge: `shortlist` keeps a top-2 reserve per cell when `ground=web`.
+- Two states (`ground_codebase`, `ground_web`) because the insertion points differ.
 
 ## Related Key Documentation
 

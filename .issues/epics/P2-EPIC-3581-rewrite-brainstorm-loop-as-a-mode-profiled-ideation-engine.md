@@ -93,7 +93,11 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 - **Data contract** (stable IDs, common fields, enumerated axis bins, canonical `portfolio.json`, generation vs. finalist floors) is owned by FEAT-3582; other children extend it only.
 - **Validation before sinks**: `validate_portfolio` gates `route_sink`; no sink fires on an invalid run.
 - **Profile precedence**: mode selects the base profile, explicit knobs override it, `""` means inherit (FEAT-3583).
-- **Ordering**: FEAT-3582 → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586} → FEAT-3596.
+- **Ordering**: FEAT-3582 → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586}; FEAT-3596 is hard-blocked only by FEAT-3582/3583 (so P4 FEAT-3586 does not gate it) but cannot close until all optional children are done.
+- **Profile plumbing** (2026-09-28 review): FEAT-3582 owns `resolve_profile`, the `profile.json` schema, and the `artifact` profile; FEAT-3583 extends them (presets, classifier, overrides).
+- **Tournament runs as a sub-loop** (one parent `max_steps` step; finalists ≤ 8, rounds `ceil(log2 N)`); `diverge` runs once per lens with round-robin framings. `top_k` is removed; `winners.md` = portfolio members.
+- **Grounding shape** (FEAT-3584): `touchpoints` (must exist) vs `creates` (must not collide); `shortlist` keeps a reserve so no back-edge into `ground`/`materialize`.
+- **Concession is script-determined** (FEAT-3586): fatal risk with no mitigation. `winner: null` is legal only for all-conceded.
 
 ## Impact
 
@@ -172,6 +176,9 @@ Out of scope:
   an explicit `mode=` override bypasses classification.
 - `ll-loop validate` passes (MR rules, per-run artifact isolation under
   `${context.run_dir}/`).
+- Cost ceiling: a default `mode=artifact` run makes ≤ 45 LLM calls (old loop ≈ 12).
+- Judge reliability is observable: tournament `tie_rate` is recorded and the report
+  flags `low_confidence` rankings.
 
 ## Related Key Documentation
 

@@ -14,11 +14,11 @@ labels:
 blocked_by:
 - FEAT-3582
 - FEAT-3583
+relates_to:
+- FEAT-2248
 - FEAT-3584
 - FEAT-3585
 - FEAT-3586
-relates_to:
-- FEAT-2248
 ---
 
 # FEAT-3596: Brainstorm engine integration, reference runs, and evaluation
@@ -29,6 +29,10 @@ Own the end-to-end integration and evaluation of the rewritten brainstorm engine
 (EPIC-3581): the four per-mode reference runs, mixed-profile override runs,
 failure-path fixtures, sink compatibility, the combined step/time budget with every
 feature enabled, and a lightweight before/after comparison against the old loop.
+
+## Dependency Note
+
+_2026-09-28:_ Hard-blocked only by FEAT-3582 and FEAT-3583. FEAT-3584/3585/3586 are `relates_to` so a P4 child (FEAT-3586) does not gate this P3 issue. Each optional child owns its own failure-path fixtures; this issue owns the **cross-child** interactions, the combined budget, and reference runs. Per-mode reference runs for `ground`, `materialize`, and `premortem` are recorded as each child lands, and this issue cannot be closed until all three are done.
 
 ## Current Behavior
 
@@ -47,10 +51,13 @@ old loop.
 - **Mixed-profile overrides**: at least one run with `mode=<x>` plus a knob override
   (e.g. `mode=business materialize=render`) proving the knob wins over the profile
   default (FEAT-3583 precedence rule).
-- **Failure-path fixtures** (pytest, stubbed LLM output): zero survivors after
-  dedup, too few occupied cells, too few eligible finalists after ground/materialize
-  filtering, every pre-mortem finalist conceded. Each routes as its owning child
-  specifies and no sink fires before `validate_portfolio` passes.
+- **Failure-path fixtures** (pytest, stubbed via `MockActionRunner` from
+  `scripts/tests/test_fsm_executor.py`, keyed by state name): only **cross-child**
+  interactions live here — e.g. ground and materialize both filtering the same run
+  below the finalist floor, premortem demotion after ground backfill/reserve, and
+  the sink contract on all-conceded. Single-child fixtures (zero survivors, too few
+  cells, per-probe failures, round bound) belong to their owning child. No sink
+  fires before `validate_portfolio` passes.
 - **Sink compatibility**: `sink_file`, `sink_issue`, `sink_decision` consume the
   new `winners.md` (still `text`/`rationale` keys) unchanged; conceded ideas never
   reach a sink.
@@ -58,8 +65,13 @@ old loop.
   features on, F framings × L lenses, Swiss rounds, per-finalist materialize,
   `premortem_rounds`) and update `test_max_steps_is_60` deliberately.
 - **Comparison vs old loop** on 2 fixed briefs: duplicates retained, occupied grid
-  cells, total input/output tokens, wall-clock runtime. No LLM-judged "usefulness"
+  cells, LLM call count, total input/output tokens, wall-clock runtime, and the
+  tournament `tie_rate` (judge reliability; FEAT-3582). No LLM-judged "usefulness"
   metric.
+- **Cost ceiling**: a default (`mode=artifact`) run makes ≤ 45 LLM calls (old loop
+  ≈ 12; estimate for the new core ≈ 1 frame + 1 reframe + 9 diverge + 1 dedup + 1
+  shortlist + ≤ 24 judge ≈ 38). A run exceeding it fails the comparison and needs
+  a documented reason.
 
 ## Program Design
 
@@ -117,8 +129,10 @@ fixtures, a pinned combined budget, and a before/after comparison table.
 - No sink executes on a run that fails `validate_portfolio`.
 - `max_steps`/`timeout` pinned for the all-features worst case; `ll-loop validate
   brainstorm` passes.
-- Comparison table (duplicates, cells, tokens, runtime) recorded against the old
-  loop on 2 briefs.
+- Comparison table (duplicates, cells, LLM calls, tokens, runtime, `tie_rate`)
+  recorded against the old loop on 2 briefs; default-run LLM calls ≤ 45.
+- Issue stays open until FEAT-3584, FEAT-3585, and FEAT-3586 are done and their
+  reference runs recorded.
 
 ## Status
 

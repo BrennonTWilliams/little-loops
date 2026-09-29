@@ -29,7 +29,7 @@ score_change_surface: 18
 ## Summary
 
 Add an optional `premortem` finisher (approach D from EPIC-3581): the portfolio
-winner (and optionally the runner-up) is attacked by a critic, a defender responds
+**winner and runner-up** (not the wildcard) are attacked by a critic, a defender responds
 with mitigations or concedes, and the final report ships each idea with its known
 risks and kill criteria. The idea body itself is never rewritten.
 
@@ -41,17 +41,24 @@ Brainstorm ships the tournament winner as-is: no step challenges it, and the rep
 
 - Enabled per profile (`functional`, `business` default on) or via `premortem=true`.
 - Critic produces the top failure modes ("it's 12 months later and this failed
-  because…"); defender either adds a mitigation per risk (annotation only — the
-  idea's `title`/`body` are immutable, so the shipped idea is the one that was
-  grounded, rendered, and ranked) or concedes; a bounded number of rounds.
-- Report gains a `Risks & Kill Criteria` section per finalist; an idea the defender
-  concedes is demoted and the next finalist promoted.
+  because…"), each tagged `severity: fatal | major | minor`; defender adds a
+  mitigation per risk (annotation only — the idea's `title`/`body` are immutable,
+  so the shipped idea is the one that was grounded, rendered, and ranked) or
+  leaves it `null`; a bounded number of rounds.
+- **Concession is script-determined, not the defender's call**: an idea is
+  `conceded` when any `fatal` risk still has `mitigation: null` after the defender
+  responds. This avoids a same-model defender conceding too rarely or too eagerly.
+- Report gains a `Risks & Kill Criteria` section per critiqued finalist; a conceded
+  idea is demoted and the next finalist promoted. `apply_verdicts` recomputes the
+  runner-up (different cell from the winner) and wildcard per the FEAT-3582 slot
+  rules and records `conceded` ids in `portfolio.json`.
 - A promoted finalist receives its own critique round, counted against the same
   `premortem_rounds` bound; if the bound is exhausted it ships flagged
   `not_premortemed`.
 - Conceded ideas are excluded from `winners.md` and never reach a sink. If every
-  finalist concedes, the report states so, `winners.md` is empty, sinks are
-  skipped, and the run still ends `done` (the engine worked; the answer is "none
+  finalist concedes, `portfolio.json` has `winner: null` (the only case FEAT-3582
+  permits), the report states so, `winners.md` is empty, sinks are skipped, and
+  the run still ends `done` (the engine worked; the answer is "none
   of these survive").
 
 ## Use Case
@@ -83,13 +90,13 @@ Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.y
 
 ### Types
 
-- `Risk`: `{failure_mode: str, kill_criterion: str, mitigation: str | null}`
-- `PremortemVerdict`: `{idea_id: str, conceded: bool, risks: [Risk]}` — no field may carry a revised idea body
+- `Risk`: `{failure_mode: str, severity: "fatal" | "major" | "minor", kill_criterion: str, mitigation: str | null}`
+- `PremortemVerdict`: `{idea_id: str, conceded: bool, risks: [Risk]}` — `conceded` is computed by `apply_verdicts` (any fatal risk with `mitigation: null`), never accepted from LLM output; no field may carry a revised idea body
 
 ### Signatures
 
 - `critique(idea: IdeaRecord) -> list[Risk]` — critic LLM state
-- `defend(idea: IdeaRecord, risks: list[Risk]) -> PremortemVerdict` — defender adds mitigations or concedes
+- `defend(idea: IdeaRecord, risks: list[Risk]) -> list[Risk]` — defender fills mitigations; returns risks only
 - `apply_verdicts(portfolio: dict, verdicts: list[PremortemVerdict], ranking: list[str]) -> dict` — script demotes conceded ideas, promotes the next finalist, flags `not_premortemed` when the bound is exhausted
 
 ### Call Path
@@ -186,6 +193,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - A conceded idea never reaches a sink; all-conceded runs end `done` with empty
   `winners.md` and no sink executed.
 - Skipped cleanly when disabled; no change to output shape otherwise.
+
+## Review Decisions
+
+_Added 2026-09-28 (EPIC-3581 sub-issue review):_
+
+- Pinned critiqued set: winner + runner-up (wildcard is not critiqued); promoted finalists still consume the shared `premortem_rounds` bound.
+- Concession moved from the defender's discretion to a script rule over critic-assigned severity.
+- All-conceded is the sole permitted `winner: null` case; `apply_verdicts` recomputes runner-up/wildcard (FEAT-3582 § Data Contract).
+- Priority stays P4, but FEAT-3596 no longer hard-blocks on this issue (see FEAT-3596).
 
 ## Related Key Documentation
 
