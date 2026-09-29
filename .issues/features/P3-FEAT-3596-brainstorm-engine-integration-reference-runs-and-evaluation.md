@@ -34,6 +34,10 @@ feature enabled, and a lightweight before/after comparison against the old loop.
 
 _2026-09-28:_ Hard-blocked only by FEAT-3582 and FEAT-3583. FEAT-3584/3585/3586 are `relates_to` so a P4 child (FEAT-3586) does not gate this P3 issue. Each optional child owns its own failure-path fixtures; this issue owns the **cross-child** interactions, the combined budget, and reference runs. Per-mode reference runs for `ground`, `materialize`, and `premortem` are recorded as each child lands, and this issue cannot be closed until all three are done.
 
+## Baseline (captured 2026-09-29)
+
+The old loop is replaced in place by FEAT-3582, so its baseline is preserved outside the tree: `postmortems/brainstorm-baseline/` (gitignored, local-only) holds verbatim copies of the four historical `.loops/runs/brainstorm-*` dirs plus `BASELINE.md` (per-run ideas, LLM calls, tokens, wall-clock, pairwise difflib). Before FEAT-3582 lands, pin the pre-rewrite commit SHA here (tree HEAD at snapshot: `2fe16824a`) and run the old loop on the 2 fixed briefs from a worktree at that SHA. The historical runs do not record their briefs, and two used different models (`claude-sonnet-4-6` vs `MiniMax-M3`), so token totals are not comparable without the cache columns. "Duplicates retained" and "occupied cells" must use one identical tagging pass over both loops' ideas, not the new loop's own dedup.
+
 ## Current Behavior
 
 Each EPIC-3581 child owns only its own slice. Nobody owns the epic's success metrics
@@ -54,16 +58,17 @@ old loop.
 - **Failure-path fixtures** (pytest, stubbed via `MockActionRunner` from
   `scripts/tests/test_fsm_executor.py`, keyed by state name): only **cross-child**
   interactions live here — e.g. ground and materialize both filtering the same run
-  below the finalist floor, premortem demotion after ground backfill/reserve, and
-  the sink contract on all-conceded. Single-child fixtures (zero survivors, too few
+  below the finalist floor (caught by `check_floors --stage pre_tournament` before any judge
+  call), reserve promotion in `finalists.json` followed by materialize drops, and premortem
+  fail-open leaving `winners.md` and sink input byte-identical. Single-child fixtures (zero survivors, too few
   cells, per-probe failures, round bound) belong to their owning child. No sink
   fires before `validate_portfolio` passes.
 - **Sink compatibility**: `sink_file`, `sink_issue`, `sink_decision` consume the
-  new `winners.md` (still `text`/`rationale` keys) unchanged; conceded ideas never
-  reach a sink.
+  new `winners.md` (still `text`/`rationale` keys) unchanged, with or without the
+  annotate-only premortem.
 - **Combined budget**: pin `max_steps` and `timeout` for the worst case (all
-  features on, F framings × L lenses, round-robin pairs + probe, per-finalist materialize,
-  `premortem_rounds`) and update `test_max_steps_is_60` deliberately.
+  features on, F framings × L lenses, round-robin pairs + probe, materialize, and the
+  fixed premortem cost of 4 parent steps / 2 LLM calls) and update `test_max_steps_is_60` deliberately.
 - **Comparison vs old loop** on 2 fixed briefs: duplicates retained, occupied grid
   cells, LLM call count, total input/output tokens, wall-clock runtime, and the
   tournament `tie_rate` (judge position sensitivity on the top-3 head-to-heads; FEAT-3582 — measure it here before revisiting the round-robin format). No LLM-judged "usefulness"
@@ -83,7 +88,7 @@ old loop.
 ### Signatures
 
 - `run_failure_fixture(fixture: FailureFixture, tmp_path: Path) -> str` — drives the loop with stubbed outputs, returns the terminal state
-- `worst_case_steps(framings: int, lenses: int, finalists: int, premortem_rounds: int) -> int` — step arithmetic backing the pinned `max_steps`
+- `worst_case_steps(framings: int, lenses: int, finalists: int) -> int` — step arithmetic backing the pinned `max_steps` (premortem is a fixed +4, no rounds)
 
 ### Call Path
 

@@ -57,9 +57,12 @@ Brainstorm performs no evidence check: an idea that cites a nonexistent file, sy
   tournament; `unknown` ideas stay eligible and are flagged in the report.
 - Web grounding runs on **shortlisted** ideas only (cost). To avoid a back-edge into
   `ground`/`materialize`, the `shortlist` keeps a **reserve** (top 2 per cell when
-  `ground=web`) and grounds both; the first grounded candidate per cell becomes
-  the finalist. If a cell has no eligible candidate it is dropped, and the
-  FEAT-3582 finalist floor is rechecked in `validate_portfolio`.
+  `ground=web`; profile `reserve: 2`, FEAT-3583) in `finalists.json` and grounds both; the first
+  grounded candidate per cell becomes the finalist (`ground_web` rewrites `finalists.json` in place:
+  promoted reserve ids move into `finalists`, failed ids into `dropped` with a reason). If a cell has
+  no eligible candidate it is dropped, and `check_floors --stage pre_tournament` (FEAT-3582, run
+  after `ground_web`/`materialize` and immediately before `tournament`) enforces the finalist floor
+  **before** any judge call — not `validate_portfolio`, which runs after the tournament.
 - Skipped entirely when the resolved `ground` is `none`.
 
 ## Use Case
@@ -83,7 +86,7 @@ Add a gated `ground` state to `scripts/little_loops/loops/brainstorm.yaml`, skip
 - Two states, named for their placement: `ground_codebase` (between `dedup` and `shortlist`; cheap, runs on all ideas) and `ground_web` (after `shortlist`; runs on the shortlist reserve only). A script in `ground_codebase` verifies files with `git ls-files`, symbols with `git grep`, issue IDs with `ll-issues show`; `creates` paths are checked for non-collision. Existence only — no semantic-support or open-issue-conflict judgement.
 - `codebase` mode also feeds a **bounded repo summary** (top-level `git ls-files` tree, capped ~200 lines) into `diverge` via the profile, so ideas cite real anchors instead of guessing. This is a cheap slice of the pre-ideation context pass; a fuller pass stays a follow-up.
 - `web` (`ground_web`): an LLM step searches and emits `{url, quote}` sources plus an assumption list per idea; a non-LLM probe (hardened `curl` fetch + normalized fixed-string match of `quote`, see § Expected Behavior) verifies each source. Retrieval failure or missing web capability yields `grounded: unknown`, never a silent drop.
-- `grounded: false` ideas are excluded from the tournament; the shortlist reserve replaces them within the same cell; the finalist floor is rechecked by `validate_portfolio` (FEAT-3582).
+- `grounded: false` ideas are excluded from the tournament; the shortlist reserve replaces them within the same cell; the finalist floor is enforced by `check_floors --stage pre_tournament` (FEAT-3582). `ground_codebase` runs before `shortlist`, so `shortlist` simply excludes `grounded: false` ideas and FEAT-3582's `min_ideas`/`min_cells` floors count only `grounded != false` ideas.
 
 Issue-ID probing activates only when `.issues/` / `ll-issues` is available so the core stays decoupled from the Issue system.
 
@@ -105,7 +108,7 @@ Issue-ID probing activates only when `.issues/` / `ll-issues` is available so th
 
 ### Call Path
 
-`dedup` -> `ground` (codebase) -> `probe_anchor` -> `ll-issues show`; `shortlist` -> `ground` (web) -> `probe_source` -> `tournament`
+`dedup` -> `ground_codebase` -> `probe_anchor` -> `ll-issues show`; `shortlist` -> `check_floors` (generation) -> `ground_web` -> `probe_source` -> `check_floors` (pre_tournament) -> `tournament`
 
 ## Integration Map
 
@@ -198,12 +201,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Grounding results recorded per idea in `ideas.jsonl` (`evidence`, tri-state
   `grounded`).
 - A `grounded: false` finalist is replaced by its cell's reserve candidate (no
-  back-edge); if that leaves fewer than 2 eligible finalists, `validate_portfolio` fails the run before any sink.
+  back-edge) via an in-place rewrite of `finalists.json` (FEAT-3582 § Data Contract → Finalists file); if
+  that leaves fewer than 2 finalists, `check_floors --stage pre_tournament` fails the run to
+  `finalize_failed` **before the tournament** (no judge call, no sink).
 - Core loop stays decoupled from the Issue system: issue-ID probing is only active
   when `.issues/` / `ll-issues` is available.
 - Tests cover probe pass/fail with fixture ideas.
 
 ## Review Decisions
+
+_Added 2026-09-29 (EPIC-3581 second review):_
+
+- Probes (`probe_anchor`, `probe_source`) and the `finalists.json` rewrite are `little_loops.brainstorm_engine` commands (FEAT-3582 Review Decision 23), not inline YAML scripts; tests import them directly. The `web` research prompt stays in the YAML. The "Similar Patterns"/"Wiring" notes about inline `_bash`-extracted probe scripts describe the superseded approach.
+- Floor enforcement moved from `validate_portfolio` to `check_floors --stage pre_tournament` (FEAT-3582 Review Decision 25); floors count `grounded != false` ideas.
 
 _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 

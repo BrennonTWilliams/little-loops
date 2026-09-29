@@ -73,6 +73,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 
 ### Files to Modify
 - `scripts/little_loops/loops/brainstorm.yaml` — every child rewrites or adds states here
+- `scripts/little_loops/brainstorm_engine.py` — new (FEAT-3582); every later child adds commands here
 - Profile data files (FEAT-3583; `.json` preferred to avoid loop-discovery `rglob` scanners)
 - `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` / `KNOWN_UNFENCED_PROMPT_SITES` for new and removed prompt states
 - `README.md` + `scripts/README.md`, `CHANGELOG.md` (breaking change, FEAT-3582)
@@ -83,7 +84,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 - No loop, skill, command, or Python module outside `brainstorm.yaml` consumes its artifacts
 
 ### Tests
-- `scripts/tests/test_brainstorm.py` (rewritten per FEAT-3582), `scripts/tests/test_builtin_loops.py` (fence, MR-11 allowlist, warning budget), `scripts/tests/data/loop_interpolation_baseline.json`, `scripts/tests/test_builtin_loop_hardcode_gate.py`
+- `scripts/tests/test_brainstorm.py` (rewritten per FEAT-3582, wiring only), `scripts/tests/test_brainstorm_engine.py` (new; engine logic by direct import), `scripts/tests/test_builtin_loops.py` (fence, MR-11 allowlist, warning budget), `scripts/tests/data/loop_interpolation_baseline.json`, `scripts/tests/test_builtin_loop_hardcode_gate.py`
 - Cross-child failure-path fixtures and the combined step budget: FEAT-3596
 
 ### Documentation
@@ -97,7 +98,10 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 - **Profile plumbing** (2026-09-28 review): FEAT-3582 owns `resolve_profile`, the `profile.json` schema, and the `artifact` profile; FEAT-3583 extends them (presets, classifier, overrides).
 - **Tournament runs as a sub-loop** (one parent `max_steps` step; finalists ≤ 8, full round-robin ≈ 28 pair calls + ≤ 3 probe calls); `diverge` runs once per lens with round-robin framings. `top_k` is removed; `winners.md` = portfolio members.
 - **Grounding shape** (FEAT-3584): `touchpoints` (must exist) vs `creates` (must not collide); `shortlist` keeps a reserve so no back-edge into `ground`/`materialize`.
-- **Concession is script-determined** (FEAT-3586): fatal risk with no mitigation. `winner: null` is legal only for all-conceded.
+- **Pre-mortem is annotate-only in v1** (FEAT-3586, 2026-09-29): one critic call + one defender call over winner and runner-up; no demotion, concession, or `winner: null`. `winner` is always non-null; an unmitigated `fatal` risk is a report flag (`unmitigated_fatal`), not a gate. Demotion is a follow-up that must bring its own concession signal and Data Contract change.
+- **Engine module** (2026-09-29): deterministic logic lives in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), called from thin YAML states via `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine <cmd>`; later children add commands (`resolve-profile`, probes, `annotate`), not inline scripts.
+- **Filter pipeline** (2026-09-29): `finalists.json` (`{finalists, reserve, dropped, judge_mode, assets}`) is rewritten in place by every filtering state; order `dedup → ground_codebase → shortlist → check_floors(generation) → ground_web → materialize → check_floors(pre_tournament) → tournament`. Floors count `grounded != false` ideas and are enforced before any judge call.
+- **Knob defaults live in profiles** (2026-09-29): floor, `max_finalists`, and `ideas_per_round` context keys default to `""` (inherit); the pinned numbers are profile data, so a profile can lower them and an explicit context value still wins.
 
 ## Impact
 
@@ -138,7 +142,7 @@ In scope:
   image-capability canary → image-pairwise judging.
 - Integration and evaluation (FEAT-3596): reference runs, failure-path fixtures,
   combined step budget, comparison against the old loop.
-- Optional `premortem` finisher.
+- Optional annotate-only `premortem` finisher (risks and kill criteria for winner and runner-up).
 
 Out of scope:
 

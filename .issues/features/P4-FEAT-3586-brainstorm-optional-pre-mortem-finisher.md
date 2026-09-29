@@ -16,22 +16,18 @@ blocked_by:
 - FEAT-3582
 - FEAT-3583
 reconcile_attempted: true
-confidence_score: 75
-outcome_confidence: 64
-score_complexity: 10
-score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 18
 ---
 
 # FEAT-3586: Brainstorm optional pre-mortem finisher
 
 ## Summary
 
-Add an optional `premortem` finisher (approach D from EPIC-3581): the portfolio
-**winner and runner-up** (not the wildcard) are attacked by a critic, a defender responds
-with mitigations or concedes, and the final report ships each idea with its known
-risks and kill criteria. The idea body itself is never rewritten.
+Add an optional, **annotate-only** `premortem` finisher (approach D from EPIC-3581): a critic
+attacks the portfolio **winner and runner-up** (not the wildcard), a defender attaches
+mitigations, and the report ships each with its known risks and kill criteria. The idea
+`title`/`body`, the ranking, the portfolio slots, and `winners.md` are never changed.
+
+_Scope reduced 2026-09-29 (EPIC-3581 second review, `/ll:advise` with Opus): v1 has **no demotion, promotion, or concession**. See Review Decisions._
 
 ## Current Behavior
 
@@ -39,27 +35,11 @@ Brainstorm ships the tournament winner as-is: no step challenges it, and the rep
 
 ## Expected Behavior
 
-- Enabled per profile (`functional`, `business` default on) or via `premortem=true`.
-- Critic produces the top failure modes ("it's 12 months later and this failed
-  because…"), each tagged `severity: fatal | major | minor`; defender adds a
-  mitigation per risk (annotation only — the idea's `title`/`body` are immutable,
-  so the shipped idea is the one that was grounded, rendered, and ranked) or
-  leaves it `null`; a bounded number of rounds.
-- **Concession is script-determined, not the defender's call**: an idea is
-  `conceded` when any `fatal` risk still has `mitigation: null` after the defender
-  responds. This avoids a same-model defender conceding too rarely or too eagerly.
-- Report gains a `Risks & Kill Criteria` section per critiqued finalist; a conceded
-  idea is demoted and the next finalist promoted. `apply_verdicts` recomputes the
-  runner-up (different cell from the winner) and wildcard per the FEAT-3582 slot
-  rules and records `conceded` ids in `portfolio.json`.
-- A promoted finalist receives its own critique round, counted against the same
-  `premortem_rounds` bound; if the bound is exhausted it ships flagged
-  `not_premortemed`.
-- Conceded ideas are excluded from `winners.md` and never reach a sink. If every
-  finalist concedes, `portfolio.json` has `winner: null` (the only case FEAT-3582
-  permits), the report states so, `winners.md` is empty, sinks are skipped, and
-  the run still ends `done` (the engine worked; the answer is "none
-  of these survive").
+- Enabled per profile (`functional`, `business` default on) or via `premortem=true`; a false gate routes straight past the finisher with `brainstorm.md`/`winners.md`/`portfolio.json` byte-identical to the no-finisher output.
+- **One critic call** covers the winner and the runner-up (both ideas in one prompt): per idea, the top failure modes ("it's 12 months later and this failed because…"), each `{failure_mode, severity: fatal | major | minor, kill_criterion}`. **One defender call** then attaches a `mitigation` string per risk, or leaves it `null`. Mitigations are annotations only — the idea's `title`/`body` are immutable, so the shipped idea is the one that was grounded, rendered, and ranked.
+- A script (`annotate`) validates both outputs against the schema, writes `${context.run_dir}/premortem.json` (`{idea_id: [Risk]}`), and adds `unmitigated_fatal` to `portfolio.json` `flags[idea_id]` when any `fatal` risk has `mitigation: null`. That flag is a **report signal, not a gate**: the idea keeps its slot and still reaches sinks.
+- The report gains a `Risks & Kill Criteria` section for the winner and the runner-up, marks any `unmitigated_fatal` idea prominently, and states that the wildcard was not critiqued.
+- **Fails open**: unparseable critic/defender output, unknown idea IDs, or a defender risk list whose failure modes do not match the critic's skips the annotation, logs to `premortem.log`, adds `premortem_skipped` to the winner's `flags`, and the run continues. Malformed premortem output never drops or alters an idea and never fails the run. A defender output carrying a revised `title`/`body` is rejected the same way (fail-open skip, not a crash).
 
 ## Use Case
 
@@ -67,141 +47,117 @@ Brainstorm ships the tournament winner as-is: no step challenges it, and the rep
 
 **Context**: The tournament winner has never been attacked; its weaknesses surface only after work starts.
 
-**Goal**: Have the top idea critiqued and defended before it ships in the report.
+**Goal**: Have the top two ideas critiqued and defended before they ship in the report.
 
-**Outcome**: Each finalist appears with a `Risks & Kill Criteria` section; a conceded idea is demoted and the next finalist promoted.
+**Outcome**: The winner and runner-up each appear with a `Risks & Kill Criteria` section; an idea with an unmitigated fatal risk is flagged, not removed.
 
 ## Motivation
 
-EPIC-3581 approach D adds an adversarial pre-mortem to reduce false confidence in the winner. Shipping risks and kill criteria alongside each idea makes the report actionable, and demoting conceded ideas keeps weak winners from surfacing.
+EPIC-3581 approach D adds an adversarial pre-mortem to reduce false confidence in the winner. Shipping risks and kill criteria alongside each idea makes the report actionable. Demotion was cut from v1: the defender is the same model as the critic and supplies a mitigation for almost every risk, so a "fatal risk with no mitigation" concession rule would rarely fire while adding nullable-winner, `conceded`, and slot-recompute complexity to the P2 core (FEAT-3582) before the finisher has proven itself.
 
 ## Proposed Solution
 
-Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.yaml`, after `portfolio` and before the core's `validate_portfolio` gate:
+Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.yaml`, after `portfolio` and before `validate_portfolio`:
 
-- Enabled by the resolved profile (`functional`, `business` default on) or an explicit `premortem=true` override.
-- A critic states the top failure modes ("it's 12 months later and this failed because…"); a defender attaches a mitigation per risk or concedes. Mitigations are annotations; the idea body is not revised, so no grounding/rendering/ranking needs to be repeated.
-- Rounds are bounded by a context value and enforced by the FSM with a per-run counter kept under `${captured.run_dir.output}` (not the shared-scratch `retry_counter` fragment). Promoted finalists consume rounds from the same bound.
-- `apply_verdicts` rewrites `portfolio.json` and `winners.md`: conceded ideas are removed from `winners.md` and flagged `conceded` in `portfolio.json`; the next finalist is promoted; changes are appended to `ideas.jsonl`.
-- All finalists conceded → empty `winners.md`, sinks skipped, report says so, run ends `done`. `validate_portfolio` treats "all conceded" as a valid outcome, not a floor violation.
-- The report gains a `Risks & Kill Criteria` section per finalist.
+- `premortem_gate` — routes on the resolved `premortem` value (`classify`-style routing like `route_sink`, with a `default:` route past the finisher).
+- `premortem_critic` (LLM, one call, winner + runner-up) → `premortem_defender` (LLM, one call) → `annotate` (script: engine command `annotate`). Total **4 parent steps** including the gate; no rounds, no counter, no `premortem_rounds`, no `retry_counter`, no per-run counter file.
+- `annotate` is a command of `little_loops.brainstorm_engine` (FEAT-3582 § Solution): it reads the two LLM outputs from files, validates the schema and idea-body immutability, writes `premortem.json`, updates `portfolio.json` `flags`, and never touches `winners.md`, `ideas.jsonl` idea rows, `ranking`, or slots.
+- Report rendering adds the `Risks & Kill Criteria` section from `premortem.json`.
+
+**Out of scope (follow-up candidate):** demotion/promotion of conceded ideas, `winner: null`, and an all-conceded outcome. If added later it must use a concession signal that does not come from the defender (e.g. a rebuttal call where the critic rates each fatal-risk mitigation `holds` or `fails`, script concedes on `fails`), define a "round" as one critic+defender pass over the whole critiqued set, and re-introduce `conceded`/nullable `winner` in FEAT-3582's Data Contract in the same change.
 
 ## Program Design
 
 ### Types
 
 - `Risk`: `{failure_mode: str, severity: "fatal" | "major" | "minor", kill_criterion: str, mitigation: str | null}`
-- `PremortemVerdict`: `{idea_id: str, conceded: bool, risks: [Risk]}` — `conceded` is computed by `apply_verdicts` (any fatal risk with `mitigation: null`), never accepted from LLM output; no field may carry a revised idea body
+- `Premortem`: `{idea_id: [Risk]}` — written to `premortem.json`; no field may carry a revised idea body
 
 ### Signatures
 
-- `critique(idea: IdeaRecord) -> list[Risk]` — critic LLM state
-- `defend(idea: IdeaRecord, risks: list[Risk]) -> list[Risk]` — defender fills mitigations; returns risks only
-- `apply_verdicts(portfolio: dict, verdicts: list[PremortemVerdict], ranking: list[str]) -> dict` — script demotes conceded ideas, promotes the next finalist, flags `not_premortemed` when the bound is exhausted
+All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `python3 -m little_loops.brainstorm_engine annotate --run-dir DIR`:
+
+- `annotate(portfolio: dict, critic_out: str, defender_out: str, ideas: list[IdeaRecord]) -> tuple[dict, Premortem | None]` — validates and merges; returns the updated `flags` and the `Premortem`, or `None` on fail-open skip
+- `render_risks(premortem: Premortem, ideas: list[IdeaRecord]) -> str` — the `Risks & Kill Criteria` report section
+
+`critique` and `defend` are LLM states (`premortem_critic`, `premortem_defender`), not functions.
 
 ### Call Path
 
-`portfolio` -> `premortem_critic` -> `premortem_defender` -> `premortem_round_gate` -> `apply_verdicts` -> `validate_portfolio` -> `route_sink`
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
-
-- Verified anchors: `converge` (state), `route_sink` (state, `classify` evaluator routing `none|file|issue|decision`), `verify_artifacts` (asserts non-empty `brainstorm.md`), `retry_counter` (`lib/common.yaml` fragment). `tournament` and `portfolio` do not yet exist in `brainstorm.yaml` — FEAT-3582 dependency.
-- Decision Rules: skip route — `premortem` false (resolved from profile or explicit `premortem=true`) must route straight past the finisher with `brainstorm.md`/`winners.md` byte-identical to the no-finisher output. Round bound: the counter must increment per round and route out at `premortem_rounds`; a still-unconceded idea at the bound ships with its risks (not demoted). Concede = defender verdict `conceded: true`; the next finalist is promoted only if one remains. _Superseded 2026-09-25 (Astra review): a conceded idea never ships as a winner — if none remain, `winners.md` is empty and sinks are skipped (see § Expected Behavior)._
+`portfolio` -> `premortem_gate` -> `premortem_critic` -> `premortem_defender` -> `annotate` -> `validate_portfolio` -> `route_sink`
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/brainstorm.yaml` — add `premortem_critic`, `premortem_defender`, round-gate, and `apply_verdicts` demote/promote script between `portfolio` and `validate_portfolio`; extend report rendering and `validate_portfolio` (all-conceded valid)
+- `scripts/little_loops/loops/brainstorm.yaml` — add `premortem_gate`, `premortem_critic`, `premortem_defender`, and the `annotate` module call between `portfolio` and `validate_portfolio`; extend report rendering
+- `scripts/little_loops/brainstorm_engine.py` — `annotate`, `render_risks` (module created by FEAT-3582)
+- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entries for `premortem_critic`/`premortem_defender` (interpolate `${context.brief}`)
+- `scripts/tests/data/loop_interpolation_baseline.json` — new shell-state sites, if any
 
 ### Dependent Files (Callers/Importers)
-- `ll-loop run brainstorm` callers and the sink adapters (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) inside the loop
-- `scripts/little_loops/loops/lib/common.yaml` — imported fragments (`parse_tagged_json`, `queue_pop`, `retry_counter`)
+- `ll-loop run brainstorm` callers and the sink adapters (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) inside the loop — unaffected: `winners.md` is unchanged
+- FEAT-3583 — supplies the resolved `premortem` value and the `premortem` context override
 
 ### Similar Patterns
-- `scripts/little_loops/loops/mechanize-skills.yaml` `diagnosis_retry` — hand-rolled per-run bounded-round counter under `${captured.run_dir.output}` (`output_numeric / lt`); `lib/common.yaml` `retry_counter` is NOT reusable here (shared `.loops/tmp/` counter persists across runs)
+- `route_sink` in `brainstorm.yaml` — the gated-routing pattern for `premortem_gate`
 
 ### Tests
-- `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
-- `scripts/tests/test_builtin_loops.py` — built-in loop validation (`ll-loop validate`)
-- New tests: round bound enforced by the FSM, demotion/promotion recorded in `ideas.jsonl`, clean skip when disabled, promoted finalist critiqued within the bound, all-conceded → empty `winners.md` + no sink, defender output containing a revised body rejected
+- `scripts/tests/test_brainstorm_engine.py` — direct unit tests of `annotate`/`render_risks`: valid critic+defender output → `premortem.json` + `unmitigated_fatal` flag; fatal risk with a mitigation → no flag; malformed / unknown-id / mismatched-risk / revised-body output → fail-open skip with `premortem_skipped`; `winners.md`, `ranking`, and slots untouched; wildcard not critiqued
+- `scripts/tests/test_brainstorm.py` — wiring: gate routes past when `premortem` is false (output byte-identical), and through critic → defender → `annotate` when true; `annotate` precedes `validate_portfolio`
+- `scripts/tests/test_builtin_loops.py` — built-in loop validation; `TestValidatorWarningBudget`
 
 ### Documentation
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
 
 ### Configuration
-- Context keys: `premortem` (bool, resolved from profile) and `premortem_rounds`
+- Context key: `premortem` (resolved from profile; FEAT-3583 override, default `""`). No `premortem_rounds`.
+- Step budget: +4 parent steps when enabled (gate, critic, defender, `annotate`); the gate alone (+1) when disabled. Owned by FEAT-3596's combined budget.
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+_Carried from `/ll:refine-issue` — 2026-09-25, edited 2026-09-29 for the annotate-only scope:_
 
-- **Loop shape today**: `scripts/little_loops/loops/brainstorm.yaml` has no `tournament`/`portfolio`/`premortem` states yet (states: `init … rank → converge → route_sink → verify_artifacts → finalize_done`). The Call Path in `## Program Design` names states that only exist once FEAT-3582 lands (already in `blocked_by`); in the pre-3582 file the insertion point would be between `converge` and `route_sink`; after FEAT-3582 it is between `portfolio` and `validate_portfolio` (see Call Path), so no sink sees a conceded winner.
-- **Winners live in `winners.md`, not `ideas.jsonl`**: `converge` writes `${captured.run_dir.output}/winners.md` (JSON lines, same schema as `ideas.jsonl`); sinks consume it. "Reflected in `winners`" therefore means rewriting `winners.md` (and any `winners` structure FEAT-3582 introduces); the `ideas.jsonl` record of demotion/promotion is an additional append-only trail, not a replacement.
-- **`retry_counter` scope constraint**: `lib/common.yaml` `retry_counter` writes its counter to `.loops/tmp/${param.counter_key}` — shared scratch outside the run's isolation boundary, and it persists across runs (a stale file from a prior run would pre-exhaust the bound). `mechanize-skills.yaml` `diagnosis_retry` documents this (MR-3) and hand-rolls a counter under `${captured.run_dir.output}` with `evaluate: output_numeric / lt`. The Proposed Solution's "use the `retry_counter` fragment" is unsafe as written; the bound must be per-run.
-- **Existing test pins**: `scripts/tests/test_brainstorm.py::TestBrainstormYaml::test_max_steps_is_60` pins `max_steps == 60`; adding critic/defender/verdict states with bounded rounds must fit the budget or change the pin deliberately. `test_required_states_exist` and `test_context_has_required_knobs`/`test_context_defaults` enumerate states and context keys, so new `premortem`/`premortem_rounds` keys and states extend those contracts.
-
-### Wiring Additions
-
-_Wiring pass added by `/ll:wire-issue`:_
-
-**Files to Modify**
-- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entries for `premortem_critic`/`premortem_defender` (interpolate `${context.brief}`) [Agent 3]
-- `scripts/tests/data/loop_interpolation_baseline.json` — new counter/apply_verdicts shell sites [Agent 2]
-
-**Tests**
-- No existing test executes the hand-rolled counter in `mechanize-skills.yaml` `diagnosis_retry` (only structural tests in `test_builtin_loops.py`, ~lines 13991/14023); write a Pattern-A `_bash` test for the round bound, modeled on `test_brainstorm.py` `test_saturation_counter_increments_on_zero_novel` [Agent 3]
-- `scripts/tests/test_builtin_loops.py` — `MR11_MARKER_ALLOWLIST` (exact set; the `# ll-lint: mr11-ok` marker on a counter under `${captured.run_dir.output}` changes it) and `TestValidatorWarningBudget` [Agent 3]
-
-**Configuration**
-- Validator: `_validate_zero_retry_counter` flags a counter + `output_numeric lt` with target ≤ 1, so `premortem_rounds` must default to ≥ 2 or the gate be shaped differently [Agent 2]
-- Adds ~3 steps per premortem round to the `max_steps: 60` budget tracked in FEAT-3582; `test_max_steps_is_60` pin [Agent 2]
+- `tournament` and `portfolio` do not exist in `brainstorm.yaml` yet — FEAT-3582 dependency. Insertion point is between `portfolio` and `validate_portfolio`, so no sink runs before the finisher.
+- Winners live in `winners.md` (JSON lines with `text`/`rationale`); this finisher never rewrites it.
+- ~~Per-run round counter (`mechanize-skills.yaml` `diagnosis_retry`), `_validate_zero_retry_counter`, `retry_counter` scope constraint~~ — no longer relevant: there is no counter.
+- `scripts/tests/test_brainstorm.py::TestBrainstormYaml::test_max_steps_is_60` pins `max_steps == 60`; the combined budget with this finisher is FEAT-3596's.
 
 ## Implementation Steps
 
-1. Add `premortem_critic` and `premortem_defender` states between `portfolio` and `validate_portfolio` (Blocked by FEAT-3582; the states do not exist until it lands), gated on the resolved profile (FEAT-3583) or `premortem=true`; a false gate routes straight past the finisher. The defender output must be schema-checked to reject any revised idea body.
-2. Bound rounds with a per-run counter under `${captured.run_dir.output}` (`evaluate: output_numeric / lt`, as `mechanize-skills.yaml` `diagnosis_retry` does) and a `premortem_rounds` context value; do not use the `retry_counter` fragment, whose `.loops/tmp/` counter persists across runs.
-3. Implement `apply_verdicts` to demote conceded ideas (flag `conceded` in `portfolio.json`, remove from `winners.md`), promote the next finalist (critiqued within the same `premortem_rounds` bound, else flagged `not_premortemed`), and append changes to `ideas.jsonl`. If all finalists concede, write an empty `winners.md`, skip sinks, and end `done`; make `validate_portfolio` accept "all conceded".
-4. Render `Risks & Kill Criteria` per finalist in `brainstorm.md`; leave output shape unchanged when disabled.
-5. Add tests for bounded rounds, demotion/promotion (incl. promoted finalist critiqued within the bound), all-conceded (empty `winners.md`, no sink), rejected revised-body defender output, and the disabled path; run `ll-loop validate brainstorm`.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Add critic/defender states to `fence.py` `FENCE_ROLES`
-- Set `premortem_rounds` default ≥ 2 to satisfy `_validate_zero_retry_counter`
-- Write an executable round-bound test (none exists for `diagnosis_retry`); update `MR11_MARKER_ALLOWLIST` and `loop_interpolation_baseline.json`
-- Budget premortem rounds against `max_steps` (see FEAT-3582)
+1. Add `premortem_gate`, `premortem_critic`, `premortem_defender` between `portfolio` and `validate_portfolio` (blocked by FEAT-3582/FEAT-3583); a false gate routes straight past the finisher.
+2. Implement `annotate` and `render_risks` in `brainstorm_engine.py` with unit tests first (TDD): schema validation, immutability check, fail-open, `unmitigated_fatal` flag.
+3. Render `Risks & Kill Criteria` for the winner and runner-up in `brainstorm.md`; leave output unchanged when disabled.
+4. Add `FENCE_ROLES` entries; run `ll-loop validate brainstorm`.
 
 ## Impact
 
 - **Priority**: P4 - optional finisher that refines output but is not needed for a working engine
-- **Effort**: Small - two LLM states, one per-run bounded counter, and one small script
-- **Risk**: Low - off by default for `artifact`/`visual` profiles and skipped cleanly when disabled
+- **Effort**: Small - two LLM states and one small, unit-tested engine command
+- **Risk**: Low - off by default for `artifact`/`visual`; annotate-only, fails open, cannot alter an idea or a ranking
 - **Breaking Change**: No
 
 ## Acceptance Criteria
 
-- Round count is bounded by context and enforced by the FSM (no unbounded debate);
-  promoted finalists count against the same bound.
-- The shipped idea's `title`/`body` are byte-identical to the ranked idea; the
-  defender contributes mitigations only.
-- Demotion/promotion is recorded in `ideas.jsonl` and reflected in `portfolio.json`
-  and `winners.md`.
-- A conceded idea never reaches a sink; all-conceded runs end `done` with empty
-  `winners.md` and no sink executed.
+- Exactly two LLM calls (critic, defender) when enabled; no rounds, no counter.
+- The shipped idea's `title`/`body`, `ranking`, portfolio slots, and `winners.md` are byte-identical with and without the finisher; only `portfolio.json` `flags`, `premortem.json`, and the report differ.
+- `Risks & Kill Criteria` appears for the winner and runner-up; the wildcard is stated as not critiqued.
+- A `fatal` risk with `mitigation: null` adds `unmitigated_fatal` to that idea's `flags` and is highlighted in the report; the idea still reaches sinks.
+- Malformed, unknown-id, mismatched, or revised-body critic/defender output fails open (`premortem_skipped`, `premortem.log`) and never fails the run.
 - Skipped cleanly when disabled; no change to output shape otherwise.
 
 ## Review Decisions
 
 _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 
-- Pinned critiqued set: winner + runner-up (wildcard is not critiqued); promoted finalists still consume the shared `premortem_rounds` bound.
-- Concession moved from the defender's discretion to a script rule over critic-assigned severity.
-- All-conceded is the sole permitted `winner: null` case; `apply_verdicts` recomputes runner-up/wildcard (FEAT-3582 § Data Contract).
+- Pinned critiqued set: winner + runner-up (wildcard is not critiqued).
 - Priority stays P4, but FEAT-3596 no longer hard-blocks on this issue (see FEAT-3596).
+
+_Added 2026-09-29 (EPIC-3581 second review, `/ll:advise` with Opus; nothing here has been measured):_
+
+- **Annotate-only for v1.** Removed demotion/promotion, script-determined concession, `conceded`, `winner: null`, the all-conceded outcome, the sink-skip branch, and `premortem_rounds`. A same-model defender supplies a mitigation for almost every risk, so "fatal with no mitigation" would rarely concede; a P4 optional feature should not add nullable-winner complexity to the P2 core. FEAT-3582 dropped the matching Data Contract fields (its Review Decisions 23–24).
+- Replaced the round-bounded critic/defender loop with one critic call and one defender call over both critiqued ideas (4 parent steps including the gate). This also removes the per-run counter, the `retry_counter` hazard, and the missing executable counter test.
+- `annotate` is an engine-module command, not an inline script.
+- The prior Confidence Check scores (75 / 64) were for the demotion design and are void; re-run `/ll:confidence-check` after FEAT-3582/FEAT-3583 land.
 
 ## Related Key Documentation
 
@@ -210,26 +166,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P4
-
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on 2026-09-28_
-
-**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (dependency hard override)
-**Outcome Confidence**: 64/100 → MODERATE
-
-### Gaps to Address
-- Unresolved dependencies (hard override): `blocked_by` FEAT-3582 and FEAT-3583 are both `Open`. The `portfolio`/`validate_portfolio` states and resolved `premortem` profile value this issue extends do not exist yet.
-
-### Concerns
-- "Round" is undefined: `premortem_rounds` is shared by winner, runner-up, and promoted finalists, but the issue does not say whether one round is one idea's critic+defender pass or one pass over the whole critiqued set. Pin it, and pin the default (must be ≥ 2 for `_validate_zero_retry_counter`; ≥ 3 if a round is one idea and a promotion must fit).
-- FEAT-3582's finalist floor ("≥ 2 eligible finalists after every filtering step … premortem") conflicts on its face with the all-conceded-is-valid rule here; the fix belongs in FEAT-3582's Data Contract (see its Concerns).
-- Critiqued-finalist count is pinned (winner + runner-up); the earlier concern is resolved.
-
-### Outcome Risk Factors
-- Moderate per-site complexity: `apply_verdicts` demotes/promotes across `portfolio.json`, `winners.md`, and `ideas.jsonl` with the slot-recompute rules, and `validate_portfolio` must be extended for all-conceded.
-- No executable test exists for the hand-rolled round counter pattern (`diagnosis_retry`), so the bound test must be written from scratch; also constrained by `max_steps` and `_validate_zero_retry_counter`.
-
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-29T02:00:48 - `c90c2478-f308-49d4-930c-8be0a9590776.jsonl`

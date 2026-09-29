@@ -64,7 +64,11 @@ Brainstorm judges every idea as text, including visual ones: a "dense, warm-pape
     finalists.
 - **Render-failure floor**: a failed render drops that idea only while ≥ 2 rendered
   finalists remain; otherwise no idea is dropped and all finalists are judged from
-  HTML source.
+  HTML source. `materialize` rewrites `finalists.json` in place (dropped ids → `dropped`,
+  `judge_mode`, `assets`; FEAT-3582 § Data Contract → Finalists file), and
+  `check_floors --stage pre_tournament` (FEAT-3582) then enforces the ≥ 2 finalist floor before
+  the tournament runs. `materialize` runs after `ground_web` (when both are on, e.g.
+  `mode=business materialize=render`), so it only renders ideas that survived grounding.
 
 ## Use Case
 
@@ -107,7 +111,7 @@ Add a gated `materialize` state to `scripts/little_loops/loops/brainstorm.yaml`,
 
 ### Call Path
 
-`diverge` -> `shortlist` -> `materialize` -> `capture_screenshot` -> `visual_canary` -> `tournament`
+`diverge` -> `shortlist` -> `check_floors` (generation) -> [`ground_web`] -> `materialize` -> `capture_screenshot` -> `visual_canary` -> `check_floors` (pre_tournament) -> `tournament`
 
 ### Codebase Research Findings
 
@@ -212,6 +216,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
   ranked gallery.
 
 ## Review Decisions
+
+_Added 2026-09-29 (EPIC-3581 second review):_
+
+- The canary/verdict-code comparison and the `finalists.json` rewrite (`judge_mode`, `assets`, `dropped`) are `little_loops.brainstorm_engine` commands, tested by direct import; the Playwright `node -e` screenshot step stays an inline shell state (it is JS). Floor enforcement is `check_floors --stage pre_tournament` (FEAT-3582 Review Decision 25). The tournament child reads `judge_mode`/`assets` from `finalists.json` (FEAT-3582 § Tournament Specification → Child loop).
+- Not addressed in this pass (open from the review): the "more than half of verdicts fail proof → re-judge from HTML" fallback can only be decided after the tournament ends; still needs a decision (canary + round 1 only).
 
 _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 
