@@ -19,11 +19,11 @@ Batch the loop-end `usage_events` writes in `fsm/executor.py:_finish` into one r
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+`fsm/executor.py:_finish` calls `record_usage_event` once per collected `TokenUsage` row, each on its own telemetry connection: K sequential round-trips against a live remote store.
 
 ## Expected Behavior
 
-[What should happen instead]
+Loop-end usage events reach a live remote store in a K-independent number of requests, with local SQLite behavior unchanged.
 
 ## Motivation
 
@@ -38,10 +38,10 @@ Batch the loop-end `usage_events` writes in `fsm/executor.py:_finish` into one r
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P4 - latency only; remote users already get the rows via per-row writes after BUG-3652.
+- **Effort**: Small - one writer, one re-export, one test rewrite.
+- **Risk**: Low - the batch is all-or-nothing where the per-row loop keeps earlier rows; telemetry-only.
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 

@@ -8,10 +8,10 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:08Z'
 verify_verdict: VALID
-confidence_score: 75
-outcome_confidence: 56
-score_complexity: 10
-score_test_coverage: 18
+confidence_score: 95
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
 size: Medium
@@ -329,27 +329,14 @@ Verified first: BUG-3659 landed (`32043a206`, `_DEGRADE_ERRORS` at `writers.py:5
 
 ## Confidence Check Notes
 
-_Stale as of 2026-09-29: written before the sixth `/ll:advise` review and BUG-3659's landing; the Dependencies override and the `best_effort` / batching concerns below no longer apply. Re-run `/ll:confidence-check`._
+_Added by `/ll:confidence-check` on 2026-09-29 (re-run after the sixth `/ll:advise` review and BUG-3659's landing; supersedes the earlier STOP notes, whose Dependencies override, `best_effort` and batching concerns no longer apply). Call sites at `cli/parallel.py:327`, `transport.py:2031`, `cli/sprint/run.py:566/660/807`, `set_status.py:183`, `research_triage.py:122`, `work_verification.py:280`, `fsm/executor.py:2017/2689/4681/4708`, and `_DEGRADE_ERRORS` at `writers.py:54` re-verified against the code._
 
-_Updated by `/ll:confidence-check` on 2026-09-29 (re-run after the fourth `/ll:advise` review edits: `cli/session.py:755` allowlist entry and the 46-call reconciliation, `executemany` batching with the `session_store` re-export and test rewrite, `SQLiteTransport` no-traceback logging, loop-worktree chdir/atexit gap, structural rather than wall-clock acceptance criteria; call sites at `cli/parallel.py:327`, `transport.py:2031`, `cli/sprint/run.py:566/660/807`, `set_status.py:183`, `work_verification.py:280`, `fsm/executor.py:2017/4681/4708` re-verified against the code)_
-
-**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override; aggregate alone would be PROCEED WITH CAUTION)
-**Outcome Confidence**: 56/100 → LOW
-
-### Gaps to Address
-- **Unresolved `blocked_by`: BUG-3659 (Open, P2).** Criterion 5 scores 0 and forces the STOP verdict. `_DEGRADE_ERRORS` still does not exist in `session_store/`, and Step 2 (the eight writer degrade handlers) reuses it; BUG-3659 also edits the same `writers.py`. Remedy: land BUG-3659 first. Steps 1, 3 and 4 do not need the constant, so if you want to start the startup fixes now, split Step 2 out or define the constant here and let BUG-3659 import it. `ll-issues format-check` flags `soft_dep_hard_edge` (suggests `relates_to`); that would be wrong for Step 2.
-
-### Concerns
-- Scope keeps growing inside a P3 "audit" bug: `best_effort` read-only connection, `executemany` batching, `SQLiteTransport` logging, two AST gates, black-holed-socket double. The fourth `/ll:advise` review (Opus) recommended splitting the prepatch best-effort read (`best_effort` flag, `connect_readonly_telemetry`, black-holed double) into a follow-up, or implementing it through the existing `telemetry_scope()` convention (`schema.py:~1739`) instead of a new `open_history_readonly` parameter. Not decided; the issue still keeps it in scope.
-- One item is conditional: the `cli/loop/run.py` `atexit` `worktree_delete` write may resolve from a deleted cwd (`os.chdir` at `:608`). The issue says to confirm with a test before fixing.
-- The `SQLiteTransport.send` logging fix and the `record_usage_events` test rewrite (`test_fsm_executor.py:4050-4128`) are new work items not reflected in the size/effort line.
-
-### Outcome Risk Factors
-- Broad enumeration: ~25 in-scope `resolve_history_db()` calls across ~13 source files, plus the new `session_store/__init__.py`, `writers.py` logging, `loop/run.py` and docs touchpoints (about 15 files).
-- Broad blast radius: `wire_transports` feeds 5 callers, `apply_status_transition` feeds the CLI, MCP tool and `preparation_policy`; the `HistoryError` widening in `writers.py` changes every caller at once. Mitigate by landing the two startup fixes and the guard first, then the writer conversions, then the meta-tests.
-- Moderate-depth items with no precedent in the repo: the `best_effort` read-only telemetry connection and the black-holed-socket test double.
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 67/100 → MODERATE
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T23:22:14 - `f5b7d0eb-c1d4-413c-8b3c-52d6af3cc51b.jsonl`
+- `/ll:confidence-check` - 2026-09-29T23:13:57 - `ad636d32-2788-41c0-b9c6-2a6e4e3b2bd4.jsonl`
 - `/ll:confidence-check` - 2026-09-29T15:46:18 - `924e049e-7787-4d99-951b-be68371f6250.jsonl`
 - `/ll:confidence-check` - 2026-09-29T07:01:56 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:advise` - 2026-09-29T06:54:59 - `5f8d5762-5341-43fe-88c8-0e9ad90d90b3.jsonl`

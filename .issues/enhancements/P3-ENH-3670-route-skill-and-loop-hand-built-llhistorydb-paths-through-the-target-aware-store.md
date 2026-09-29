@@ -26,7 +26,7 @@ Affected sites (verify each before editing): `skills/update-docs/SKILL.md:102`, 
 
 ## Expected Behavior
 
-[What should happen instead]
+Every skill and loop that reads the history store reaches it through a target-aware path (or degrades explicitly), so a remote backend never produces an empty local shadow `.ll/history.db`.
 
 ## Proposed Solution
 
@@ -34,10 +34,10 @@ Route each through an `ll-*` CLI or `little_loops.session_store` (target-aware),
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - silent wrong results for remote-backend users only.
+- **Effort**: Medium - six sites plus a text gate and the skill mirror regeneration.
+- **Risk**: Low - local behavior must stay identical; skills stay under the 500-line cap.
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 
