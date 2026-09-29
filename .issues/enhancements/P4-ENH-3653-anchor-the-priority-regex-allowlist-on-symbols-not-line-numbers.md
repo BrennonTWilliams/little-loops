@@ -123,6 +123,8 @@ _Added after an `/ll:advise` second-opinion review (claude-opus-5-5, confidence 
 
 `TestPriorityRegexCompletenessAllowlist.test_priority_regex_allowlist_matches_scan` -> `_diff_against_allowlist`
 
+Existing host: `TestPriorityRegexCompletenessAllowlist` (class in `test_issue_parser.py`, retained; its two current tests fold into the new one).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
@@ -178,11 +180,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Added by `/ll:confidence-check` on 2026-09-29_
 
-**Readiness Score**: 95/100 → STOP — ADDRESS GAPS (Program Design hard override; aggregate would be PROCEED)
+**Readiness Score**: 95/100 → PROCEED (Program Design gap resolved after scoring)
 **Outcome Confidence**: 96/100 → HIGH CONFIDENCE
 
-### Gaps to Address
-- Program Design gate fails (`ll-issues check-design`): "no call-path anchor resolves against the repo". Every anchor in `### Call Path` is either new (`_scan_priority_regex_hits`, `_scan_source`, `_enclosing_symbol`, `_diff_against_allowlist`, `test_priority_regex_allowlist_matches_scan`) or dotted with a new leaf (`TestPriorityRegexCompletenessAllowlist.test_priority_regex_allowlist_matches_scan` resolves only its last segment). Fix: name an existing public symbol in the Call Path, e.g. a standalone `TestPriorityRegexCompletenessAllowlist` line, or `resolve_issue_path`, or the model helper `_enclosing_functions`; or set `program_design_not_applicable: true`. Also see the private-anchor underscore-strip caveat: name at least one public def or class.
+### Resolved Gaps
+- Program Design gate: added the existing `TestPriorityRegexCompletenessAllowlist` class as a standalone Call Path anchor; `ll-issues check-design` now passes.
 
 _Otherwise clean: no parity, claim, structure, decision, or dependency gaps; no unproven mechanism; no learning-test targets._
 
