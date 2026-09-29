@@ -8,14 +8,16 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:08Z'
 verify_verdict: VALID
-confidence_score: 95
+confidence_score: 80
 outcome_confidence: 56
 score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 10
 size: Medium
-blocked_by: [BUG-3659]
+blocked_by:
+- BUG-3659
+missing_artifacts: true
 ---
 
 # BUG-3652: Audit resolve_history_db callers under a remote history backend
@@ -302,10 +304,13 @@ Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the s
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-29 (re-run on the narrowed scope; re-scored after the writer-level fail-soft plan — scores unchanged, call sites and test files spot-checked against the code)_
+_Added by `/ll:confidence-check` on 2026-09-29 (re-run after BUG-3659 was added to `blocked_by`; call sites at `cli/parallel.py:327`, `transport.py:2031`, `cli/sprint/run.py:566/:660/:807`, `set_status.py:183`, `research_triage.py:122`, `work_verification.py:280` re-verified against the code)_
 
-**Readiness Score**: 95/100 → PROCEED
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override; aggregate alone would be PROCEED WITH CAUTION)
 **Outcome Confidence**: 56/100 → LOW
+
+### Gaps to Address
+- **Unresolved `blocked_by`: BUG-3659 (Open, P2).** Criterion 5 scores 0 and forces the STOP verdict. The dependency is real, not just prose: `_DEGRADE_ERRORS` does not exist anywhere in `session_store/` yet, and Step 2 (the eight writer degrade handlers) reuses it. Remedy: land BUG-3659 first. `ll-issues format-check` also flags `soft_dep_hard_edge` (suggests moving it to `relates_to`); that would be wrong for Step 2, but Steps 1, 3 (call-site conversions) and 4 do not need the constant, so if you want to start the startup fixes now, either split Step 2 out or define the constant here and let BUG-3659 import it.
 
 ### Concerns
 - ~~The writer-widening count is loose: the issue says "~19 fail-soft writers" but `session_store/writers.py` has 15 `except sqlite3.Error` clauses.~~ **Resolved** (pre-implementation review, 2026-09-29): the exact set is enumerated in Proposed Solution § Writer-level fail-soft (2 functions → BUG-3659, 8 here), and an AST gate pins it.
@@ -318,6 +323,7 @@ _Added by `/ll:confidence-check` on 2026-09-29 (re-run on the narrowed scope; re
 - ~~Two premises are inferred from code, not executed against `HranaStub`.~~ **Resolved** 2026-09-29: both were proven against the stub. New moderate-depth item: the `best_effort` read-only connection in `backend.py`/`libsql.py`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T07:01:56 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:advise` - 2026-09-29T06:54:59 - `5f8d5762-5341-43fe-88c8-0e9ad90d90b3.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:11:48 - `236872ac-1b8a-494a-8a4f-024f9ae7329e.jsonl`
 - `/ll:confidence-check` - 2026-09-29T05:54:19 - `84b20094-435f-46d0-882f-cf08768d6a92.jsonl`
