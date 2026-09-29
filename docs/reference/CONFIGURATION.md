@@ -1387,7 +1387,9 @@ skill or declares `tools:` (BUG-2831): the sdk/batch dispatch path sends a
 bare, tool-less single-turn API call, which can't run the host CLI's
 agentic tool loop that a skill invocation needs, so it's downgraded
 unconditionally — even under an explicit per-state `request_path: sdk`
-override — rather than silently no-opping. The downgrade emits a one-shot
+override — rather than silently no-opping. A `type: learning` state's implicit
+`/ll:explore-api` remedy is a skill invocation too, so it always runs on the host
+CLI. The downgrade emits a one-shot
 `request_path_downgrade` event and stderr warning, and the run still
 completes normally rather than hard-failing.
 

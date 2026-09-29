@@ -477,7 +477,7 @@ def _static_model_paths(
     """Model-consuming dispatch paths a state can take, as ``(path, is_fallback)``.
 
     Mirrors ``FSMExecutor._model_consumer_paths`` for the *static* downgrade causes
-    only (``/ll:`` skill action, ``tools:``): the environmental ones (``anthropic``
+    only (``/ll:`` skill action, ``tools:``, ``type: learning``): the environmental ones (``anthropic``
     not importable, no credentials) are unknowable at validate time, so an
     ``sdk``/``batch`` state also yields a ``("cli", True)`` fallback entry (ENH-3548).
     Duplicated from the executor on purpose — validation does not import it.
@@ -495,7 +495,8 @@ def _static_model_paths(
         return [("sdk", False), ("cli", True)]
 
     if state.type == "learning" and state.learning is not None:
-        return action_paths(state.action)
+        # The /ll:explore-api remedy always runs on the host CLI (BUG-3646).
+        return [("cli", False)]
     is_prompt = state.action is not None and _is_prompt_action(state)
     if is_prompt:
         paths.extend(action_paths(state.action))

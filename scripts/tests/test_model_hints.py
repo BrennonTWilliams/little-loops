@@ -511,6 +511,43 @@ class TestLearningState:
         assert remedy["model_resolved"] == "haiku"
         assert remedy["model_backend"] == "claude-code"
 
+    def test_sdk_request_path_resolves_hint_against_cli_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BUG-3646: under sdk the remedy still downgrades to CLI, so the hint is CLI-resolved."""
+        pytest.importorskip("anthropic")
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        with (
+            patch(
+                "little_loops.learning_tests.check_learning_test",
+                side_effect=[None, SimpleNamespace(status="proven")],
+            ),
+            patch("little_loops.learning_tests.gate.is_record_stale", return_value=False),
+        ):
+            result, runner, events = _execute(
+                self._fsm("burst"), orchestration_config=OrchestrationConfig(request_path="sdk")
+            )
+        assert result.terminated_by == "terminal"
+        assert runner.calls == ["echo pre", "/ll:explore-api x"]
+        remedy = _of(events, "action_complete")[-1]
+        assert remedy["model_resolved"] == "haiku"
+        assert remedy["model_backend"] == "claude-code"
+        assert len(_of(events, "request_path_downgrade")) == 1
+
+    def test_sdk_request_path_unmapped_hint_fails_preflight_on_cli_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pytest.importorskip("anthropic")
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        result, runner, events = _execute(
+            self._fsm("coding"), orchestration_config=OrchestrationConfig(request_path="sdk")
+        )
+        assert result.terminated_by == "error" and result.model_hint_error
+        assert runner.calls == []
+        assert not _of(events, "request_path_downgrade")
+
 
 class TestCliActionDispatch:
     """AC1/AC16: CLI-action precedence and event fields."""
@@ -1245,7 +1282,8 @@ class TestValidateResolution:
         fsm = FSMLoop(name="t", initial="sub", states=states, llm=LLMConfig(model_hint="coding"))
         assert _res_warnings(fsm, "codex") == []
 
-    def test_learning_state_has_no_evaluator_path_and_no_skill_downgrade(self) -> None:
+    def test_learning_state_is_checked_against_cli_host_only(self) -> None:
+        """BUG-3646: the remedy always runs on the CLI, so never against anthropic-api."""
         st = StateConfig(
             type="learning",
             learning=LearningConfig(targets=["x"], max_retries=1),
@@ -1254,8 +1292,7 @@ class TestValidateResolution:
             on_no="done",
         )
         ov = {"anthropic-api": {"coding": False}, "codex": {"coding": "gpt-x"}}
-        (w,) = _res_warnings(_fsm(st), "codex", ov, request_path="sdk")
-        assert "anthropic-api" in w.message
+        assert _res_warnings(_fsm(st), "codex", ov, request_path="sdk") == []
         assert len(_res_warnings(_fsm(st), "codex")) == 1
 
     def test_load_and_validate_forwards_kwargs(self, tmp_path: Path) -> None:
@@ -1353,6 +1390,6 @@ class TestValidateAgreesWithPreflight:
         found = _res_warnings(fsm, host, overrides, request_path)
         if preflight is not None:
             assert found, f"preflight failed ({preflight}) but validate was silent"
-        elif case not in ("sdk", "learning"):
+        elif case != "sdk":
             # validate also checks the CLI fallback of sdk states, so it may say more there
             assert not found, [w.message for w in found]

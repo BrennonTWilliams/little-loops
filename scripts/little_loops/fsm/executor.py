@@ -1564,11 +1564,11 @@ class FSMExecutor:
                 # exit 127 on every attempt, so the remedy never ran and every
                 # unproven target blocked after burning its retries. Pin the
                 # mode explicitly for the remedy invocation.
-                self._run_action(
-                    f"/ll:explore-api {target}",
-                    _dc_replace(state, action_type="slash_command"),
-                    ctx,
-                )
+                # The copy also carries the remedy text as `action` so
+                # `_compute_request_path` sees the `/ll:` skill invocation and
+                # downgrades sdk/batch to the host CLI (BUG-3646).
+                remedy = self._learning_remedy_state(state, target)
+                self._run_action(remedy.action or "", remedy, ctx)
                 attempts += 1
                 record = _fresh_record(target)
 
@@ -3742,6 +3742,17 @@ class FSMExecutor:
                 return f"state '{name}': {exc}"
         return None
 
+    @staticmethod
+    def _learning_remedy_state(state: StateConfig, target: str = "") -> StateConfig:
+        """The prompt-mode state copy a learning state's remedy dispatches on (BUG-3646).
+
+        Shared by the dispatch site and the preflight so they cannot drift:
+        ``action`` carries the ``/ll:explore-api`` text so ``_SKILL_INVOKE_RE``
+        matches and sdk/batch downgrades to the host CLI.
+        """
+        action = f"/ll:explore-api {target}".rstrip()
+        return _dc_replace(state, action_type="slash_command", action=action)
+
     def _model_consumer_paths(self, state: StateConfig) -> list[Literal["cli", "sdk", "evaluator"]]:
         """The model-consuming dispatch paths *state* will take (ENH-3547 preflight).
 
@@ -3754,8 +3765,7 @@ class FSMExecutor:
         if state.terminal or state.loop is not None or state.action_type == "human_approval":
             return []
         if state.type == "learning" and state.learning is not None:
-            remedy = _dc_replace(state, action_type="slash_command")
-            path, _ = self._compute_request_path(remedy)
+            path, _ = self._compute_request_path(self._learning_remedy_state(state))
             return ["sdk" if path in ("sdk", "batch") else "cli"]
 
         paths: list[Literal["cli", "sdk", "evaluator"]] = []

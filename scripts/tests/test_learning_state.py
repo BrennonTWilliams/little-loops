@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
+from little_loops.config.orchestration import OrchestrationConfig
 from little_loops.fsm.executor import FSMExecutor
 from little_loops.fsm.schema import FSMLoop, LearningConfig, StateConfig
 from little_loops.fsm.types import ActionResult
@@ -556,6 +559,56 @@ class TestLearningStateExploreApiDispatchMode:
 
         assert result.final_state == "planning"
         assert seen == [True], f"explore-api must dispatch in prompt mode, got {seen!r}"
+
+
+class TestLearningStateRequestPathSdk:
+    """BUG-3646: the remedy needs the host CLI's agentic loop under sdk/batch too."""
+
+    @pytest.mark.parametrize("request_path", ["sdk", "batch"])
+    @pytest.mark.parametrize("declared_on", ["orchestration", "state"])
+    def test_remedy_downgrades_to_cli(
+        self,
+        temp_project_dir: Path,
+        monkeypatch: Any,
+        request_path: str,
+        declared_on: str,
+    ) -> None:
+        pytest.importorskip("anthropic")
+        monkeypatch.chdir(temp_project_dir)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        fsm = _learning_fsm(["urllib"], max_retries=2)
+        orch = None
+        if declared_on == "state":
+            fsm.states["learning"].request_path = request_path  # type: ignore[assignment]
+        else:
+            orch = OrchestrationConfig(request_path=request_path)  # type: ignore[arg-type]
+        runner = _MockRunner()
+        events: list[dict] = []
+        executor = FSMExecutor(
+            fsm, action_runner=runner, event_callback=events.append, orchestration_config=orch
+        )
+        with (
+            patch("little_loops.host_runner.dispatch_anthropic_request") as mock_sdk,
+            patch("little_loops.host_runner.dispatch_batch_request") as mock_batch,
+        ):
+            result = executor.run()
+
+        assert result.final_state == "blocked"
+        assert not mock_sdk.called
+        assert not mock_batch.called
+        assert runner.calls == ["/ll:explore-api urllib"] * 2
+        downgrades = [e for e in events if e.get("event") == "request_path_downgrade"]
+        assert len(downgrades) == 1
+
+    def test_no_downgrade_under_cli(self, temp_project_dir: Path, monkeypatch: Any) -> None:
+        monkeypatch.chdir(temp_project_dir)
+        runner = _MockRunner()
+        events: list[dict] = []
+        FSMExecutor(
+            _learning_fsm(["urllib"]), action_runner=runner, event_callback=events.append
+        ).run()
+        assert runner.calls
+        assert not [e for e in events if e.get("event") == "request_path_downgrade"]
 
 
 def _write_learning_tests_config(

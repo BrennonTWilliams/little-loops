@@ -4,10 +4,11 @@ type: BUG
 title: Learning-state /ll:explore-api remedy dispatched on bare SDK path under request_path
   sdk
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T22:51:25Z'
+completed_at: '2026-09-29T01:13:46Z'
 verify_verdict: VALID
 labels:
 - loops
@@ -184,12 +185,12 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] With `request_path: sdk` or `batch` (loop-wide or on the learning state) and credentials available, a learning state's remedy is dispatched through the host CLI, not `_dispatch_live`.
-- [ ] Under sdk/batch, exactly one `request_path_downgrade` event (and stderr warning) is emitted for a learning state, across all its targets and retries; under `cli`, none is.
-- [ ] `_model_consumer_paths` returns `["cli"]` for a learning state under any request path, so the preflight resolves its hint against the CLI host (verified end to end through `executor.run()`).
-- [ ] The dispatch site and the preflight build the remedy copy through one shared helper.
-- [ ] `structural_rules.py:_static_model_paths` returns only `("cli", False)` for a learning state under any request path, and `test_agreement` passes with `"learning"` removed from its exemption (validate and preflight agree exactly).
-- [ ] Existing `TestLearningStateExploreApiDispatchMode` and `test_model_hints.py::TestLearningState` tests still pass.
+- [x] With `request_path: sdk` or `batch` (loop-wide or on the learning state) and credentials available, a learning state's remedy is dispatched through the host CLI, not `_dispatch_live`.
+- [x] Under sdk/batch, exactly one `request_path_downgrade` event (and stderr warning) is emitted for a learning state, across all its targets and retries; under `cli`, none is.
+- [x] `_model_consumer_paths` returns `["cli"]` for a learning state under any request path, so the preflight resolves its hint against the CLI host (verified end to end through `executor.run()`).
+- [x] The dispatch site and the preflight build the remedy copy through one shared helper.
+- [x] `structural_rules.py:_static_model_paths` returns only `("cli", False)` for a learning state under any request path, and `test_agreement` passes with `"learning"` removed from its exemption (validate and preflight agree exactly).
+- [x] Existing `TestLearningStateExploreApiDispatchMode` and `test_model_hints.py::TestLearningState` tests still pass.
 
 ## Related
 
@@ -213,12 +214,23 @@ Full-sweep pass (2026-09-29, `--auto`). Graph: provider=`codegraph` freshness=`f
 - Decisions rules: no active required rules. `ll-verify-evidence`: clean.
 - Proposal-vs-code check (B6): no exception-handler, fixture, or AC-coverage gaps found.
 
+## Resolution
+
+**Fixed** — 2026-09-29
+
+- Added `FSMExecutor._learning_remedy_state()`; the dispatch site and `_model_consumer_paths` both use it, so the remedy copy carries `action="/ll:explore-api <target>"` and `_compute_request_path` downgrades sdk/batch to the host CLI.
+- `structural_rules._static_model_paths` now returns `[("cli", False)]` for learning states; `test_agreement` no longer exempts `"learning"`.
+- Tests: `TestLearningStateRequestPathSdk` (sdk/batch x loop-wide/per-state), sdk variants in `TestLearningState`; `test_learning_state_is_checked_against_cli_host_only` updated (it had encoded the buggy validate behavior).
+- Docs: `API.md`, `CONFIGURATION.md`.
+
 ## Status
 
-**Open** | Created: 2026-09-28 | Priority: P3
+**Done** | Created: 2026-09-28 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T01:13:46 - `26929d9d-ecd0-424f-9813-8e063a93e985.jsonl`
+- `/ll:ready-issue` - 2026-09-29T01:05:27 - `bdb6844f-3f37-45a0-8ce6-eaa31bfa4e2c.jsonl`
 - `/ll:confidence-check` - 2026-09-29T00:50:34 - `9a024917-61ed-49b3-a021-72845a8bcfc2.jsonl`
 - `/ll:verify-issues` - 2026-09-29T00:37:37 - `5b5d1874-2832-4b4f-9528-f02ed025e782.jsonl`
 - `manual review` - 2026-09-28 - ENH-3548 found already landed (416b8e230) with a learning mirror copying the bug: made the `_static_model_paths` fix and `test_agreement` exemption removal required, added AC; dropped stale `blocks: [ENH-3548]`; batch tests must also patch `dispatch_batch_request`; corrected `_sdk_credentials_available` patch claim; noted optional learning-specific downgrade reason

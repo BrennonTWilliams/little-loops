@@ -11106,7 +11106,10 @@ def poll_batch_result(*, batch_id, custom_id, poll_interval_seconds=5.0,
   federation, active on-disk OAuth profile) — before returning
   `"sdk"`/`"batch"`; if either probe fails it downgrades the resolved value to
   `"cli"` with a one-shot `request_path_downgrade` event + stderr warning, so
-  a missing package/credential never hard-fails the run (ENH-2737).
+  a missing package/credential never hard-fails the run (ENH-2737). It also
+  downgrades when the state's action invokes a `/ll:` skill or the state declares
+  `tools:` (BUG-2831); a `type: learning` state's implicit `/ll:explore-api`
+  remedy always takes this downgrade (BUG-3646).
 
 ### HostNotConfigured
 
