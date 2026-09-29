@@ -227,6 +227,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-28 | Priority: P4
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-29T00:37:37 - `5b5d1874-2832-4b4f-9528-f02ed025e782.jsonl`
 - `/ll:confidence-check` - 2026-09-28T23:26:33 - `26f1a780-b8a8-48d2-b65b-ebdb4c979b54.jsonl`
 - `/ll:verify-issues` - 2026-09-28T23:25:16 - `9ca36230-dd1a-44b4-a07d-03fa387b0f53.jsonl`
 - `/ll:wire-issue` - 2026-09-28T23:23:41 - `5c1a0a11-8672-4aa4-af3e-98f5a6fb7409.jsonl`

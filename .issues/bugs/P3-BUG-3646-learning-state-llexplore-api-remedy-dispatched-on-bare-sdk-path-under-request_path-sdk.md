@@ -124,7 +124,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — `orchestration.request_path` section lists the downgrade triggers (`/ll:` skill action, `tools:`); optionally note that a `type: learning` state's implicit `/ll:explore-api` remedy always runs on the host CLI [Agent 2 finding]
 - `docs/reference/EVENT-SCHEMA.md` — `### request_path_downgrade` (fires at most once per run) and `### learning_explore_invoked` sections; optional cross-note that a learning remedy under sdk/batch triggers the downgrade [Agent 1/2 finding]
 - `docs/reference/API.md` — `FSMExecutor._resolve_request_path()` bullet lists only importability/credential probes and omits the BUG-2831 skill check; update alongside this fix [Agent 2 finding]
-- `.issues/enhancements/P3-ENH-3548-validate-time-model-hint-warnings-and-hint-documentation.md` — `done` (416b8e230) despite its `blocked_by: [BUG-3646]` edge; its learning-state AC is ticked but the shipped mirror doesn't satisfy it. Optionally add a note there that BUG-3646 delivers it.
+- `.issues/enhancements/P3-ENH-3548-validate-time-model-hint-warnings-and-hint-documentation.md` — `done` (416b8e230); its `blocked_by: [BUG-3646]` edge was dropped 2026-09-28 (frontmatter carries none); its learning-state AC is ticked but the shipped mirror doesn't satisfy it. Optionally add a note there that BUG-3646 delivers it.
 - `.issues/enhancements/P2-ENH-3547-wire-model-hint-resolution-through-loop-dispatch-and-lifecycle.md` — records the learning-remedy path decision now being reversed [Agent 1 finding]
 
 ### Tests
@@ -178,7 +178,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 - The remedy's action text reaches `_run_action` only as `action_template` (used for `interpolate()`, `fragment_key()`, and everything downstream incl. the `action_start` payload); `state.action` is never read inside `_run_action` itself. The only `state.action` read reachable from the copy is `_compute_request_path`'s `_SKILL_INVOKE_RE.search(state.action)` check (`executor.py:3579`) — the sole reason the downgrade misses.
 - `_SKILL_INVOKE_RE` is `re.compile(r"/ll:([a-zA-Z0-9_-]+)")` (`fsm/validation/_base.py:192`), an unanchored `.search`, so any `/ll:<name>` text on the copy's `action` matches.
 - Because the copy already pins `action_type="slash_command"`, `_action_mode()` returns `"prompt"` before it reaches its `state.action.startswith("/")` heuristic; the mode is independent of `action`.
-- Both `_dc_replace(state, action_type="slash_command")` sites (`executor.py:1567`, `executor.py:3757`) override `action_type` only; `action` stays `None`. These are the only `StateConfig` copies synthesized in `fsm/`. A copy preserves `state.type == "learning"` and `state.tools`, so both remain visible to `_compute_request_path`.
+- Both `_dc_replace(state, action_type="slash_command")` sites (`executor.py:1569`, `executor.py:3757`) override `action_type` only; `action` stays `None`. These are the only `StateConfig` copies synthesized in `fsm/`. A copy preserves `state.type == "learning"` and `state.tools`, so both remain visible to `_compute_request_path`.
 - With `action` unreachable, `_compute_request_path` falls through checks 2-4 (`state.tools`, `import anthropic`, `_sdk_credentials_available()`); with `anthropic` importable and a credential present it returns `("sdk", None)`, so no `request_path_downgrade` warning is emitted and `_run_action` takes its `_dispatch_live` branch (tool-less, single-turn).
 - `_model_consumer_paths` uses the side-effect-free `_compute_request_path`, so the preflight never emits the downgrade warning; only the run-time `_resolve_request_path` → `_warn_request_path_downgrade` does (one-shot per executor via `_request_path_downgrade_warned`).
 
@@ -201,12 +201,25 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **CLAIMS_OUTDATED** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Full-sweep pass (2026-09-29, `--auto`). Graph: provider=`codegraph` freshness=`fresh` (not needed to decide any verdict).
+
+- Codebase Research Findings cited the learning-remedy `_dc_replace` site as `executor.py:1567`; it is `:1569` (the `:3757` site was correct). Rewritten in place.
+- Documentation cited ENH-3548 as `done` "despite its `blocked_by: [BUG-3646]` edge"; that edge was dropped 2026-09-28 (ENH-3548's frontmatter carries no `blocked_by`). Reworded in place.
+- Confirmed accurate: root cause (`_compute_request_path` `_SKILL_INVOKE_RE.search(state.action)` at `:3579` sees `None` on the remedy copy, so sdk/batch is not downgraded); `_model_consumer_paths` learning branch (`:3757-3758`); `_resolve_request_path` `:3555`/`:2577`; `_preflight_model_hints` `:3739`; `_SKILL_INVOKE_RE` at `_base.py:192`; `structural_rules._static_model_paths` learning branch returns `action_paths(state.action)` (`:497-498`) and yields `[("sdk", False), ("cli", True)]` under sdk/batch; `test_agreement` exemption `elif case not in ("sdk", "learning")` at `test_model_hints.py:1356`, with `_sdk_credentials_available` patched at `:415` (False) and `:1347` (True); all cited test names exist; MR-12 (`_validate_pruning_profile`) reads `state.action`.
+- Decisions rules: no active required rules. `ll-verify-evidence`: clean.
+- Proposal-vs-code check (B6): no exception-handler, fixture, or AC-coverage gaps found.
+
 ## Status
 
 **Open** | Created: 2026-09-28 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-29T00:37:37 - `5b5d1874-2832-4b4f-9528-f02ed025e782.jsonl`
 - `manual review` - 2026-09-28 - ENH-3548 found already landed (416b8e230) with a learning mirror copying the bug: made the `_static_model_paths` fix and `test_agreement` exemption removal required, added AC; dropped stale `blocks: [ENH-3548]`; batch tests must also patch `dispatch_batch_request`; corrected `_sdk_credentials_available` patch claim; noted optional learning-specific downgrade reason
 - `manual review` - 2026-09-28 - reconciled Step 1 with the env-key test convention; added downgrade-event AC, sdk/batch and per-state parametrization, shared `_learning_remedy_state` helper, latch side effect; set `blocks: [ENH-3548]` and updated ENH-3548 to CLI-only learning states; noted MR-12 follow-up
 - `/ll:confidence-check` - 2026-09-28T23:38:36 - `11482c9b-ffe7-4717-8544-400c53005e5c.jsonl`
