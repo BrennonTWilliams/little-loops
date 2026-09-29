@@ -2956,7 +2956,7 @@ AutoManager(
 - `preview_full` - Show full issue body in dry-run preview (default: summary only)
 - `db_path` - Override path for the SQLite session store (default: `.ll/history.db`, resolved via `resolve_history_db()` — anchored at the resolved project root, ENH-2927, not the bare cwd)
 
-**Behavior:** On construction, `AutoManager` creates an internal `EventBus` and wires a `SQLiteTransport(db_path or DEFAULT_DB_PATH)` to it automatically. `SQLiteTransport.__init__` resolves its path via `resolve_history_db()`, so the default anchors at the resolved project root rather than the working directory. Issue lifecycle events (`issue.completed`, `issue.deferred`, `issue.skipped`, `issue.started`, etc.) are recorded live during `run()` without any additional configuration.
+**Behavior:** On construction, `AutoManager` creates an internal `EventBus` and wires a `SQLiteTransport(db_path or DEFAULT_DB_PATH)` to it automatically. `SQLiteTransport.__init__` resolves its path via `resolve_history_store()` (which never raises under a remote history backend), so the default anchors at the resolved project root rather than the working directory. Issue lifecycle events (`issue.completed`, `issue.deferred`, `issue.skipped`, `issue.started`, etc.) are recorded live during `run()` without any additional configuration.
 
 #### Methods
 

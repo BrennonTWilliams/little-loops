@@ -315,7 +315,7 @@ Examples:
 
         event_bus = EventBus()
         from little_loops.extension import wire_extensions
-        from little_loops.session_store import SQLiteTransport, resolve_history_db
+        from little_loops.session_store import SQLiteTransport
         from little_loops.transport import wire_transports
 
         wire_extensions(event_bus, config.extensions)
@@ -324,7 +324,7 @@ Examples:
         # (ENH-2783) — independent of `events.transports` config. Skip if
         # wire_transports() already attached one (avoids a duplicate row per event).
         if "sqlite" not in config.events.transports:
-            event_bus.add_transport(SQLiteTransport(resolve_history_db()))
+            event_bus.add_transport(SQLiteTransport())
         orchestrator = ParallelOrchestrator(
             parallel_config=parallel_config,
             br_config=config,

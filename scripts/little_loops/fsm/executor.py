@@ -2011,13 +2011,16 @@ class FSMExecutor:
         from little_loops.logger import Logger
         from little_loops.parallel.git_lock import GitLock
         from little_loops.prepatch_check import resolve_base_ref, run_prepatch_check
-        from little_loops.session_store import resolve_history_db
+        from little_loops.session_store import DEFAULT_DB_PATH
 
         config = BRConfig(repo_root)
-        _history_db = resolve_history_db()
+        # BUG-3652: readers and the evidence write take the default-shaped path and
+        # re-resolve it through the backend-aware seam; resolve_history_db() would
+        # raise under a remote backend.
+        _history_db = DEFAULT_DB_PATH
         issue_id = self.fsm.context.get("issue_id") or None
-        base_sha = read_base_sha(issue_id, db=_history_db) if issue_id else None
-        base_dirty = read_base_dirty(issue_id, db=_history_db) if issue_id else None
+        base_sha = read_base_sha(issue_id) if issue_id else None
+        base_dirty = read_base_dirty(issue_id) if issue_id else None
         base_branch = config.parallel.base_branch or "main"
         base_ref, _base_source = resolve_base_ref(repo_root, base_sha, base_branch)
         step_diff = self._prepatch_step_diff(repo_root, base_ref)
@@ -2681,12 +2684,12 @@ class FSMExecutor:
             if state.scopes is not None:
                 try:
                     from little_loops.session_store import (
-                        resolve_history_db,
+                        DEFAULT_DB_PATH,
                         write_credential_scope,
                     )
 
                     write_credential_scope(
-                        resolve_history_db(),
+                        DEFAULT_DB_PATH,
                         run_id=self.run_id,
                         state=self.current_state,
                         scopes=frozenset(state.scopes),
@@ -4675,10 +4678,10 @@ class FSMExecutor:
         # mirrors fsm/persistence.py::archive_run's derivation so this row
         # JOINs cleanly to the on-disk .loops/.history/ archive.
         try:
-            from little_loops.session_store import record_loop_run_summary, resolve_history_db
+            from little_loops.session_store import DEFAULT_DB_PATH, record_loop_run_summary
 
             record_loop_run_summary(
-                resolve_history_db(),
+                DEFAULT_DB_PATH,
                 run_id=self.run_id,
                 loop_name=self.fsm.name,
                 started_at=self.started_at,
@@ -4701,11 +4704,11 @@ class FSMExecutor:
             try:
                 from little_loops.config import BRConfig
                 from little_loops.observability.tracing import vendor_for_runner
-                from little_loops.session_store import record_usage_event, resolve_history_db
+                from little_loops.session_store import DEFAULT_DB_PATH, record_usage_event
 
                 if BRConfig(Path.cwd()).analytics_capture.usage_events:
                     ts = _iso_now()
-                    db_path = resolve_history_db()
+                    db_path = DEFAULT_DB_PATH
                     for state_name, usage in self._usage_events_collected:
                         record_usage_event(
                             db_path,

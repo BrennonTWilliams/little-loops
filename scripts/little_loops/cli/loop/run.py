@@ -14,6 +14,7 @@ import uuid
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from little_loops.cli.loop.feed import with_diagram_color
 from little_loops.cli.loop.header import initial_model_display
@@ -34,6 +35,7 @@ from little_loops.fsm.context_seed import (
 from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
 from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.logger import Logger
+from little_loops.session_store import DEFAULT_DB_PATH
 
 
 def _parse_program_md(path: Path) -> dict[str, str]:
@@ -523,14 +525,23 @@ def cmd_run(
                 git_lock=_git_lock,
             )
 
+            # BUG-3652: resolve the store once, in the parent cwd, before the chdir below.
+            # The atexit cleanup runs from inside the (by then deleted) worktree, where
+            # project-root resolution cannot succeed. A typed remote target passes through
+            # the schema.connect seam untouched; locally this is the same Path as before.
+            # Typed Any: the writers' `Path | str` hints predate the typed remote target,
+            # which the schema.connect seam accepts at runtime.
+            _history_store: Any = DEFAULT_DB_PATH
             with suppress(Exception):
-                from little_loops.session_store import (
-                    record_session_lifecycle_event,
-                    resolve_history_db,
-                )
+                from little_loops.session_store.db import resolve_history_store
+
+                _history_store = resolve_history_store()
+
+            with suppress(Exception):
+                from little_loops.session_store import record_session_lifecycle_event
 
                 record_session_lifecycle_event(
-                    resolve_history_db(),
+                    _history_store,
                     session_id=None,
                     event="worktree_create",
                     detail={
@@ -586,13 +597,10 @@ def cmd_run(
                 )
 
                 with suppress(Exception):
-                    from little_loops.session_store import (
-                        record_session_lifecycle_event,
-                        resolve_history_db,
-                    )
+                    from little_loops.session_store import record_session_lifecycle_event
 
                     record_session_lifecycle_event(
-                        resolve_history_db(),
+                        _history_store,
                         session_id=None,
                         event="worktree_delete",
                         detail={

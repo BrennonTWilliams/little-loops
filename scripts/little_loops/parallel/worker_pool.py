@@ -25,9 +25,9 @@ from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.ready_issue import run_ready_issue_with_retry
 from little_loops.session_store import (
+    DEFAULT_DB_PATH,
     record_orchestration_run,
     record_session_lifecycle_event,
-    resolve_history_db,
 )
 from little_loops.subprocess_utils import (
     TokenUsage,
@@ -457,7 +457,7 @@ class WorkerPool:
             self._emit_worker_started(issue.issue_id, worktree_path, branch_name)
             with suppress(Exception):
                 record_session_lifecycle_event(
-                    resolve_history_db(),
+                    DEFAULT_DB_PATH,
                     session_id=None,
                     event="worktree_create",
                     detail={
@@ -922,7 +922,7 @@ class WorkerPool:
         with suppress(Exception):
             match = re.match(r"^worker-(.+)-\d{8}-\d{6}$", worktree_path.name)
             record_session_lifecycle_event(
-                resolve_history_db(),
+                DEFAULT_DB_PATH,
                 session_id=None,
                 event="worktree_delete",
                 detail={
@@ -1738,7 +1738,7 @@ class WorkerPool:
             return
         with suppress(Exception):
             record_orchestration_run(
-                resolve_history_db(),
+                DEFAULT_DB_PATH,
                 run_id=self.run_id,
                 driver=self.driver,
                 issue_id=issue_id,

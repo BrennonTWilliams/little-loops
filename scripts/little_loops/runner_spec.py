@@ -320,10 +320,10 @@ def _run_cmd(spec: ActionSpec, *, run_id: str | None = None) -> RunnerResult:
         # fsm/executor.py's write_credential_scope call: an audit write must
         # never fail the run.
         try:
-            from little_loops.session_store import resolve_history_db, write_credential_scope
+            from little_loops.session_store import DEFAULT_DB_PATH, write_credential_scope
 
             write_credential_scope(
-                resolve_history_db(),
+                DEFAULT_DB_PATH,
                 run_id=run_id or spec.name,
                 state=spec.name,
                 scopes=frozenset(spec.scopes),

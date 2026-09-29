@@ -4528,7 +4528,9 @@ class TestWorkerPoolBaseStateStamp:
             worker_pool._record_dequeue_stamp("BUG-1", "abc123", False)
         assert recorded == []
 
-    def test_dequeue_stamp_written_as_running_row(self, tmp_path: Path) -> None:
+    def test_dequeue_stamp_written_as_running_row(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """With an identity, the stamp is persisted before the worker starts."""
         from little_loops.history_reader import read_base_sha
         from little_loops.parallel.types import ParallelConfig
@@ -4543,14 +4545,18 @@ class TestWorkerPoolBaseStateStamp:
             run_id="run-abc",
             driver="ll-parallel",
         )
-        with patch.object(worker_pool_module, "resolve_history_db", return_value=db):
-            pool._record_dequeue_stamp("BUG-2866", "cafebabe", True)
+        # BUG-3652: the writer receives the default-shaped path and re-resolves it
+        # through the backend seam, which honors LL_HISTORY_DB.
+        monkeypatch.setenv("LL_HISTORY_DB", str(db))
+        pool._record_dequeue_stamp("BUG-2866", "cafebabe", True)
 
         # Readable immediately — before any terminal write for this issue.
         assert read_base_sha("BUG-2866", db=db) == "cafebabe"
         assert read_base_sha("BUG-2866", run_id="run-abc", db=db) == "cafebabe"
 
-    def test_dequeue_stamp_normalizes_failed_rev_parse_to_null(self, tmp_path: Path) -> None:
+    def test_dequeue_stamp_normalizes_failed_rev_parse_to_null(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """_get_main_head_sha()'s "" must persist as NULL, not an empty string."""
         from little_loops.history_reader import read_base_sha
         from little_loops.parallel.types import ParallelConfig
@@ -4565,9 +4571,9 @@ class TestWorkerPoolBaseStateStamp:
             run_id="run-fail",
             driver="ll-parallel",
         )
-        with patch.object(worker_pool_module, "resolve_history_db", return_value=db):
-            # "" or None is what _process_issue coerces before calling this.
-            pool._record_dequeue_stamp("BUG-3", "" or None, None)
+        monkeypatch.setenv("LL_HISTORY_DB", str(db))
+        # "" or None is what _process_issue coerces before calling this.
+        pool._record_dequeue_stamp("BUG-3", "" or None, None)
 
         result = read_base_sha("BUG-3", db=db)
         assert result is None

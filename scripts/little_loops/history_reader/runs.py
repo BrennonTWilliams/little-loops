@@ -23,6 +23,7 @@ from little_loops.history_reader._base import (
     logger,
 )
 from little_loops.history_reader.models import LoopRun, OrchestrationRun, RunEvent
+from little_loops.session_store.backend import HistoryError, HistorySuppressed
 
 __all__ = [
     "aggregate_loop_runs",
@@ -35,6 +36,16 @@ __all__ = [
     "recent_orchestration_runs",
     "recent_test_runs",
 ]
+
+
+def _log_query_failure(message: str, exc: Exception) -> None:
+    """Log a failed best-effort read; a remote ``HistoryError`` carries no traceback (BUG-3652)."""
+    if isinstance(exc, sqlite3.Error):
+        logger.warning(message, exc_info=True)
+    elif isinstance(exc, HistorySuppressed):
+        logger.debug("%s (%s)", message, exc)
+    else:
+        logger.warning("%s (%s: %s)", message, type(exc).__name__, exc)
 
 
 def recent_test_runs(
@@ -224,8 +235,8 @@ def read_base_sha(
                 "ORDER BY id DESC LIMIT 1",
                 (issue_id,),
             ).fetchone()
-    except sqlite3.Error:
-        logger.warning("history_reader: read_base_sha query failed", exc_info=True)
+    except (sqlite3.Error, HistoryError) as exc:
+        _log_query_failure("history_reader: read_base_sha query failed", exc)
         return None
     finally:
         conn.close()
@@ -273,8 +284,8 @@ def read_base_dirty(
                 "ORDER BY id DESC LIMIT 1",
                 (issue_id,),
             ).fetchone()
-    except sqlite3.Error:
-        logger.warning("history_reader: read_base_dirty query failed", exc_info=True)
+    except (sqlite3.Error, HistoryError) as exc:
+        _log_query_failure("history_reader: read_base_dirty query failed", exc)
         return None
     finally:
         conn.close()

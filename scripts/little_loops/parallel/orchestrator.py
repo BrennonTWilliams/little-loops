@@ -42,9 +42,9 @@ from little_loops.parallel.types import (
 from little_loops.parallel.worker_pool import WorkerPool
 from little_loops.session_log import append_session_log_entry, get_current_session_id
 from little_loops.session_store import (
+    DEFAULT_DB_PATH,
     record_orchestration_run,
     record_session_lifecycle_event,
-    resolve_history_db,
 )
 from little_loops.worktree_utils import (
     _is_ll_branch,
@@ -483,7 +483,7 @@ class ParallelOrchestrator:
 
                     with suppress(Exception):
                         record_session_lifecycle_event(
-                            resolve_history_db(),
+                            DEFAULT_DB_PATH,
                             session_id=None,
                             event="worktree_delete",
                             detail={
@@ -782,7 +782,7 @@ class ParallelOrchestrator:
                     self.logger.success(f"  Successfully merged {info.issue_id}")
                     with suppress(Exception):
                         record_session_lifecycle_event(
-                            resolve_history_db(),
+                            DEFAULT_DB_PATH,
                             session_id=None,
                             event="worktree_merge",
                             detail={
@@ -808,7 +808,7 @@ class ParallelOrchestrator:
                     )
                     with suppress(Exception):
                         record_session_lifecycle_event(
-                            resolve_history_db(),
+                            DEFAULT_DB_PATH,
                             session_id=None,
                             event="worktree_delete",
                             detail={
@@ -1221,7 +1221,7 @@ class ParallelOrchestrator:
         branch_state = self._pr_ready_branches.get(result.issue_id, {})
         with suppress(Exception):
             record_orchestration_run(
-                resolve_history_db(),
+                DEFAULT_DB_PATH,
                 run_id=self.run_id,
                 driver=self.driver,
                 issue_id=result.issue_id,

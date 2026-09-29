@@ -101,7 +101,7 @@ def _record_research_triage(
 
     from little_loops.config.features import feature_enabled_for
     from little_loops.issues.research_triage import issue_refined_at
-    from little_loops.session_store import resolve_history_db, write_research_triage
+    from little_loops.session_store import DEFAULT_DB_PATH, write_research_triage
 
     gate_open = feature_enabled_for(
         {"cli_commands": config.analytics_capture.cli_commands}, "cli_commands", "ll-issues"
@@ -119,7 +119,7 @@ def _record_research_triage(
         refined_at = refined.isoformat() if refined is not None else None
 
     write_research_triage(
-        resolve_history_db(),
+        DEFAULT_DB_PATH,
         issue_id=issue_id,
         refined_at=refined_at,
         session_id=os.environ.get("CLAUDE_SESSION_ID"),

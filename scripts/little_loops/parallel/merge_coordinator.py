@@ -25,7 +25,7 @@ from little_loops.parallel.types import (
     ParallelConfig,
     WorkerResult,
 )
-from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+from little_loops.session_store import DEFAULT_DB_PATH, record_session_lifecycle_event
 from little_loops.worktree_utils import _remove_registry_entry
 
 if TYPE_CHECKING:
@@ -1112,7 +1112,7 @@ class MergeCoordinator:
 
         with suppress(Exception):
             record_session_lifecycle_event(
-                resolve_history_db(),
+                DEFAULT_DB_PATH,
                 session_id=None,
                 event="worktree_merge",
                 detail={
@@ -1193,7 +1193,7 @@ class MergeCoordinator:
 
         with suppress(Exception):
             record_session_lifecycle_event(
-                resolve_history_db(),
+                DEFAULT_DB_PATH,
                 session_id=None,
                 event="worktree_delete",
                 detail={"worktree_path": str(worktree_path), "branch": branch_name},

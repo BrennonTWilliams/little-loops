@@ -76,9 +76,30 @@ def _connect_readonly(db_path: Path) -> sqlite3.Connection | None:
 
     try:
         return open_history_readonly(db_path, ensure=True)
-    except HistoryError:
-        logger.warning("history_reader: could not open %s read-only", db_path, exc_info=True)
+    except HistoryError as exc:
+        if _is_remote_store(db_path):
+            # BUG-3652: an outage prints one traceback-free line, not one per read.
+            from little_loops.session_store import remote_telemetry
+
+            remote_telemetry.warn_once(
+                f"history-reader-open:{type(exc).__name__}",
+                f"history_reader: could not open the remote history store read-only "
+                f"({type(exc).__name__}: {exc})",
+            )
+        else:
+            logger.warning("history_reader: could not open %s read-only", db_path, exc_info=True)
         return None
+
+
+def _is_remote_store(db_path: Path) -> bool:
+    """True when *db_path* resolves to a remote history target (never raises)."""
+    try:
+        from little_loops.session_store.db import resolve_history_store
+        from little_loops.session_store.targets import RemoteTarget
+
+        return isinstance(resolve_history_store(db_path), RemoteTarget)
+    except Exception:
+        return False
 
 
 def _row_to_dataclass(row: sqlite3.Row, dc: type[Any]) -> Any:

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from little_loops.issue_lifecycle import ClosureReason, DeferReason
+from little_loops.session_store.backend import HistoryError
 
 logger = logging.getLogger(__name__)
 
@@ -175,12 +176,14 @@ def apply_status_transition(
         # same pattern as user_prompt_submit.py calling record_correction() without EventBus).
         try:
             from little_loops.session_store import (
+                DEFAULT_DB_PATH,
                 record_issue_event,
                 record_issue_snapshot,
-                resolve_history_db,
             )
 
-            db_path = resolve_history_db()
+            # BUG-3652: the writers re-resolve the default-shaped path through the
+            # backend-aware seam; resolve_history_db() raises under a remote backend.
+            db_path = DEFAULT_DB_PATH
             record_issue_snapshot(db_path, issue_id, status, str(path))
 
             # Also write the issue_events row (BUG-2770): record_issue_snapshot alone
@@ -200,6 +203,16 @@ def apply_status_transition(
                 discovered_by=fm.get("discovered_by"),
                 captured_at=fm.get("captured_at"),
                 completed_at=fm.get("completed_at"),
+            )
+        except HistoryError as exc:
+            # Remote history failure (dead endpoint, suppressed window): one line, no
+            # traceback; the status file is already written.
+            logger.warning(
+                "%s: failed to record issue_events/issue_snapshots row for status %s (%s: %s)",
+                issue_id,
+                status,
+                type(exc).__name__,
+                exc,
             )
         except (sqlite3.Error, ImportError, OSError):
             logger.warning(

@@ -2021,14 +2021,15 @@ def wire_transports(
                 )
             )
         elif name == "sqlite":
-            from little_loops.session_store import SQLiteTransport, resolve_history_db
+            from little_loops.session_store import SQLiteTransport
 
-            # ENH-3525: resolve via LL_HISTORY_DB/history.db_path/default, the
-            # same precedence every other history-store writer uses, instead
-            # of hardcoding `base / "history.db"` — `log_dir`/`base` is a
-            # log/transport directory, not a history-store target, and must
-            # not determine the history path.
-            bus.add_transport(SQLiteTransport(resolve_history_db()))
+            # ENH-3525: SQLiteTransport() resolves via LL_HISTORY_DB/history.db_path/
+            # default, the same precedence every other history-store writer uses,
+            # instead of hardcoding `base / "history.db"` — `log_dir`/`base` is a
+            # log/transport directory, not a history-store target, and must not
+            # determine the history path. BUG-3652: never pre-resolve through
+            # resolve_history_db(), which raises under a remote backend.
+            bus.add_transport(SQLiteTransport())
         elif name == "webhook":
             if config.webhook.url is None:
                 logger.warning("WebhookTransport: events.webhook.url is None; skipping")

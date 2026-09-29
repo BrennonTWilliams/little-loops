@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 _DEGRADE_ERRORS: tuple[type[Exception], ...] = (sqlite3.Error, HistoryError)
 
 
-def _log_degraded(message: str, name: str, exc: Exception) -> None:
+def _log_degraded(message: str, name: str | None, exc: Exception) -> None:
     """Log a skipped best-effort write; a deliberately suppressed remote write is debug-only."""
     if isinstance(exc, HistorySuppressed):
         # Already reported once when the unreachable window opened; no traceback per fire.
@@ -2242,10 +2242,8 @@ def record_session_lifecycle_event(
             ts=ts,
         )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning(
-            "record_session_lifecycle_event: insert failed for event=%r", event, exc_info=True
-        )
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("record_session_lifecycle_event: insert failed", event, exc)
         return False
     finally:
         if conn is not None:
@@ -2304,12 +2302,8 @@ def record_context_pressure_event(
             ts=ts,
         )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning(
-            "record_context_pressure_event: insert failed for session_id=%r",
-            session_id,
-            exc_info=True,
-        )
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("record_context_pressure_event: insert failed", session_id, exc)
         return False
     finally:
         if conn is not None:
@@ -2381,10 +2375,8 @@ def write_advisor_consult(
             ts=ts,
         )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning(
-            "write_advisor_consult: insert failed for task_key=%r", task_key, exc_info=True
-        )
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("write_advisor_consult: insert failed", task_key, exc)
         return False
     finally:
         if conn is not None:
@@ -2428,10 +2420,8 @@ def write_research_triage(
             ],
         )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning(
-            "write_research_triage: insert failed for issue_id=%r", issue_id, exc_info=True
-        )
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("write_research_triage: insert failed", issue_id, exc)
         return False
     finally:
         if conn is not None:
@@ -2472,8 +2462,8 @@ def write_credential_scope(
             ),
         )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning("write_credential_scope: insert failed for run_id=%r", run_id, exc_info=True)
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("write_credential_scope: insert failed", run_id, exc)
         return False
     finally:
         if conn is not None:
@@ -2525,10 +2515,8 @@ def record_subagent_run_start(
                 ts=ts,
             )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning(
-            "record_subagent_run_start: insert failed for agent_id=%r", agent_id, exc_info=True
-        )
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("record_subagent_run_start: insert failed", agent_id, exc)
         return False
     finally:
         if conn is not None:
@@ -2567,10 +2555,8 @@ def record_subagent_run_stop(
             (ended_at, status, agent_transcript_path, agent_type, agent_id, parent_session_id),
         )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning(
-            "record_subagent_run_stop: update failed for agent_id=%r", agent_id, exc_info=True
-        )
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("record_subagent_run_stop: update failed", agent_id, exc)
         return False
     finally:
         if conn is not None:
@@ -2675,8 +2661,8 @@ def reconcile_stale_subagent_runs(
         )
         conn.commit()
         return len(to_orphan)
-    except sqlite3.Error:
-        logger.warning("reconcile_stale_subagent_runs: sweep failed", exc_info=True)
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("reconcile_stale_subagent_runs: sweep failed", "sweep", exc)
         return 0
     finally:
         if conn is not None:
@@ -2987,11 +2973,25 @@ class SQLiteTransport:
         self._conn: sqlite3.Connection | None = None
         try:
             self._conn = _pkg.open_history(self._path, check_same_thread=False, telemetry=True)
-        except HistoryError:
-            logger.warning(
-                "SQLiteTransport: could not open %s; sink disabled", self._path, exc_info=True
-            )
+        except HistoryError as exc:
+            self._log_failure(f"SQLiteTransport: could not open {self._path}; sink disabled", exc)
             self._conn = None
+
+    def _log_failure(self, message: str, exc: HistoryError) -> None:
+        """Log a degraded sink write without a traceback for remote failures (BUG-3652).
+
+        A deliberately suppressed remote write is debug-only; any other remote
+        ``HistoryError`` warns once per process (a dead endpoint must not print a
+        traceback per event). Local failures keep their traceback-bearing warning.
+        """
+        if isinstance(exc, HistorySuppressed):
+            logger.debug("%s (%s)", message, exc)
+        elif isinstance(self._path, RemoteTarget):
+            remote_telemetry.warn_once(
+                f"sqlite-transport:{type(exc).__name__}", f"{message} ({type(exc).__name__}: {exc})"
+            )
+        else:
+            logger.warning(message, exc_info=True)
 
     def send(self, event: dict[str, Any]) -> None:
         """Record a recognised event as a ``loop_events`` or ``issue_events`` row (best-effort)."""
@@ -3093,8 +3093,8 @@ class SQLiteTransport:
                 else:
                     return
                 conn.commit()
-        except HistoryError:
-            logger.warning("SQLiteTransport: write failed for event %r", event_type, exc_info=True)
+        except HistoryError as exc:
+            self._log_failure(f"SQLiteTransport: write failed for event {event_type!r}", exc)
 
     def close(self) -> None:
         """Close the underlying connection (best-effort)."""

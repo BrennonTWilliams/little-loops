@@ -22,7 +22,7 @@ from little_loops.issue_manager import IssueProcessingResult, process_issue_inpl
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.parallel.types import SprintWorkerContext
-from little_loops.session_store import record_orchestration_run, resolve_history_db
+from little_loops.session_store import DEFAULT_DB_PATH, record_orchestration_run
 from little_loops.sprint import SprintManager, SprintState, sprint_not_found_message
 from little_loops.worktree_utils import detect_default_branch
 
@@ -563,7 +563,9 @@ def _cmd_sprint_run(
         return 0
 
     run_id = uuid4().hex
-    history_db = resolve_history_db()
+    # BUG-3652: pass the default-shaped path; every writer re-resolves it through the
+    # backend-aware seam, whereas resolve_history_db() raises under a remote backend.
+    history_db = DEFAULT_DB_PATH
 
     # Initialize or load state
     state: SprintState
@@ -657,7 +659,7 @@ def _cmd_sprint_run(
                 from little_loops.session_store import SQLiteTransport
 
                 single_issue_event_bus = EventBus()
-                single_issue_event_bus.add_transport(SQLiteTransport(resolve_history_db()))
+                single_issue_event_bus.add_transport(SQLiteTransport())
 
                 wave_failed = False
                 _current_branch = _detect_current_branch()
@@ -804,7 +806,7 @@ def _cmd_sprint_run(
                 # `events.transports` config. Skip if wire_transports() already
                 # attached one (avoids a duplicate row per event).
                 if "sqlite" not in config.events.transports:
-                    event_bus.add_transport(SQLiteTransport(resolve_history_db()))
+                    event_bus.add_transport(SQLiteTransport())
                 orchestrator = ParallelOrchestrator(
                     parallel_config,
                     config,

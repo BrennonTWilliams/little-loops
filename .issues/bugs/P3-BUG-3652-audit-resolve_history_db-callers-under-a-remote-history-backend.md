@@ -3,10 +3,11 @@ id: BUG-3652
 type: BUG
 title: Audit resolve_history_db callers under a remote history backend
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:08Z'
+completed_at: '2026-09-29T23:42:13Z'
 verify_verdict: VALID
 confidence_score: 95
 outcome_confidence: 67
@@ -334,7 +335,17 @@ _Added by `/ll:confidence-check` on 2026-09-29 (re-run after the sixth `/ll:advi
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 67/100 → MODERATE
 
+## Resolution
+
+**Fixed** — 2026-09-29. Every in-scope `resolve_history_db()` pre-resolve was dropped in favour of `DEFAULT_DB_PATH` / `SQLiteTransport()` (uniform write-site rule): `wire_transports`, `main_parallel`, the three `_cmd_sprint_run` sites, `parallel/*`, `cli/loop/run.py`, `fsm/executor.py`, `runner_spec.py`, `work_verification.py`, `research_triage`, `apply_status_transition` (guard widened to `HistoryError`, history write kept inside the lock). `fsm/continuity.summarize_completed_state` returns `None` on a `RemoteTarget`. The eight writer degrade handlers now catch `_DEGRADE_ERRORS`; `SQLiteTransport` logs remote failures without a traceback; `read_base_sha`/`read_base_dirty` catch `HistoryError`; `_connect_readonly` warns once for a remote store. `cli/loop/run.py` resolves the store once before `os.chdir` so the atexit `worktree_delete` row is not lost. Docs: `API.md` (stale `AutoManager` sentence), `CONFIGURATION.md` (orchestration, worktree notes).
+
+Tests: new `scripts/tests/test_remote_callers_bug3652.py` (caller gate + writers degrade gate with detector self-tests, remote-stub startup/set-status/prepatch/continuity/research-triage, dead-endpoint degrade for all eight writers); two `test_worker_pool.py` tests rewritten. Full suite: 27568 passed, 293 skipped.
+
+**Not covered by an automated test (Acceptance Criteria gaps):** end-to-end `ll-parallel`/`ll-sprint run`/`ll-loop run`/`resume` CLI drives under the stub (the shared `wire_transports`/`SQLiteTransport()` path is tested directly); per-statement request-count assertions for the slow-but-alive stub; the K-row loop-end `usage_events` test; the loop-worktree regression tests (default/overridden copy list, atexit `worktree_delete` row); CLI.md per-command notes and the `Backend chokepoint`/`ARCHITECTURE.md` staleness fixes. `mypy` has 83 pre-existing errors on this checkout (none added).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T23:42:13 - `69d8dba8-fd10-4661-a03d-cc68a8b097e3.jsonl`
+- `/ll:ready-issue` - 2026-09-29T23:24:41 - `e5a67b45-01a0-44b9-8f5c-b220463c4f94.jsonl`
 - `/ll:confidence-check` - 2026-09-29T23:22:14 - `f5b7d0eb-c1d4-413c-8b3c-52d6af3cc51b.jsonl`
 - `/ll:confidence-check` - 2026-09-29T23:13:57 - `ad636d32-2788-41c0-b9c6-2a6e4e3b2bd4.jsonl`
 - `/ll:confidence-check` - 2026-09-29T15:46:18 - `924e049e-7787-4d99-951b-be68371f6250.jsonl`

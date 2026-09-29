@@ -17,8 +17,9 @@ from little_loops.session_store import (
     _backfill_assistant_messages,
     _backfill_messages,
     connect,
-    resolve_history_db,
 )
+from little_loops.session_store.db import resolve_history_store
+from little_loops.session_store.targets import RemoteTarget
 from little_loops.user_messages import get_sessions_folder
 
 
@@ -49,7 +50,11 @@ def summarize_completed_state(
     if not jsonl_path.exists():
         return None
 
-    resolved_db = resolve_history_db(db)
+    # BUG-3652: the backfill and compaction below are local-file operations; a remote
+    # backend has no local path to backfill into, so skip the summary rather than raise.
+    resolved_db = resolve_history_store(db)
+    if isinstance(resolved_db, RemoteTarget):
+        return None
     conn = connect(resolved_db)
     try:
         conn.execute(

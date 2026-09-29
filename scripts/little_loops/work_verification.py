@@ -275,11 +275,13 @@ def _run_non_fsm_prepatch_check(
     from little_loops.history_reader import read_base_dirty, read_base_sha
     from little_loops.parallel.git_lock import GitLock
     from little_loops.prepatch_check import resolve_base_ref, run_prepatch_check
-    from little_loops.session_store import record_prepatch_evidence, resolve_history_db
+    from little_loops.session_store import DEFAULT_DB_PATH, record_prepatch_evidence
 
-    history_db = resolve_history_db()
-    base_sha = read_base_sha(issue_id, db=history_db)
-    base_dirty = read_base_dirty(issue_id, db=history_db)
+    # BUG-3652: readers and the evidence write re-resolve the default-shaped path through
+    # the backend-aware seam; resolve_history_db() would raise under a remote backend.
+    history_db = DEFAULT_DB_PATH
+    base_sha = read_base_sha(issue_id)
+    base_dirty = read_base_dirty(issue_id)
     base_branch = config.parallel.base_branch or "main"
     base_ref, _base_source = resolve_base_ref(repo_root, base_sha, base_branch)
     step_diff = _prepatch_step_diff(repo_root, base_ref)
