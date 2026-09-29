@@ -40,6 +40,20 @@ Record a producer-backed **PROVEN** or **REFUTED** result for the exact live-to-
 - **In scope**: paired live/rollout capture, the ordering-join spike, fixture-backed counterexamples, and a written contract for what correlation is safe.
 - **Out of scope**: rollout ingestion and its request key (ENH-3532), live identity persistence (ENH-3647), production coverage selection and dashboard/export changes (ENH-3543).
 
+## Program Design
+
+### Types
+
+- Spike-only `SpanPair`: verified host, thread ID, ordered live invocation, closed rollout `turn_id` span, per-channel token components, and evidence for the ordering basis. It is a fixture/test record, not a new production usage model.
+
+### Signatures
+
+- `evaluate_candidate_join(live_events, rollout_events) -> JoinVerdict` — proposed spike helper returning PROVEN/REFUTED with unmatched and ambiguous cases; no production API is added here.
+
+### Call Path
+
+- Versioned paired `exec --json` and rollout fixtures → `session_store.sessions.iter_events` / Codex parser → per-thread closed spans and live invocations → spike comparison → recorded verdict for ENH-3543.
+
 ## Integration Map
 
 - `scripts/tests/fixtures/codex/` — add sanitized current-version paired `exec --json` and rollout captures, including resume and fork/subagent evidence where observable. Reuse ENH-3532's new fixtures rather than duplicating them; make join-critical captures here so this issue does not wait for ENH-3532.
@@ -70,3 +84,7 @@ Record a producer-backed **PROVEN** or **REFUTED** result for the exact live-to-
 ## Status
 
 **Open** | Created: 2026-09-29 | Priority: P2
+
+
+## Session Log
+- `/ll:capture-issue` - 2026-09-29T05:14:29 - `a56f3607-c825-4a5b-a7c5-f263b20ddf6d.jsonl`

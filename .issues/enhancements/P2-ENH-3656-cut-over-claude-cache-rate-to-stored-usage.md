@@ -46,9 +46,19 @@ The result carries stored provenance and coverage qualification. Distinguish no 
 
 ## Program Design
 
+### Types
+
+- Reuse `SessionHandle`, stored usage rows and existing provenance/coverage fields. Add reader-visible as-of/stale qualification only where ENH-3651's committed progress can support it.
+
+### Signatures
+
 - `_compute_cache_rate_from_usage(cwd: Path, host: str | None, *, db: Path | str | None = None) -> dict | None` — stored-observation consumer for the Claude path; ENH-3549 extends it to Codex and remaining hosts.
 - `select_usage_observations(conn, *, since=None, require_run_id=False, host=None, session_id=None)` — additive paired filter. `session_id` without `host` is an error; verified candidate selection occurs before report-window filtering. Coordinate with ENH-3543 so only one shared filter is added.
 - Freshness may use a global derive checkpoint plus source-specific cursors if they prove the selected session's committed tail. Otherwise ENH-3651 records a per-session completion boundary. Observation time alone is not a derive-completion marker.
+
+### Call Path
+
+- `main_ctx_stats` → `detect_sessions` → latest eligible Claude `SessionHandle` → read-only history connection → `select_usage_observations(host=handle.host, session_id=handle.session_id)` → cache components plus provenance/coverage/as-of qualification → text/JSON output and stderr diagnostic.
 
 ## Integration Map
 
@@ -81,3 +91,7 @@ The result carries stored provenance and coverage qualification. Distinguish no 
 ## Status
 
 **Open** | Created: 2026-09-29 | Priority: P2
+
+
+## Session Log
+- `/ll:capture-issue` - 2026-09-29T05:14:29 - `a56f3607-c825-4a5b-a7c5-f263b20ddf6d.jsonl`

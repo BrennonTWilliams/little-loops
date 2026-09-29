@@ -19,6 +19,7 @@ relates_to:
 - ENH-3546
 - ENH-3647
 - ENH-3651
+- ENH-3655
 blocks:
 - ENH-3543
 - ENH-3549
@@ -200,7 +201,7 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 
 ## Implementation Steps
 
-1. Capture a fork fixture and a 0.154+ fixture (`token_usage_record`, a re-emitted notification, a non-advancing total, a subagent, a paginated thread); confirm gate 1's revised rules and record the final migration/index; gates 2–3 are closed.
+1. Capture a fork fixture and a 0.154+ fixture (`token_usage_record`, a re-emitted notification, a non-advancing total, a subagent, a paginated thread); share join-critical paired captures with ENH-3655. Confirm gate 1's revised rules and record the final migration/index; gates 2–3 are closed.
 2. Add metadata-bearing adapters for direct files and database replay (persist the rollout `ordinal` if needed), reading BUG-3542's attribution.
 3. Add persisted observation identity/uniqueness; implement transactional, idempotent rollout replay with relocation/copy/interruption regressions.
 4. Verify ingestion/rebuild against malformed, partial, mixed-host and legacy fixtures; update schemas/docs and run focused tests plus required project checks.

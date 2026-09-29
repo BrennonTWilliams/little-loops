@@ -112,6 +112,7 @@ Preserve latest eligible session and host/workspace scope, and exclude agent rec
 - [ ] Existing Codex latest-session, workspace and agent selection stays equivalent (store-backed tests); ENH-3656's Claude path remains unchanged.
 - [ ] Reuse ENH-3656's four distinct diagnostics and stale/unknown-lag behavior; `--json` stdout stays parseable and reads do not mutate ingestion state. No `--ingest` flag exists.
 - [ ] A real Codex hook → ingest → incremental derive → read fixture passes before `_codex_cache_usage` is retired, including current-session freshness after a completed turn. A manual worker/full-rebuild-only test does not satisfy this criterion; a missing trigger leaves the direct Codex reader in place and this issue open.
+- [ ] Codex rollout rows already present before ENH-3651's checkpoint and rows ingested after ENH-3532's normalizer lands yield the same selected observations in either issue landing order; no historical raw usage is skipped.
 - [ ] Other hosts lacking a proven stored producer/trigger are explicitly unavailable only when their direct parser is retired, documented as such, and linked to ENH-3534 or a host-specific follow-up. No host-wide unknown override or direct transcript token accounting remains when this issue is done.
 - [ ] Missing/partial components stay unknown; nothing is labelled estimated without an estimator.
 

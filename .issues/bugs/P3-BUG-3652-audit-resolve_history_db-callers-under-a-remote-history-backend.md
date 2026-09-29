@@ -7,7 +7,14 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:08Z'
-
+verify_verdict: VALID
+confidence_score: 95
+outcome_confidence: 56
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
+size: Large
 ---
 
 # BUG-3652: Audit resolve_history_db callers under a remote history backend
@@ -233,7 +240,25 @@ Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the s
 
 - Integration Map (Dependent Files): `cli/messages.py:280` -> `:281`. The `extract_conversation_turns()` call is at line 281 (import at :276); :280 is the closing bracket of the preceding `formatter = {...}[...]` expression.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-29_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 56/100 → LOW
+
+### Concerns
+- Class (a) reader sites (`cli/history.py`, `cli/harness.py`, `cli/logs.py`, `decisions.py`, `user_messages.py`) have no per-site verdict yet: "reach the remote store or raise `HistoryUnsupported`" is left to implementer judgement, and the reader layer coerces with `Path(db)`, so routing to remote is not a call-site-only change.
+- Scope of the hand-built `.ll/history.db` paths (`cli/artifact/serve.py`, `dashboard.py`, `doctor_trim.py`, `workflow_sequence/io.py`) is undecided (advisory).
+- Guard style disagrees across the codebase (narrow tuple in `set_status.py` vs broad `Exception` elsewhere); the issue picks `HistoryError`, which is consistent with the Decision Rules.
+
+### Outcome Risk Factors
+- Broad enumeration across ~45 call sites plus docs/tests, with moderate per-site depth on the reader layer and `wire_transports`/`apply_status_transition` (shared by 3-5 callers each).
+- Broad blast radius: `wire_transports` feeds 5 callers and `apply_status_transition` feeds the CLI, MCP tool and `preparation_policy`; mitigate by landing the two startup fixes and the `HistoryError` guard first, then the classification meta-test, with reader sites defaulting to a named `refuse_on_remote` refusal.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T05:15:44 - `bf65814b-8af2-43a0-8fe0-ec16e1b4857f.jsonl`
+- `/ll:verify-issues` - 2026-09-29T05:14:12 - `ae0846b5-655f-4247-a75a-7ca807ba2469.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-29T05:12:10 - `a5edb1e1-9d75-4b79-af5e-93bf4804228c.jsonl`
 - `/ll:verify-issues` - 2026-09-29T05:07:48 - `1bca72e1-aabf-43e5-89dc-106f3cd4dbd4.jsonl`
 - `/ll:verify-issues` - 2026-09-29T05:06:02 - `4f909cde-90d0-4dc3-a3b6-39c01e60c85b.jsonl`
