@@ -56,6 +56,10 @@ Every token figure little-loops reports — for any production host — comes fr
 - **ENH-3543** — Shared live/rollout coverage selection for Codex usage (blocked by ENH-3532, ENH-3647; join spike first)
 - **ENH-3549** — Consume stored usage for ll-ctx-stats cache rate (blocked by ENH-3532 for Codex, ENH-3651 for stored freshness)
 - **ENH-3534** — Token usage ingestion for Qwen, Gemini, OMP and remaining hosts (blocked by ENH-3532, ENH-3544, ENH-3648)
+- **ENH-3655** — Prove Codex live-to-rollout span join (open)
+- **ENH-3656** — Cut over Claude cache rate to stored usage (open)
+
+
 
 
 ## Implementation Order and Readiness
