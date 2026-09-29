@@ -1504,6 +1504,11 @@ Settings for hook adapter selection.
 | `host` | (auto-detected) | Host agent identifier for hook adapters: `"claude-code"`, `"opencode"`, or `"codex"`. Adapters translate between the host's native hook protocol and `LLHookEvent`/`LLHookResult`. |
 | `stale_ref_fix` | `"report"` | Session-end stale-ref sweep mode: `"report"` prints findings to stderr; `"auto"` also rewrites them in-place. |
 | `doc_drift_throttle_days` | `7` | Minimum days between session-start doc-drift checks (ENH-2888), tracked via a per-project timestamp state file. Set `LL_DOC_DRIFT_DISABLE` (any non-empty value) to opt out entirely. |
+| `edit_batch_nudge.enabled` | `true` | Edit-batching nudge hook (ENH-3645). When `false`, the hook is a silent no-op: no reminder and no state file written. |
+| `edit_batch_nudge.threshold` | `3` | Consecutive unbatched single edits (integer, `>= 1`) before the nudge fires. |
+| `edit_batch_nudge.window_seconds` | `3.0` | Two edits landing closer together than this many seconds (number, `>= 0`) count as batched. |
+
+`hooks.edit_batch_nudge` is also read from `.ll/ll.local.md` frontmatter, which overrides the base config. An invalid value falls back to its default for that key only; a malformed section never disables the hook.
 
 #### `hooks.pre_compact.rubric`
 
@@ -1524,6 +1529,11 @@ A successful state write (rubric-gated or not) also emits a best-effort `compact
 {
   "hooks": {
     "doc_drift_throttle_days": 7,
+    "edit_batch_nudge": {
+      "enabled": true,
+      "threshold": 3,
+      "window_seconds": 3.0
+    },
     "pre_compact": {
       "rubric": {
         "enabled": true,

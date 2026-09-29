@@ -1605,6 +1605,30 @@
           "default": 7,
           "description": "Minimum days between session-start doc-drift checks (ENH-2888) per project, tracked via a timestamp state file. Set LL_DOC_DRIFT_DISABLE to opt out entirely."
         },
+        "edit_batch_nudge": {
+          "type": "object",
+          "description": "Edit-batching nudge hook (PostToolUse on Edit|Write|MultiEdit). Reminds the model to batch independent edits after a run of unbatched single edits.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "When false, the nudge hook is a silent no-op (no reminder, no state written)."
+            },
+            "threshold": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 3,
+              "description": "Consecutive unbatched single edits before the nudge fires."
+            },
+            "window_seconds": {
+              "type": "number",
+              "minimum": 0,
+              "default": 3.0,
+              "description": "Two edits landing closer together than this many seconds count as batched."
+            }
+          },
+          "additionalProperties": false
+        },
         "pre_compact": {
           "type": "object",
           "description": "Pre-compact hook configuration (ENH-2341).",

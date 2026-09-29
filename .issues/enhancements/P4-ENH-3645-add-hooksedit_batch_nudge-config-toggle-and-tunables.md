@@ -3,10 +3,11 @@ id: ENH-3645
 type: ENH
 title: Add hooks.edit_batch_nudge config toggle and tunables
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T22:47:49Z'
+completed_at: '2026-09-29T01:04:34Z'
 verify_verdict: VALID
 confidence_score: 90
 outcome_confidence: 89
@@ -200,16 +201,16 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `config-schema.json` declares `hooks.edit_batch_nudge.{enabled,threshold,window_seconds}` with the defaults above
-- [ ] `enabled: false` in `.ll/ll-config.json` (or `.ll/ll.local.md`) suppresses the nudge and writes no state
-- [ ] Unset config preserves current behavior exactly
-- [ ] Tests cover disabled, custom threshold, and custom window
-- [ ] Invalid values (`bool`, non-numeric, below minimum, non-finite `window_seconds`, non-integral `threshold`) fall back per key to the defaults, and valid sibling keys still apply; an integral float `threshold: 3.0` is accepted as `3`
-- [ ] Malformed shapes (`hooks: []`, `hooks.edit_batch_nudge: true` / `"off"`) yield the defaults with the hook enabled — never a silent disable
-- [ ] `.ll/ll.local.md` overrides the base config in both directions: base `enabled: true` + local `enabled: false` disables; local `enabled: null` removes the key → enabled
-- [ ] Config under `CLAUDE_PROJECT_DIR` is honored when the event cwd is a subdirectory (config root == state root)
-- [ ] Disabled with `CLAUDE_PROJECT_DIR` pointing at a dir without `.ll/` creates no `.ll/`; no resolvable project remains a silent no-op
-- [ ] All four `test_hook_intents.py` edit-batch subprocess cases run with `CLAUDE_PROJECT_DIR` scrubbed from the env via one shared helper
+- [x] `config-schema.json` declares `hooks.edit_batch_nudge.{enabled,threshold,window_seconds}` with the defaults above
+- [x] `enabled: false` in `.ll/ll-config.json` (or `.ll/ll.local.md`) suppresses the nudge and writes no state
+- [x] Unset config preserves current behavior exactly
+- [x] Tests cover disabled, custom threshold, and custom window
+- [x] Invalid values (`bool`, non-numeric, below minimum, non-finite `window_seconds`, non-integral `threshold`) fall back per key to the defaults, and valid sibling keys still apply; an integral float `threshold: 3.0` is accepted as `3`
+- [x] Malformed shapes (`hooks: []`, `hooks.edit_batch_nudge: true` / `"off"`) yield the defaults with the hook enabled — never a silent disable
+- [x] `.ll/ll.local.md` overrides the base config in both directions: base `enabled: true` + local `enabled: false` disables; local `enabled: null` removes the key → enabled
+- [x] Config under `CLAUDE_PROJECT_DIR` is honored when the event cwd is a subdirectory (config root == state root)
+- [x] Disabled with `CLAUDE_PROJECT_DIR` pointing at a dir without `.ll/` creates no `.ll/`; no resolvable project remains a silent no-op
+- [x] All four `test_hook_intents.py` edit-batch subprocess cases run with `CLAUDE_PROJECT_DIR` scrubbed from the env via one shared helper
 
 ## Impact
 
@@ -222,11 +223,17 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Completed** — `hooks.edit_batch_nudge.{enabled,threshold,window_seconds}` added to `config-schema.json`. `edit_batch_nudge.py` gains `_resolve_project_root`, `_load_settings` (base config merged with `.ll/ll.local.md`, per-key validation, shape guards), and an `enabled` gate that runs before `_resolve_state_path` (now the only step that creates `.ll/`). Tests added to `test_edit_batch_hook.py`, `test_config_schema.py`, and `test_hook_intents.py` (shared env helper scrubbing `CLAUDE_PROJECT_DIR`). Docs updated in `CONFIGURATION.md` and `BUILTIN_HOOKS_GUIDE.md`. Full suite: 27125 passed, 292 skipped.
+
 ## Status
 
-**Open** | Created: 2026-09-28 | Priority: P4
+**Done** | Created: 2026-09-28 | Priority: P4
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T01:04:33 - `093f4bbe-f3c8-4612-9bfe-c5281ac5f190.jsonl`
+- `/ll:ready-issue` - 2026-09-29T00:53:06 - `4aabed8e-7ac6-4763-8808-4b8889e62301.jsonl`
 - `/ll:confidence-check` - 2026-09-29T00:50:34 - `9a024917-61ed-49b3-a021-72845a8bcfc2.jsonl`
 - `/ll:verify-issues` - 2026-09-29T00:37:37 - `5b5d1874-2832-4b4f-9528-f02ed025e782.jsonl`
 - `/ll:confidence-check` - 2026-09-28T23:26:33 - `26f1a780-b8a8-48d2-b65b-ebdb4c979b54.jsonl`

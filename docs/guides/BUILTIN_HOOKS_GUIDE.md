@@ -65,7 +65,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | issue-completion-log | Appends a session log entry to issues marked `done` | — | on |
 | **PostToolUse** | check-duplicate-issue-id-post | Deletes a just-written duplicate issue file (TOCTOU guard) | exit 2 | on |
 | **PostToolUse** | issue-auto-commit | Auto-commits issue-file edits | — | off |
-| **PostToolUse** | edit-batch-nudge | Nudges batching once per session after a run of consecutive unbatched single edits | exit 0 + `additionalContext` (Claude Code); exit 2 (other hosts) | on |
+| **PostToolUse** | edit-batch-nudge | Nudges batching once per session after a run of consecutive unbatched single edits (`hooks.edit_batch_nudge`) | exit 0 + `additionalContext` (Claude Code); exit 2 (other hosts) | on |
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
@@ -128,6 +128,7 @@ The behaviors that **write data or change your repo** are **off until you opt in
 - `learning_tests.enabled` (import gate) — **off**
 - `issues.auto_commit` (auto-committing issue files) — **off**
 - `hooks.stale_ref_fix` — defaults to `report` (never edits files unless set to `auto`)
+- `hooks.edit_batch_nudge.enabled` — advisory-only, on by default; set to `false` to silence the edit-batching nudge
 - `drift-check` — advisory-only, on by default; set `LL_DOC_DRIFT_DISABLE` (any non-empty value) to opt out entirely
 
 The behaviors that are **on by default** are non-destructive: they load config, estimate context, inject advisory reminders, protect issue-ID uniqueness, and clean up *this session's* temp files on exit. None of them modify your source code.
@@ -370,18 +371,21 @@ schema.
 
 The nudge is **stateful** and **once-per-session**. Within a session, it fires
 only once a run of consecutive *unbatched* single edits reaches the threshold
-(default 3); after firing, a sticky `nudged: true` latch suppresses every
+(`hooks.edit_batch_nudge.threshold`, default 3); after firing, a sticky `nudged: true` latch suppresses every
 subsequent nudge for the lifetime of `session_id` — so it stays silent even if
 the user reverts to unbatched edits later in the same session. A new session
 re-arms the latch. Because `PostToolUse` carries no turn id, "unbatched" is
 inferred from the wall-clock gap between hook fires: edits closer than
-`_BATCH_WINDOW_SECONDS` (default 3s) are treated as one batched turn and reset
+`hooks.edit_batch_nudge.window_seconds` (default 3s) are treated as one batched turn and reset
 the run counter, while `MultiEdit` always resets it. The state file at
 `.ll/ll-edit-batch-state.json` carries `{session_id, run, last_ts, nudged}`;
 `nudged` is `false` pre-fire and flips to `true` on first fire. All state I/O is
 best-effort and degrades to a silent pass-through on failure. Fires for the
 three edit tools only; all other tools pass through. On by default; the matcher
-is host-agnostic and mirrored to Codex. (ENH-2503)
+is host-agnostic and mirrored to Codex. Tune or turn it off with
+`hooks.edit_batch_nudge.enabled`, `.threshold`, and `.window_seconds` in
+`.ll/ll-config.json` or `.ll/ll.local.md`; invalid values fall back to the
+defaults for that key. (ENH-2503, ENH-3645)
 
 ### Session capture
 
@@ -530,7 +534,8 @@ Most behavior is controlled by config keys in `.ll/ll-config.json` (or your giti
 {
   "prompt_optimization": { "enabled": false },
   "context_monitor": { "enabled": false },
-  "history": { "session_digest": { "enabled": false } }
+  "history": { "session_digest": { "enabled": false } },
+  "hooks": { "edit_batch_nudge": { "enabled": false } }
 }
 ```
 
@@ -567,6 +572,9 @@ A few quick controls:
 | `session_capture.enabled` | PostToolUse | `false` | Append per-tool structured event records to `.ll/ll-session-events.jsonl` |
 | `issues.base_dir` | (all issue hooks) | `.issues` | Issue directory |
 | `hooks.stale_ref_fix` | SessionStart | `report` | `report` or `auto` |
+| `hooks.edit_batch_nudge.enabled` | PostToolUse (edit-batch-nudge) | `true` | `false` silences the edit-batching nudge (no reminder, no state written) |
+| `hooks.edit_batch_nudge.threshold` | PostToolUse (edit-batch-nudge) | `3` | Consecutive unbatched single edits before the nudge fires |
+| `hooks.edit_batch_nudge.window_seconds` | PostToolUse (edit-batch-nudge) | `3.0` | Edits closer together than this many seconds count as batched |
 | `hooks.doc_drift_throttle_days` | SessionStart (drift-check) | `7` | Minimum days between doc-drift checks per project; `LL_DOC_DRIFT_DISABLE` opts out entirely |
 | `parallel.worktree_base` | Stop | `.worktrees` | Worktree cleanup scope (distinct from `automation.worktree_base`, which `ll-auto`/FSM sub-loops use and this hook does not read) |
 | `advisor.enabled` | Stop (pre_done) | `false` | Master switch for advisor auto-consults |

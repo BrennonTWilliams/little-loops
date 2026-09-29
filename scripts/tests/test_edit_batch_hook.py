@@ -317,3 +317,182 @@ class TestRobustness:
         assert result.exit_code == 0
         assert result.feedback is None
         assert result.stdout is None
+
+
+def _write_config(root, cfg: dict) -> None:
+    (root / ".ll").mkdir(exist_ok=True)
+    (root / ".ll" / "ll-config.json").write_text(json.dumps({"hooks": {"edit_batch_nudge": cfg}}))
+
+
+def _write_raw_config(root, data) -> None:
+    (root / ".ll").mkdir(exist_ok=True)
+    (root / ".ll" / "ll-config.json").write_text(json.dumps(data))
+
+
+def _write_local(root, frontmatter: str) -> None:
+    (root / ".ll").mkdir(exist_ok=True)
+    (root / ".ll" / "ll.local.md").write_text(f"---\n{frontmatter}\n---\n\n# Local\n")
+
+
+def _edit(session: str = "s1", **kw):
+    return handle(_event({"tool_name": "Edit", "session_id": session}, **kw))
+
+
+def _unbatched_run(clock: _Clock, n: int, gap: float):
+    """Fire *n* edits *gap* seconds apart; return all results."""
+    results = []
+    for _ in range(n):
+        results.append(_edit())
+        clock.advance(gap)
+    return results
+
+
+class TestConfigSettings:
+    """ENH-3645: ``hooks.edit_batch_nudge`` config toggle and tunables."""
+
+    def test_disabled_is_silent_and_writes_no_state(self, clock: _Clock, tmp_path) -> None:
+        from little_loops.hooks.edit_batch_nudge import _STATE_FILENAME
+
+        _write_config(tmp_path, {"enabled": False})
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD + 1, _BATCH_WINDOW_SECONDS + 1.0)
+        assert all(r.exit_code == 0 and r.stdout is None and r.feedback is None for r in results)
+        assert not (tmp_path / ".ll" / _STATE_FILENAME).exists()
+
+    def test_enabled_true_behaves_as_default(self, clock: _Clock, tmp_path) -> None:
+        _write_config(tmp_path, {"enabled": True})
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert results[-1].stdout is not None
+
+    @pytest.mark.parametrize("threshold", [2, 2.0])
+    def test_custom_threshold(self, clock: _Clock, tmp_path, threshold) -> None:
+        _write_config(tmp_path, {"threshold": threshold})
+        results = _unbatched_run(clock, 2, _BATCH_WINDOW_SECONDS + 1.0)
+        assert results[0].stdout is None
+        assert results[1].stdout is not None
+
+    def test_custom_window(self, clock: _Clock, tmp_path) -> None:
+        # A 10s window makes 5s-apart edits count as batched: never nudges.
+        _write_config(tmp_path, {"window_seconds": 10})
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD + 2, 5.0)
+        assert all(r.stdout is None for r in results)
+
+    @pytest.mark.parametrize(
+        "cfg",
+        [
+            {"threshold": True},
+            {"threshold": "2"},
+            {"threshold": 0},
+            {"threshold": 2.5},
+            {"threshold": None},
+            {"window_seconds": True},
+            {"window_seconds": "9"},
+            {"window_seconds": -1},
+            {"enabled": "false"},
+            {"enabled": 0},
+        ],
+    )
+    def test_invalid_values_fall_back_to_defaults(self, clock: _Clock, tmp_path, cfg) -> None:
+        _write_config(tmp_path, cfg)
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert all(r.stdout is None for r in results[:-1])
+        assert results[-1].stdout is not None
+
+    def test_non_finite_window_falls_back(self, clock: _Clock, tmp_path) -> None:
+        # json.dumps emits the non-standard ``Infinity`` token, which json.loads accepts.
+        (tmp_path / ".ll").mkdir(exist_ok=True)
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            '{"hooks": {"edit_batch_nudge": {"window_seconds": Infinity}}}'
+        )
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert results[-1].stdout is not None
+
+    def test_invalid_key_does_not_discard_valid_sibling(self, clock: _Clock, tmp_path) -> None:
+        _write_config(tmp_path, {"threshold": "bad", "window_seconds": 10})
+        # Window 10 applies (5s gaps batched) even though threshold fell back.
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD + 2, 5.0)
+        assert all(r.stdout is None for r in results)
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {"hooks": []},
+            {"hooks": {"edit_batch_nudge": True}},
+            {"hooks": {"edit_batch_nudge": "off"}},
+            [],
+        ],
+    )
+    def test_malformed_shapes_yield_defaults_and_stay_enabled(
+        self, clock: _Clock, tmp_path, data
+    ) -> None:
+        _write_raw_config(tmp_path, data)
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert results[-1].stdout is not None
+
+    def test_malformed_config_file_yields_defaults(self, clock: _Clock, tmp_path) -> None:
+        (tmp_path / ".ll" / "ll-config.json").write_text("{not json")
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert results[-1].stdout is not None
+
+    def test_local_override_disables(self, clock: _Clock, tmp_path) -> None:
+        from little_loops.hooks.edit_batch_nudge import _STATE_FILENAME
+
+        _write_config(tmp_path, {"enabled": True})
+        _write_local(tmp_path, "hooks:\n  edit_batch_nudge:\n    enabled: false")
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert all(r.stdout is None for r in results)
+        assert not (tmp_path / ".ll" / _STATE_FILENAME).exists()
+
+    def test_local_null_removes_base_disable(self, clock: _Clock, tmp_path) -> None:
+        _write_config(tmp_path, {"enabled": False})
+        _write_local(tmp_path, "hooks:\n  edit_batch_nudge:\n    enabled: null")
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert results[-1].stdout is not None
+
+    def test_local_override_without_base_config(self, clock: _Clock, tmp_path) -> None:
+        _write_local(tmp_path, "hooks:\n  edit_batch_nudge:\n    threshold: 2")
+        results = _unbatched_run(clock, 2, _BATCH_WINDOW_SECONDS + 1.0)
+        assert results[1].stdout is not None
+
+    def test_config_under_claude_project_dir_honored_from_subdir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        from little_loops.hooks.edit_batch_nudge import _STATE_FILENAME
+
+        project_root = tmp_path / "the-project"
+        subdir = project_root / "sub"
+        subdir.mkdir(parents=True)
+        _write_config(project_root, {"enabled": False})
+        monkeypatch.chdir(subdir)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+        monkeypatch.setattr(edit_batch_nudge, "_now", _Clock())
+        for _ in range(_NUDGE_THRESHOLD):
+            result = _edit(cwd=str(subdir))
+            assert result.stdout is None
+        assert not (project_root / ".ll" / _STATE_FILENAME).exists()
+        assert not (subdir / ".ll").exists()
+
+    def test_disabled_never_creates_ll_dir(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        """No resolvable project: silent no-op, and no ``.ll/`` is fabricated."""
+        outside = tmp_path / "not-a-project"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        monkeypatch.setattr(edit_batch_nudge, "_now", _Clock())
+        result = _edit(cwd=str(outside))
+        assert result.exit_code == 0
+        assert not (outside / ".ll").exists()
+
+    def test_disabled_with_claude_project_dir_lacking_ll_creates_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        project_root = tmp_path / "bare"
+        project_root.mkdir()
+        # A root-level config (no ``.ll/`` dir) disables the hook; the state
+        # step — the only one that mkdirs — must never run.
+        (project_root / "ll-config.json").write_text(
+            json.dumps({"hooks": {"edit_batch_nudge": {"enabled": False}}})
+        )
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project_root))
+        monkeypatch.setattr(edit_batch_nudge, "_now", _Clock())
+        assert _edit(cwd=str(project_root)).exit_code == 0
+        assert not (project_root / ".ll").exists()

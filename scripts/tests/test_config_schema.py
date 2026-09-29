@@ -1101,6 +1101,27 @@ class TestConfigSchema:
         assert enabled["type"] == "boolean"
         assert enabled["default"] is False
 
+    def test_edit_batch_nudge_in_schema(self) -> None:
+        """hooks.edit_batch_nudge must be declared with enabled/threshold/window_seconds (ENH-3645)."""
+        data = json.loads(_load_schema_text())
+        hooks_props = data["properties"]["hooks"]["properties"]
+        assert "edit_batch_nudge" in hooks_props, (
+            "hooks.edit_batch_nudge is not declared in config-schema.json; configs using "
+            "it will be rejected by additionalProperties: false on the hooks block"
+        )
+        block = hooks_props["edit_batch_nudge"]
+        assert block["type"] == "object"
+        assert block.get("additionalProperties") is False
+        props = block["properties"]
+        assert props["enabled"]["type"] == "boolean"
+        assert props["enabled"]["default"] is True
+        assert props["threshold"]["type"] == "integer"
+        assert props["threshold"]["default"] == 3
+        assert props["threshold"]["minimum"] == 1
+        assert props["window_seconds"]["type"] == "number"
+        assert props["window_seconds"]["default"] == 3.0
+        assert props["window_seconds"]["minimum"] == 0
+
     def test_hooks_pre_compact_rubric_in_schema(self) -> None:
         """hooks.pre_compact.rubric must be declared in config-schema.json (ENH-2341).
 

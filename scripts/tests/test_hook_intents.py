@@ -18,6 +18,18 @@ from little_loops.hooks import resolve_hook_root
 from little_loops.hooks.types import LLHookEvent, LLHookResult
 
 
+def _edit_batch_env(**extra: str) -> dict[str, str]:
+    """Subprocess env for edit_batch_nudge cases with ``CLAUDE_PROJECT_DIR`` scrubbed.
+
+    The handler reads project config (ENH-3645) from the resolved root; an
+    inherited ``CLAUDE_PROJECT_DIR`` would point it at the developer's real
+    project and its ``hooks.edit_batch_nudge`` settings.
+    """
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    env.update(extra)
+    return env
+
+
 class TestLLHookEvent:
     """Tests for the LLHookEvent dataclass."""
 
@@ -431,6 +443,7 @@ class TestHooksMainModule:
             text=True,
             timeout=10,
             cwd=str(tmp_path),
+            env=_edit_batch_env(),
         )
         assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
         assert "batch" in result.stderr.lower()
@@ -457,7 +470,7 @@ class TestHooksMainModule:
             text=True,
             timeout=10,
             cwd=str(tmp_path),
-            env={**os.environ, "LL_HOOK_HOST": "codex"},
+            env=_edit_batch_env(LL_HOOK_HOST="codex"),
         )
         assert result.returncode == 2, f"returncode={result.returncode}; stderr={result.stderr!r}"
         assert "batch" in result.stderr.lower()
@@ -472,9 +485,32 @@ class TestHooksMainModule:
             text=True,
             timeout=10,
             cwd=str(tmp_path),
+            env=_edit_batch_env(),
         )
         assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
         assert result.stderr == ""
+
+    def test_dispatch_edit_batch_nudge_disabled_by_config(self, tmp_path) -> None:
+        """``hooks.edit_batch_nudge.enabled: false`` makes the intent a silent no-op (ENH-3645)."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"hooks": {"edit_batch_nudge": {"enabled": False}}})
+        )
+        state_file = ll_dir / "ll-edit-batch-state.json"
+        result = subprocess.run(
+            [sys.executable, "-m", "little_loops.hooks", "edit_batch_nudge"],
+            input=json.dumps({"tool_name": "Edit", "session_id": "s1"}),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(tmp_path),
+            env=_edit_batch_env(),
+        )
+        assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
+        assert result.stdout == ""
+        assert result.stderr == ""
+        assert not state_file.exists()
 
     def test_dispatch_edit_batch_nudge_passthrough(self, tmp_path) -> None:
         """``edit_batch_nudge`` exits 0 with no feedback for a non-edit tool (FEAT-2470)."""
@@ -485,6 +521,7 @@ class TestHooksMainModule:
             text=True,
             timeout=10,
             cwd=str(tmp_path),
+            env=_edit_batch_env(),
         )
         assert result.returncode == 0, f"returncode={result.returncode}; stderr={result.stderr!r}"
         assert result.stderr == ""
