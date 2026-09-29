@@ -8,12 +8,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T05:29:43Z'
 verify_verdict: NON_VALID
-confidence_score: 75
-outcome_confidence: 47
-score_complexity: 9
-score_test_coverage: 18
-score_ambiguity: 10
-score_change_surface: 10
+reconcile_attempted: true
+
 ---
 
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
@@ -78,7 +74,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/history.py`, `cli/harness.py`, `cli/logs.py`, `cli/ctx_stats.py`, `decisions.py`, `user_messages.py`, `mcp_server/tools.py`, `session_store/backend.py` (`_REMOTE_REFUSALS`), `skills/improve-claude-md/SKILL.md`; sites and line numbers are in BUG-3652's caller table.
+- `scripts/little_loops/cli/history.py`, `cli/harness.py`, `cli/logs.py`, `cli/ctx_stats.py`, `decisions.py`, `user_messages.py`, `mcp_server/tools.py`, `session_store/backend.py` (`_REMOTE_REFUSALS`), `skills/improve-claude-md/SKILL.md`; sites and line numbers are in BUG-3652's caller table. Serve sites (`harness.py` ×5, `history.py` `rework`/`quality`/`audit-issue-collisions`/`sessions`/`root`, MCP `history_search`) edit only the pre-resolve; refuse/degrade sites add the boundary catch or fallback. `issue_history/evolution.py:_open_db` (sqlite-only choke point shared by `analyze` and CT-0) changes only if made remote-aware.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/ctx_stats.py:_build_parser` — epilog "Exit codes" lists only `0`/`1 - No data found`; add the remote-refusal cause to exit 1 if `main_ctx_stats` refuses [Agent 2 finding]
@@ -200,9 +196,12 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add the shared reader reason to `_REMOTE_REFUSALS` and matching `_REJECTED` rows; implement the per-site verdicts from the table (refuse at subcommand entry, or degrade).
+1. Add one `_REMOTE_REFUSALS` key per refused reader operation (same shared reader why-clause; the dict is keyed per operation, not one key overall) and matching `_REJECTED` rows; implement the per-site verdicts from the Codebase Research Findings, which split three ways rather than refuse/degrade only:
+   - **Serve** (drop the `resolve_history_db()` pre-resolve and pass `None`/the relative default so `_connect_readonly` reaches the remote store; verify against `HranaStub`): `cli/harness.py` `_retry_gate`, `_read_target_history`, `_resolve_baseline_of`, `read_baseline`, `cmd_dsl`; `cli/history.py` `rework`, `quality`, `audit-issue-collisions`, `sessions`, `root`; MCP `_tool_history_search` (only if `root=project_root` can be threaded, otherwise refuse).
+   - **Refuse** (`refuse_on_remote(None, "<op>")` at subcommand entry, boundary `except HistoryUnsupported` → stderr + `return 1`): `cli/history.py` `summary`, `analyze`, `activity`; `cli/logs.py` `_cmd_diff`, `_cmd_eval_export`; `cli/ctx_stats.py` (`.exists()`-gated or sqlite-only readers that cannot reach the remote store), or degrade with a one-line stderr notice per the Expected Behavior table.
+   - **Degrade**: `decisions.generate_from_completed` (keep the pre-resolve from raising and route to the existing `scan_completed_issues` branch; local path stays DB-first), `user_messages.extract_conversation_turns` with `reader=auto` (→ JSONL; `reader=db` refuses), and `skills/improve-claude-md` CT-0 (skip with a one-line note).
 2. Guard the `skills/improve-claude-md` CT-0 block, run `ll-adapt --host <gemini|kimi-code|qwen> --apply`, and re-run `test_improve_claude_md_skill.py`.
-3. Add remote-stub tests per site plus local twins, update the reader docs, then run `python -m pytest scripts/tests/` (default local store) with `ruff check` and `mypy` clean.
+3. Add remote-stub tests per site (serve sites assert the read round-trips through `HranaStub`; refuse sites assert the refusal shape) plus local twins, update the reader docs, then run `python -m pytest scripts/tests/` (default local store) with `ruff check` and `mypy` clean.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -227,8 +226,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Every reader site listed above has a verdict (refuse or degrade) implemented and covered by a remote-stub test.
-- [ ] No reader CLI surfaces a bare `HistoryBackendNotLocal` traceback under a remote backend; refusals assert exit 1, operation name plus `libsql` in stderr, `"Traceback" not in err`, and zero stub requests.
+- [ ] Every reader site listed above has a verdict (serve, refuse, or degrade) implemented and covered by a remote-stub test (`HranaStub`).
+- [ ] No reader CLI surfaces a bare `HistoryBackendNotLocal` traceback under a remote backend; refusals assert exit 1, operation name plus `libsql` in stderr, `"Traceback" not in err`, and zero stub requests; serve sites assert the read reaches the stub and returns data.
 - [ ] With the default local store, `python -m pytest scripts/tests/` passes unchanged.
 
 ## Related
@@ -265,6 +264,8 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 - The new refusal exit 1 can trip loop gates (`ll_history_summary`, `sft-corpus`, `ll-logs-telemetry-digest` `run_stats` greps `"No history.db found"`).
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-29T06:17:02 - `5f8d5762-5341-43fe-88c8-0e9ad90d90b3.jsonl`
+- `/ll:confidence-check` - 2026-09-29T06:15:37 - `64ee27e7-98c4-4210-b976-65275ac000b0.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-29T06:11:37 - `236872ac-1b8a-494a-8a4f-024f9ae7329e.jsonl`
 - `/ll:wire-issue` - 2026-09-29T06:08:54 - `6853b72a-3d36-49af-862a-88cc681f2623.jsonl`
 - `/ll:refine-issue` - 2026-09-29T06:01:38 - `fce6088f-c5fa-4a10-a502-c439e3fca2a1.jsonl`

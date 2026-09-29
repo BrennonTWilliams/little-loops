@@ -287,6 +287,7 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 - Shell-hook change is validated only through a `HranaStub` subprocess fixture that does not exist yet; hook `timeout: 5` bounds remote-write latency.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-29T06:53:44 - `ba092082-4ae3-43dd-9062-e948c741ef8f.jsonl`
 - `/ll:decide-issue` - 2026-09-29T06:52:11 - `b6e8b863-de04-439b-86a0-163f69ae4ae5.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:37:24 - `8bc00e90-4fb4-4186-b015-6ae8b54ba73f.jsonl`
 - `/ll:verify-issues` - 2026-09-29T06:35:53 - `8072da21-2d78-4f2f-ada0-f03b231f5125.jsonl`
