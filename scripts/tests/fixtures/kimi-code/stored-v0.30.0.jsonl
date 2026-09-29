@@ -1,0 +1,11 @@
+{"type":"turn.prompt","time":1790665499217}
+{"type":"llm.request","kind":"loop","model":"kimi-k3","turnStep":"0.1","time":1790665499462}
+{"type":"context.append_loop_event","event":{"usage":{"inputOther":24227,"output":62,"inputCacheRead":0,"inputCacheCreation":0}},"time":1790665506457}
+{"type":"usage.record","model":"moonshot-ai/kimi-k3","usage":{"inputOther":24227,"output":62,"inputCacheRead":0,"inputCacheCreation":0},"usageScope":"turn","time":1790665506457}
+{"type":"llm.request","kind":"loop","model":"kimi-k3","turnStep":"0.2","time":1790665506458}
+{"type":"context.append_loop_event","event":{"usage":{"inputOther":255,"output":17,"inputCacheRead":24064,"inputCacheCreation":0}},"time":1790665509883}
+{"type":"usage.record","model":"moonshot-ai/kimi-k3","usage":{"inputOther":255,"output":17,"inputCacheRead":24064,"inputCacheCreation":0},"usageScope":"turn","time":1790665509883}
+{"type":"turn.prompt","time":1790665715165}
+{"type":"llm.request","kind":"loop","model":"kimi-k3","turnStep":"1.1","time":1790665715389}
+{"type":"context.append_loop_event","event":{"usage":{"inputOther":237,"output":28,"inputCacheRead":24320,"inputCacheCreation":0}},"time":1790665723155}
+{"type":"usage.record","model":"moonshot-ai/kimi-k3","usage":{"inputOther":237,"output":28,"inputCacheRead":24320,"inputCacheCreation":0},"usageScope":"turn","time":1790665723155}

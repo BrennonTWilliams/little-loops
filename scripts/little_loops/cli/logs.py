@@ -1627,26 +1627,23 @@ def _resolve_session_log(session_ref: str, db_path: Path) -> Path | None:
 
 
 def _events_from_jsonl(jsonl_path: Path) -> list[InvocationEvent]:
-    """Extract ll invocation events from a single JSONL file, sorted by timestamp."""
+    """Extract ll invocations through the session parser from one JSONL file.
+
+    ``diff`` accepts a direct path with no host flag; its historical input is
+    Claude-shaped JSONL, so path-only handles retain that parser selection.
+    """
+    from little_loops.session_store.sessions import handles_from_paths
+
     events: list[InvocationEvent] = []
-    try:
-        with open(jsonl_path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                tool_name = _extract_tool_name(record)
-                if tool_name is None:
-                    continue
-                ts = record.get("timestamp", "")
-                sid = record.get("sessionId", "")
-                events.append(InvocationEvent(tool_name=tool_name, timestamp=ts, session_id=sid))
-    except OSError:
-        pass
+    for handle in handles_from_paths([jsonl_path], "claude-code"):
+        for event in iter_events(handle):
+            record = event.payload
+            tool_name = _extract_tool_name(record)
+            if tool_name is None:
+                continue
+            ts = record.get("timestamp", "")
+            sid = record.get("sessionId", "")
+            events.append(InvocationEvent(tool_name=tool_name, timestamp=ts, session_id=sid))
     events.sort(key=lambda e: e.timestamp)
     return events
 

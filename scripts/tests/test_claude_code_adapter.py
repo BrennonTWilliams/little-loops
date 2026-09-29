@@ -298,7 +298,7 @@ class TestClaudeCodeAdapterIntegration:
             group
             for group in data["hooks"]["Stop"]
             for h in group.get("hooks", [])
-            if h.get("type") == "command" and "stop.sh" in h["command"]
+            if h.get("type") == "command" and h["command"].strip().endswith("/stop.sh")
         )
         timeout = entry["hooks"][0]["timeout"]
         assert timeout >= AdvisorConfig().timeout_seconds, (

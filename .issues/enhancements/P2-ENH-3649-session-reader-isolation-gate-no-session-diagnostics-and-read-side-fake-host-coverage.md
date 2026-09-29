@@ -4,9 +4,10 @@ type: ENH
 title: Session-reader isolation gate, no-session diagnostics and read-side fake-host
   coverage
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
+completed_at: '2026-09-29T08:22:45Z'
 captured_at: '2026-09-29T01:55:17Z'
 labels:
 - observability
@@ -92,10 +93,27 @@ Finish read-side session isolation that does not depend on stored usage: a mecha
 
 ## Acceptance Criteria
 
-- [ ] Divergent fake fixtures pass through the actual message/log readers; real-host readback and agent/session selection are unchanged.
-- [ ] The isolation gate catches a stray transcript-root join, fails on a stale allowlist entry, and does not flag config/output-dir joins.
-- [ ] `ll-ctx-stats` empty discovery emits named-cause diagnostics to stderr; `--json` stdout parses.
-- [ ] Unit-level fixture tests run without installed host CLIs; the spike directory is removed after promotion.
+- [x] Divergent fake fixtures pass through the actual message/log readers; real-host readback and agent/session selection are unchanged.
+- [x] The isolation gate catches a stray transcript-root join, fails on a stale allowlist entry, and does not flag config/output-dir joins.
+- [x] `ll-ctx-stats` empty discovery emits named-cause diagnostics to stderr; `--json` stdout parses.
+- [x] Unit-level fixture tests run without installed host CLIs; the spike directory is removed after promotion.
+
+## Implementation Evidence
+
+- `ll-ctx-stats` now reports `explain_no_sessions()`'s named reason on stderr
+  when discovery is empty, with JSON stdout remaining parseable. Cache-rate
+  accounting was not changed.
+- `extract_user_messages()` uses a per-host reader table. Promoted fake fixtures
+  monkeypatch that table and the session seam only; conformance tests exercise
+  both actual CLI readers, a real Claude host, and agent selection.
+- `ll-logs diff` now reads its direct JSONL input through `iter_events()`;
+  `_cmd_extract` retains its raw openability probe for skipped-file reporting.
+  Remaining raw opens in the two CLIs are classified in `docs/ARCHITECTURE.md`.
+- `test_session_reader_no_host_roots_gate.py` checks root joins, a stray site,
+  a stale allowlist, and non-transcript `.claude` paths.
+- Focused verification: 701 affected reader/CLI tests, 18 conformance and
+  gate tests, targeted Ruff and Mypy checks. The parent agent owns the full
+  suite and lifecycle completion.
 
 ## Preserved Research Context (moved from ENH-3549)
 
@@ -128,4 +146,24 @@ _Added by `/ll:spike` on 2026-09-24_
 
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P2
+**Done** | Created: 2026-09-29 | Priority: P2
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Reader isolation gate, empty-discovery diagnostics and fake-host conformance tests are promoted; the spike directory is removed.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:45 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`

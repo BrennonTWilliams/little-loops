@@ -198,6 +198,40 @@ class TestMainDoctor:
         entries = {c.name: c for c in CodexRunner().describe_capabilities().capabilities}
         assert entries["token_reporting"].status == "full"
 
+    def test_runtime_token_reporting_is_present_for_every_production_host(self) -> None:
+        from little_loops.host_runner import RUNTIME_HOST_CAPABILITIES, render_capability_report
+
+        expected = {
+            "codex": "full",
+            "opencode": "partial",
+            "qwen": "partial",
+            "kimi-code": "partial",
+            "claude-code": "full",
+            "pi": "unknown",
+            "gemini": "unknown",
+            "omp": "unknown",
+        }
+        for host, entry in RUNTIME_HOST_CAPABILITIES.items():
+            rows = [
+                row
+                for row in render_capability_report(entry).capabilities
+                if row.name == "token_reporting"
+            ]
+            assert len(rows) == 1, host
+            assert rows[0].status == expected[host], host
+            assert "ingestion coverage is separate" in rows[0].note
+
+    def test_unknown_native_usage_is_advisory_not_absence(self) -> None:
+        from little_loops.cli.doctor import _capability_check_results
+        from little_loops.host_runner import RUNTIME_HOST_CAPABILITIES, render_capability_report
+
+        report = render_capability_report(RUNTIME_HOST_CAPABILITIES["pi"])
+        result = next(
+            row for row in _capability_check_results(report) if row.name == "token_reporting"
+        )
+        assert result.status == "unknown"
+        assert result.severity == "informational"
+
     def test_claude_md_suppression_reported_unsupported(self) -> None:
         """The claude CLI exposes no flag that skips CLAUDE.md, so the
         capability must report 'unsupported'. It was previously 'full' on the

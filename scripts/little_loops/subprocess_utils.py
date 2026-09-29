@@ -16,6 +16,7 @@ import signal
 import subprocess
 import threading
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from little_loops.context_window import context_window_for
 from little_loops.host_runner import (
     AutomationContext,
+    CodexRunner,
     project_child_env,
     resolve_host,
 )
@@ -68,7 +70,7 @@ ObservedAtBasis = Literal["event", "received"]
 
 @dataclass
 class TokenUsage:
-    """Token usage from a single host-CLI invocation (ENH-3538).
+    """Token usage observed during a host-CLI invocation (ENH-3538).
 
     Components are ``None`` when the host did not report them; ``None`` is
     *unknown*, never an implicit zero.
@@ -91,6 +93,12 @@ class TokenUsage:
     scope_kind: TokenScopeKind = "unknown"
     observed_at: str | None = None
     observed_at_basis: ObservedAtBasis | None = None
+    session_id: str | None = None
+    """Host-observed session/thread ID, when the live producer reports one."""
+    identity_basis: str | None = None
+    """Basis of ``session_id``; Codex ``thread.started`` is ``host_observed``."""
+    invocation_id: str | None = None
+    """Locally generated invocation UUID, never a producer request identifier."""
 
 
 @dataclass(frozen=True)
@@ -140,7 +148,7 @@ DetailedUsageCallback = Callable[[TokenUsage], None]
 
 
 def _stamp_usage(usage: TokenUsage, host: str) -> TokenUsage:
-    """Attach the invoking host, invocation scope and receipt time (ENH-3538).
+    """Attach the invoking host, supported scope and receipt time (ENH-3538).
 
     Stamped in :func:`run_claude_command` where the ``HostRunner`` is resolved,
     before any usage callback fires. Terminal events carry no timestamp, so the
@@ -153,7 +161,9 @@ def _stamp_usage(usage: TokenUsage, host: str) -> TokenUsage:
     return dataclasses.replace(
         usage,
         host=host,
-        scope_kind="invocation",
+        # Codex 0.158.0 live totals include prior turns across resume/fork,
+        # so the invocation is not a proven usage scope (ENH-3655).
+        scope_kind="unknown" if host == CodexRunner.name else "invocation",
         observed_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         observed_at_basis="received",
     )
@@ -194,7 +204,9 @@ def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage
     malformed, inconsistent, or all-zero (the producer's ``Usage::default()``
     fallback) yields ``provenance='unknown'``; a complete consistent block is
     ``measured``. The Claude ``result`` branch ignores absent, null, empty, or
-    non-object ``usage``.
+    non-object ``usage``. It validates each component without coercion and
+    stays unknown here: only a verified runner and evidenced producer version
+    can qualify the observation as measured.
     """
     etype = event.get("type")
     usage = event.get("usage")
@@ -204,10 +216,10 @@ def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage
         if not isinstance(usage, dict) or not usage:
             return None
         return TokenUsage(
-            input_tokens=usage.get("input_tokens"),
-            output_tokens=usage.get("output_tokens"),
-            cache_read_tokens=usage.get("cache_read_input_tokens"),
-            cache_creation_tokens=usage.get("cache_creation_input_tokens"),
+            input_tokens=_valid_count(usage.get("input_tokens")),
+            output_tokens=_valid_count(usage.get("output_tokens")),
+            cache_read_tokens=_valid_count(usage.get("cache_read_input_tokens")),
+            cache_creation_tokens=_valid_count(usage.get("cache_creation_input_tokens")),
             model=event.get("model", default_model),
         )
     if etype == "turn.completed":
@@ -242,6 +254,35 @@ def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage
             model=default_model,
         )
     return None
+
+
+_MEASURED_CLAUDE_CODE_VERSIONS = frozenset({"2.1.284"})
+
+
+def _qualify_claude_result_usage(
+    usage: TokenUsage, *, runner_host: str, producer_version: str | None
+) -> TokenUsage:
+    """Qualify a complete Claude result at the verified runner/version boundary.
+
+    The v2.1.284 live and matching transcript captures under
+    ``scripts/tests/fixtures/claude/`` establish the four-component producer
+    contract. An absent version, another host with a Claude-shaped result, or
+    an incomplete/all-zero block keeps conservative unknown provenance.
+    """
+    components = (
+        usage.input_tokens,
+        usage.output_tokens,
+        usage.cache_read_tokens,
+        usage.cache_creation_tokens,
+    )
+    if (
+        runner_host == "claude-code"
+        and producer_version in _MEASURED_CLAUDE_CODE_VERSIONS
+        and all(value is not None for value in components)
+        and any(value for value in components)
+    ):
+        return dataclasses.replace(usage, provenance="measured")
+    return usage
 
 
 def usage_from_stream_lines(stdout: str) -> tuple[TokenUsage | None, int | None]:
@@ -709,9 +750,9 @@ def run_claude_command(
             Lets callers distinguish an exit-143-after-result infra teardown
             (re-runnable) from a genuine mid-turn crash, without widening this
             function's CompletedProcess return type.
-        on_session_id_detected: Optional callback invoked with the host CLI's
-            `session_id` from the stream-json system/init event (FEAT-2711).
-            Called at most once per invocation, alongside on_model_detected.
+        on_session_id_detected: Optional callback invoked with Claude's
+            ``system/init.session_id`` or Codex's ``thread.started.thread_id``.
+            Called at most once per invocation.
         on_tool_call: Optional callback invoked live, once per ordered
             ``tool_use`` block parsed out of an "assistant" stream-json
             event (FEAT-2878). Lets a caller build/assert an ordered
@@ -780,6 +821,9 @@ def run_claude_command(
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
     detected_model: str = "unknown"
+    detected_claude_code_version: str | None = None
+    detected_codex_thread_id: str | None = None
+    local_invocation_id = str(uuid.uuid4()) if runner.name == CodexRunner.name else None
     tool_call_count = 0
     result_seen = False
 
@@ -792,7 +836,8 @@ def run_claude_command(
         closure (the enclosing function's locals) and appends to the
         ``stdout_lines``/``stderr_lines`` lists in place.
         """
-        nonlocal detected_model, tool_call_count, result_seen
+        nonlocal detected_model, detected_claude_code_version, detected_codex_thread_id
+        nonlocal tool_call_count, result_seen
         line = line.rstrip("\n")
 
         if not is_stderr:
@@ -804,9 +849,23 @@ def run_claude_command(
                         detected_model = event["model"]
                         if on_model_detected:
                             on_model_detected(event["model"])
+                    version = event.get("claude_code_version")
+                    if isinstance(version, str):
+                        detected_claude_code_version = version
                     if event.get("session_id") and on_session_id_detected:
                         on_session_id_detected(str(event["session_id"]))
                     return  # don't add to stdout_lines
+                elif etype == "thread.started" and runner.name == CodexRunner.name:
+                    thread_id = event.get("thread_id")
+                    if (
+                        isinstance(thread_id, str)
+                        and thread_id
+                        and detected_codex_thread_id is None
+                    ):
+                        detected_codex_thread_id = thread_id
+                        if on_session_id_detected:
+                            on_session_id_detected(thread_id)
+                    return
                 elif etype == "assistant":
                     msg = event.get("message", {})
                     text_parts = [
@@ -836,6 +895,11 @@ def run_claude_command(
                 elif etype == "result":
                     parsed_usage = usage_from_event(event, default_model=detected_model)
                     if parsed_usage is not None:
+                        parsed_usage = _qualify_claude_result_usage(
+                            parsed_usage,
+                            runner_host=runner.name,
+                            producer_version=detected_claude_code_version,
+                        )
                         parsed_usage = _stamp_usage(parsed_usage, runner.name)
                         if on_usage:
                             _fire_legacy_usage(on_usage, parsed_usage)
@@ -858,7 +922,17 @@ def run_claude_command(
                     # cached_input_tokens count and never echoes the model).
                     parsed_usage = usage_from_event(event, default_model=detected_model)
                     if parsed_usage is not None and on_usage_detailed:
-                        on_usage_detailed(_stamp_usage(parsed_usage, runner.name))
+                        stamped = _stamp_usage(parsed_usage, runner.name)
+                        if runner.name == CodexRunner.name:
+                            stamped = dataclasses.replace(
+                                stamped,
+                                session_id=detected_codex_thread_id,
+                                identity_basis=(
+                                    "host_observed" if detected_codex_thread_id else None
+                                ),
+                                invocation_id=local_invocation_id,
+                            )
+                        on_usage_detailed(stamped)
                     return  # skip other event types (item.*, etc.)
                 else:
                     return  # skip other event types (tool_use, etc.)

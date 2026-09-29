@@ -574,13 +574,43 @@ ll-doctor --trim --trim-window-days 30 --json
 
 Show context-window analytics for the current project (FEAT-1160). Reads per-tool byte metrics that the `post_tool_use` hook persists into `.ll/history.db` (FEAT-1623) and renders a compact summary of how much data was processed by tools vs. how much actually entered the conversation context. Also surfaces skill-health signals (per-skill invocation frequency and correction rate) from `ll-logs stats` (ENH-1921). Falls back to `.ll/ll-context-state.json` (token estimates) when the SQLite store is absent so first-time users still get useful output.
 
+When session discovery finds no transcript for the selected workspace and host, `ll-ctx-stats` prints `No sessions found for: <cwd>` followed by the named reason from `explain_no_sessions()` on stderr (ENH-3649). This diagnostic also appears with `--json`; stdout remains a parseable JSON report. It is separate from whether the history database or context-state fallback contains analytics.
+
+For the newest Claude Code or Codex session, the cache rate comes from verified, stored
+`usage_events` selected by the host and session ID. The command does not parse
+the transcript or rollout for usage or start ingestion while reading. The detached
+Stop-hook worker ingests and derives current-session usage for both hosts. If the store is
+missing, unreadable, has not ingested the selected session, or has ingested it
+without qualified usage, stderr names that specific condition; `--json`
+stdout remains parseable. An ingested source with no proven producer identity
+or complete components reports its cache rate as unavailable, not zero.
+
+Codex rollout requests with verified native response identity can produce a
+canonical rate when no live observation overlaps their thread. The older
+`token_count` shape without a request identity remains audit-only. When live
+and rollout rows may overlap, the report keeps each channel's subtotal but
+leaves the combined cache rate and token components unavailable. The captured
+Codex 0.152.1 Stop event proves the post-turn trigger and rollout path; it
+does not prove a live-to-rollout request join.
+
+The stored cache result includes `cache_rate_freshness` (`fresh`, `stale`, or
+`unknown`), `cache_rate_as_of`, `cache_rate_as_of_offset`, and
+`cache_rate_lag_reason`. A value from an earlier completed turn can still be
+shown with a `stale` label after a newer append; a partial tail, missing source
+cursor, or changed source reports `unknown` lag. Re-run the usage worker or
+rebuild the store to catch up. Claude Code 2.1.284 transcript captures repeat
+each native request under distinct outer UUIDs. The stored reader counts two
+requests where the former direct reader counted four, correcting the sample's
+cache-read tokens from 76,858 to 38,429, cache-write from 22,446 to 11,223,
+and uncached input from 36 to 18; its hit rate remains 77%.
+
 When `learning_tests.enabled` is `true`, the report also includes a **Learning Test Coverage** section (ENH-2218) showing total record count, breakdown by status (proven / stale / refuted), and the number of orphaned records (targets with no matching import in the project). Use this section to spot stale coverage before a release.
 
 When `usage_events` rows join to a `loop_runs` row on `run_id` (ENH-2721's schema/writer, live since schema v29), the report also includes a **Waste** section (ENH-2722): per-loop token totals split into `tokens_wasted` — tokens spent on runs whose terminal outcome produced no accepted artifact — and a `waste_pct`. "Wasted" is terminal-status only: any infra/step-cap exit (`error`/`no_route` (ENH-3471)/`max_steps`/`max_iterations_reached`/`timeout`/`system_signal`/`interrupted`), or a normal FSM completion (`terminated_by == "terminal"`) whose `final_state` is anything other than `"done"`. Operator-initiated exits (`user_stopped`/`handoff`) are not counted as waste, and per-iteration `diff_stall`/`score_stall` discards are out of scope (a follow-on). `usage_events` rows with no matching `loop_runs` row (unbackfilled historical rows) are excluded rather than misattributed.
 
 **Flags:**
 - `--db PATH` — Use a non-default session database (default `.ll/history.db`; also resolves `LL_HISTORY_DB` / `history.db_path` config when omitted, ENH-2623).
-- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`. A `waste` key holds a list of `{loop_name, tokens_total, tokens_wasted, waste_pct, runs_total, runs_wasted}` (empty list when the DB exists with no joinable rows, `null` when the DB is absent). A `context_pressure` key holds `{samples, peak_pct, avg_pct, crossings}` aggregated across `context_pressure_events` (`crossings` maps level string → count; `null` when the DB is absent, ENH-2507). A `cache_rate_host` key (string or `null`) names the host the cache-rate keys (`cache_hit_rate_pct`/`cache_read_tokens`/`cache_write_tokens`/`uncached_tokens`) were read from (ENH-3429). `cache_rate_consistent_events`/`cache_rate_inconsistent_events` (integers, or `null` unless the rate came from a Codex rollout) count the usage observations accepted into the rate and those excluded as inconsistent or malformed; when no observation is accepted the rate and token keys are `null`.
+- `--json` — Emit the report as JSON instead of the human-readable summary. The JSON payload includes a `skill_health` array (`[{skill, invocations, corrections, correction_rate}]`) when skill events are present, or `null` when not. When learning tests are enabled it also includes a `learning_tests` key with `{total, proven, stale, refuted, orphans}`. A `waste` key holds a list of `{loop_name, tokens_total, tokens_wasted, waste_pct, runs_total, runs_wasted}` (empty list when the DB exists with no joinable rows, `null` when the DB is absent). A `context_pressure` key holds `{samples, peak_pct, avg_pct, crossings}` aggregated across `context_pressure_events` (`crossings` maps level string → count; `null` when the DB is absent, ENH-2507). A `cache_rate_host` key (string or `null`) names the host the cache-rate keys (`cache_hit_rate_pct`/`cache_read_tokens`/`cache_write_tokens`/`uncached_tokens`) were read from (ENH-3429). `cache_rate_source`, `cache_rate_coverage`, `cache_rate_freshness`, `cache_rate_as_of`, `cache_rate_as_of_offset`, and `cache_rate_lag_reason` qualify a stored Claude or Codex result; `cache_rate_channel_subtotals` retains audit values when combined coverage is unresolved. `cache_rate_consistent_events`/`cache_rate_inconsistent_events` are retained for compatibility with older output and are `null` on the stored reader; selected observation counts appear in `token_provenance`. When no observation qualifies, the rate and token keys are `null`.
 - `--host HOST` — Restrict to one host (default: `LL_HOOK_HOST` if set, else all registered hosts). Choices: `claude-code`, `codex`, `opencode`, `pi`, `kimi-code`, `qwen`, `gemini`, `omp`. Selects which host's newest session the cache-rate section reads from via `detect_sessions` (ENH-3429); under the default (no `--host`), the newest session across every host wins, and both the text and `--json` output say which host it came from (`cache_rate_host` in `--json`; a `* … host: <host>` footnote under the "Cache hit rate:" line in text).
 
 **Token provenance (ENH-3528).** Every token figure and token-derived figure carries a provenance label, read from the *stored observations* — never from the host currently running the report. Labels: `measured` (host-reported count), `estimated` (heuristic), `unknown` (provenance cannot be established, including legacy rows), and `mixed` (aggregate of known measured + estimated observations; any observation of unknown provenance makes the aggregate `unknown`). Missing values are unavailable, not zero: they render `—` in text and `null` in JSON.
@@ -590,7 +620,7 @@ When `usage_events` rows join to a `loop_runs` row on `run_id` (ENH-2721's schem
 - **Partial totals:** `usage_by_model` totals are the sum of the *known* values and are labeled `partial k/n`; a component no observation supplied is `null`. (The history-reader APIs return `None` for any partial total instead — see `aggregate_usage()`.)
 - **Overlap:** a live invocation total and its transcript requests can cover the same work. Unless identities prove the two channels disjoint, the combined figure is an unreconciled observation sum: `coverage='overlap_unresolved'`, provenance `unknown`, with per-channel subtotals kept visible.
 - **Host attribution:** a replay-derived (transcript) row's host counts as verified only when its stored `host_basis` is `handle`; rows without it are reported with an "unverified" reason and omitted from `hosts`.
-- **Cache figures** (`cache_hit_rate_pct`, `cache_read_tokens`, `cache_write_tokens`, `uncached_tokens`) come from the newest session transcript only (`scope_kind='session'`, `channels=['transcript_file']`), not the whole history. Codex observations are `measured`; other hosts are `unknown`. Absent or `null` usage components count as missing (never zero); a record missing any of the three is excluded from the hit rate but its known components still count toward their own totals.
+- **Cache figures** (`cache_hit_rate_pct`, `cache_read_tokens`, `cache_write_tokens`, `uncached_tokens`) cover the newest selected session, not the whole history. Claude Code reads stored, verified transcript observations (`channels=['transcript']`); Codex and the other hosts retain their direct-reader paths until their separate cutovers. A missing or unverified component is unavailable, never zero. Unresolved cross-channel coverage suppresses the combined rate; per-channel subtotals remain audit data.
 - **JSON corrections:** `usage_by_model` totals/`per_model` components and `cost_usd` are now `null` (not `0`/`0.0`) when no observation supplied them; NULL-model rows share the reserved `"(unknown model)"` bucket rather than `"unknown"`; `waste` rows gain `tokens_total_missing`/`tokens_wasted_missing`, `provenance`, `coverage` and `channel_subtotals`, and `tokens_total`/`tokens_wasted`/`waste_pct` are `null` when any contributing row lacks input or output tokens; the fallback `estimated_tokens` is `null` when absent.
 
 When `context_pressure_events` has rows (schema v34+, written by `context-monitor.sh` on every sampled `PostToolUse`), the report also includes a **Context pressure curve** section: sample count, peak/average `used_pct` across all sessions, and a per-level crossing tally (ENH-2507).
@@ -4355,6 +4385,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `recent` | Most recent rows for an event kind; optionally filtered by issue |
 | `skill-stats` | Per-skill invocation/completion/success-rate rollup from `skill_events` completion columns; `--since DATE` bounds the window (ENH-2460) |
 | `backfill` | Seed the database from existing on-disk sources; `--since DATE` uses incremental JSONL-only mode (ENH-1830); `--snapshots` seeds the `issue_snapshots` table from `.issues/` files (ENH-2151); `--extract-decisions` runs `extract-from-completed` after backfill (ENH-2152); `--max-sessions N` caps how many sessions are compacted in this run (newest first, useful for large DBs) (ENH-2252) |
+| `refresh` | Replace verified stored raw rows from available original session files after a parser upgrade; reports skips and whether a rebuild is needed (ENH-3534) |
 | `export` | Dump selected history tables as JSONL to stdout or a file — for visualization, external tooling, or backup (ENH-2252) |
 | `related` | Issue events for a given issue ID |
 | `subagents SESSION_ID` | Subagent spawn tree for a session, or `--budget` for a spawn-count/duration rollup (ENH-3211) |
@@ -4378,7 +4409,7 @@ ll-session migrate      # history.backend.provider: libsql — migrates the remo
 
 With the default local store this is a no-op when the schema is current. With `history.backend.provider: libsql` (see [`history.backend`](CONFIGURATION.md#history)) it sends each pending migration to the remote endpoint as one atomic batch, stamps `meta.project_id` from `history.backend.project_id` on an empty store, and refuses (exit 1) a store stamped for a different project or one that is *ahead* of the installed version. Concurrent runs on several machines are safe: the first commits, the rest re-read the version and carry on. It writes no telemetry row.
 
-**Under a remote history backend** these subcommands are refused with an error that names the operation, before any network call, because they would delete or rewrite rows other machines use: `rebuild`, a full `backfill` (use `backfill --since` for the incremental path), `compact` (and `--and-prune`), `prune`, `recompress`, and the history-dashboard snapshot export used by `ll-artifact`. Reads, search, `grep`, `recent` and the rest work as usual. `path` labels a transcript recorded on another machine instead of failing.
+**Under a remote history backend** these subcommands are refused with an error that names the operation, before any network call, because they would delete or rewrite rows other machines use: `rebuild`, `refresh`, a full `backfill` (use `backfill --since` for the incremental path), `compact` (and `--and-prune`), `prune`, `recompress`, and the history-dashboard snapshot export used by `ll-artifact`. Reads, search, `grep`, `recent` and the rest work as usual. `path` labels a transcript recorded on another machine instead of failing.
 
 **`grep` flags:**
 
@@ -4454,6 +4485,31 @@ cache tables (`tool_events`, `message_events`, `assistant_messages`,
 | `--snapshots` | Also seed the `issue_snapshots` table from `.issues/` files (ENH-2151) |
 | `--extract-decisions` | Run `extract-from-completed` on issue history after backfill (ENH-2152) |
 | `--max-sessions N` | Cap the number of sessions compacted in this run (newest first); useful for large DBs that would otherwise time out (ENH-2252) |
+
+**`refresh` flags and safety:**
+
+`refresh` selects only source paths already stored with `host_basis='handle'`.
+It requires `--host HOST` plus exactly one of `--session-id ID` or `--all`;
+`--all` means all verified sources for that host in the selected local store.
+Each source is replaced atomically from its original file. Missing originals,
+legacy or mixed host attribution, compacted rows, a changed session identity,
+and parser output that drops stored fields are skipped with a reason on stderr
+and a nonzero exit status. `--json` includes each source's status/reason and
+keeps stdout parseable. A successful raw replacement invalidates its source
+cursor and linked usage rows and requires derivation before readers can call
+the source fresh. `--rebuild` performs a full re-derivation in the same command;
+without it, run `ll-session rebuild` afterwards. Repeating `--rebuild` is safe
+if an earlier rebuild failed, including when the raw source is now unchanged.
+Unavailable originals cannot restore fields stripped by an older normalizer;
+the missing coverage remains unknown rather than becoming zero.
+
+| Flag | Description |
+|------|-------------|
+| `--host HOST` | Required verified source host |
+| `--session-id ID` | Refresh one stored session's source |
+| `--all` | Refresh every verified stored source for `--host` |
+| `--rebuild` | Re-derive usage and other cache tables after source replacement |
+| `--json` | Emit source outcomes and rebuild counts as JSON |
 
 **`rebuild` flags:**
 
@@ -4533,6 +4589,8 @@ ll-session subagent-retries Explore             # Sessions that re-spawned Explo
 ll-session backfill                             # Ingest on-disk sources (raw_events + issues/loops/commits); loop state snapshots from .running and .history are idempotent
 ll-session backfill --rebuild                   # Ingest, then materialize cache tables in one call
 ll-session backfill --since 2026-01-01          # Incremental JSONL backfill since date
+ll-session refresh --host claude-code --session-id SESSION_ID --rebuild
+ll-session refresh --host claude-code --all --json # Report each available or skipped original
 ll-session backfill --max-sessions 50           # Compact at most 50 sessions this run
 ll-session rebuild                              # Re-derive cache tables from raw_events (ENH-2581)
 ll-session compact --and-prune                  # Sweep+summarize old raw_events, then delete (ENH-2581)

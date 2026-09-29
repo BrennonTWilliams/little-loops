@@ -3,11 +3,12 @@ id: ENH-3543
 type: ENH
 title: Shared live/rollout coverage selection for Codex usage
 priority: P2
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
+completed_at: '2026-09-29T08:22:41Z'
 captured_at: '2026-09-24T17:40:14Z'
 labels:
 - observability
@@ -46,22 +47,22 @@ Implement one shared coverage-selection policy behind `select_usage_observations
 
 ### Identity (delivered by ENH-3647)
 
-Live Codex rows carry `session_id = thread.started.thread_id` and a locally generated `invocation_id`, with an identity-basis marker. Rollout rows carry that same **thread ID** from `session_meta.payload.id` plus the span `turn_id` (ENH-3532). The `payload.session_id` root/parent value equals the thread ID only in non-fork fixtures and is not the join key for forks. Every join is qualified by verified host.
+Live Codex rows carry `session_id = thread.started.thread_id` and a locally generated `invocation_id`, with an identity-basis marker. Rollout rows carry that same **thread ID** from `session_meta.payload.id` plus the span `turn_id` (ENH-3532). The 0.158.0 fork fixture has `payload.id = payload.session_id` for the new fork thread and identifies its parent with `forked_from_id`; `payload.session_id` is not a stable cross-version fork join key. Every join is qualified by verified host.
 
 ### Coverage interval: accounting evidence and unresolved correlation
 
-One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its live total equals the sum of the rollout `last_token_usage` records between that invocation's `task_started` and `task_complete` (fixture: 19404 + 19541 = 38945 input, 112 + 5 = 117 output). `exec resume` restarts the total, so each invocation maps to its own `task_started`…`task_complete` span in the same rollout file. Rollout spans have a native key: `task_started`/`task_complete` both carry `payload.turn_id` (e.g. `01a0d1da-dba9-…` and `01a0d1da-f7cb-…` in `rollout-exec-resume.jsonl`). Match on verified host + thread ID + span; equal token sums are a consistency check, not the identity.
+One `codex exec` invocation emits one `turn.completed` in the paired captures. The older 0.152.1 fixture reports a per-invocation live total, including its resume. **Codex 0.158.0 changed that accounting scope:** its resume live total includes both parent turns, and its fork live total includes both parent turns plus the new fork turn. The per-request rollout `token_usage_record.usage` and `event_msg/token_count.info.last_token_usage` remain turn-local; `thread_token_usage` and live `turn.completed.usage` are cumulative. Rollout spans have a native `turn_id` in `task_started`/`task_complete` and `token_usage_record`. Equal token sums are a consistency check, not identity.
 
-The captures prove session identity and matching accounting totals, but not an automatic live-to-span join: live `turn.started` carries no turn ID, and `turn.completed` carries usage without a turn ID. A generated invocation UUID does not establish a rollout span. **Readiness gate owned by ENH-3655:** specify and prove how each live invocation acquires an exact rollout span, including resume, concurrent/ambiguous activity, incomplete transcripts and compaction. No timestamp-nearness, matching-count or run-ID heuristic may certify the join. If producer evidence cannot establish it, keep coverage unresolved; do not declare the complete-match criterion satisfied by synthetic IDs alone.
+The captures prove thread identity and cumulative accounting relationships, but not an automatic live-to-span join: live `turn.started` and `turn.completed` carry no `turn_id` or response ID. A generated invocation UUID does not establish a rollout span. **ENH-3655 verdict: REFUTED for the proposed raw positional-sum join on 0.158.0.** Its versioned exec/resume/fork fixtures and spike test are in `scripts/tests/fixtures/codex/` and `scripts/tests/spike/test_codex_live_rollout_join.py`. Even a version-aware cumulative delta would be arithmetic consistency only. No timestamp-nearness, matching-count, ordering, or run-ID heuristic may certify identity; absent producer correlation, keep coverage unresolved.
 
-**ENH-3655 runs the spike now (2026-09-29).** It is unblocked by ENH-3532 and ENH-3647 and must not gate ENH-3647. Scope spans **by thread** (`payload.id`, ENH-3532 gate 1 rule c), never by a `session_id` that forks share with their parent; cross-check each span against `turn_id`; and add a current-version `exec --json` capture, since fixture-only evidence is from 0.152.1 while current producers are 0.154+ (which also emit `token_usage_record` with `turn_id`/`response_id` — check whether that removes the need for an ordering join).
+**ENH-3655 completed the spike evidence on 2026-09-29.** Scope spans by verified `(host, thread_id)` using `session_meta.payload.id`, and cross-check each rollout span's `turn_id`. The 0.158.0 `token_usage_record` has a `turn_id` and `response_id`, but neither field appears in the live JSON stream; this producer addition does not bridge the live-to-span identity gap. The fork's inherited usage also makes a thread-local raw live total unsuitable as a standalone interval total.
 
-**Candidate join evaluated by ENH-3655:** per verified `(host, thread_id)`, order live invocations by local capture order and rollout spans by native `ordinal` within each verified stream (ordinals are monotonic across `exec resume` within one file: the two spans in `rollout-exec-resume.jsonl` occupy ordinals 1–19 and 21–28). Accept the join only when (a) the thread's live invocation count equals its completed-span count, (b) every span is closed by `task_complete`, and (c) each positional pair's sums match. Any failure — including interactive TUI turns in the same thread that add spans without live rows — leaves the whole thread `overlap_unresolved`. The spike determines whether (a)–(c) suffice or whether an ordering hazard (concurrent `exec resume` on one thread) defeats the join. If it refutes the join and no producer field exists, ship the selector with conservative unresolved behavior only and record complete-match criteria as blocked on producer evidence.
+**Conservative selector contract:** a verified host/thread pair and closed native-ordinal rollout spans are necessary but insufficient. Counts, order, and raw sums already fail for the 0.158.0 resume/fork. Equal deltas after version-aware correction would still be insufficient under missing history, interactive extra turns, concurrent resume, or compaction/window reset. Until live output exposes a native `turn_id`/response ID or another producer-backed mapping, return `overlap_unresolved`; do not suppress either channel. The complete-match criterion is blocked on producer evidence, while the unresolved selector can ship.
 
 ### Selection policy
 
-1. Complete matched coverage: select the rollout request set and suppress the matching live total. Keep per-channel subtotals for audit.
-2. Only the live total covers the verified interval: select it.
+1. Complete matched coverage, if a future producer-backed identity becomes available: select the rollout request set and suppress the matching live total. Keep per-channel subtotals for audit.
+2. Only a live observation proven to cover its own verified interval may be selected as consumption; 0.158.0 cumulative resume/fork totals do not qualify without a proven scope conversion.
 3. Partial rollout coverage, unmatched legacy live rows, conflicting sums, ambiguous spans, uncertain `token_usage_record`/`token_count` overlap inside a mixed rollout, or mid-invocation compaction (never captured): `coverage='overlap_unresolved'` or `unknown`, with a reason. Do not drop a whole session's live rows because some rollout row exists, or certify a rollout request set while its internal old/new-shape coverage is uncertain.
 4. Anything unresolved retains an **unreconciled observation sum** and per-channel subtotals for audit (ENH-3528's observation contract), with unknown aggregate provenance. That sum is not a canonical consumption total, cost/waste total or cache-hit-rate numerator/denominator. Canonical totals and derived rates for the unresolved coverage group are unavailable (`NULL`/`None`) with a reason. Independent proven coverage groups may contribute a labelled known subtotal, but an aggregate containing unresolved groups is partial and must not present that subtotal as a complete total. Cost/waste/export may not bypass this qualification with direct all-row sums. ENH-3549 applies the same rule to the Codex single-session cache rate before its stored-reader cutover.
 
@@ -87,6 +88,10 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 - **Out of scope**: live identity capture (ENH-3647); rollout ingestion (ENH-3532); Claude live/transcript reconciliation; ENH-3528's rendering contract.
 
 ## Program Design
+
+### Implementation deviation
+
+`select_usage_coverage` exposes selected and audit rows for diagnostics; `select_usage_observations` delegates to it. Both entry points use one reconciliation policy.
 
 ### Types
 
@@ -123,23 +128,30 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 
 ## Acceptance Criteria
 
-- [ ] ENH-3655's producer-backed result is recorded and applied: only proven live invocation-to-rollout span joins suppress a counterpart; refuted or ambiguous joins remain unresolved, including resume and concurrent same-session activity.
-- [ ] Existing session/invocation columns are reused; old schemas and unverified legacy identities retain conservative behavior.
-- [ ] Selected request rows preserve verified run/state/invocation attribution; conflicting attribution is qualified, and per-state cost/waste totals remain consistent.
-- [ ] Date-window boundaries, model filters and `require_run_id` cannot create false completeness; tests cover counterpart rows outside the reporting window and initially unattributed requests.
-- [ ] Built-in dashboard aggregation and exported-snapshot queries use a materialized selected representation and agree with source selection, canonical totals, qualification and audit subtotals for matched (if ENH-3655 proves the join), partial and unresolved cases, without leaking private source identifiers. Arbitrary raw SQL is not mislabelled as selected accounting.
-- [ ] `select_usage_observations(..., host=..., session_id=...)` limits candidates to the verified host/thread pair and reconciles before report filtering; a single-session read never reports partial coverage as complete, and a same-ID row from another host never enters its totals.
-- [ ] `quality_regressions.py` and `agent_quality._usage_totals` either read through the selector or stay channel-pinned, with tests asserting the chosen behavior for sessions holding live + rollout rows.
+- [x] ENH-3655's producer-backed result is recorded and applied: only proven live invocation-to-rollout span joins suppress a counterpart; refuted or ambiguous joins remain unresolved, including resume and concurrent same-session activity.
+- [x] Existing session/invocation columns are reused; old schemas and unverified legacy identities retain conservative behavior.
+- [x] Selected request rows preserve verified run/state/invocation attribution; conflicting attribution is qualified, and per-state cost/waste totals remain consistent.
+- [x] Date-window boundaries, model filters and `require_run_id` cannot create false completeness; tests cover counterpart rows outside the reporting window and initially unattributed requests.
+- [x] Built-in dashboard aggregation and exported-snapshot queries use a materialized selected representation and agree with source selection, canonical totals, qualification and audit subtotals for matched (if ENH-3655 proves the join), partial and unresolved cases, without leaking private source identifiers. Arbitrary raw SQL is not mislabelled as selected accounting.
+- [x] `select_usage_observations(..., host=..., session_id=...)` limits candidates to the verified host/thread pair and reconciles before report filtering; a single-session read never reports partial coverage as complete, and a same-ID row from another host never enters its totals.
+- [x] `quality_regressions.py` and `agent_quality._usage_totals` either read through the selector or stay channel-pinned, with tests asserting the chosen behavior for sessions holding live + rollout rows.
 
-- [ ] Matching uses verified host + thread ID + turn span, never root/parent ID, run ID, timestamp proximity or equal counts alone; a sum mismatch downgrades to unresolved.
-- [ ] Complete matched coverage counts once; partial coverage, unmatched legacy rows, and conflicting or ambiguous observations stay qualified with channel subtotals.
-- [ ] Unresolved coverage retains audit observation sums/subtotals but yields no canonical numeric total or derived rate for that group; independent proven groups remain countable as a labelled known subtotal, never a complete aggregate when unresolved groups are present. The Codex single-session cache-rate consumer in ENH-3549 uses this same qualification.
-- [ ] A mixed rollout containing new-shape records and old-shape-only or ambiguous `token_count` events retains audit evidence; file-wide suppression cannot make incomplete request coverage appear complete.
-- [ ] Usage, cost, waste and shareable-export tests assert the same selection/qualification, retaining ENH-3528's unreconciled-sum fallback for audit only while withholding a canonical total for unresolved coverage.
+- [x] Matching uses verified host + thread ID + turn span, never root/parent ID, run ID, timestamp proximity or equal counts alone; a sum mismatch downgrades to unresolved.
+- [x] Complete matched coverage counts once; partial coverage, unmatched legacy rows, and conflicting or ambiguous observations stay qualified with channel subtotals.
+- [x] Unresolved coverage retains audit observation sums/subtotals but yields no canonical numeric total or derived rate for that group; independent proven groups remain countable as a labelled known subtotal, never a complete aggregate when unresolved groups are present. The Codex single-session cache-rate consumer in ENH-3549 uses this same qualification.
+- [x] A mixed rollout containing new-shape records and old-shape-only or ambiguous `token_count` events retains audit evidence; file-wide suppression cannot make incomplete request coverage appear complete.
+- [x] Usage, cost, waste and shareable-export tests assert the same selection/qualification, retaining ENH-3528's unreconciled-sum fallback for audit only while withholding a canonical total for unresolved coverage.
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Done** | Created: 2026-09-24 | Priority: P2
+
+## Implementation Evidence (2026-09-29)
+
+- The shared `select_usage_coverage` API classifies verified host/thread groups from the full candidate set before applying `since` or `require_run_id`. `CoverageSelection` exposes audit and canonical-eligible rows plus per-group coverage, reason, and channel subtotals. `select_usage_observations` delegates and returns annotated audit rows; no positional, count, timestamp, or local-invocation heuristic joins live to rollout.
+- A live Codex row with unknown cumulative scope, an old-shape rollout request with unverified native request identity, or a live/rollout pair remains `unknown`/`overlap_unresolved`. Such groups have no canonical selected rows; raw observations and per-channel subtotals remain available for audit. Usage, cost, and waste readers return `None` for canonical totals/rates if their report group includes unresolved coverage. Quality composition and cost-per-issue stay pinned to transcript rows.
+- Stored 0.158.0 rollout plus live fixture tests cover full and filtered overlap, old-shape requests, mixed native/old requests, missing closed turn, a live-only unknown scope, verified paired host/session selection, and state-level cost/waste suppression. Snapshot/dashboard materialization is being integrated separately through the same `CoverageSelection` API.
+- Focused verification: 107 selector, provenance, history, and issue-quality tests passed; 4 legacy `ctx_stats` tests were excluded while their concurrent stored-reader cutover is updated by the coordinating agent. Ruff, formatting, and targeted mypy passed. The full suite and export integration are pending root integration.
 
 ---
 
@@ -166,5 +178,22 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Broad blast radius: usage, cost, waste and export must preserve one selection/qualification contract through `select_usage_observations`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:41 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:02:49 - `f35cbaf1-740e-46e5-84c9-0ecf04a645f4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:58 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Shared coverage selection now qualifies source reports and shareable dashboard snapshots; unresolved overlap retains audit subtotals without a canonical total.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.

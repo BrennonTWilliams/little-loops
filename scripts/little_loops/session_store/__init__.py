@@ -107,6 +107,7 @@ from little_loops.session_store.lifecycle import (
     backfill_incremental,
     backfill_raw_events,
     backfill_snapshots,
+    backfill_usage_incremental,
     compact,
     compact_session,
     compact_session_with_reasoning,
@@ -115,6 +116,8 @@ from little_loops.session_store.lifecycle import (
     rebuild,
     recompress_raw_events,
     record_retirement,
+    refresh_usage_source,
+    usage_source_freshness,
 )
 from little_loops.session_store.omp import normalize_omp_session
 from little_loops.session_store.queries import (
@@ -245,6 +248,9 @@ __all__ = [
     "backfill_snapshots",
     "backfill_incremental",
     "backfill_raw_events",
+    "backfill_usage_incremental",
+    "refresh_usage_source",
+    "usage_source_freshness",
     "recompress_raw_events",
     "rebuild",
     "compact",

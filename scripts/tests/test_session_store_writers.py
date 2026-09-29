@@ -518,8 +518,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 55
-        assert int(row[0]) == 55
+        assert SCHEMA_VERSION == 58
+        assert int(row[0]) == 58
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -684,7 +684,9 @@ class TestCliEventContext:
         monkeypatch.delenv("LL_HISTORY_DB", raising=False)
 
         def _must_not_resolve(*_a: object, **_k: object) -> Path:
-            raise AssertionError("resolve_history_store must not run when LL_ANALYTICS_CAPTURE is set")
+            raise AssertionError(
+                "resolve_history_store must not run when LL_ANALYTICS_CAPTURE is set"
+            )
 
         def _must_not_connect(*_a: object, **_k: object) -> sqlite3.Connection:
             raise AssertionError("connect must not run when LL_ANALYTICS_CAPTURE is set")
@@ -1383,7 +1385,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 55
+        assert SCHEMA_VERSION == 58
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1513,7 +1515,7 @@ class TestPrepatchEvidence:
     """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
 
     def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 55
+        assert SCHEMA_VERSION == 58
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 39)
         ensure_db(db)
@@ -1852,7 +1854,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 55
+        assert SCHEMA_VERSION == 58
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -2094,7 +2096,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 55
+        assert SCHEMA_VERSION == 58
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)

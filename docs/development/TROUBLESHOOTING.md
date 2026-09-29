@@ -1162,11 +1162,11 @@ there's nothing to record there.
      }
    }
    ```
-2. Check state file is updating (watch both heuristic and transcript-baseline counts):
+2. Check the estimate, baseline, and freshness labels:
    ```bash
-   watch -n 1 'cat .ll/ll-context-state.json | jq "{estimated_tokens, transcript_baseline_tokens}"'
+   watch -n 1 'jq "{estimated_tokens, estimate_reason, transcript_baseline_tokens, baseline_observed_at, estimate_updated_at, stale, stale_reason, context_boundary}" .ll/ll-context-state.json'
    ```
-   The context monitor (`hooks/scripts/context-monitor.sh`) uses `transcript_baseline_tokens` when non-zero, otherwise pure heuristics. A leftover `result_token_count` key from an older version is ignored.
+   The context monitor (`hooks/scripts/context-monitor.sh`) uses `transcript_baseline_tokens` when non-zero, otherwise pure heuristics. `estimated_tokens` always includes heuristic overhead and is labelled `estimated`. A tool call updates `estimate_updated_at` without refreshing `baseline_observed_at`; compaction keeps an older baseline stale until a new valid transcript read. Older state files have unknown freshness. A leftover `result_token_count` key from an older version is ignored.
 3. Verify PostToolUse hook is running:
    ```bash
    # Add this to context-monitor.sh temporarily for debugging

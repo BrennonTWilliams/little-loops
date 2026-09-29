@@ -9,7 +9,7 @@
 # This script is belt-and-suspenders: it uses the estimated_tokens from the
 # state file (which PostToolUse updates throughout the session) as a fallback.
 #
-# Sentinel format: {"written_at":"...","token_count":N,"context_limit":N,"usage_percent":N}
+# Sentinel carries the estimated occupancy and its state-file freshness metadata.
 # Consumed by: run_with_continuation() in issue_manager.py / worker_pool.py
 # NOT deleted by: session-cleanup.sh (intentionally excluded from rm -f list)
 #
@@ -71,8 +71,24 @@ USAGE_PERCENT=$((TOKEN_COUNT * 100 / CONTEXT_LIMIT))
 # Write sentinel if above threshold
 if [ "$USAGE_PERCENT" -ge "$SENTINEL_THRESHOLD" ]; then
     mkdir -p "$(dirname "$SENTINEL_FILE")" 2>/dev/null || true
-    printf '{"written_at":"%s","token_count":%d,"context_limit":%d,"usage_percent":%d}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TOKEN_COUNT" "$CONTEXT_LIMIT" "$USAGE_PERCENT" \
+    jq -n \
+        --slurpfile state "$STATE_FILE" \
+        --arg written_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --argjson token_count "$TOKEN_COUNT" \
+        --argjson context_limit "$CONTEXT_LIMIT" \
+        --argjson usage_percent "$USAGE_PERCENT" \
+        '($state[0] // {}) as $s |
+         {written_at: $written_at, token_count: $token_count,
+          context_limit: $context_limit, usage_percent: $usage_percent,
+          metric: "context_occupancy_tokens", scope_kind: "context",
+          session_id: ($s.session_id // null), provenance: "estimated",
+          estimate_reason: ($s.estimate_reason // "legacy_state_unknown_estimator"),
+          baseline_observed_at: ($s.baseline_observed_at // null),
+          estimate_updated_at: ($s.estimate_updated_at // null),
+          baseline_observation_boundary: ($s.baseline_observation_boundary // null),
+          context_boundary: ($s.context_boundary // null),
+          stale: (if ($s.stale | type) == "boolean" then $s.stale else null end),
+          stale_reason: ($s.stale_reason // "unknown_baseline_freshness")}' \
         > "$SENTINEL_FILE" 2>/dev/null || true
 fi
 

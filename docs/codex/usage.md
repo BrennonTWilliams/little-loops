@@ -128,6 +128,29 @@ for the complementary `codex exec --json` stdout source. Captured real-shape
 fixtures live at `scripts/tests/fixtures/codex/` with a re-capture rule keyed
 to `cli_version`.
 
+Full `ll-session rebuild` also writes Codex rollout requests to
+`usage_events` with `channel='rollout'` (ENH-3532). Codex 0.158.0 emits a
+`token_usage_record` carrying a native `response_id` and `turn_id` immediately
+before its matching legacy `token_count`; replay stores that request once.
+Older `token_count`-only requests remain `provenance='unknown'` because their
+cross-file request identity is unproven. Native ordinal and physical line are
+stored separately. The rollout `session_id` is the thread's own
+`session_meta.payload.id`, including on a fork; `forked_from_id` is ancestry,
+not the usage row's thread ID. A rebuild preserves live rows and replaces
+rollout rows transactionally. Current live `turn.completed` output has no
+native turn/response ID, so live and rollout overlap remains unresolved until
+a producer-backed join is available (ENH-3655/ENH-3543).
+
+Live `codex exec --json` usage also carries the host-observed thread ID from
+`thread.started.thread_id` in `usage_events.session_id`, with
+`identity_basis='host_observed'`. Each process gets a separate, locally
+generated `invocation_id`; it is a correlation ID, not a native Codex request
+ID. The 0.158.0 resume and fork captures show cumulative live totals across
+prior turns, so these live rows use `scope_kind='unknown'`. They remain separate
+observations from the rollout request rows. The shared coverage selector keeps
+raw rows and per-channel subtotals for audit, but reports no canonical
+token/cost total when their overlap or request identity is unresolved.
+
 ---
 
 ## Current Limitations
@@ -183,7 +206,7 @@ Separately, the FSM evaluators append an inline `--json-schema` flag directly to
 
 ### Hook intents without consumers
 
-`stop`, `post_compact`, and `permission_request` events fire in Codex but have no little-loops consumer today. These hooks are intentionally absent from `.codex/hooks.json`.
+`post_compact` and `permission_request` events fire in Codex but have no little-loops consumer today. These hooks are intentionally absent from `.codex/hooks.json`. `Stop` schedules a detached stored-usage refresh from the supplied native rollout path after each completed turn.
 
 ---
 

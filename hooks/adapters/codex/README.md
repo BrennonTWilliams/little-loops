@@ -36,7 +36,7 @@ Ensure `little_loops` is installed in the Python interpreter on `PATH`
 | `PostToolUse`                  | `post_tool_use` | `python -m little_loops.hooks post_tool_use`   | Implemented (fire-and-forget via ≤5s timeout) |
 | `UserPromptSubmit`             | `user_prompt_submit` | `python -m little_loops.hooks user_prompt_submit` | Implemented |
 | `PermissionRequest`            | —               | —                                              | Deferred — hook can return `allow`/`deny`; no current consumer |
-| `Stop`                         | —               | —                                              | Deferred |
+| `Stop`                         | `usage_stop`    | `python -m little_loops.hooks usage_stop`      | Refreshes native rollout usage after the turn (ENH-3549) |
 
 This mapping conforms to the `LLHookEvent` contract introduced by
 [FEAT-1116](../../../.issues/features/P3-FEAT-1116-hook-intent-abstraction-layer.md)

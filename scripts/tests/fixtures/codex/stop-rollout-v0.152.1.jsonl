@@ -1,0 +1,2 @@
+{"timestamp":"2026-09-29T07:37:07.874Z","type":"session_meta","payload":{"id":"01a0ec18-8f93-7c13-87e9-11fe5eee0ad5"}}
+{"timestamp":"2026-09-29T07:37:12.109Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":19379,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":19384}}}}

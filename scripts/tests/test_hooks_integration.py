@@ -195,6 +195,98 @@ class TestContextMonitor:
         assert state["transcript_baseline_tokens"] == 0
         # Heuristic estimate should still be non-zero
         assert state["estimated_tokens"] > 0
+        assert state["provenance"] == "estimated"
+        assert state["estimate_reason"] == "heuristic_accumulation"
+        assert state["baseline_observed_at"] is None
+        assert state["stale"] is None
+        assert state["stale_reason"] == "no_measured_baseline"
+
+    def test_occupancy_metadata_tracks_baseline_and_tool_activity(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A cached baseline stays at its observation time while estimates advance."""
+        monkeypatch.chdir(tmp_path)
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 5000}}}) + "\n"
+        )
+        state_file = tmp_path / "ll-context-state.json"
+        hook_input = json.dumps(
+            {
+                "tool_name": "Read",
+                "tool_response": {"content": "one\ntwo"},
+                "transcript_path": str(transcript),
+                "session_id": "session-1",
+            }
+        )
+        for _ in range(2):
+            result = subprocess.run(
+                [str(hook_script)], input=hook_input, capture_output=True, text=True, timeout=6
+            )
+            assert result.returncode == 0, result.stderr
+            state = json.loads(state_file.read_text())
+            assert state["metric"] == "context_occupancy_tokens"
+            assert state["scope_kind"] == "context"
+            assert state["session_id"] == "session-1"
+            assert state["provenance"] == "estimated"
+            assert state["estimate_reason"] == "transcript_baseline_plus_heuristic"
+            assert state["stale"] is True
+            assert state["stale_reason"] == "tool_activity_after_baseline"
+            assert state["baseline_observed_at"]
+            assert state["estimate_updated_at"]
+            assert state["baseline_observation_boundary"] == state["last_baseline_mtime"]
+            if state["tool_calls"] == 1:
+                baseline_time = state["baseline_observed_at"]
+            else:
+                assert state["baseline_observed_at"] == baseline_time
+
+    def test_occupancy_compaction_keeps_old_baseline_stale(
+        self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Compaction does not turn an old transcript baseline into a new measurement."""
+        monkeypatch.chdir(tmp_path)
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 5000}}}) + "\n"
+        )
+        hook_input = json.dumps(
+            {
+                "tool_name": "Read",
+                "tool_response": {"content": "x"},
+                "transcript_path": str(transcript),
+            }
+        )
+
+        def run_hook() -> dict:
+            result = subprocess.run(
+                [str(hook_script)], input=hook_input, capture_output=True, text=True, timeout=6
+            )
+            assert result.returncode == 0, result.stderr
+            return json.loads((tmp_path / "ll-context-state.json").read_text())
+
+        first = run_hook()
+        (tmp_path / ".ll" / "ll-precompact-state.json").write_text(
+            json.dumps({"compacted_at": "2026-09-29T12:00:00Z"})
+        )
+        second = run_hook()
+        assert second["baseline_observed_at"] == first["baseline_observed_at"]
+        assert second["stale"] is True
+        assert second["stale_reason"] == "compaction_after_baseline"
+        assert second["context_boundary"] == "2026-09-29T12:00:00Z"
+
+        # A new valid transcript read crosses the observation boundary. This
+        # PostToolUse event still adds an estimated delta after that measurement.
+        import os
+
+        transcript.write_text(
+            json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 6000}}}) + "\n"
+        )
+        bumped = os.stat(transcript).st_mtime + 10
+        os.utime(transcript, (bumped, bumped))
+        third = run_hook()
+        assert third["baseline_observation_boundary"] != first["baseline_observation_boundary"]
+        assert third["baseline_context_boundary"] == "2026-09-29T12:00:00Z"
+        assert third["stale_reason"] == "tool_activity_after_baseline"
 
     def test_state_file_corruption_resistance(
         self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -3045,6 +3137,12 @@ class TestContextHandoffSentinel:
             "result_token_count": 0,
             "handoff_complete": False,
             "context_limit": 200000,
+            "session_id": "session-1",
+            "estimate_reason": "transcript_baseline_plus_heuristic",
+            "baseline_observed_at": "2026-09-29T12:00:00Z",
+            "estimate_updated_at": "2026-09-29T12:00:05Z",
+            "stale": True,
+            "stale_reason": "tool_activity_after_baseline",
         }
         (tmp_path / ".ll" / "ll-context-state.json").write_text(json.dumps(state))
 
@@ -3067,6 +3165,12 @@ class TestContextHandoffSentinel:
         data = json.loads(sentinel_file.read_text())
         assert data["usage_percent"] >= 50
         assert data["token_count"] == 150000
+        assert data["metric"] == "context_occupancy_tokens"
+        assert data["provenance"] == "estimated"
+        assert data["session_id"] == "session-1"
+        assert data["stale"] is True
+        assert data["stale_reason"] == "tool_activity_after_baseline"
+        assert "result_token_count" not in data
 
     def test_sentinel_not_written_below_threshold(
         self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

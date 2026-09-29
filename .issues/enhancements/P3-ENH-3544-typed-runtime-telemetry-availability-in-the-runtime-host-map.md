@@ -3,11 +3,12 @@ id: ENH-3544
 type: ENH
 title: Typed runtime telemetry availability in the runtime host map
 priority: P3
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
+completed_at: '2026-09-29T08:22:42Z'
 captured_at: '2026-09-24T17:40:14Z'
 labels:
 - observability
@@ -92,16 +93,36 @@ Required host coverage is the production registry excluding `TEST_ONLY_HOSTS` (c
 
 ## Acceptance Criteria
 
-- [ ] The closed metric/channel vocabulary and required matrix are documented; missing pairs, duplicate pairs, and unknown keys fail verification.
-- [ ] Tests distinguish unsupported from uninvestigated and native capability from ingestion support; supported claims carry version/channel evidence.
-- [ ] Test-only hosts are explicitly excluded, and a newly registered production host without telemetry entries fails.
-- [ ] A deterministic typed-map-to-report summary covers partial metric/channel support; doctor does not imply unsupported ingestion means the producer lacks usage.
+- [x] The closed metric/channel vocabulary and required matrix are documented; missing pairs, duplicate pairs, and unknown keys fail verification.
+- [x] Tests distinguish unsupported from uninvestigated and native capability from ingestion support; supported claims carry version/channel evidence.
+- [x] Test-only hosts are explicitly excluded, and a newly registered production host without telemetry entries fails.
+- [x] A deterministic typed-map-to-report summary covers partial metric/channel support; doctor does not imply unsupported ingestion means the producer lacks usage.
 
-- [ ] Every runtime host has explicit entries for each metric/channel; `ll-verify-host-map` fails when a host is missing.
-- [ ] `token_reporting` agrees with the typed map (test).
-- [ ] `ll-doctor` output is unchanged or updated with its tests.
-- [ ] `docs/reference/HOST_COMPATIBILITY.md` documents the map.
+- [x] Every runtime host has explicit entries for each metric/channel; `ll-verify-host-map` fails when a host is missing.
+- [x] `token_reporting` agrees with the typed map (test).
+- [x] `ll-doctor` output is unchanged or updated with its tests.
+- [x] `docs/reference/HOST_COMPATIBILITY.md` documents the map.
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Done** | Created: 2026-09-24 | Priority: P3
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- The typed eight-host telemetry map, verifier, doctor summary and compatibility reference are in place.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:42 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`

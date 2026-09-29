@@ -16,10 +16,15 @@ from little_loops.cli.verify_host_map import (
 from little_loops.host_runner import (
     _HOST_RUNNER_REGISTRY,
     RUNTIME_HOST_CAPABILITIES,
+    TELEMETRY_CHANNELS,
+    TELEMETRY_METRICS,
     TEST_ONLY_HOSTS,
     CapabilityEntry,
     HostCapabilities,
     RuntimeHostEntry,
+    TelemetryCapability,
+    telemetry_matrix,
+    token_reporting_summary,
 )
 
 
@@ -87,6 +92,111 @@ class TestCheckRuntimeContradiction:
         # (FEAT-3454) are exempt: they source capabilities from their own
         # constructor, not this map.
         assert set(RUNTIME_HOST_CAPABILITIES) == set(_HOST_RUNNER_REGISTRY) - TEST_ONLY_HOSTS
+
+    def test_each_production_host_has_complete_telemetry_matrix(self) -> None:
+        pairs = {
+            (metric, channel) for metric in TELEMETRY_METRICS for channel in TELEMETRY_CHANNELS
+        }
+        for host, entry in RUNTIME_HOST_CAPABILITIES.items():
+            assert {(item.metric, item.channel) for item in entry.telemetry} == pairs, host
+            assert len(entry.telemetry) == len(pairs), host
+
+    def test_test_only_hosts_do_not_require_telemetry(self) -> None:
+        assert TEST_ONLY_HOSTS.isdisjoint(RUNTIME_HOST_CAPABILITIES)
+        assert _check_runtime_contradiction() == []
+
+    def test_new_production_host_without_telemetry_fails(self) -> None:
+        flags = HostCapabilities()
+
+        class NewRunner:
+            capabilities = flags
+
+        registry = dict(_HOST_RUNNER_REGISTRY)
+        registry["new-host"] = NewRunner
+        runtime = dict(RUNTIME_HOST_CAPABILITIES)
+        runtime["new-host"] = RuntimeHostEntry("new-host", "new-host", flags)
+        with (
+            patch("little_loops.cli.verify_host_map._HOST_RUNNER_REGISTRY", registry),
+            patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", runtime),
+        ):
+            errors = _check_runtime_contradiction()
+        assert any("new-host" in error and "telemetry" in error for error in errors)
+
+    def test_missing_duplicate_and_unknown_telemetry_pairs_fail(self) -> None:
+        real = RUNTIME_HOST_CAPABILITIES["gemini"]
+        sample = real.telemetry[0]
+        variants = (
+            real.telemetry[1:],
+            real.telemetry + (sample,),
+            real.telemetry[1:] + (dataclasses.replace(sample, metric="surprise"),),
+            real.telemetry[1:] + (dataclasses.replace(sample, channel="surprise"),),
+            real.telemetry[1:] + (dataclasses.replace(sample, availability="surprise"),),
+        )
+        for variant in variants:
+            runtime = dict(RUNTIME_HOST_CAPABILITIES)
+            runtime["gemini"] = dataclasses.replace(real, telemetry=variant)
+            with patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", runtime):
+                assert any(
+                    "gemini" in error and "telemetry" in error
+                    for error in _check_runtime_contradiction()
+                )
+
+    def test_token_reporting_summary_parity_fails_on_conflicting_explicit_row(self) -> None:
+        real = RUNTIME_HOST_CAPABILITIES["gemini"]
+        runtime = dict(RUNTIME_HOST_CAPABILITIES)
+        runtime["gemini"] = dataclasses.replace(
+            real, report_rows=real.report_rows + (CapabilityEntry("token_reporting", "full"),)
+        )
+        with patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", runtime):
+            errors = _check_runtime_contradiction()
+        assert any("gemini" in error and "token_reporting" in error for error in errors)
+
+    def test_partial_and_unsupported_are_distinct_from_unknown(self) -> None:
+        unknown = telemetry_matrix()
+        assert token_reporting_summary(unknown) == "unknown"
+        one = TelemetryCapability("input_tokens", "live", "supported", "versioned capture")
+        partial = telemetry_matrix(one)
+        assert token_reporting_summary(partial) == "partial"
+        all_absent = tuple(
+            dataclasses.replace(item, availability="unsupported") for item in unknown
+        )
+        assert token_reporting_summary(all_absent) == "unsupported"
+
+    def test_matrix_builder_rejects_duplicate_and_unknown_overrides(self) -> None:
+        item = TelemetryCapability("input_tokens", "live", "supported", "versioned capture")
+        for overrides in (
+            (item, item),
+            (dataclasses.replace(item, metric="surprise"),),
+            (dataclasses.replace(item, channel="surprise"),),
+            (dataclasses.replace(item, availability="surprise"),),
+        ):
+            try:
+                telemetry_matrix(*overrides)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("invalid telemetry overrides must fail")
+
+    def test_supported_telemetry_requires_evidence_note(self) -> None:
+        real = RUNTIME_HOST_CAPABILITIES["codex"]
+        runtime = dict(RUNTIME_HOST_CAPABILITIES)
+        runtime["codex"] = dataclasses.replace(
+            real, telemetry=(dataclasses.replace(real.telemetry[0], note=None), *real.telemetry[1:])
+        )
+        with patch("little_loops.cli.verify_host_map.RUNTIME_HOST_CAPABILITIES", runtime):
+            errors = _check_runtime_contradiction()
+        assert any("codex" in error and "evidence note" in error for error in errors)
+
+    def test_codex_supported_claims_name_version_and_channel_source(self) -> None:
+        supported = (
+            item
+            for item in RUNTIME_HOST_CAPABILITIES["codex"].telemetry
+            if item.availability == "supported"
+        )
+        for item in supported:
+            assert item.note is not None and "0.152.1" in item.note
+            expected_source = "turn.completed" if item.channel == "live" else "token_count"
+            assert expected_source in item.note
 
     def test_flags_missing_runtime_entry(self) -> None:
         bad_map = dict(RUNTIME_HOST_CAPABILITIES)
@@ -171,6 +281,7 @@ class TestCheckRuntimeContradiction:
             binary="fixturehost",
             flags=fixture_flags,
             report_rows=(CapabilityEntry("streaming", "full"),),
+            telemetry=telemetry_matrix(),
         )
         bad_registry = dict(_HOST_RUNNER_REGISTRY)
         bad_registry["fixturehost"] = _FixtureRunner

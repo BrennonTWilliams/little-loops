@@ -20,6 +20,7 @@ function bodies, so neither module can import the other at module-load time.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import sqlite3
@@ -33,6 +34,7 @@ import little_loops.session_store as _pkg
 from little_loops.host_runner import project_child_env, resolve_host
 from little_loops.session_store.backend import (
     HistoryError,
+    connect_readonly,
     refuse_on_remote,
     translate_sqlite_errors,
 )
@@ -59,6 +61,7 @@ from little_loops.session_store.writers import (
     _iter_events,
     _now,
     _pack_payload,
+    _unpack_payload,
     host_layout_for,
     mine_corrections_from_messages,
 )
@@ -771,8 +774,9 @@ def _backfill_sessions(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cu
 _REMOTE_INSERT_CHUNK = 200
 _REMOTE_RAW_INSERT = (
     "INSERT OR IGNORE INTO raw_events"
-    "(ts, session_id, host, host_basis, source_path, line_no, event_type, raw_line, parsed_json)"
-    " SELECT ?, ?, ?, 'handle', ?, ?, ?, ?, ?"
+    "(ts, session_id, host, host_basis, source_path, line_no, ordinal, event_type,"
+    " raw_line, parsed_json, usage_contract)"
+    " SELECT ?, ?, ?, 'handle', ?, ?, ?, ?, ?, ?, ?"
     " WHERE NOT EXISTS (SELECT 1 FROM raw_events WHERE session_id IS ? AND line_no = ?)"
 )
 
@@ -819,6 +823,8 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
     are both the re-serialized ``event.payload`` (D6) — no longer verbatim
     for per-line hosts, but JSON-equal to the parser's own output.
     """
+    from little_loops.session_store.claude_usage import claude_transcript_contract
+
     remote = not hasattr(conn, "create_function")
     count = 0
     pending: list[tuple[Any, ...]] = []
@@ -838,6 +844,9 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
         for event in iter_events(handle):
             serialized = json.dumps(event.payload)
             session_id = event.payload.get("sessionId") or handle.session_id
+            usage_contract = claude_transcript_contract(
+                event.payload, host=handle.host, host_basis="handle"
+            )
             packed = _pack_payload(serialized)
             if remote:
                 pending.append(
@@ -847,9 +856,11 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
                         handle.host,
                         source_path,
                         event.line_no,
+                        event.ordinal,
                         event.type or "unknown",
                         packed,
                         packed,
+                        usage_contract,
                         session_id,
                         event.line_no,
                     )
@@ -859,18 +870,20 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
                 continue
             cur = conn.execute(
                 "INSERT OR IGNORE INTO raw_events"
-                "(ts, session_id, host, host_basis, source_path, line_no, event_type,"
-                " raw_line, parsed_json)"
-                " VALUES(?, ?, ?, 'handle', ?, ?, ?, ?, ?)",
+                "(ts, session_id, host, host_basis, source_path, line_no, ordinal, event_type,"
+                " raw_line, parsed_json, usage_contract)"
+                " VALUES(?, ?, ?, 'handle', ?, ?, ?, ?, ?, ?, ?)",
                 (
                     event.timestamp,
                     session_id,
                     handle.host,
                     source_path,
                     event.line_no,
+                    event.ordinal,
                     event.type or "unknown",
                     packed,
                     packed,
+                    usage_contract,
                 ),
             )
             count += cur.rowcount
@@ -1019,6 +1032,457 @@ _REBUILD_TABLE_PREDICATES = {"usage_events": "channel IS NOT 'live'"}
 
 _REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction", "usage")
 
+# Bump when a usage normalizer's meaning changes, even without a DDL migration.
+# A mismatch causes one atomic replay of historical raw rows before tail work.
+_USAGE_DERIVE_VERSION = "enh3651-v1"
+
+
+def _usage_raw_cursor(
+    conn: sqlite3.Connection, where: str = "", params: tuple = ()
+) -> sqlite3.Cursor:
+    """Return replay rows with identity metadata in deterministic source order."""
+    return conn.execute(
+        "SELECT raw_line, source_path, host, host_basis, event_type, ts, "
+        "session_id, line_no, ordinal, usage_contract, id FROM raw_events "
+        + where
+        + " ORDER BY source_path, COALESCE(ordinal, line_no), line_no, id",
+        params,
+    )
+
+
+def _set_usage_derive_checkpoint(conn: sqlite3.Connection) -> None:
+    """Commit usage replay version and high-water mark with its derived rows."""
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
+    for key, value in (
+        ("usage_derive_version", _USAGE_DERIVE_VERSION),
+        ("usage_derive_raw_id", str(max_id)),
+    ):
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+
+def _derive_usage_incremental_conn(conn: sqlite3.Connection) -> int:
+    """Derive new replayable usage under an existing IMMEDIATE transaction."""
+    rows = dict(
+        conn.execute(
+            "SELECT key, value FROM meta WHERE key IN ('usage_derive_version', 'usage_derive_raw_id')"
+        ).fetchall()
+    )
+    checkpoint = int(rows.get("usage_derive_raw_id", "0"))
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
+    if rows.get("usage_derive_version") != _USAGE_DERIVE_VERSION or max_id < checkpoint:
+        # One-time first-enable or normalizer-upgrade catch-up. Legacy derived
+        # rows have no source link; replace them once while preserving live.
+        conn.execute("DELETE FROM usage_events WHERE channel IS NOT 'live'")
+        conn.execute("DELETE FROM search_index WHERE kind = 'usage'")
+        count = _backfill_usage_events(conn, _usage_raw_cursor(conn))
+    elif max_id == checkpoint:
+        return 0
+    else:
+        codex_sources = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT source_path FROM raw_events WHERE id > ? AND host = 'codex'",
+                (checkpoint,),
+            )
+        ]
+        count = 0
+        for source in codex_sources:
+            # Codex turn state can start before this slice. Reconstruct it from
+            # this source's stored prefix; do not rescan the JSONL file.
+            conn.execute(
+                "DELETE FROM usage_events WHERE channel = 'rollout' AND source_path = ?",
+                (source,),
+            )
+            conn.execute("DELETE FROM search_index WHERE kind = 'usage' AND anchor = ?", (source,))
+            count += _backfill_usage_events(
+                conn, _usage_raw_cursor(conn, "WHERE source_path = ?", (source,))
+            )
+        if codex_sources:
+            placeholders = ", ".join("?" for _ in codex_sources)
+            where = f"WHERE id > ? AND source_path NOT IN ({placeholders})"
+            params = (checkpoint, *codex_sources)
+        else:
+            where = "WHERE id > ?"
+            params = (checkpoint,)
+        count += _backfill_usage_events(conn, _usage_raw_cursor(conn, where, params))
+    _set_usage_derive_checkpoint(conn)
+    return count
+
+
+def backfill_usage_incremental(db: Path | str = DEFAULT_DB_PATH) -> int:
+    """Catch up replayable usage observations without rebuilding other caches."""
+    refuse_on_remote(db, "backfill_usage_incremental")
+    conn = _pkg.connect(db)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        count = _derive_usage_incremental_conn(conn)
+        conn.commit()
+        return count
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _source_tail_digest(handle: Any, offset: int) -> str:
+    """Hash a bounded boundary witness without rereading an entire transcript."""
+    handle.seek(max(0, offset - 64))
+    return hashlib.sha256(handle.read(min(offset, 64))).hexdigest()
+
+
+def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int | str]:
+    """Replay a complete native rollout and commit new usage with a source boundary.
+
+    Codex's on-disk parser also normalizes shell tool pairs across records, so
+    the detached worker reparses the source while inserting only new line
+    positions. This preserves the existing raw-event contract until its
+    stateful normalizer has a durable tail cursor of its own.
+    """
+    path = source.expanduser().resolve()
+    conn = _pkg.connect(db)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        with path.open("rb") as handle:
+            initial = path.stat()
+            if initial.st_size == 0:
+                conn.rollback()
+                return {"raw_events": 0, "usage_events": 0, "status": "empty"}
+            handle.seek(-1, 2)
+            if handle.read(1) != b"\n":
+                conn.rollback()
+                return {"raw_events": 0, "usage_events": 0, "status": "partial"}
+            cursor = conn.execute(
+                "SELECT session_id, device, inode, committed_offset, tail_sha256, host, "
+                "source_mtime_ns "
+                "FROM usage_source_cursors WHERE source_path = ?",
+                (str(path),),
+            ).fetchone()
+            if cursor and (
+                cursor[5] != "codex"
+                or (initial.st_dev, initial.st_ino) != (cursor[1], cursor[2])
+                or initial.st_size < cursor[3]
+                or _source_tail_digest(handle, int(cursor[3])) != cursor[4]
+            ):
+                conn.execute(
+                    "UPDATE usage_source_cursors SET status = 'source_changed', updated_at = ? "
+                    "WHERE source_path = ?",
+                    (_now(), str(path)),
+                )
+                conn.commit()
+                raise RuntimeError("Codex rollout rotated, truncated, or overwritten")
+            if cursor and (initial.st_size, initial.st_mtime_ns) == (cursor[3], cursor[6]):
+                conn.rollback()
+                return {"raw_events": 0, "usage_events": 0, "status": "complete"}
+            handle.seek(0)
+            try:
+                header = json.loads(handle.readline())
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise RuntimeError("Codex rollout has no valid native header") from exc
+            header_payload = header.get("payload") if isinstance(header, dict) else None
+            native_id = header_payload.get("id") if isinstance(header_payload, dict) else None
+            if (
+                not isinstance(header, dict)
+                or header.get("type") != "session_meta"
+                or not isinstance(native_id, str)
+                or not native_id
+            ):
+                raise RuntimeError("Codex rollout has no verified thread ID")
+            handle.seek(0)
+            line_count = sum(1 for _ in handle)
+
+        handles = handles_from_paths([path], "codex")
+        if not handles:
+            raise RuntimeError("Codex rollout vanished before refresh")
+        session_id = handles[0].session_id
+        if session_id != native_id:
+            raise RuntimeError("Codex rollout thread ID disagrees with source handle")
+        if cursor and cursor[0] != session_id:
+            raise RuntimeError("Codex rollout thread identity changed")
+        inserted = _backfill_raw_events(conn, handles)
+
+        # First enablement may encounter rows ingested by SessionStart before
+        # the source cursor existed. Certify the stored source against the
+        # current parser output before publishing a fresh boundary.
+        if cursor is None:
+            stored = {
+                row[0]: row[1:]
+                for row in conn.execute(
+                    "SELECT line_no, session_id, host, host_basis, event_type, ts, "
+                    "ordinal, raw_line FROM raw_events WHERE source_path = ?",
+                    (str(path),),
+                )
+            }
+            seen: set[int] = set()
+            for event in iter_events(handles[0]):
+                if event.line_no is None:
+                    raise RuntimeError("Codex parser omitted a source line number")
+                expected = (
+                    event.payload.get("sessionId") or session_id,
+                    "codex",
+                    "handle",
+                    event.type or "unknown",
+                    event.timestamp,
+                    event.ordinal,
+                )
+                row = stored.get(event.line_no)
+                if (
+                    row is None
+                    or row[:6] != expected
+                    or json.loads(_unpack_payload(row[6])) != event.payload
+                ):
+                    raise RuntimeError("Codex stored source differs from current rollout")
+                seen.add(event.line_no)
+            if seen != stored.keys():
+                raise RuntimeError("Codex stored source has unmatched rollout rows")
+
+        derived = _derive_usage_incremental_conn(conn)
+        with path.open("rb") as handle:
+            final = path.stat()
+            if (final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns) != (
+                initial.st_dev,
+                initial.st_ino,
+                initial.st_size,
+                initial.st_mtime_ns,
+            ):
+                raise RuntimeError("Codex rollout changed during refresh")
+            digest = _source_tail_digest(handle, final.st_size)
+        source_max_id = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM raw_events WHERE source_path = ?",
+            (str(path),),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO usage_source_cursors(source_path, host, session_id, device, inode, "
+            "committed_offset, committed_line_no, tail_sha256, source_mtime_ns, "
+            "derived_raw_event_id, status, updated_at) "
+            "VALUES(?, 'codex', ?, ?, ?, ?, ?, ?, ?, ?, 'complete', ?) "
+            "ON CONFLICT(source_path) DO UPDATE SET "
+            "session_id = excluded.session_id, device = excluded.device, inode = excluded.inode, "
+            "committed_offset = excluded.committed_offset, "
+            "committed_line_no = excluded.committed_line_no, "
+            "tail_sha256 = excluded.tail_sha256, "
+            "source_mtime_ns = excluded.source_mtime_ns, "
+            "derived_raw_event_id = excluded.derived_raw_event_id, "
+            "status = excluded.status, updated_at = excluded.updated_at",
+            (
+                str(path),
+                session_id,
+                final.st_dev,
+                final.st_ino,
+                final.st_size,
+                line_count,
+                digest,
+                final.st_mtime_ns,
+                source_max_id,
+                _now(),
+            ),
+        )
+        conn.commit()
+        return {"raw_events": inserted, "usage_events": derived, "status": "complete"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def refresh_usage_source(
+    db: Path | str, source: Path, *, host: str = "claude-code"
+) -> dict[str, int | str]:
+    """Ingest a verified current source and derive its usage atomically.
+
+    Claude consumes only appended, newline-terminated records. Codex
+    reparses its rollout to preserve stateful tool normalization, but inserts
+    only new line positions. A partial tail is not certified. A changed
+    inode or overwritten boundary refuses reuse of physical line numbers.
+    """
+    if host not in {"claude-code", "codex"}:
+        raise ValueError(f"refresh_usage_source: unverified trigger host {host!r}")
+    refuse_on_remote(db, "refresh_usage_source")
+    if host == "codex":
+        return _refresh_codex_usage_source(db, source)
+    from little_loops.session_store.claude_usage import claude_transcript_contract
+
+    path = source.expanduser().resolve()
+    conn = _pkg.connect(db)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.execute(
+            "SELECT session_id, device, inode, committed_offset, committed_line_no, "
+            "tail_sha256 FROM usage_source_cursors WHERE source_path = ?",
+            (str(path),),
+        ).fetchone()
+        with path.open("rb") as handle:
+            initial = path.stat()
+            offset = int(cursor[3]) if cursor else 0
+            line_no = int(cursor[4]) if cursor else 0
+            if cursor and (
+                initial.st_dev != cursor[1]
+                or initial.st_ino != cursor[2]
+                or initial.st_size < offset
+                or _source_tail_digest(handle, offset) != cursor[5]
+            ):
+                conn.execute(
+                    "UPDATE usage_source_cursors SET status = 'source_changed', updated_at = ? "
+                    "WHERE source_path = ?",
+                    (_now(), str(path)),
+                )
+                conn.commit()
+                raise RuntimeError("source rotated, truncated, or overwritten")
+            session_id = cursor[0] if cursor else path.stem
+            handle.seek(offset)
+            inserted = 0
+            partial = False
+            while True:
+                raw_line = handle.readline()
+                if not raw_line:
+                    break
+                if not raw_line.endswith(b"\n"):
+                    partial = True
+                    break
+                offset = handle.tell()
+                line_no += 1
+                try:
+                    record = json.loads(raw_line)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                native_session = record.get("sessionId")
+                if isinstance(native_session, str) and native_session:
+                    session_id = native_session
+                packed = _pack_payload(json.dumps(record))
+                contract = claude_transcript_contract(
+                    record, host="claude-code", host_basis="handle"
+                )
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO raw_events"
+                    "(ts, session_id, host, host_basis, source_path, line_no, event_type, "
+                    "raw_line, parsed_json, usage_contract) "
+                    "VALUES(?, ?, 'claude-code', 'handle', ?, ?, ?, ?, ?, ?)",
+                    (
+                        record.get("timestamp") or "",
+                        session_id,
+                        str(path),
+                        line_no,
+                        str(record.get("type") or "unknown"),
+                        packed,
+                        packed,
+                        contract,
+                    ),
+                )
+                inserted += cur.rowcount
+            final = path.stat()
+            if final.st_dev != initial.st_dev or final.st_ino != initial.st_ino:
+                raise RuntimeError("source changed during refresh")
+            status = "partial" if partial else "complete"
+            if final.st_size > offset and not partial:
+                status = "pending_append"
+            digest = _source_tail_digest(handle, offset)
+
+        derived = _derive_usage_incremental_conn(conn)
+        source_max_id = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM raw_events WHERE source_path = ?",
+            (str(path),),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO usage_source_cursors(source_path, host, session_id, device, inode, "
+            "committed_offset, committed_line_no, tail_sha256, source_mtime_ns, "
+            "derived_raw_event_id, status, updated_at) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(source_path) DO UPDATE SET "
+            "host = excluded.host, session_id = excluded.session_id, "
+            "device = excluded.device, inode = excluded.inode, "
+            "committed_offset = excluded.committed_offset, "
+            "committed_line_no = excluded.committed_line_no, "
+            "tail_sha256 = excluded.tail_sha256, "
+            "source_mtime_ns = excluded.source_mtime_ns, "
+            "derived_raw_event_id = excluded.derived_raw_event_id, "
+            "status = excluded.status, updated_at = excluded.updated_at",
+            (
+                str(path),
+                host,
+                session_id,
+                final.st_dev,
+                final.st_ino,
+                offset,
+                line_no,
+                digest,
+                final.st_mtime_ns,
+                source_max_id,
+                status,
+                _now(),
+            ),
+        )
+        conn.commit()
+        return {"raw_events": inserted, "usage_events": derived, "status": status}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def usage_source_freshness(db: Path | str, source: Path) -> dict[str, int | str | None]:
+    """Classify a selected local source against its committed derive boundary.
+
+    Reads only cursor metadata, file stat, and a bounded boundary/tail witness;
+    it never parses usage or advances the store. ``unknown`` is used whenever
+    the source cannot be compared safely (missing, rotation, partial write).
+    """
+    path = source.expanduser().resolve()
+    try:
+        conn = connect_readonly(db)
+        try:
+            cursor = conn.execute(
+                "SELECT device, inode, committed_offset, tail_sha256, source_mtime_ns, "
+                "derived_raw_event_id, status, updated_at FROM usage_source_cursors "
+                "WHERE source_path = ?",
+                (str(path),),
+            ).fetchone()
+            meta = dict(
+                conn.execute(
+                    "SELECT key, value FROM meta WHERE key IN "
+                    "('usage_derive_version', 'usage_derive_raw_id')"
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+    except Exception:
+        return {"status": "unknown", "reason": "store_unavailable", "as_of_offset": None}
+    if cursor is None:
+        return {"status": "unknown", "reason": "source_untracked", "as_of_offset": None}
+    offset = int(cursor[2])
+    base = {"as_of_offset": offset, "as_of": cursor[7]}
+    try:
+        with path.open("rb") as handle:
+            stat = path.stat()
+            if (stat.st_dev, stat.st_ino) != (cursor[0], cursor[1]) or stat.st_size < offset:
+                return {**base, "status": "unknown", "reason": "source_changed"}
+            if _source_tail_digest(handle, offset) != cursor[3] or cursor[6] == "source_changed":
+                return {**base, "status": "unknown", "reason": "source_changed"}
+            if stat.st_size > offset:
+                handle.seek(-1, 2)
+                complete = handle.read(1) == b"\n"
+                return {
+                    **base,
+                    "status": "stale" if complete else "unknown",
+                    "reason": "new_append" if complete else "partial_tail",
+                }
+    except OSError:
+        return {**base, "status": "unknown", "reason": "source_unreadable"}
+    if cursor[6] != "complete" or stat.st_mtime_ns != cursor[4]:
+        return {**base, "status": "unknown", "reason": "source_changed"}
+    if meta.get("usage_derive_version") != _USAGE_DERIVE_VERSION:
+        return {**base, "status": "stale", "reason": "normalizer_changed"}
+    if int(meta.get("usage_derive_raw_id", "0")) < cursor[5]:
+        return {**base, "status": "stale", "reason": "derive_pending"}
+    return {**base, "status": "fresh", "reason": None}
+
 
 def rebuild(
     db: Path | str = DEFAULT_DB_PATH,
@@ -1052,6 +1516,7 @@ def rebuild(
         "prompt_opt_events": 0,
     }
     try:
+        conn.execute("BEGIN IMMEDIATE")
         for table in _REBUILD_TABLES:
             where = _REBUILD_TABLE_PREDICATES.get(table)
             conn.execute(f"DELETE FROM {table}" + (f" WHERE {where}" if where else ""))
@@ -1061,9 +1526,14 @@ def rebuild(
             _REBUILD_SEARCH_KINDS,
         )
 
-        def _raw_events_cursor() -> sqlite3.Cursor:
+        def _raw_events_cursor(*, usage_order: bool = False) -> sqlite3.Cursor:
+            ordering = (
+                "source_path, COALESCE(ordinal, line_no), line_no, id" if usage_order else "id"
+            )
             return conn.execute(
-                "SELECT raw_line, source_path, host, host_basis FROM raw_events ORDER BY id"
+                "SELECT raw_line, source_path, host, host_basis, event_type, ts, "
+                f"session_id, line_no, ordinal, usage_contract, id "
+                f"FROM raw_events ORDER BY {ordering}"
             )
 
         # sessions first: assistant_messages/backfill order elsewhere relies on
@@ -1073,7 +1543,7 @@ def rebuild(
         counts["messages"] = _backfill_messages(conn, _raw_events_cursor())
         counts["assistant_messages"] = _backfill_assistant_messages(conn, _raw_events_cursor())
         counts["skill_events"] = _backfill_skill_events(conn, _raw_events_cursor())
-        counts["usage_events"] = _backfill_usage_events(conn, _raw_events_cursor())
+        counts["usage_events"] = _backfill_usage_events(conn, _raw_events_cursor(usage_order=True))
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions, db=db)
         # Non-destructive UPDATE-only enrichment — deliberately not part of
@@ -1085,7 +1555,12 @@ def rebuild(
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (str(SCHEMA_VERSION),),
         )
+        _set_usage_derive_checkpoint(conn)
         conn.commit()
+    except Exception:
+        # A failed replay must not expose a partially replaced rollout set.
+        conn.rollback()
+        raise
     finally:
         conn.close()
     return counts

@@ -3,10 +3,11 @@ id: ENH-3549
 title: Consume stored usage for ll-ctx-stats cache rate
 type: ENH
 priority: P2
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_date: '2026-09-24'
+completed_at: '2026-09-29T08:22:43Z'
 captured_at: '2026-09-24T17:40:15Z'
 discovered_by: ll-issues-create
 labels:
@@ -65,6 +66,10 @@ ENH-3656 owns the Claude path, paired host/session filter and diagnostics after 
 
 ## Program Design
 
+### Implementation deviation
+
+`ll-ctx-stats` calls `select_usage_coverage` for selected and audit rows so it can explain unresolved coverage. `select_usage_observations` delegates to the same selection policy; the verified host/thread filter and read-only behavior are unchanged.
+
 ### Types
 
 - Reuse the stored observation/provenance contract and `SessionHandle`; no new token-accounting type.
@@ -106,16 +111,36 @@ Preserve latest eligible session and host/workspace scope, and exclude agent rec
 - **Risk**: Medium — latest-session selection, freshness and missing-store behavior must stay consistent.
 - **Breaking Change**: No CLI option change; after a host's direct parser is retired, un-ingested usage becomes explicitly unavailable instead of silently parsed from disk. Codex requires a proven runtime stored replacement; other hosts await ENH-3534 or a linked issue.
 
+## Codex Stop producer evidence (2026-09-29)
+
+A real Codex CLI 0.152.1 `codex exec --json` run with a session-level
+`Stop` command hook received `session_id`, `turn_id`, and a
+`transcript_path` pointing to the native rollout JSONL. While that hook
+was executing, the rollout already contained the completed turn's
+`event_msg.token_count.info.last_token_usage` (output 5). Sanitized
+payload, at-hook observation, and rollout projections are under
+`scripts/tests/fixtures/codex/stop-*-v0.152.1.*`. This proves the
+trigger timing and source path for that CLI version; it does not establish
+live-to-rollout request identity. The Codex adapter now registers `Stop`
+for the detached usage-refresh handler. A captured Stop fixture now passes
+through the packaged shell adapter, detached worker, atomic rollout ingest
+and derive, and a fresh stored observation (19,379 input, 5 output) in a
+test. An unchanged rollout returns at its verified source cursor without a
+reparse; a local 66.4 MiB rollout took 2.32 s on first ingest and 0.001 s
+on an unchanged check. Changed Codex sources still reparse to preserve the
+existing stateful normalizer, but only new source rows are inserted.
+
 ## Acceptance Criteria
 
-- [ ] Codex cache-rate reporting uses stored normalized observations via `select_usage_observations(host=..., session_id=...)`, preserving producer provenance, coverage and as-of qualification; same-ID rows from another host are excluded.
-- [ ] Existing Codex latest-session, workspace and agent selection stays equivalent (store-backed tests); ENH-3656's Claude path remains unchanged.
-- [ ] Reuse ENH-3656's four distinct diagnostics and stale/unknown-lag behavior; `--json` stdout stays parseable and reads do not mutate ingestion state. No `--ingest` flag exists.
-- [ ] A real Codex hook → ingest → incremental derive → read fixture passes before `_codex_cache_usage` is retired, including current-session freshness after a completed turn. A manual worker/full-rebuild-only test does not satisfy this criterion; a missing trigger leaves the direct Codex reader in place and this issue open.
-- [ ] Codex live+rollout observations for one verified thread are qualified by ENH-3543 before cutover: proven selected coverage yields a canonical rate once, while unresolved overlap yields `cache_hit_rate_pct = None` and per-channel audit subtotals, never a numeric unreconciled rate.
-- [ ] Codex rollout rows already present before ENH-3651's checkpoint and rows ingested after ENH-3532's normalizer lands yield the same selected observations in either issue landing order; no historical raw usage is skipped.
-- [ ] Each other host's direct parser is retired only after ENH-3648's evidence and a stored producer/trigger or proven unavailable verdict are recorded. If a per-host child owns an unresolved cutover, its direct parser stays in place and EPIC-3562 stays open; this issue can close only after that handoff is explicit. No host-wide unknown override or unqualified direct transcript token accounting is introduced.
-- [ ] Missing/partial components stay unknown; nothing is labelled estimated without an estimator.
+
+- [x] Codex cache-rate reporting uses stored normalized observations via the shared `select_usage_coverage(host=..., session_id=...)` policy, preserving producer provenance, coverage and as-of qualification; same-ID rows from another host are excluded.
+- [x] Existing Codex latest-session, workspace and agent selection stays equivalent (store-backed tests); ENH-3656's Claude path remains unchanged.
+- [x] Reuse ENH-3656's four distinct diagnostics and stale/unknown-lag behavior; `--json` stdout stays parseable and reads do not mutate ingestion state. No `--ingest` flag exists.
+- [x] A real Codex hook → ingest → incremental derive → read fixture passes before `_codex_cache_usage` is retired, including current-session freshness after a completed turn. A manual worker/full-rebuild-only test does not satisfy this criterion; a missing trigger leaves the direct Codex reader in place and this issue open.
+- [x] Codex live+rollout observations for one verified thread are qualified by ENH-3543 before cutover: proven selected coverage yields a canonical rate once, while unresolved overlap yields `cache_hit_rate_pct = None` and per-channel audit subtotals, never a numeric unreconciled rate.
+- [x] Codex rollout rows already present before ENH-3651's checkpoint and rows ingested after ENH-3532's normalizer lands yield the same selected observations in either issue landing order; no historical raw usage is skipped.
+- [x] Each other host's direct parser is retired only after ENH-3648's evidence and a stored producer/trigger or proven unavailable verdict are recorded. If a per-host child owns an unresolved cutover, its direct parser stays in place and EPIC-3562 stays open; this issue can close only after that handoff is explicit. No host-wide unknown override or unqualified direct transcript token accounting is introduced.
+- [x] Missing/partial components stay unknown; nothing is labelled estimated without an estimator.
 
 ## Preserved Research Context
 
@@ -127,6 +152,7 @@ _From `/ll:refine-issue` 2026-09-25; isolation-gate and fake-host findings moved
 - **Reusable helpers:** `token_provenance` (already imported by `ctx_stats`), `ctx_stats._known_int`, `sessions.handles_from_paths`/`session_id_for`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:43 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:49:59 - `2a69c442-43f4-408a-839a-d32ff801a6aa.jsonl`
 - `/ll:decide-issue` - 2026-09-25T01:45:38 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:spike` - 2026-09-25T01:44:07 - `d516d85d-c844-46f9-818c-1329a5ea8e8a.jsonl`
@@ -141,4 +167,20 @@ _From `/ll:refine-issue` 2026-09-25; isolation-gate and fake-host findings moved
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Done** | Created: 2026-09-24 | Priority: P2
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- A captured Codex Stop trigger reaches the detached worker and stored reader; Codex cache rate uses shared coverage selection and freshness diagnostics.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.

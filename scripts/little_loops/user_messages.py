@@ -697,6 +697,49 @@ _CLAUDE_SHAPED_HOSTS = ("claude-code", "opencode", "pi", "qwen", "gemini", "omp"
 _CODEX_EXCLUDED_USER_TEXT_PREFIXES = ("<environment_context>", "<turn_aborted>")
 
 
+def _read_claude_shaped_user_messages(
+    handle: SessionHandle, since: datetime | None, include_response_context: bool
+) -> list[UserMessage]:
+    """Read a handle whose session parser emits Claude-shaped message payloads."""
+    from little_loops.session_store.sessions import iter_events
+
+    if include_response_context:
+        records = [event.payload for event in iter_events(handle)]
+        return _extract_messages_with_context(records, handle, since)
+    messages: list[UserMessage] = []
+    for event in iter_events(handle):
+        message = _parse_user_record(event.payload, handle, since)
+        if message is not None:
+            messages.append(message)
+    return messages
+
+
+def _read_codex_user_messages(
+    handle: SessionHandle, since: datetime | None, include_response_context: bool
+) -> list[UserMessage]:
+    """Keep Codex's typed-prompt parser behind the same per-host dispatch."""
+    return _extract_codex_user_messages(handle, since)
+
+
+def _read_unsupported_user_messages(
+    handle: SessionHandle, since: datetime | None, include_response_context: bool
+) -> list[UserMessage]:
+    """Kimi Code has no user-message normalizer yet."""
+    return []
+
+
+# Consumer dispatch is separate from the session parser registry. Conformance
+# tests can inject a reader for a divergent fake host without extending any
+# production discovery, parser, or layout registry.
+_USER_MESSAGE_READERS: dict[
+    str, Callable[[SessionHandle, datetime | None, bool], list[UserMessage]]
+] = {
+    **dict.fromkeys(_CLAUDE_SHAPED_HOSTS, _read_claude_shaped_user_messages),
+    "codex": _read_codex_user_messages,
+    "kimi-code": _read_unsupported_user_messages,
+}
+
+
 def _parse_timestamp_or_fallback(timestamp_str: str, fallback_mtime: float) -> datetime:
     """Parse an ISO-8601 (``Z``-suffixed) timestamp, falling back to a file mtime.
 
@@ -744,29 +787,15 @@ def extract_user_messages(
     Returns:
         Messages sorted by timestamp, most recent first.
     """
-    from little_loops.session_store.sessions import iter_events
-
     messages: list[UserMessage] = []
 
     for handle in handles:
         if not include_agent_sessions and handle.is_agent:
             continue
-        if handle.host == "kimi-code":
+        reader = _USER_MESSAGE_READERS.get(handle.host)
+        if reader is None:
             continue
-        if handle.host == "codex":
-            messages.extend(_extract_codex_user_messages(handle, since))
-            continue
-        if handle.host not in _CLAUDE_SHAPED_HOSTS:
-            continue
-
-        if include_response_context:
-            all_records = [event.payload for event in iter_events(handle)]
-            messages.extend(_extract_messages_with_context(all_records, handle, since))
-        else:
-            for event in iter_events(handle):
-                msg = _parse_user_record(event.payload, handle, since)
-                if msg is not None:
-                    messages.append(msg)
+        messages.extend(reader(handle, since, include_response_context))
 
     # Sort by timestamp, most recent first
     messages.sort(key=lambda m: m.timestamp, reverse=True)

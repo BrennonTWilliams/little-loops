@@ -4056,6 +4056,9 @@ class TestUsageEventsLiveWriter:
             cache_read_tokens=10,
             cache_creation_tokens=5,
             model="claude-sonnet-5",
+            session_id="native-thread-1",
+            identity_basis="host_observed",
+            invocation_id="local-invocation-1",
         )
         mock_runner.always_return(exit_code=0, usage_events=[usage])
 
@@ -4075,6 +4078,9 @@ class TestUsageEventsLiveWriter:
         assert kwargs["output_tokens"] == 50
         assert kwargs["cache_read_tokens"] == 10
         assert kwargs["cache_creation_tokens"] == 5
+        assert kwargs["session_id"] == "native-thread-1"
+        assert kwargs["identity_basis"] == "host_observed"
+        assert kwargs["invocation_id"] == "local-invocation-1"
 
     def test_finish_survives_record_usage_event_failure(self) -> None:
         """A sink failure in record_usage_event must not fail the loop run (mirrors ENH-2463)."""

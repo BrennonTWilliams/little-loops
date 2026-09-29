@@ -139,7 +139,15 @@ class TestUsageAggregation:
 
     def test_provenance_composition(self, tmp_path: Path) -> None:
         db = tmp_path / "h.db"
-        _insert(db, provenance="measured", channel="live", host="codex")
+        _insert(
+            db,
+            provenance="measured",
+            channel="live",
+            host="codex",
+            scope_kind="invocation",
+            session_id="verified-codex-thread",
+            identity_basis="host_observed",
+        )
         _insert(db, provenance="estimated", channel="live", host="claude-code")
         result = _aggregate_usage_events(db)
         assert result is not None
@@ -194,7 +202,8 @@ class TestHostAttribution:
         assert result is not None
         entry = result["provenance"]["/usage_by_model/totals/input_tokens"]
         assert entry["hosts"] == ["codex"]
-        assert "reason" not in entry
+        assert entry["coverage"] == "unknown"
+        assert entry["reason"] == "codex_live_scope_unknown"
 
     def test_never_falls_back_to_configured_host(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -416,13 +425,45 @@ class TestTextFormat:
             {"tool_calls": 2, "breakdown": {"read": 10, "bash": 5}}, Logger(use_color=False)
         )
         out = capsys.readouterr().out
-        assert "Estimated tokens in context: — [estimated · unavailable]" in out
+        assert "Estimated tokens in context: — [unknown · unavailable]" in out
         assert "Per-tool token estimates: [estimated]" in out
         assert "read" in out and "[estimated]" not in out.split("Per-tool")[1].split("\n", 1)[1]
 
     def test_fallback_estimate_available(self, capsys: pytest.CaptureFixture[str]) -> None:
         _render_fallback({"estimated_tokens": 12345, "tool_calls": 1}, Logger(use_color=False))
         assert "Estimated tokens in context: 12,345 [estimated]" in capsys.readouterr().out
+
+    def test_fallback_exposes_occupancy_freshness(self, capsys: pytest.CaptureFixture[str]) -> None:
+        state = {
+            "estimated_tokens": 12345,
+            "tool_calls": 2,
+            "session_id": "session-1",
+            "scope_kind": "context",
+            "estimate_reason": "transcript_baseline_plus_heuristic",
+            "baseline_observed_at": "2026-09-29T12:00:00Z",
+            "estimate_updated_at": "2026-09-29T12:00:05Z",
+            "baseline_observation_boundary": "1234567890",
+            "context_boundary": "2026-09-29T11:00:00Z",
+            "stale": True,
+            "stale_reason": "tool_activity_after_baseline",
+            "result_token_count": 99000,
+        }
+        _render_fallback(state, Logger(use_color=False))
+        output = capsys.readouterr().out
+        assert "12,345 [estimated · stale]" in output
+        assert "tool_activity_after_baseline" in output
+        assert "session-1" in output
+        assert "2026-09-29T12:00:00Z" in output
+        assert "2026-09-29T12:00:05Z" in output
+        assert "99,000" not in output
+
+    def test_legacy_fallback_freshness_unknown(self, capsys: pytest.CaptureFixture[str]) -> None:
+        _render_fallback(
+            {"estimated_tokens": 2000, "result_token_count": 90000}, Logger(use_color=False)
+        )
+        output = capsys.readouterr().out
+        assert "freshness unknown" in output
+        assert "90,000" not in output
 
 
 class TestJsonDocument:
@@ -491,6 +532,54 @@ class TestJsonDocument:
         assert resolve_pointer(doc, "/breakdown/a~1b") == 3
         assert "/breakdown/a~1b" in doc["token_provenance"]
 
+    def test_fallback_json_carries_occupancy_boundary(self) -> None:
+        lines, side_effect = _capture()
+        state = {
+            "estimated_tokens": 900,
+            "session_id": "session-1",
+            "baseline_observed_at": "2026-09-29T12:00:00Z",
+            "estimate_updated_at": "2026-09-29T12:00:05Z",
+            "baseline_observation_boundary": "1234567890",
+            "context_boundary": "2026-09-29T11:00:00Z",
+            "estimate_reason": "transcript_baseline_plus_heuristic",
+            "stale": True,
+            "stale_reason": "tool_activity_after_baseline",
+            "result_token_count": 99999,
+        }
+        with patch("builtins.print", side_effect=side_effect):
+            _print_json(None, state)
+        doc = json.loads("\n".join(lines))
+        assert doc["estimated_tokens"] == 900
+        assert "result_token_count" not in doc
+        entry = doc["token_provenance"]["/estimated_tokens"]
+        assert entry["metric"] == "context_occupancy_tokens"
+        assert entry["session_id"] == "session-1"
+        assert entry["stale"] is True
+        assert entry["stale_reason"] == "tool_activity_after_baseline"
+        assert entry["baseline_observed_at"] == "2026-09-29T12:00:00Z"
+        assert entry["estimate_updated_at"] == "2026-09-29T12:00:05Z"
+        assert entry["baseline_observation_boundary"] == "1234567890"
+        assert entry["context_boundary"] == "2026-09-29T11:00:00Z"
+
+    def test_legacy_fallback_json_has_unknown_freshness(self) -> None:
+        lines, side_effect = _capture()
+        with patch("builtins.print", side_effect=side_effect):
+            _print_json(None, {"estimated_tokens": 9, "result_token_count": 99999})
+        entry = json.loads("\n".join(lines))["token_provenance"]["/estimated_tokens"]
+        assert entry["stale"] is None
+        assert entry["stale_reason"] == "unknown_baseline_freshness"
+
+    def test_missing_occupancy_estimate_is_unavailable(self) -> None:
+        lines, side_effect = _capture()
+        with patch("builtins.print", side_effect=side_effect):
+            _print_json(None, {"result_token_count": 99999})
+        doc = json.loads("\n".join(lines))
+        assert doc["estimated_tokens"] is None
+        entry = doc["token_provenance"]["/estimated_tokens"]
+        assert entry["availability"] == "unavailable"
+        assert entry["provenance"] == "unknown"
+        assert entry["stale"] is None
+
     def test_none_source_has_no_provenance(self) -> None:
         lines, side_effect = _capture()
         with patch("builtins.print", side_effect=side_effect):
@@ -522,7 +611,7 @@ class TestCacheRateFromTranscript:
         session = tmp_path / "s.jsonl"
         session.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
         handle = SessionHandle(
-            host="claude-code",
+            host="pi",
             session_id="sess-1",
             path=session,
             cwd=tmp_path,
@@ -598,16 +687,10 @@ class TestCacheRateFromTranscript:
         )
         assert result is not None and result["counts"]["hit_rate_pct"]["known"] == 1
 
-    def test_codex_result_is_measured(self, tmp_path: Path) -> None:
+    def test_codex_does_not_use_direct_transcript_accounting(self, tmp_path: Path) -> None:
         handle = SessionHandle(
             host="codex", session_id="cx", path=tmp_path / "r.jsonl", cwd=tmp_path, updated_at=0.0
         )
-        with (
-            patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]),
-            patch("little_loops.cli.ctx_stats.iter_events", return_value=iter(())),
-        ):
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
             result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
-        assert result is not None
-        assert result["provenance"] == "measured"
-        assert result["session_id"] == "cx"
-        assert result["host"] == "codex"
+        assert result is None

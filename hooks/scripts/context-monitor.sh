@@ -295,6 +295,11 @@ main() {
         read -r LAST_BASELINE_MTIME
         read -r PRESSURE_LEVELS_EMITTED_JSON
         read -r LAST_PRESSURE_EPOCH
+        read -r BASELINE_OBSERVED_AT
+        read -r BASELINE_OBSERVATION_BOUNDARY
+        read -r BASELINE_CONTEXT_BOUNDARY
+        read -r BASELINE_SESSION_ID
+        read -r PREVIOUS_STALE_REASON
     } <<< "$(echo "$STATE" | jq -r --arg key "$TOOL_KEY" '
         (.estimated_tokens // 0 | tostring),
         (.tool_calls // 0 | tostring),
@@ -307,8 +312,18 @@ main() {
         (.breakdown[$key] // 0 | tostring),
         (.last_baseline_mtime // "0"),
         (.pressure_levels_emitted // [] | @json),
-        (.last_pressure_write_epoch // 0 | tostring)
+        (.last_pressure_write_epoch // 0 | tostring),
+        (.baseline_observed_at // "__none__"),
+        (.baseline_observation_boundary // "__none__"),
+        (.baseline_context_boundary // "__none__"),
+        (.baseline_session_id // "__none__"),
+        (.stale_reason // "__none__")
     ')"
+    if [ "$BASELINE_OBSERVED_AT" = "__none__" ]; then BASELINE_OBSERVED_AT=""; fi
+    if [ "$BASELINE_OBSERVATION_BOUNDARY" = "__none__" ]; then BASELINE_OBSERVATION_BOUNDARY=""; fi
+    if [ "$BASELINE_CONTEXT_BOUNDARY" = "__none__" ]; then BASELINE_CONTEXT_BOUNDARY=""; fi
+    if [ "$BASELINE_SESSION_ID" = "__none__" ]; then BASELINE_SESSION_ID=""; fi
+    if [ "$PREVIOUS_STALE_REASON" = "__none__" ]; then PREVIOUS_STALE_REASON=""; fi
 
     # Detect model — use cached value from state; only read transcript on first detection
     if [ -z "$DETECTED_MODEL" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
@@ -320,8 +335,10 @@ main() {
     CONTEXT_LIMIT="${LL_CONTEXT_LIMIT:-$(get_context_limit "$DETECTED_MODEL" "$CONFIG_LIMIT")}"
 
     # Check for compaction event and reset if needed (after CONTEXT_LIMIT is resolved)
+    COMPACTION_DETECTED=0
     RESET_STATE=$(check_compaction "$STATE" || true)
     if [ -n "$RESET_STATE" ]; then
+        COMPACTION_DETECTED=1
         STATE="$RESET_STATE"
         rm -f ".ll/ll-precompact-state.json" 2>/dev/null || true
         # Re-extract fields that compaction resets
@@ -338,13 +355,54 @@ main() {
     # LAST_BASELINE_MTIME = "0" on first call, triggering initial read.
     # Subsequent calls within the same turn have an unchanged mtime → serve from cache.
     TRANSCRIPT_BASELINE="${CACHED_BASELINE:-0}"
+    BASELINE_REFRESHED=0
     if [ "${USE_TRANSCRIPT_BASELINE}" = "true" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
         CURRENT_MTIME=$(get_mtime "$TRANSCRIPT_PATH")
         if [ "${LAST_BASELINE_MTIME:-0}" = "0" ] || \
            [ "$CURRENT_MTIME" -gt "${LAST_BASELINE_MTIME:-0}" ] 2>/dev/null; then
             TRANSCRIPT_BASELINE=$(get_transcript_baseline "$TRANSCRIPT_PATH")
             LAST_BASELINE_MTIME="$CURRENT_MTIME"
+            if [ "${TRANSCRIPT_BASELINE:-0}" -gt 0 ] 2>/dev/null; then
+                BASELINE_REFRESHED=1
+            fi
         fi
+    fi
+
+    # A transcript observation is a boundary for the baseline only. The current
+    # PostToolUse event changes context again, so the resulting occupancy remains
+    # an estimate. A compaction invalidates cached baseline provenance until a
+    # subsequent valid transcript read; it never advances the measurement time.
+    ESTIMATE_UPDATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    CONTEXT_BOUNDARY=$(echo "$STATE" | jq -r '.last_compaction // .session_start // ""')
+    if [ "$BASELINE_REFRESHED" = "1" ]; then
+        BASELINE_OBSERVED_AT="$ESTIMATE_UPDATED_AT"
+        BASELINE_OBSERVATION_BOUNDARY="${LAST_BASELINE_MTIME:-0}"
+        BASELINE_CONTEXT_BOUNDARY="$CONTEXT_BOUNDARY"
+        BASELINE_SESSION_ID="$SESSION_ID"
+    fi
+    if [ "${TRANSCRIPT_BASELINE:-0}" -gt 0 ] 2>/dev/null; then
+        ESTIMATE_REASON="transcript_baseline_plus_heuristic"
+        STALE_REASON="tool_activity_after_baseline"
+        BASELINE_COMPACTED=0
+        if [ "$BASELINE_REFRESHED" != "1" ]; then
+            if [ "$COMPACTION_DETECTED" = "1" ] || \
+               { [ -n "$BASELINE_CONTEXT_BOUNDARY" ] && \
+                 [ "$BASELINE_CONTEXT_BOUNDARY" != "$CONTEXT_BOUNDARY" ]; } || \
+               [ "$PREVIOUS_STALE_REASON" = "compaction_after_baseline" ]; then
+                BASELINE_COMPACTED=1
+            fi
+        fi
+        if [ -n "$SESSION_ID" ] && [ -n "$BASELINE_SESSION_ID" ] && \
+           [ "$SESSION_ID" != "$BASELINE_SESSION_ID" ]; then
+            STALE_REASON="session_changed_after_baseline"
+        elif [ "$BASELINE_COMPACTED" = "1" ]; then
+            STALE_REASON="compaction_after_baseline"
+        fi
+        STALE_JSON=true
+    else
+        ESTIMATE_REASON="heuristic_accumulation"
+        STALE_REASON="no_measured_baseline"
+        STALE_JSON=null
     fi
 
     # Auto-upgrade: if the measured transcript baseline exceeds the resolved limit but is within
@@ -397,7 +455,26 @@ main() {
         --arg model "$DETECTED_MODEL" \
         --argjson limit "$CONTEXT_LIMIT" \
         --arg baseline_mtime "${LAST_BASELINE_MTIME:-0}" \
-        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline | .detected_model = $model | .context_limit = $limit | .last_baseline_mtime = $baseline_mtime')
+        --arg session_id "$SESSION_ID" \
+        --arg estimate_reason "$ESTIMATE_REASON" \
+        --arg baseline_observed_at "$BASELINE_OBSERVED_AT" \
+        --arg estimate_updated_at "$ESTIMATE_UPDATED_AT" \
+        --arg baseline_observation_boundary "$BASELINE_OBSERVATION_BOUNDARY" \
+        --arg baseline_context_boundary "$BASELINE_CONTEXT_BOUNDARY" \
+        --arg baseline_session_id "$BASELINE_SESSION_ID" \
+        --arg context_boundary "$CONTEXT_BOUNDARY" \
+        --argjson stale "$STALE_JSON" \
+        --arg stale_reason "$STALE_REASON" \
+        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead | .transcript_baseline_tokens = $baseline | .detected_model = $model | .context_limit = $limit | .last_baseline_mtime = $baseline_mtime |
+         .metric = "context_occupancy_tokens" | .scope_kind = "context" | .session_id = (if $session_id == "" then null else $session_id end) |
+         .provenance = "estimated" | .estimate_reason = $estimate_reason |
+         .baseline_observed_at = (if $baseline_observed_at == "" then null else $baseline_observed_at end) |
+         .estimate_updated_at = $estimate_updated_at |
+         .baseline_observation_boundary = (if $baseline_observation_boundary == "" then null else $baseline_observation_boundary end) |
+         .baseline_context_boundary = (if $baseline_context_boundary == "" then null else $baseline_context_boundary end) |
+         .baseline_session_id = (if $baseline_session_id == "" then null else $baseline_session_id end) |
+         .context_boundary = (if $context_boundary == "" then null else $context_boundary end) |
+         .stale = $stale | .stale_reason = $stale_reason')
 
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))

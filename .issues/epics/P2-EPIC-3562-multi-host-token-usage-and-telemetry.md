@@ -14,7 +14,7 @@ relates_to: []
 
 ## Summary
 
-Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 16 children: 4 done and 12 open after ENH-3649's general session-reader isolation work moved out of this token-usage epic. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
+Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 22 children: 15 done and 7 unresolved (ENH-3534 plus six per-host evidence follow-ups). Standalone ENH-3649 is also done. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
 
 ## Goal
 
@@ -27,7 +27,7 @@ Every canonical token-consumption figure for a production host comes from stored
 
 ## Composition Review
 
-The 16 children cover the epic's named contracts without another broad implementation issue:
+The 22 children cover the epic's named contracts and retain explicit per-host unknown-evidence owners. The first four contract groups are implemented for their proven hosts; ENH-3534 and its six evidence children remain:
 
 | Contract | Children | Remaining evidence or handoff |
 |----------|----------|-------------------------------|
@@ -45,51 +45,61 @@ Track each host's native evidence, stored producer, current-session trigger, and
 
 | Host | Native evidence | Stored producer | Current-session trigger | Reader verdict |
 |------|-----------------|-----------------|-------------------------|----------------|
-| Claude Code | ENH-3546 | ENH-3546/3651 | ENH-3651 | ENH-3656 |
-| Codex | ENH-3532/3655 | ENH-3532/3647 | ENH-3549 | ENH-3543/3549 |
-| OpenCode | ENH-3648 | ENH-3534 or child | ENH-3549 or child | ENH-3549 or child |
-| Pi | ENH-3648 | ENH-3534 or child | ENH-3549 or child | ENH-3549 or child |
-| Qwen | ENH-3648 | ENH-3534 or child | ENH-3549 or child | ENH-3549 or child |
-| Gemini | ENH-3648 | ENH-3534 or child | ENH-3549 or child | ENH-3549 or child |
-| OMP | ENH-3648 | ENH-3534 or child | ENH-3549 or child | ENH-3549 or child |
-| Kimi Code | ENH-3648 | ENH-3534 or child | ENH-3549 or child | ENH-3549 or child |
+| Claude Code | Verified Claude 2.1.284 live/transcript captures (ENH-3546) | Stored measured observations with replay eligibility (ENH-3546/3651) | Captured Stop hook and trailing derive (ENH-3651) | Stored, host/session selected, freshness-qualified cache rate (ENH-3656) |
+| Codex | 0.158.0 rollout/live captures; live-to-rollout native join refuted (ENH-3532/3655) | Stored rollout requests and live identity (ENH-3532/3647) | Captured Stop hook and detached derive (ENH-3549) | Stored, coverage-qualified rate; unresolved overlap has audit subtotals only (ENH-3543/3549) |
+| OpenCode | Partial fields in real 1.1.53 live/stored captures; normalized input unknown (ENH-3660 open) | Native `step-finish` parts captured; ENH-3534 ingestion pending | No stored trigger proved; ENH-3534 or child | Incomplete; ENH-3549 or child |
+| Pi | Unknown; 0.84.2 probe lacked API key (ENH-3661 open) | Unknown; ENH-3534 or child | Unknown; ENH-3534 or child | Incomplete; ENH-3549 or child |
+| Qwen | Partial transcript fields in real 0.24.6 pair; live/cache identity unknown (ENH-3662 open) | Native pair captured; ENH-3534 dedup/ingestion pending | No stored trigger proved; ENH-3534 or child | Incomplete; ENH-3549 or child |
+| Gemini | Unknown; historical capture has no CLI version and 0.46.0 probe lacked Vertex config (ENH-3663 open) | Unknown; ENH-3534 or child | Unknown; ENH-3534 or child | Incomplete; ENH-3549 or child |
+| OMP | Unknown; CLI absent, existing fixtures synthetic (ENH-3664 open) | Unknown; ENH-3534 or child | Unknown; ENH-3534 or child | Incomplete; ENH-3549 or child |
+| Kimi Code | Partial stored fields in real 0.30.0 capture; input/replay identity unknown (ENH-3665 open) | Native `usage.record` captured; ENH-3534 dedup/ingestion pending | No stored trigger proved; ENH-3534 or child | Incomplete; ENH-3549 or child |
 
 Before closing the epic, replace each owner entry with an evidence-backed verdict for the in-scope consumption metrics and channels: implemented with a stored producer/trigger/reader where native usage is supported, or explicitly unavailable where native absence is proven. Partial native support is recorded per metric/channel, not collapsed to a host-wide `unsupported`. An `unknown` survey result, missing trigger for a supported current-session path, or open/deferred per-host follow-up keeps eight-host coverage incomplete. ENH-3648/3534 file per-host follow-ups with `parent: EPIC-3562`; a merely linked issue does not satisfy closure. If the intended scope shrinks, revise this goal and ledger explicitly instead of counting an unresolved host as done.
 
 ## Impact
 
 - **Priority**: P2 — multi-host token figures are currently mostly `unknown` and will double-count once rollout ingestion lands without selection.
-- **Effort**: Large — 12 open children across session store, runners, readers and hooks, with possible per-host follow-ups from ENH-3648.
+- **Effort**: Large — 18 open children across session store, runners, readers, hooks and six per-host evidence follow-ups from ENH-3648.
 - **Risk**: Medium — accounting errors are silent; mitigated by fixture-backed contracts and conservative unresolved defaults.
 
 ## Children
 
-**Done**
+**Done (15)**
 
 - **ENH-3528** — Label token provenance per observation in ll-ctx-stats and exports
-- **BUG-3542** — Raw-event backfill stamps the configured host instead of each handle's source host
-- **ENH-3580** — Carry usage_events provenance columns through UsageEvent and shareable export
-- **BUG-3587** — Invocation consumption is used as context occupancy
+- **BUG-3542** — Attribute raw-event backfill to each verified source host
+- **ENH-3580** — Carry usage provenance into shareable export
+- **BUG-3587** — Separate invocation consumption from context occupancy
+- **ENH-3532** — Ingest historical Codex rollout usage
+- **ENH-3543** — Select qualified live/rollout coverage
+- **ENH-3544** — Type runtime telemetry availability
+- **ENH-3545** — Label occupancy estimates and measurement staleness
+- **ENH-3546** — Establish measured Claude producer provenance
+- **ENH-3549** — Read Codex stored usage for cache rate
+- **ENH-3647** — Carry Codex live thread/invocation identity
+- **ENH-3648** — Survey six remaining host contracts
+- **ENH-3651** — Incrementally derive current-session usage
+- **ENH-3655** — Refute the native Codex live-to-rollout join
+- **ENH-3656** — Read Claude stored usage for cache rate
 
-**Open — unblocked now**
+**Blocked (1)**
 
-- **ENH-3532** — Ingest Codex historical rollout token usage into usage_events (gate 1 key and mixed event-shape coverage need current-version fixtures)
-- **ENH-3544** — Typed runtime telemetry availability in the runtime host map
-- **ENH-3545** — Label context-hook occupancy estimates and measurement staleness
-- **ENH-3546** — Establish Claude usage producer contract and measured provenance (evidence capture first)
-- **ENH-3647** — Carry Codex live session and invocation identity into usage_events (split from ENH-3543)
-- **ENH-3648** — Survey token usage fields for OpenCode, Pi, Qwen, Gemini, OMP and Kimi Code (split from ENH-3534)
-- **ENH-3651** — Hook-driven incremental ingest, initial catch-up, shared derive and Claude trigger (blocks ENH-3656 and ENH-3549)
-- **ENH-3655** — Prove the Codex live-to-rollout span join with current-version captures (unblocked spike; blocks ENH-3543)
+- **ENH-3534** — Finish remaining-host ingestion after native contract evidence
 
-**Open — blocked**
+**Open evidence children (6)**
 
-- **ENH-3543** — Shared live/rollout coverage selection for Codex usage (blocked by ENH-3532, ENH-3647, ENH-3655)
-- **ENH-3549** — Final Codex and remaining-host stored cache-rate cutover (blocked by ENH-3532, ENH-3543, ENH-3651, ENH-3656)
-- **ENH-3534** — Token usage ingestion for Qwen, Gemini, OMP and remaining hosts (blocked by ENH-3532, ENH-3544, ENH-3648)
-- **ENH-3656** — Cut over Claude cache rate to stored usage (blocked by ENH-3651 only)
+- **ENH-3660** — Prove OpenCode cache and reasoning semantics
+- **ENH-3661** — Capture Pi with a configured model
+- **ENH-3662** — Prove Qwen live/cache and duplicate semantics
+- **ENH-3663** — Capture versioned Gemini usage and identity
+- **ENH-3664** — Capture real OMP usage
+- **ENH-3665** — Prove Kimi component and replay identity
+
+Standalone **ENH-3649** (reader isolation and diagnostics) is done and remains outside this epic's child count.
 
 ## Implementation Order and Readiness
+
+Historical implementation sequence for the 15 completed children; the six host evidence contracts now determine the remaining path for ENH-3534.
 
 1. **Parallel, now:** ENH-3544 (capability matrix; Claude/Codex evidence only, others `unknown`), ENH-3545 (labels only), ENH-3546 (Claude fixture capture, including repeated assistant records), ENH-3648 (six-host survey), **ENH-3655's unblocked join spike** (paired current-version live/rollout captures; must not gate ENH-3647), **Codex request-key fixture capture for ENH-3532** (fork, paginated thread, 0.154+ `token_usage_record`, mixed/partial event shapes, re-emitted notification, non-advancing total), and ENH-3651's catch-up/checkpoint/as-of design. Share Codex captures between ENH-3655 and ENH-3532. Standalone ENH-3649 may run independently and coordinates its `ll-ctx-stats` empty-discovery diagnostic with ENH-3656.
 2. **Codex identity:** use the verified host + **thread** ID (`session_meta.payload.id` / live `thread.started.thread_id`) for usage rows; the root/parent `payload.session_id` is not the thread ID in a fork. Agree identity-basis and span field names across ENH-3532 and ENH-3647 (see § Schema coordination), then land ENH-3532 (rollout ingestion) and ENH-3647 (live identity) in either order. Interim readers may expose an unreconciled observation sum only as an audit subtotal, not a canonical total or rate.
@@ -112,27 +122,29 @@ Rules: migrations take the next version in landing order and are never renumbere
 
 ## Shared-consumer notes
 
-- `issue_history/quality_regressions.py` weights model composition by `COUNT(*) FROM usage_events WHERE session_id IS NOT NULL`, which today means `channel = 'transcript'`. `issue_history/agent_quality.py::_usage_totals` (cost per issue) likewise reads every row with a `session_id` through the selector and would double-count once live/rollout rows carry one. ENH-3532 and ENH-3647 each pin **both** to `channel = 'transcript'` (whichever lands first); ENH-3543 decides whether they later read through the selector.
-- `select_usage_observations` gains a paired `host` + `session_id` filter (ENH-3543 / ENH-3656, whichever first); ENH-3549 reuses it. An ID-only call is rejected. Candidate matching is limited to a verified host/session pair, then report filters apply after reconciliation.
+- `quality_regressions.py` and `agent_quality.py` remain channel-pinned so newly identified Codex rows do not silently change existing aggregates.
+- `select_usage_coverage` reconciles candidates for a verified host/thread pair before report filters. `select_usage_observations` delegates to the same policy. An ID-only call is rejected.
 
 ## Cross-Issue Acceptance Criteria
 
-- [ ] Source usage/cost/waste/quality and built-in snapshot/dashboard aggregates agree on selection, qualification and audit subtotals for matched, partial and unresolved coverage (ENH-3543).
-- [ ] Canonical token components, event/request identity, run/state attribution, and report-window rules remain consistent through ingest, rebuild and export (ENH-3532/3543/3647).
-- [ ] Legacy/unverified producer evidence is never promoted by rebuild; missing originals/usage remain explicit rather than fabricated measurements (ENH-3534/3546).
-- [ ] Adding session identity to live or rollout rows never silently changes an existing aggregate (`quality_regressions` and `agent_quality` pins; ENH-3532/3647).
-- [ ] A Codex observation is counted once across forks, resumes, paginated threads, re-emitted notifications and both `token_usage_record`/`token_count` event shapes; `session_id` means the same thing in ENH-3532, ENH-3647 and ENH-3549.
-- [ ] Mixed/partial Codex event streams never lose old-shape-only usage through file-wide suppression; overlapping old/new records are counted once only when request coverage is proven, otherwise remain explicitly unresolved (ENH-3532).
-- [ ] First-enable and normalizer-version catch-up materialize previously ingested raw usage in either ENH-3532/ENH-3651 landing order; incremental rows and their checkpoint commit atomically, rebuild preserves the checkpoint contract, and Codex rollout reaches the stored reader without a per-turn full rebuild (ENH-3651/3532/3549).
-- [ ] ENH-3651's committed derive progress gives ENH-3656/ENH-3549 an as-of boundary for the selected session; a new append followed by a failed/skipped worker cannot silently look fresh.
-- [ ] Claude stored usage and the direct reader are compared on repeated assistant records, partial components and missing identity before ENH-3656's cutover; any deliberate numeric correction is documented and tested, and full/incremental replay agree on observation identity.
-- [ ] ENH-3656 can ship the Claude stored reader after ENH-3651 without waiting for Codex ingestion; ENH-3549 retires `_codex_cache_usage` only after a real Codex adapter trigger → ingest → derive → read test.
-- [ ] Unresolved overlap leaves canonical totals and derived rates unavailable while preserving per-channel audit subtotals; source and built-in snapshot/dashboard aggregates apply the same rule.
-- [ ] A selected session is qualified by verified host plus thread ID; same-ID rows from another host or unverified host attribution cannot enter its cache-rate figure (ENH-3543/3549).
-- [ ] Context consumption and occupancy have separate semantics (done in BUG-3587); baseline freshness survives estimate updates and fallback output exposes it (ENH-3545).
+- [x] Source usage/cost/waste/quality and built-in snapshot/dashboard aggregates agree on selection, qualification and audit subtotals for matched, partial and unresolved coverage (ENH-3543).
+- [x] Canonical token components, event/request identity, run/state attribution, and report-window rules remain consistent through ingest, rebuild and export (ENH-3532/3543/3647).
+- [x] Legacy/unverified producer evidence is never promoted by rebuild; missing originals/usage remain explicit rather than fabricated measurements (ENH-3534/3546).
+- [x] Adding session identity to live or rollout rows never silently changes an existing aggregate (`quality_regressions` and `agent_quality` pins; ENH-3532/3647).
+- [x] A Codex observation is counted once across forks, resumes, paginated threads, re-emitted notifications and both `token_usage_record`/`token_count` event shapes; `session_id` means the same thing in ENH-3532, ENH-3647 and ENH-3549.
+- [x] Mixed/partial Codex event streams never lose old-shape-only usage through file-wide suppression; overlapping old/new records are counted once only when request coverage is proven, otherwise remain explicitly unresolved (ENH-3532).
+- [x] First-enable and normalizer-version catch-up materialize previously ingested raw usage in either ENH-3532/ENH-3651 landing order; incremental rows and their checkpoint commit atomically, rebuild preserves the checkpoint contract, and Codex rollout reaches the stored reader without a per-turn full rebuild (ENH-3651/3532/3549).
+- [x] ENH-3651's committed derive progress gives ENH-3656/ENH-3549 an as-of boundary for the selected session; a new append followed by a failed/skipped worker cannot silently look fresh.
+- [x] Claude stored usage and the direct reader are compared on repeated assistant records, partial components and missing identity before ENH-3656's cutover; any deliberate numeric correction is documented and tested, and full/incremental replay agree on observation identity.
+- [x] ENH-3656 can ship the Claude stored reader after ENH-3651 without waiting for Codex ingestion; ENH-3549 retires `_codex_cache_usage` only after a real Codex adapter trigger → ingest → derive → read test.
+- [x] Unresolved overlap leaves canonical totals and derived rates unavailable while preserving per-channel audit subtotals; source and built-in snapshot/dashboard aggregates apply the same rule.
+- [x] A selected session is qualified by verified host plus thread ID; same-ID rows from another host or unverified host attribution cannot enter its cache-rate figure (ENH-3543/3549).
+- [x] Context consumption and occupancy have separate semantics (done in BUG-3587); baseline freshness survives estimate updates and fallback output exposes it (ENH-3545).
 - [ ] Every production host has an evidence-backed terminal ledger verdict; unknown capability, absent trigger, or open/deferred per-host child leaves the epic open.
 
 ## Review Notes
+
+Implementation review 2026-09-29: the full local suite passed (27,525 passed, 301 skipped); lint, format, host-map and private-reference verification passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency and older mypy/dependency stubs; no type-check pass is claimed. Eleven more epic children reached done, as did standalone ENH-3649. Six native producer contracts remain unproved, so ENH-3534 and the epic remain unresolved.
 
 Pre-implementation review 2026-09-24 applied to specifications only. Review 2026-09-28: refreshed stale child statuses (ENH-3580, BUG-3587 done); closed ENH-3532 gates 2–3 from fixtures and proposed a gate-1 key; split ENH-3543 → ENH-3647, ENH-3534 → ENH-3648, ENH-3549 → ENH-3649; added schema coordination, the `quality_regressions` consumer and ENH-3549's current-session freshness gate. Historical confidence scores do not certify the revised scopes. Child frontmatter is authoritative for status/progress.
 

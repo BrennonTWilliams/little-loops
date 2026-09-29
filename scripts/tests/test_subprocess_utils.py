@@ -13,6 +13,7 @@ Tests cover:
 from __future__ import annotations
 
 import io
+import json
 import os
 import signal
 import subprocess
@@ -1972,6 +1973,46 @@ class TestRunClaudeCommandModelDetection:
 
         assert len(detailed_calls) == 1
         assert detailed_calls[0].model == "claude-sonnet-4-6"
+
+    def test_claude_result_provenance_requires_captured_init_version(self) -> None:
+        """The live callback qualifies a result only with a verified producer version."""
+        from little_loops.subprocess_utils import TokenUsage
+
+        for version, expected in (("2.1.284", "measured"), ("2.1.283", "unknown")):
+            init_event = json.dumps(
+                {
+                    "type": "system",
+                    "subtype": "init",
+                    "model": "claude-haiku-4-5",
+                    "claude_code_version": version,
+                }
+            )
+            result_event = json.dumps(
+                {
+                    "type": "result",
+                    "usage": {
+                        "input_tokens": 18,
+                        "output_tokens": 165,
+                        "cache_read_input_tokens": 38429,
+                        "cache_creation_input_tokens": 11223,
+                    },
+                }
+            )
+            mock_process = Mock()
+            mock_process.stdout = io.StringIO(init_event + "\n" + result_event + "\n")
+            mock_process.stderr = io.StringIO("")
+            mock_process.returncode = 0
+            mock_process.wait.return_value = None
+            detailed_calls: list[TokenUsage] = []
+
+            with patch("subprocess.Popen", return_value=mock_process):
+                with patch("selectors.DefaultSelector") as mock_selector:
+                    self._make_two_line_selector(mock_selector, mock_process)
+                    run_claude_command("test", on_usage_detailed=detailed_calls.append)
+
+            assert len(detailed_calls) == 1
+            assert detailed_calls[0].host == "claude-code"
+            assert detailed_calls[0].provenance == expected
 
     def test_result_event_model_takes_priority_over_init_event_model(self) -> None:
         """Explicit model field in result event takes priority over init-captured model."""

@@ -39,6 +39,7 @@ PROMPT_SUBMIT = ADAPTER_DIR / "prompt-submit.sh"
 POST_TOOL_USE = ADAPTER_DIR / "post-tool-use.sh"
 PRE_TOOL_USE = ADAPTER_DIR / "pre-tool-use.sh"
 DRIFT_CHECK = ADAPTER_DIR / "drift-check.sh"
+USAGE_STOP = ADAPTER_DIR / "usage-stop.sh"
 
 
 class TestCodexAdapterIntegration:
@@ -52,6 +53,7 @@ class TestCodexAdapterIntegration:
         assert POST_TOOL_USE.is_file()
         assert PRE_TOOL_USE.is_file()
         assert DRIFT_CHECK.is_file()
+        assert USAGE_STOP.is_file()
         assert (HOOKS_JSON_DIR / "hooks.json").is_file()
         assert (REPO_ROOT / "hooks" / "adapters" / "codex" / "README.md").is_file()
 
@@ -74,6 +76,30 @@ class TestCodexAdapterIntegration:
         )
         assert os.access(DRIFT_CHECK, os.X_OK), (
             f"{DRIFT_CHECK} is not executable; chmod +x required"
+        )
+        assert os.access(USAGE_STOP, os.X_OK), f"{USAGE_STOP} is not executable; chmod +x required"
+
+    def test_stop_hook_schedules_usage_refresh(self) -> None:
+        data = json.loads((HOOKS_JSON_DIR / "hooks.json").read_text())
+        commands = [hook["command"] for group in data["hooks"]["Stop"] for hook in group["hooks"]]
+        assert any("usage-stop.sh" in command for command in commands)
+
+    def test_captured_stop_payload_has_completed_turn_rollout_usage(self) -> None:
+        fixture = REPO_ROOT / "scripts" / "tests" / "fixtures" / "codex"
+        payload = json.loads((fixture / "stop-hook-v0.152.1.json").read_text())
+        observed = json.loads((fixture / "stop-observation-v0.152.1.json").read_text())
+        rollout = [
+            json.loads(line)
+            for line in (fixture / "stop-rollout-v0.152.1.jsonl").read_text().splitlines()
+        ]
+        assert payload["hook_event_name"] == observed["hook_event_name"] == "Stop"
+        assert payload["session_id"] == observed["session_id"]
+        assert payload["turn_id"] == observed["turn_id"]
+        assert observed["source_exists"] is True
+        assert rollout[0]["payload"]["id"] == payload["session_id"]
+        assert (
+            rollout[-1]["payload"]["info"]["last_token_usage"]
+            == observed["last_token_usage_at_stop"]
         )
 
     def test_hooks_json_uses_matcher_startup(self) -> None:

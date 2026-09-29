@@ -99,7 +99,11 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
     <div id="views"></div>
   </section>
   <section>
-    <h2 style="font-size:.95rem;margin:1rem 0 .25rem;">Query</h2>
+    <h2 style="font-size:.95rem;margin:1rem 0 .25rem;">Snapshot SQL</h2>
+    <p class="muted">Custom SQL reads snapshot tables directly. <code>usage_events</code>
+      contains raw observations for audit, including unresolved overlap. Use
+      <code>selected_usage_events</code> and <code>usage_coverage_audit</code> for
+      qualified accounting; a raw sum is not a canonical consumption total.</p>
     <textarea id="sql" spellcheck="false" aria-label="Read-only SQL query"></textarea>
     <div>
       <button id="run" type="button">Run</button>
@@ -125,9 +129,13 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
       sql: "SELECT final_state, COUNT(*) AS n FROM loop_runs GROUP BY final_state ORDER BY n DESC"
     },
     {
-      label: "Cost by model",
-      sql: "SELECT model, COUNT(*) AS events, ROUND(SUM(cost_usd), 4) AS cost_usd" +
-        " FROM usage_events GROUP BY model ORDER BY cost_usd DESC"
+      label: "Usage cost by model and channel",
+      sql: "SELECT model, channel, coverage, raw_observation_count AS raw_events," +
+        " ROUND(raw_cost_usd, 4) AS raw_cost_subtotal_usd," +
+        " selected_observation_count AS selected_events," +
+        " ROUND(known_cost_usd, 4) AS known_cost_subtotal_usd," +
+        " ROUND(canonical_cost_usd, 4) AS canonical_cost_usd" +
+        " FROM usage_coverage_audit ORDER BY model, channel"
     }
   ];
 

@@ -36,6 +36,8 @@ exits with the handler's exit code. Today it routes:
 
 - ``pre_done`` → :mod:`little_loops.hooks.pre_done` (Stop hook; auto-consults the advisor on the working diff, deduped per distinct diff state, FEAT-3118)
 
+- ``usage_stop`` → :mod:`little_loops.hooks.usage_stop` (Stop hook; detached usage refresh)
+
 Future intent handlers will be wired by adding entries to the dispatch table
 in :func:`main_hooks`.
 
@@ -100,6 +102,7 @@ _INTENT_EVENT_NAME = {
     "subagent_start": "SubagentStart",
     "subagent_stop": "SubagentStop",
     "pre_done": "Stop",
+    "usage_stop": "Stop",
 }
 
 
@@ -135,7 +138,7 @@ _USAGE = (
     "Usage: python -m little_loops.hooks <intent>\n\n"
     "Available intents: pre_compact, pre_compact_handoff, session_start, user_prompt_submit,"
     " post_tool_use, pre_tool_use, edit_batch_nudge, session_end, drift_check, subagent_start,"
-    " subagent_stop, pre_done"
+    " subagent_stop, pre_done, usage_stop"
 )
 
 _HOOK_INTENT_REGISTRY: dict[str, Callable[[LLHookEvent], LLHookResult]] = {}
@@ -169,6 +172,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
         subagent_start,
         subagent_stop,
         sweep_stale_refs,
+        usage_stop,
         user_prompt_submit,
     )
 
@@ -185,6 +189,7 @@ def _dispatch_table() -> dict[str, Callable[[LLHookEvent], LLHookResult]]:
         "subagent_start": subagent_start.handle,
         "subagent_stop": subagent_stop.handle,
         "pre_done": pre_done.handle,
+        "usage_stop": usage_stop.handle,
     }
     # Built-ins shadow extension-provided intents on collision.
     return {**_HOOK_INTENT_REGISTRY, **built_ins}
@@ -228,7 +233,9 @@ def main_hooks() -> int:
         session_id=payload.get("session_id"),
     )
     root = resolve_hook_root(event)
-    if _hooks_telemetry_enabled(root):
+    # The usage Stop hook must not open SQLite or wait on hook telemetry before
+    # returning to the host; its worker records the durable refresh boundary.
+    if intent != "usage_stop" and _hooks_telemetry_enabled(root):
         from little_loops.session_store import hook_event_context
 
         with hook_event_context(

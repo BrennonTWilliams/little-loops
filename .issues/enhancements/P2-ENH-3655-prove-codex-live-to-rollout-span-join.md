@@ -3,9 +3,10 @@ id: ENH-3655
 type: ENH
 title: Prove Codex live-to-rollout span join
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
+completed_at: '2026-09-29T08:22:46Z'
 captured_at: '2026-09-29T05:07:09Z'
 parent: EPIC-3562
 epic: EPIC-3562
@@ -34,6 +35,8 @@ The committed Codex 0.152.1 captures show that a live `turn.completed` total can
 ## Expected Behavior
 
 Record a producer-backed **PROVEN** or **REFUTED** result for the exact live-to-span join before ENH-3543 implements coverage selection. A token-sum match is a consistency check, never identity by itself. Ambiguous, incomplete or concurrent activity yields `overlap_unresolved`; a refuted join does not block a conservative selector.
+
+**Verdict (2026-09-29): REFUTED for the proposed raw positional-sum join on Codex 0.158.0.** The live `turn.completed.usage` is cumulative thread usage across `exec resume` and `exec fork`, so it does not equal the request sum in the newly closed rollout span. A revised delta-based join is not proven: live JSON has no native `turn_id` or response ID, and equal deltas cannot establish identity. ENH-3543 must leave these overlaps unresolved until producer-backed correlation is available.
 
 ## Scope Boundaries
 
@@ -76,15 +79,48 @@ Record a producer-backed **PROVEN** or **REFUTED** result for the exact live-to-
 
 ## Acceptance Criteria
 
-- [ ] Versioned, sanitized paired live/rollout fixtures include a current producer, resume and fork/subagent identity; fixture gaps are stated explicitly.
-- [ ] The result is recorded as PROVEN or REFUTED with the exact conditions tested. Equal counts, timestamps, generated invocation UUIDs and run IDs alone never certify a match.
-- [ ] Tests or a reproducible spike cover missing/incomplete spans, extra interactive turns, ambiguous concurrent activity, and a mismatched sum. Each such case remains unresolved.
-- [ ] ENH-3543 cites the result and uses verified host + thread ID + turn span. If the join is refuted, its acceptance criteria permit a conservative unresolved selector without claiming complete match.
+- [x] Versioned, sanitized paired live/rollout fixtures include a current producer, resume and fork identity; subagent and compaction capture gaps are stated explicitly.
+- [x] The result is recorded as PROVEN or REFUTED with the exact conditions tested. Equal counts, timestamps, generated invocation UUIDs and run IDs alone never certify a match.
+- [x] Tests or a reproducible spike cover missing/incomplete spans, extra interactive turns, ambiguous concurrent activity, and a mismatched sum. Each such case remains unresolved.
+- [x] ENH-3543 cites the result and uses verified host + thread ID + turn span. Since the join is refuted, its acceptance criteria permit a conservative unresolved selector without claiming complete match.
+
+## Evidence and decision (2026-09-29)
+
+The isolated npm `@openai/codex@0.158.0` CLI produced one `exec --json`, one `exec resume --json` on the same thread, and one `exec fork --json` into a new thread. Each live `thread.started.thread_id` matched its rollout `session_meta.payload.id` and `token_usage_record.payload.thread_id`. The fork metadata has `forked_from_id` and `history_base.thread_id` equal to the parent thread. Unlike the 0.152.1 fixture, the 0.158.0 fork's `session_meta.payload.session_id` equals its **own** `payload.id`; the parent is not this field. The parent rollout contains two closed `task_started`–`task_complete` spans; the fork contains one. Native ordinals order the spans and continue into the fork's new file.
+
+| Invocation | Live input/cache-read/cache-write/output | New closed-span request sum | Accounting relationship |
+|---|---:|---:|---|
+| exec | 15849/11264/0/5 | 15849/11264/0/5 | live equals first span |
+| resume | 34365/26880/0/10 | 18516/15616/0/5 | live equals first + second span |
+| fork | 52897/38144/0/15 | 18532/11264/0/5 | live equals both parent spans + fork span |
+
+The 0.158.0 `token_usage_record` identifies each request with `thread_id`, `turn_id`, and `response_id`, and provides `usage`, `turn_token_usage`, and cumulative `thread_token_usage`. Its paired `event_msg/token_count` repeats `last_token_usage` and `total_token_usage`; these are the same request observation, not another request. In contrast, the live stream has `thread.started`, `turn.started`, and `turn.completed` without a native turn or response identity. The locally generated invocation UUID from ENH-3647 cannot bridge that gap. Raw positional equality fails on resume and fork; subtracting prior cumulative totals would restore arithmetic consistency for these examples but would still be a heuristic join vulnerable to missing history, compaction/reset, extra interactive spans, and concurrent same-thread invocations.
+
+**Safe contract for ENH-3543:** qualify by verified host and rollout thread ID (`session_meta.payload.id`), then use native `turn_id` to delimit complete rollout spans. Do not suppress a live or rollout counterpart on count/sum/order/timestamp agreement alone. Set `overlap_unresolved` when no producer-backed invocation-to-span identity exists, including otherwise matching one-span cases. A future live `turn_id`/response ID (or another documented producer mapping) could enable an exact join. The spike's `candidate_consistent_only` result is diagnostic, never selected coverage.
+
+The controlled capture did not generate a subagent, interactive TUI turn, actual concurrent resume, or compaction/window reset. The focused spike test uses synthetic modifications of real records to show that missing/incomplete spans, extra turns, concurrency ambiguity, window changes, and mismatched sums remain unresolved; these tests do not prove those producer paths. Captures, sanitization, and exact commands are documented in `scripts/tests/fixtures/codex/README.md`. `python -m pytest scripts/tests/spike/test_codex_live_rollout_join.py -q`, `ruff check`, and `ll-verify-private-refs scripts/tests/fixtures/codex/` passed.
 
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P2
+**Done** | Created: 2026-09-29 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:46 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:capture-issue` - 2026-09-29T05:14:29 - `a56f3607-c825-4a5b-a7c5-f263b20ddf6d.jsonl`
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Current Codex live/rollout captures refute a safe native join; ambiguous overlap is explicitly unresolved in the selector.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.

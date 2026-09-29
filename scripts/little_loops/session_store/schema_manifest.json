@@ -597,6 +597,14 @@
       "partial": false,
       "unique": false
     },
+    "idx_usage_events_observation_key": {
+      "columns": [
+        "observation_key"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
+    },
     "idx_usage_events_run_id": {
       "columns": [
         "run_id"
@@ -612,6 +620,22 @@
       "origin": "c",
       "partial": false,
       "unique": false
+    },
+    "idx_usage_events_source_path": {
+      "columns": [
+        "source_path"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_usage_events_source_raw_id": {
+      "columns": [
+        "source_raw_event_id"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": true
     },
     "idx_verdict_kind": {
       "columns": [
@@ -2056,6 +2080,18 @@
           "notnull": false,
           "pk": false,
           "type": "TEXT"
+        },
+        {
+          "name": "ordinal",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "usage_contract",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2812,6 +2848,149 @@
           "notnull": false,
           "pk": false,
           "type": "TEXT"
+        },
+        {
+          "name": "identity_basis",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "turn_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "request_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "request_identity_basis",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "stream_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "source_ordinal",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "source_line_no",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "usage_contract",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "source_raw_event_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "source_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "observation_key",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "usage_source_cursors": {
+      "columns": [
+        {
+          "name": "source_path",
+          "notnull": false,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "host",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "device",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "inode",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "committed_offset",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "committed_line_no",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "tail_sha256",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "source_mtime_ns",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "derived_raw_event_id",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "status",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "updated_at",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2935,5 +3114,5 @@
       "type": "table"
     }
   },
-  "schema_version": 55
+  "schema_version": 58
 }

@@ -364,6 +364,18 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 {
   "session_start": "2024-01-15T10:30:00Z",
   "estimated_tokens": 125000,
+  "metric": "context_occupancy_tokens",
+  "scope_kind": "context",
+  "session_id": "session-123",
+  "provenance": "estimated",
+  "estimate_reason": "transcript_baseline_plus_heuristic",
+  "baseline_observed_at": "2024-01-15T11:40:00Z",
+  "estimate_updated_at": "2024-01-15T11:45:00Z",
+  "baseline_observation_boundary": "1705315800",
+  "baseline_context_boundary": "2024-01-15T10:30:00Z",
+  "context_boundary": "2024-01-15T10:30:00Z",
+  "stale": true,
+  "stale_reason": "tool_activity_after_baseline",
   "transcript_baseline_tokens": 122000,
   "tool_calls": 63,
   "threshold_crossed_at": "2024-01-15T11:45:00Z",
@@ -386,6 +398,12 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 ```
 
 - `transcript_baseline_tokens`: The raw API token sum from the last assistant entry in the JSONL transcript (0 when unavailable or `use_transcript_baseline: false`). Useful for diagnosing estimation accuracy.
+- `estimated_tokens`: The current context-occupancy estimate. Even with a transcript baseline it includes heuristic tool and turn overhead, so its provenance is `estimated`. It is separate from invocation token consumption.
+- `metric`, `scope_kind`, `session_id`, `context_boundary`: Identify the occupancy metric and the session/compaction boundary to which the estimate applies. The boundary is the last handled compaction time, or the session start before a compaction.
+- `estimate_reason`: `transcript_baseline_plus_heuristic` when a non-zero transcript baseline contributes, otherwise `heuristic_accumulation`.
+- `baseline_observed_at`, `baseline_observation_boundary`: The hook observation time and transcript mtime of the last valid measured baseline. They do not advance when a cached baseline is reused or only the estimate changes. `baseline_context_boundary` records the context boundary at that observation.
+- `estimate_updated_at`: The time of the latest PostToolUse estimate. It is not a baseline measurement time.
+- `stale`, `stale_reason`: A baseline is stale after tool activity; after compaction, `compaction_after_baseline` persists until a new valid transcript observation. When no baseline is available, `stale` is `null` and the reason is `no_measured_baseline`. Legacy state files lack sufficient evidence and are rendered with unknown freshness by `ll-ctx-stats`.
 - `last_baseline_mtime`: The transcript file's mtime (epoch seconds, as a string) at the time `transcript_baseline_tokens` was last read. Used to detect turn boundaries — the transcript baseline is only re-read when the mtime advances, so repeated tool calls within the same turn serve the cached value.
 - `breakdown.claude_overhead`: Cumulative `per_turn_overhead` (plus the one-time `system_prompt_baseline` on the first call) added across all tool calls, tracked separately from per-tool estimates for diagnosing where estimated tokens come from.
 - `detected_model`: The model id detected from the last `assistant` transcript entry, cached so only the first hook invocation per session needs to read the transcript for this purpose.

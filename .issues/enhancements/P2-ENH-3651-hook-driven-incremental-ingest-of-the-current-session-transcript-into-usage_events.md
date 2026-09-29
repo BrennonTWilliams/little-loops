@@ -3,9 +3,10 @@ id: ENH-3651
 type: ENH
 title: Hook-driven incremental ingest of the current session transcript into usage_events
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
+completed_at: '2026-09-29T08:22:46Z'
 captured_at: '2026-09-29T02:51:25Z'
 parent: EPIC-3562
 epic: EPIC-3562
@@ -130,9 +131,44 @@ The derive mechanism covers every replayable usage channel produced by `_backfil
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Implementation findings (2026-09-29)
+
+- The captured Claude Code 2.1.284 Stop event and matching on-disk source are in
+  `scripts/tests/fixtures/claude/stop-{hook,observation,transcript}-v2.1.284.*`.
+  The hook observed two complete snapshots for the completed request, including
+  final output 176 and cache read 24750, before launching a worker. The two
+  snapshots share one producer `message.id` and yield one stored observation.
+- Schema v58 adds `usage_source_cursors` and usage row source/observation links.
+  A cursor records device/inode, complete-line byte offset, physical line,
+  boundary digest, mtime, and derived raw-row boundary. The append-only Claude
+  ingest, usage derive, cursor, and global derive checkpoint commit together.
+  Read-only `usage_source_freshness()` compares the current tail with that
+  committed boundary and returns `fresh`, `stale`, or conservative `unknown`.
+- First enablement and normalizer-version changes replay historical raw rows
+  once, preserving live-channel usage. Later Claude runs parse only appended
+  complete lines and derive only new raw rows. Codex replay reconstructs an
+  affected source's turn state from stored raw rows so a turn crossing a slice
+  boundary reaches the same observations as a full rebuild.
+- Verified Claude observations use `(host, sessionId, message.id)` as the
+  producer key. The largest raw-row ID supplies the final valid snapshot;
+  changed usage across copied source paths is retained with unknown provenance
+  and a warning. Missing IDs and pre-marker legacy rows remain unqualified.
+  Invalid later 2.1.284 snapshots do not replace the last valid snapshot.
+- The Claude Stop adapter spawns a detached worker. A per-database file lock
+  serializes workers, coalesces per-transcript requests already covered by a
+  later successful start, and schedules a trailing run for a Stop that arrives
+  during a worker. A different session's Stop is never coalesced by this rule.
+  The worker waits up to five seconds after the prior successful finish and
+  rereads after a two-second settlement window. This is a nominal seven-second
+  scheduling window plus actual ingest/derive time and lock contention. A
+  failed worker leaves the cursor stale/unknown and its request retryable.
+- Focused evidence: the new incremental, hook, and worker tests pass; existing
+  schema, lifecycle, writer, Claude producer, and Codex rollout suites pass.
+  A full local suite and issue status transition remain with epic integration.
+
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P2
+**Done** | Created: 2026-09-29 | Priority: P2
 
 ## Success Metrics
 
@@ -141,19 +177,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Acceptance Criteria
 
-- [ ] On each supported hook-trigger host, the current session's transcript usage reaches `usage_events` without a SessionStart, schema bump or manual rebuild; a stored-usage read sees it.
-- [ ] Slice-by-slice incremental ingest+derive of a transcript produces exactly the rows one full `rebuild()` produces (same counts, identity and provenance); running both, in either order, never double-counts.
-- [ ] A fixture-backed Claude transcript observation key and conflict rule handle repeated UUIDs, repeated message IDs with distinct UUIDs, changed usage on a repeated ID, missing IDs and copies/moves. Full rebuild and slice-by-slice derive select the same observations; source-row uniqueness alone is not presented as producer deduplication.
-- [ ] First enablement catches up already-ingested but underived raw rows. The derive checkpoint and rows commit together; crash-before-commit, crash-after-commit, concurrent-worker and later-rebuild tests prove no loss or duplicate rows.
-- [ ] A newly added usage normalizer replays historical eligible raw rows that predate the checkpoint (generic fixture here); ENH-3549 later verifies that ENH-3532 before ENH-3651 and ENH-3651 before ENH-3532 produce the same Codex rollout observations.
-- [ ] Source ingest progress does not depend on the global `last_raw_event_ts` alone; append, rotation/truncation and a turn span crossing slice boundaries have fixture-backed behavior.
-- [ ] The shared derive accepts Codex rollout observations once ENH-3532 lands, without a per-turn full rebuild. This compatibility is tested after ENH-3532 under ENH-3549 if ENH-3651 lands first; ENH-3549 also owns the real Codex hook-to-reader test.
-- [ ] Live-channel rows are untouched; the SessionStart worker and the hook path can run concurrently without corrupting the `last_raw_event_ts` watermark.
-- [ ] The hook never blocks the turn: it only spawns the detached worker, honors `LL_NON_INTERACTIVE`, and is throttled.
-- [ ] Supported hook-trigger hosts are listed and tested; hosts without a proven trigger report unavailable current-session usage rather than silently claiming freshness.
-- [ ] A selected session's committed as-of boundary can be compared with its current source tail without parsing usage at read time. A newer append followed by a failed/skipped worker is stale or has explicit unknown lag, never fresh; checkpoint advancement cannot hide skipped sessions, late appends, rotation or partial tails.
-- [ ] A captured Claude Stop payload and matching transcript prove the completed turn's final usage is present before worker launch, or a later trigger/retry is chosen. A throttled final turn schedules a trailing derive without requiring another hook event; the maximum delay is documented and tested.
-- [ ] Legacy transcript rows keep their existing provenance (ENH-3546); new rows follow whatever eligibility discriminator that issue defines.
+- [x] On each supported hook-trigger host, the current session's transcript usage reaches `usage_events` without a SessionStart, schema bump or manual rebuild; a stored-usage read sees it.
+- [x] Slice-by-slice incremental ingest+derive of a transcript produces exactly the rows one full `rebuild()` produces (same counts, identity and provenance); running both, in either order, never double-counts.
+- [x] A fixture-backed Claude transcript observation key and conflict rule handle repeated UUIDs, repeated message IDs with distinct UUIDs, changed usage on a repeated ID, missing IDs and copies/moves. Full rebuild and slice-by-slice derive select the same observations; source-row uniqueness alone is not presented as producer deduplication.
+- [x] First enablement catches up already-ingested but underived raw rows. The derive checkpoint and rows commit together; crash-before-commit, crash-after-commit, concurrent-worker and later-rebuild tests prove no loss or duplicate rows.
+- [x] A newly added usage normalizer replays historical eligible raw rows that predate the checkpoint (generic fixture here); ENH-3549 later verifies that ENH-3532 before ENH-3651 and ENH-3651 before ENH-3532 produce the same Codex rollout observations.
+- [x] Source ingest progress does not depend on the global `last_raw_event_ts` alone; append, rotation/truncation and a turn span crossing slice boundaries have fixture-backed behavior.
+- [x] The shared derive accepts Codex rollout observations once ENH-3532 lands, without a per-turn full rebuild. This compatibility is tested after ENH-3532 under ENH-3549 if ENH-3651 lands first; ENH-3549 also owns the real Codex hook-to-reader test.
+- [x] Live-channel rows are untouched; the SessionStart worker and the hook path can run concurrently without corrupting the `last_raw_event_ts` watermark.
+- [x] The hook never blocks the turn: it only spawns the detached worker, honors `LL_NON_INTERACTIVE`, and is throttled.
+- [x] Supported hook-trigger hosts are listed and tested; hosts without a proven trigger report unavailable current-session usage rather than silently claiming freshness.
+- [x] A selected session's committed as-of boundary can be compared with its current source tail without parsing usage at read time. A newer append followed by a failed/skipped worker is stale or has explicit unknown lag, never fresh; checkpoint advancement cannot hide skipped sessions, late appends, rotation or partial tails.
+- [x] A captured Claude Stop payload and matching transcript prove the completed turn's final usage is present before worker launch, or a later trigger/retry is chosen. A throttled final turn schedules a trailing derive without requiring another hook event; the maximum delay is documented and tested.
+- [x] Legacy transcript rows keep their existing provenance (ENH-3546); new rows follow whatever eligibility discriminator that issue defines.
 
 ## Scope Boundaries
 
@@ -174,4 +210,21 @@ def backfill_usage_incremental(db: Path | str, *, since_raw_event_id: int | None
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:45 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:capture-issue` - 2026-09-29T02:53:24 - `efa5da7e-d183-4626-be25-08b53ab75362.jsonl`
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Claude and Codex Stop hooks feed atomic incremental usage derivation, source cursors and reader-visible freshness checks.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.

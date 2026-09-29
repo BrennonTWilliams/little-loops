@@ -8934,25 +8934,44 @@ missing `input_tokens` or `output_tokens` has an unavailable count, so
 carries `provenance`, `coverage` (`overlap_unresolved` when live and transcript
 rows may cover the same work) and per-channel `channel_subtotals`;
 `aggregate_usage()` and `cost_attribution()` add the same three fields.
+When coverage is unresolved or unknown, canonical token/cost totals and waste
+rates are `None`; channel subtotals still describe the raw audit observations.
 
-### select_usage_observations
+### select_usage_coverage / select_usage_observations
 
 ```python
+def select_usage_coverage(
+    conn: sqlite3.Connection,
+    *,
+    since: str | None = None,
+    require_run_id: bool = False,
+    host: str | None = None,
+    session_id: str | None = None,
+) -> CoverageSelection
+
 def select_usage_observations(
     conn: sqlite3.Connection,
     *,
     since: str | None = None,
     require_run_id: bool = False,
-) -> Iterator[sqlite3.Row]
+    host: str | None = None,
+    session_id: str | None = None,
+) -> Iterator[Mapping[str, Any]]
 ```
 
-The single row-selection point for token/cost aggregation over `usage_events`
-(ENH-3528). Streams every row (token components, `cost_usd`, `model`,
-`session_id`, `invocation_id`, `run_id`, `channel`, `host`, `host_basis`,
-`provenance`, `scope_kind`, `observed_at`, `observed_at_basis`); columns missing
-from older schemas read as `NULL`. `require_run_id=True` keeps only rows with a
-non-NULL `run_id`. Raises `sqlite3.OperationalError` when the table is absent.
-This is the replacement point for a shared coverage selector.
+The shared coverage policy reconciles the full candidate set before applying
+`since` or `require_run_id` (ENH-3543). A paired `session_id` filter requires
+`host` and admits verified live or replay identities only. Missing columns on
+older schemas read as `NULL`; an absent table raises `sqlite3.OperationalError`.
+`CoverageSelection` exposes `groups`, flattened `audit_rows` and
+`selected_rows`, aggregate `coverage`, and `reason`. Each `CoverageGroup`
+exposes those two row tuples, `coverage`, `reason`, and raw
+`channel_subtotals`. Row mappings include `_coverage` and `_coverage_reason`
+for internal consumers. `selected_rows` contains canonical-eligible rows only;
+unresolved and unknown groups retain their audit rows but have no selected
+rows. Current Codex live/rollout overlap has no proven producer join, so it
+remains unresolved. `select_usage_observations` delegates to this policy and
+yields the annotated audit rows for source readers.
 
 ### UsageEvent / recent_usage_events
 
@@ -10111,6 +10130,21 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
 ```
 
 Dispatch helper letting the JSONL-derived `_backfill_*` functions (`_backfill_sessions`, `_backfill_tool_events`, `_backfill_usage_events`, `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_skill_events`) accept either a legacy `list[Path]` (re-reads files line-by-line) or a `raw_events` cursor selecting `(raw_line, source_path, host)` — the mechanism `rebuild()` uses to replay previously-ingested lines without touching the filesystem. Since ENH-3422, ingest itself normalizes at write time (via the `sessions.py` parsers), so this replay path carries only one host-specific shim: a DB holding rows ingested before ENH-3422 may still have raw (pre-normalization) qwen wire format (`message.parts`); rows shaped that way (`qwen.py::is_raw_qwen_record`) are re-normalized via `normalize_qwen_record` on replay, everything else (including current-format qwen rows and every other host) passes through untouched.
+
+### Assistant usage replay dispatch (ENH-3534)
+
+`_backfill_usage_events()` passes assistant-message records through
+`writers.normalize_host_usage(record: UsageReplayRecord, *, state: HostUsageState)`.
+The returned `UsageObservation` carries the parsed usage block, source session,
+model, qualification and optional producer observation key. `HostUsageState` is
+bound to one source, host and session; it keeps no cumulative counts because
+the remaining hosts have no verified cumulative contract. Only a persisted
+Claude Code 2.1.284 contract marker can qualify this path as measured. A
+Claude-shaped block on another host remains an unknown audit observation.
+Codex rollout replay retains its separate candidate/span logic; Kimi's native
+records have no adapter yet. Qwen, Gemini and OMP normalizers currently strip
+usage before replay, so their missing observations remain unavailable until
+their per-host producer contracts and parser changes are implemented.
 
 ```python
 def rebuild(
@@ -13553,6 +13587,9 @@ class TokenUsage:
     scope_kind: TokenScopeKind = "unknown"
     observed_at: str | None = None
     observed_at_basis: ObservedAtBasis | None = None
+    session_id: str | None = None
+    identity_basis: str | None = None
+    invocation_id: str | None = None
 ```
 
 A token component is `None` when the host did not report it (missing key or explicit `null`); `None` means *unknown*, never zero, and a reported `0` stays `0`. `estimate_cost_usd` returns `None` for an observation with any `None` component. The legacy two-int `UsageCallback` fires only when input, output and cache-read are all known; `on_usage_detailed` always receives the observation.
@@ -13567,12 +13604,14 @@ A token component is `None` when the host did not report it (missing key or expl
 | `cache_creation_tokens` | `int` | *(required)* | `cache_creation_input_tokens` from `usage`. |
 | `model` | `str` | *(required)* | Model ID reported by the `result` event, falling back to the model detected from the earlier `system`/`init` event. |
 | `is_batch` | `bool` | `False` | True when this usage came from the Message Batches API (FEAT-2716), eligible for the flat 50% batch discount in `little_loops.pricing.estimate_cost_usd`. Defaults to `False` so every existing construction site is unaffected. |
-| `provenance` | `"measured" \| "estimated" \| "unknown"` | `"unknown"` | Trust classification of the observation. No acquisition path is `measured` yet. |
+| `provenance` | `"measured" \| "estimated" \| "unknown"` | `"unknown"` | Trust classification of the observation. Complete, nonzero Codex live 0.158.0 blocks can be `measured`; request scope remains unresolved. |
 | `host` | `str \| None` | `None` | Runtime host that produced the observation (`claude-code`, `codex`, ...), stamped by `run_claude_command` from the invocation's `HostRunner`. |
-| `scope_kind` | `"request" \| "invocation" \| "session" \| "context" \| "unknown"` | `"unknown"` | Live host-CLI terminal events are `invocation`; transcript records and SDK requests are `request`. |
+| `scope_kind` | `"request" \| "invocation" \| "session" \| "context" \| "unknown"` | `"unknown"` | Codex live 0.158.0 totals are cumulative across resume/fork, so their scope stays `unknown`; Claude live results use `invocation`. |
 | `observed_at` / `observed_at_basis` | `str \| None` / `"event" \| "received" \| None` | `None` | Observation time and its basis: `received` for live rows (terminal events carry no timestamp), `event` for transcript replay. |
+| `session_id` / `identity_basis` | `str \| None` / `str \| None` | `None` | Codex `thread.started.thread_id` and `host_observed` when available; absent producer identity remains unknown. |
+| `invocation_id` | `str \| None` | `None` | Locally generated UUID for one Codex process, never a native request ID. |
 
-`record_usage_event(...)` accepts `int | None` token components plus the keyword-only metadata `provenance` (default `"unknown"`), `host`, `provider_vendor`, `scope_kind`, `observed_at`, `observed_at_basis` and `invocation_id`.
+`record_usage_event(...)` accepts `int | None` token components plus the keyword-only metadata `provenance` (default `"unknown"`), `host`, `provider_vendor`, `scope_kind`, `observed_at`, `observed_at_basis`, `session_id`, `identity_basis`, and `invocation_id`.
 
 ### ToolCall
 

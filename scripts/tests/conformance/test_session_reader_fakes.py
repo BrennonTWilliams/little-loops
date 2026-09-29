@@ -1,4 +1,4 @@
-"""AC suite for the ENH-3549 read-side divergent-fake spike.
+"""Conformance coverage for divergent fake session readers (ENH-3649).
 
 Retires the issue's flagged risk: "no precedent injects a fake host into
 session discovery" -- and no test drives the read side of the seam with two
@@ -9,10 +9,22 @@ divergently shaped hosts. Every test drives the *real* ``detect_sessions`` /
 from __future__ import annotations
 
 import ast
+import json
+import sys
+from collections import Counter
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from scripts.tests.spike.enh3549_read_side_fake_hosts.fake_read_hosts import (
+
+from little_loops.session_store import sessions
+from little_loops.session_store.sessions import NoSessionsCause, detect_sessions, iter_events
+from little_loops.user_messages import (
+    _USER_MESSAGE_READERS,
+    encode_project_path,
+    extract_user_messages,
+)
+from tests.conformance.fake_read_hosts import (
     FAKE_HOSTS,
     install_fake_read_hosts,
     read_prompts,
@@ -20,8 +32,7 @@ from scripts.tests.spike.enh3549_read_side_fake_hosts.fake_read_hosts import (
     write_fake_session,
 )
 
-from little_loops.session_store import sessions
-from little_loops.session_store.sessions import NoSessionsCause, detect_sessions, iter_events
+pytestmark = pytest.mark.conformance
 
 PROMPTS = ["first prompt", "second prompt"]
 
@@ -79,7 +90,9 @@ class TestHostAgnosticRead:
         write_fake_minimal_session(home, cwd, "s2", PROMPTS)
 
         keys = {
-            host: frozenset(next(iter_events(detect_sessions(cwd, host, home=home)[0])).payload)
+            host: frozenset(
+                next(iter_events(detect_sessions(cwd, host, home=home)[0])).payload["raw"]
+            )
             for host in FAKE_HOSTS
         }
         assert keys["fake"] != keys["fake-minimal"]
@@ -107,14 +120,99 @@ class TestNamedCause:
         assert message
 
 
+class TestConsumerReadback:
+    def test_extract_user_messages_dispatches_both_fake_hosts(self, workspace, monkeypatch):
+        home, cwd = workspace
+        install_fake_read_hosts(monkeypatch)
+        write_fake_session(home, cwd, "s1", PROMPTS)
+        write_fake_minimal_session(home, cwd, "s2", PROMPTS)
+
+        handles = detect_sessions(cwd, None, home=home)
+        assert {h.host for h in handles} == set(FAKE_HOSTS)
+        messages = extract_user_messages(handles)
+        assert Counter(m.content for m in messages) == Counter(dict.fromkeys(PROMPTS, 2))
+        assert {m.session_id for m in messages} == {"s1", "s2"}
+        assert extract_user_messages(handles, include_agent_sessions=False) == messages
+
+    def test_agent_and_real_host_selection_survive_fake_registration(self, workspace, monkeypatch):
+        home, cwd = workspace
+        install_fake_read_hosts(monkeypatch)
+        write_fake_session(home, cwd, "s1", ["fake prompt"])
+        write_fake_session(home, cwd, "agent-s2", ["agent prompt"])
+        claude_dir = home / ".claude" / "projects" / encode_project_path(str(cwd))
+        claude_dir.mkdir(parents=True)
+        (claude_dir / "real.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "timestamp": "2026-09-24T10:00:00Z",
+                    "message": {"content": "real prompt"},
+                }
+            )
+            + "\n"
+        )
+        handles = detect_sessions(cwd, None, home=home, include_agents=True)
+        assert {h.session_id for h in handles} == {"s1", "agent-s2", "real"}
+        assert {
+            m.content for m in extract_user_messages(handles, include_agent_sessions=False)
+        } == {
+            "fake prompt",
+            "real prompt",
+        }
+        assert {m.content for m in extract_user_messages(handles)} == {
+            "fake prompt",
+            "agent prompt",
+            "real prompt",
+        }
+
+    def test_ll_messages_cli_reads_both_fake_hosts(self, workspace, monkeypatch, capsys):
+        from little_loops.cli.messages import main_messages
+
+        home, cwd = workspace
+        install_fake_read_hosts(monkeypatch)
+        write_fake_session(home, cwd, "s1", PROMPTS)
+        write_fake_minimal_session(home, cwd, "s2", PROMPTS)
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.chdir(cwd)
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        with patch.object(sys, "argv", ["ll-messages", "--stdout", "--cwd", str(cwd)]):
+            assert main_messages() == 0
+        lines = [
+            json.loads(line)
+            for line in capsys.readouterr().out.splitlines()
+            if line.startswith("{")
+        ]
+        assert Counter(row["content"] for row in lines) == Counter(dict.fromkeys(PROMPTS, 2))
+
+    def test_ll_logs_extract_reads_both_fake_hosts(self, workspace, monkeypatch, capsys):
+        from little_loops.cli.logs import main_logs
+
+        home, cwd = workspace
+        install_fake_read_hosts(monkeypatch)
+        prompts = ["<command-name>/ll:manage-issue", "<command-name>/ll:review-loop"]
+        write_fake_session(home, cwd, "s1", prompts)
+        write_fake_minimal_session(home, cwd, "s2", prompts)
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.chdir(cwd)
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        with patch.object(sys, "argv", ["ll-logs", "extract", "--project", str(cwd), "--json"]):
+            assert main_logs() == 0
+        output = capsys.readouterr().out
+        doc = json.loads(output)
+        assert doc["totals"]["sessions"] == 2
+        assert doc["totals"]["records"] == 4
+        assert {p.stem for p in (cwd / "logs" / cwd.name).glob("*.jsonl")} == {"s1", "s2"}
+
+
 class TestIsolation:
     def test_patches_undone_after_test(self):
         assert "fake" not in sessions._PARSERS
         assert "fake" not in sessions._REGISTERED_HOSTS
         assert "fake" not in sessions._LAYOUT_HOSTS
+        assert "fake" not in _USER_MESSAGE_READERS
 
-    def test_guard_spike_does_not_edit_production_registries(self):
-        """Regression guard: the spike only ever touches registries via monkeypatch."""
+    def test_fake_fixture_does_not_edit_production_registries(self):
+        """Regression guard: fixture writes registries only via monkeypatch."""
         src = Path(__file__).with_name("fake_read_hosts.py").read_text(encoding="utf-8")
         tree = ast.parse(src)
         offenders = []

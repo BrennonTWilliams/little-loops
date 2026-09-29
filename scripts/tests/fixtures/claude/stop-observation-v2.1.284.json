@@ -1,0 +1,15 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "51cef263-e2fa-4863-a8fe-2e1d57b1db89",
+  "source_exists": true,
+  "complete_usage_records_at_stop": 2,
+  "last_usage": {
+    "message_id": "msg_011CfXLagRTE1NS5SKoAQJMQ",
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 176,
+      "cache_read_input_tokens": 24750,
+      "cache_creation_input_tokens": 0
+    }
+  }
+}

@@ -79,7 +79,9 @@ Public API:
     cost_attribution(group_by, ...) -> list[dict]
     waste_attribution(since, ...) -> list[dict] (ENH-2722)
     recent_usage_events(...) -> list[UsageEvent]
-    select_usage_observations(conn, *, since, require_run_id) -> Iterator[Row] (ENH-3528)
+    select_usage_coverage(conn, *, since, require_run_id, host, session_id) -> CoverageSelection
+    select_usage_observations(conn, *, since, require_run_id, host, session_id)
+        -> Iterator[Mapping] of annotated audit rows (ENH-3528/3543)
     aggregate_usage(group_by, ...) -> list[dict]
     context_pressure_curve(session_id, ...) -> list[ContextPressureEvent]
     pressure_crossings(session_id, ...) -> list[ContextPressureEvent]
@@ -257,6 +259,8 @@ from little_loops.history_reader.subagents import (
 )
 from little_loops.history_reader.summary_dag import condensed_nodes_for_issue
 from little_loops.history_reader.usage import (
+    CoverageGroup,
+    CoverageSelection,
     agent_usage,
     aggregate_usage,
     cost_attribution,
@@ -264,11 +268,14 @@ from little_loops.history_reader.usage import (
     mcp_server_usage,
     recent_tool_events,
     recent_usage_events,
+    select_usage_coverage,
     select_usage_observations,
     waste_attribution,
 )
 
 __all__ = [
+    "CoverageGroup",
+    "CoverageSelection",
     "SECTION_PROVIDERS",
     "AdvisorConsultRow",
     "AxisRates",
@@ -353,6 +360,7 @@ __all__ = [
     "recent_test_runs",
     "recent_tool_events",
     "recent_usage_events",
+    "select_usage_coverage",
     "select_usage_observations",
     "recent_verdict_events",
     "related_issue_events",

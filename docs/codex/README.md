@@ -17,7 +17,7 @@ little-loops integrates with [OpenAI Codex CLI](https://github.com/openai/codex)
 | `user_prompt_submit` | ✓ wired |
 | `post_tool_use` | ✓ wired (fire-and-forget, ≤5s timeout) |
 | `pre_tool_use` | ✓ wired (`Edit\|Write` matcher; see [Usage → pre_tool_use](usage.md#pre_tool_use-enh-1718)) |
-| `stop` | deferred — no current consumer |
+| `stop` | ✓ wired to detached stored-usage refresh |
 | `post_compact` | deferred — no current consumer |
 | `permission_request` | deferred — no current consumer |
 
@@ -36,7 +36,7 @@ After running `ll-adapt --host codex --apply` once, all `ll` skills and commands
 
 ## What is deferred
 
-- **`stop` / `post_compact` / `permission_request`**: Codex fires these events, but little-loops has no current consumer for them. Hooks for these intents are not wired in `.codex/hooks.json` by default.
+- **`post_compact` / `permission_request`**: Codex fires these events, but little-loops has no current consumer for them. Hooks for these intents are not wired in `.codex/hooks.json` by default.
 - **`--agent` (persona selection, ll-orchestrated)**: Now **partially supported** via prompt injection (ENH-1533). When ll's orchestration layer (`ll-auto`, `ll-parallel`, `ll-loop`) requests a persona via `--agent <name>`, `CodexRunner.build_streaming` reads `.codex/agents/<name>.toml`, extracts `developer_instructions`, and prepends a `[Persona: <name>]` block to the prompt. Generate the TOML files once with `ll-adapt --host codex --apply`. When the TOML is absent, `CodexRunner` falls back to emitting `CapabilityNotSupported` plus a stderr notice and proceeds with Codex's default configuration. **Permanent native-flag gap**: Codex has no `--agent` CLI flag (openai/codex#10067); the prompt-injection workaround is the only way to apply ll-defined personas. **Behavioral note for `ll-doctor`/CI consumers**: `agent_select` is now `"partial"` instead of `"unsupported"`, so Codex hosts that previously failed `ll-doctor` solely on `agent_select` will now exit `0`. Note that `ll-doctor`'s exit code is not capability-only, though — it also covers little-loops' own install-surface checks (and, under `--full`, the `ll-verify-*` family), any of which can independently affect exit code. See [Usage → Current Limitations](usage.md#current-limitations).
 - **`--tools` (sandbox modes)**: Partially supported; only basic sandbox modes pass through.
 

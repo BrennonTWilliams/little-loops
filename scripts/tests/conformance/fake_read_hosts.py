@@ -1,4 +1,4 @@
-"""Divergent fake read-side hosts injected into the real session seam (ENH-3549 spike).
+"""Divergent fake read-side hosts injected into the real session seam (ENH-3649).
 
 Two fake hosts whose on-disk transcript shapes deliberately disagree, plus
 ``install_fake_read_hosts`` -- the minimal set of ``monkeypatch`` calls that
@@ -16,15 +16,17 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from little_loops import user_messages
 from little_loops.session_store import sessions, writers
 from little_loops.session_store.sessions import SessionEvent, SessionHandle
-from little_loops.user_messages import encode_project_path
+from little_loops.user_messages import UserMessage, encode_project_path
 
 FAKE_HOSTS = ("fake", "fake-minimal")
 
@@ -69,22 +71,35 @@ def _records(path: Path) -> Iterator[tuple[int, dict[str, Any]]]:
 
 def parse_fake(path: Path) -> Iterator[SessionEvent]:
     for line_no, rec in _records(path):
+        message = rec.get("text", "")
         yield SessionEvent(
             type="user" if rec["kind"] == "prompt" else "assistant",
             timestamp=rec["at"],
             host="fake",
-            payload=rec,
+            payload={
+                "type": "user" if rec["kind"] == "prompt" else "assistant",
+                "timestamp": rec["at"],
+                "message": {"content": message},
+                "raw": rec,
+            },
             line_no=line_no,
         )
 
 
 def parse_fake_minimal(path: Path) -> Iterator[SessionEvent]:
     for line_no, rec in _records(path):
+        timestamp = datetime.fromtimestamp(rec["time"], tz=UTC).isoformat()
+        message = "".join(block["t"] for block in rec["content"])
         yield SessionEvent(
             type=rec["role"],
-            timestamp=str(rec["time"]),
+            timestamp=timestamp,
             host="fake-minimal",
-            payload=rec,
+            payload={
+                "type": rec["role"],
+                "timestamp": timestamp,
+                "message": {"content": message},
+                "raw": rec,
+            },
             line_no=line_no,
         )
 
@@ -94,8 +109,8 @@ def prompt_text(event: SessionEvent) -> str | None:
     if event.type != "user":
         return None
     if event.host == "fake":
-        return str(event.payload["text"])
-    return "".join(b["t"] for b in event.payload["content"])
+        return str(event.payload["raw"]["text"])
+    return "".join(b["t"] for b in event.payload["raw"]["content"])
 
 
 def install_fake_read_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,6 +138,35 @@ def install_fake_read_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
         return real_layout(host)
 
     monkeypatch.setattr(writers, "host_layout_for", layout)
+
+    # The message consumer has an explicit host dispatch. Add test-only readers
+    # for the divergent wire shapes; production tables remain real-host only.
+    monkeypatch.setitem(user_messages._USER_MESSAGE_READERS, "fake", _read_fake_messages)
+    monkeypatch.setitem(user_messages._USER_MESSAGE_READERS, "fake-minimal", _read_fake_messages)
+
+
+def _read_fake_messages(
+    handle: SessionHandle, since: datetime | None, include_response_context: bool
+) -> list[UserMessage]:
+    out: list[UserMessage] = []
+    for event in sessions.iter_events(handle):
+        text = prompt_text(event)
+        if text is None:
+            continue
+        timestamp = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
+        timestamp = timestamp.replace(tzinfo=None)
+        if since and timestamp < since:
+            continue
+        out.append(
+            UserMessage(
+                content=text,
+                timestamp=timestamp,
+                session_id=handle.session_id,
+                uuid=f"{handle.session_id}:{event.line_no}",
+                cwd=str(handle.cwd),
+            )
+        )
+    return out
 
 
 def read_prompts(handles: list[SessionHandle]) -> list[str]:

@@ -25,6 +25,18 @@ states:
       echo "file_count: $FILE_COUNT"
       TOKENS=$(jq -r '.estimated_tokens // "n/a"' .ll/ll-context-state.json 2>/dev/null || echo "n/a")
       echo "estimated_tokens: $TOKENS"
+      jq -r '
+        "occupancy_metric: \(.metric // "context_occupancy_tokens")",
+        "occupancy_scope: \(.scope_kind // "context")",
+        "occupancy_session_id: \(.session_id // "unknown")",
+        "occupancy_context_boundary: \(.context_boundary // "unknown")",
+        "occupancy_provenance: \(if .estimated_tokens == null then "unknown" else "estimated" end)",
+        "occupancy_estimate_reason: \(.estimate_reason // "legacy_state_unknown_estimator")",
+        "baseline_observed_at: \(.baseline_observed_at // "unknown")",
+        "estimate_updated_at: \(.estimate_updated_at // "unknown")",
+        "baseline_stale: \(if (.stale | type) == "boolean" then .stale else "unknown" end)",
+        "baseline_stale_reason: \(.stale_reason // "unknown_baseline_freshness")"
+      ' .ll/ll-context-state.json 2>/dev/null || echo "occupancy_freshness: unknown"
       find ${context.scratch_dir} -maxdepth 1 -type f -size +100k -exec du -sk {} \; 2>/dev/null | sort -rn || true  # ll-lint: mr11-ok(context.scratch_dir) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     capture: snapshot
     next: self_assess

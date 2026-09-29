@@ -13,8 +13,8 @@ the only subset ``cli/logs.py``'s readers need — leaving every other record
 type to pass through untouched (unlike qwen, where ``None`` means *drop*;
 here it means *pass the raw envelope through*, since most Codex record
 types have no Claude-shaped equivalent to normalize into and still carry
-information downstream consumers such as ``cli/ctx_stats.py``'s
-``_codex_cache_usage`` (``event_msg``/``token_count``) or
+information downstream consumers such as stored usage replay
+(``event_msg``/``token_count``) or
 ``user_messages.py::_extract_codex_user_messages`` rely on).
 
 **Observed shapes (survey, 2026-09-10; n=3 exec calls across 8,859 rollouts

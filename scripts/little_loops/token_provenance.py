@@ -129,11 +129,22 @@ class ObservationGroup:
         self._live_sessions: set[str] = set()
         self._transcript_sessions: set[str] = set()
         self._live_without_session = False
+        self._coverage_labels: set[str] = set()
+        self._coverage_reasons: set[str] = set()
+        self._unannotated_rows = False
 
     def add(self, row: Any) -> None:
         self.rows += 1
         provenance = row_provenance(row)
         channel = row_channel(row)
+        coverage = _row_get(row, "_coverage")
+        if coverage in ("non_overlapping", "overlap_unresolved", "unknown"):
+            self._coverage_labels.add(coverage)
+            reason = _row_get(row, "_coverage_reason")
+            if reason:
+                self._coverage_reasons.add(str(reason))
+        else:
+            self._unannotated_rows = True
         self.provenances.add(provenance)
         sub = self.channels.setdefault(channel, {"events": 0, **dict.fromkeys(TOKEN_COLUMNS, 0)})
         sub["events"] += 1
@@ -171,6 +182,12 @@ class ObservationGroup:
         """``non_overlapping`` | ``overlap_unresolved`` | ``unknown`` (identity-based only)."""
         if not self.rows:
             return "unknown"
+        if "overlap_unresolved" in self._coverage_labels:
+            return "overlap_unresolved"
+        if "unknown" in self._coverage_labels or (self._coverage_labels and self._unannotated_rows):
+            return "unknown"
+        if self._coverage_labels:
+            return "non_overlapping"
         live = "live" in self.channels
         replay = any(ch != "live" for ch in self.channels)
         if not (live and replay):
@@ -182,8 +199,16 @@ class ObservationGroup:
             return "non_overlapping"
         return "overlap_unresolved"
 
+    def coverage_reason(self) -> str | None:
+        """Return stable selector reasons, retaining the legacy overlap explanation."""
+        if self._coverage_reasons:
+            return "; ".join(sorted(self._coverage_reasons))
+        if self.coverage() == "overlap_unresolved":
+            return _OVERLAP_REASON
+        return None
+
     def aggregate_provenance(self, column: str) -> str:
-        if not self.rows or self.coverage() == "overlap_unresolved":
+        if not self.rows or self.coverage() != "non_overlapping":
             return "unknown"
         kinds = set(self.components[column].by_provenance)
         if "unknown" in kinds or not kinds:
@@ -195,14 +220,18 @@ class ObservationGroup:
         return "mixed"
 
     def total(self, column: str) -> Any:
-        """History-reader rule: ``None`` when any contributor lacks *column*."""
+        """Canonical total; unavailable for missing data or unresolved coverage."""
         comp = self.components[column]
-        return None if comp.missing or not comp.known else comp.total
+        return (
+            None
+            if self.coverage() != "non_overlapping" or comp.missing or not comp.known
+            else comp.total
+        )
 
     def subtotal(self, column: str) -> Any:
-        """ctx-stats rule: sum of known contributors, ``None`` when none known."""
+        """Known canonical subtotal; raw audit sums remain in channel subtotals."""
         comp = self.components[column]
-        return comp.total if comp.known else None
+        return comp.total if comp.known and self.coverage() == "non_overlapping" else None
 
     def missing(self, column: str) -> int:
         return self.components[column].missing
@@ -213,7 +242,7 @@ class ObservationGroup:
     def entry(self, column: str, *, extra_reason: str | None = None) -> dict[str, Any]:
         """Build the ``token_provenance`` metadata entry for *column*."""
         comp = self.components[column]
-        if not comp.known:
+        if self.coverage() != "non_overlapping" or not comp.known:
             availability = "unavailable"
         elif comp.missing:
             availability = "partial"
@@ -223,14 +252,15 @@ class ObservationGroup:
         reasons: list[str] = []
         if extra_reason:
             reasons.append(extra_reason)
-        if coverage == "overlap_unresolved":
-            reasons.append(_OVERLAP_REASON)
+        coverage_reason = self.coverage_reason()
+        if coverage_reason:
+            reasons.append(coverage_reason)
         if self.unverified_host_rows:
             reasons.append(
                 f"host attribution unverified on {self.unverified_host_rows} replay-derived "
                 "row(s) (host_basis is not 'handle')"
             )
-        if availability == "unavailable":
+        if not comp.known:
             reasons.append(f"no observation supplied {column}")
         entry: dict[str, Any] = {
             "provenance": self.aggregate_provenance(column),
@@ -298,6 +328,35 @@ def estimated_entry(
     }
     if reason:
         entry["reason"] = reason
+    return entry
+
+
+def context_occupancy_entry(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Describe the hook's context estimate without treating it as consumption.
+
+    Legacy state files contain no observation evidence. Their numeric estimate
+    remains available, but baseline freshness is unknown rather than inferred
+    from the time this file was read.
+    """
+    available = state.get("estimated_tokens") is not None
+    entry = estimated_entry("context_occupancy_tokens", scope_kind="context", available=available)
+    if not available:
+        entry["provenance"] = "unknown"
+    entry["session_id"] = state.get("session_id") or None
+    entry["estimate_reason"] = state.get("estimate_reason") or "legacy_state_unknown_estimator"
+    entry["baseline_observed_at"] = state.get("baseline_observed_at") or None
+    entry["estimate_updated_at"] = state.get("estimate_updated_at") or None
+    entry["baseline_observation_boundary"] = state.get("baseline_observation_boundary") or None
+    entry["baseline_context_boundary"] = state.get("baseline_context_boundary") or None
+    entry["context_boundary"] = state.get("context_boundary") or None
+    entry["observation_time_basis"] = (
+        "hook_wall_clock"
+        if entry["baseline_observed_at"] or entry["estimate_updated_at"]
+        else "unknown"
+    )
+    entry["stale"] = state.get("stale") if isinstance(state.get("stale"), bool) else None
+    entry["stale_reason"] = state.get("stale_reason") or "unknown_baseline_freshness"
+    entry["reason"] = f"{entry['estimate_reason']}; {entry['stale_reason']}"
     return entry
 
 

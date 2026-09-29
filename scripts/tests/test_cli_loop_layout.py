@@ -241,6 +241,7 @@ class TestWithDiagramColor:
         from little_loops.cli import output as _output
         from little_loops.cli.loop.feed import with_diagram_color
 
+        monkeypatch.delenv("NO_COLOR", raising=False)
         monkeypatch.setattr(_output, "_USE_COLOR", False, raising=False)
         with with_diagram_color(True):
             assert _output._USE_COLOR is True

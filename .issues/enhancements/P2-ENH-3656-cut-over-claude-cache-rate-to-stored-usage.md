@@ -3,9 +3,10 @@ id: ENH-3656
 type: ENH
 title: Cut over Claude cache rate to stored usage
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
+completed_at: '2026-09-29T08:22:47Z'
 captured_at: '2026-09-29T05:07:13Z'
 parent: EPIC-3562
 epic: EPIC-3562
@@ -90,17 +91,54 @@ The result carries stored provenance and coverage qualification. Distinguish no 
 
 ## Acceptance Criteria
 
-- [ ] A Claude current-session hook → ingest → derive → read fixture passes before its direct transcript reader is retired; no read-time parsing or backfill remains on the Claude path.
-- [ ] Direct and stored cache components, eligible/missing counts and hit rate match on versioned repeated-ID, partial/cache-only, missing-ID, zero and multi-turn fixtures, or each difference is a documented, producer-backed correction with a regression test. A source path/line key alone does not satisfy this criterion.
-- [ ] Latest-session/workspace/host and agent selection and stored provenance/coverage are preserved. A session ID alone never joins another host's rows.
-- [ ] No store, unreadable store, not-yet-ingested and ingested-without-usage have distinct stderr diagnostics; JSON stdout stays parseable.
-- [ ] After an earlier successful derive, a newly appended source plus a failed/skipped worker cannot be reported as a fresh figure. Output includes a committed as-of boundary and explicit stale/unknown-lag qualification; reads do not mutate the store.
-- [ ] The Codex and other-host paths keep their existing behavior until ENH-3549 or a host-specific cutover is implemented.
+- [x] A Claude current-session hook → ingest → derive → read fixture passes before its direct transcript reader is retired; no read-time parsing or backfill remains on the Claude path.
+- [x] Direct and stored cache components, eligible/missing counts and hit rate match on versioned repeated-ID, partial/cache-only, missing-ID, zero and multi-turn fixtures, or each difference is a documented, producer-backed correction with a regression test. A source path/line key alone does not satisfy this criterion.
+- [x] Latest-session/workspace/host and agent selection and stored provenance/coverage are preserved. A session ID alone never joins another host's rows.
+- [x] No store, unreadable store, not-yet-ingested and ingested-without-usage have distinct stderr diagnostics; JSON stdout stays parseable.
+- [x] After an earlier successful derive, a newly appended source plus a failed/skipped worker cannot be reported as a fresh figure. Output includes a committed as-of boundary and explicit stale/unknown-lag qualification; reads do not mutate the store.
+- [x] The Codex and other-host paths keep their existing behavior until ENH-3549 or a host-specific cutover is implemented.
 
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P2
+**Done** | Created: 2026-09-29 | Priority: P2
+
+## Implementation checkpoint (2026-09-29)
+
+`ll-ctx-stats` now routes a selected Claude Code session through the shared
+stored-usage coverage selector with a verified host/session pair. Its read is
+pure and shows committed as-of offset/time and `fresh`/`stale`/`unknown`
+qualification. Four store absence states have separate stderr diagnostics
+while JSON stdout remains parseable. Unknown producer qualification and
+unresolved cross-channel coverage suppress the numeric rate. Codex and other
+hosts retain their direct readers for their own cutovers.
+
+The captured Claude Code 2.1.284 two-request fixture is a producer-backed
+correction: the former direct UUID reader counted four transcript snapshots,
+where the stored `message.id` rule counts two native requests. Cache read is
+76,858 → 38,429, cache creation 22,446 → 11,223, and uncached input 36 →
+18; hit rate stays 77%. The real changed-usage fixture keeps the final output
+snapshot. Synthetic missing-ID usage remains unknown, while partial and
+all-zero records without a verified contract remain unavailable. Current
+session refresh, same-ID cross-host isolation, source append after derive,
+partial tail, missing cursor, and all four diagnostics have focused tests.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:46 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:capture-issue` - 2026-09-29T05:14:29 - `a56f3607-c825-4a5b-a7c5-f263b20ddf6d.jsonl`
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Claude cache rate reads stored, selected observations with provenance, distinct diagnostics, and as-of qualification.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.

@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 _STATUS_SYMBOLS: dict[str, str] = {
     "full": "✓",
     "partial": "○",
+    "unknown": "?",
     "unsupported": "✗",
 }
 
@@ -76,7 +77,7 @@ class CheckResult:
     """
 
     name: str
-    status: Literal["full", "partial", "unsupported"]
+    status: Literal["full", "partial", "unknown", "unsupported"]
     note: str = ""
     severity: Literal["error", "informational"] = "error"
     findings: tuple[FindingDetail, ...] = ()

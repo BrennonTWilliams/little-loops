@@ -84,6 +84,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{LL_PLUGIN_ROOT}}/hooks/adapters/codex/usage-stop.sh",
+            "timeout": 5,
+            "statusMessage": "Updating stored usage..."
+          }
+        ]
+      }
     ]
   }
 }

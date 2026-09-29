@@ -278,6 +278,34 @@ class TestCorrectionRate:
 
 
 class TestCostAndTokensPerIssue:
+    def test_live_codex_thread_identity_does_not_change_transcript_cost(
+        self, tmp_path: Path
+    ) -> None:
+        """A live row with the same session ID cannot inflate cost or token totals."""
+        db = tmp_path / "history.db"
+        for i in range(5):
+            _close(db, f"BUG-{810 + i}", "2026-08-01T00:00:00Z")
+        _link_session(db, "BUG-810", "codex-thread")
+        _usage_event(db, "codex-thread", input_tokens=100, output_tokens=50, cost_usd=2.0)
+        with sqlite3.connect(db) as conn:
+            conn.execute(
+                "INSERT INTO usage_events(ts, session_id, model, channel, host, "
+                "identity_basis, input_tokens, output_tokens, cost_usd) "
+                "VALUES('2026-08-01T00:00:00Z', 'codex-thread', 'gpt-5.6-sol', "
+                "'live', 'codex', 'host_observed', 1000, 1000, 9.0)"
+            )
+            conn.execute(
+                "INSERT INTO usage_events(ts, session_id, model, channel, host, "
+                "identity_basis, input_tokens, output_tokens, cost_usd) "
+                "VALUES('2026-08-01T00:00:00Z', 'codex-thread', 'gpt-5.6-sol', "
+                "'rollout', 'codex', 'host_observed', 1000, 1000, 9.0)"
+            )
+
+        analysis = analyze_agent_quality([], db=db, min_sample=5)
+        window = analysis.windows[0]
+        assert window.metrics["cost_per_issue"].value == 2.0 / 5
+        assert window.metrics["tokens_per_issue"].value == 150 / 5
+
     def test_cost_and_tokens_split_evenly_across_multi_issue_session(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         for i in range(5):
@@ -708,11 +736,23 @@ class TestAttribution:
         _usage_event(db, "wr0", model="claude-haiku-4-5")
         for _ in range(10):
             _usage_event(db, "wr0", model="claude-sonnet-5")
+        conn = sqlite3.connect(str(db))
+        try:
+            for channel in ("live", "rollout"):
+                conn.execute(
+                    "INSERT INTO usage_events(ts, session_id, model, channel) "
+                    "VALUES('2026-01-01T00:00:00Z', 'wr0', 'gpt-5.6-sol', ?)",
+                    (channel,),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
         comps = _compositions(db)
         comp = next(c for c in comps if c.period == "2026-01" and c.series == "unattributed")
         assert comp.counts["model"]["claude-haiku-4-5"] == 1.0
         assert comp.counts["model"]["claude-sonnet-5"] == 10.0
+        assert "gpt-5.6-sol" not in comp.counts["model"]
 
     def test_multi_run_issue_uses_latest_started_at_ll_version(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"

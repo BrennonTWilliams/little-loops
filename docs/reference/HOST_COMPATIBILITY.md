@@ -261,9 +261,45 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
 | Tool allowlist   | ✓           | ✗        | partial (sandbox-mode constrained execution: `off`/`read-only`/`workspace-write`/`danger-full-access`; no `--tools` allowlist flag)[^runnercap] | ✗ — Policy Engine (TOML); not a simple flag[^gemini] | ✓ (`--tools <comma-list>`)[^omp]   | ✗ — no `--tools` flag; tool policy via agent files / global `[tools]` config[^kimi] | ✗ — `--exclude-tools` is a denylist, not allowlist semantics[^qwen] |
 | `json_schema`    | ✓[^schema]  | ✗        | partial (file-mediated)[^schema]   | ✗[^gemini]                         | ✗[^omp]                            | ✗[^kimi] | ✓ — inline `--json-schema` flag; Ajv-validated synthetic `structured_output` tool (live-verified)[^qwen] |
 | `structured_output` | ✓        | ✗        | ✗[^struct]                         | ✗[^struct]                         | ✗[^struct][^omp]                   | ✗[^struct] — no single-blob JSON mode; blocking consumers take the final assistant stream event[^kimi] | ✓ — **second host ever**; evaluators append `--json-schema` + `--chat-recording false` and parse the validated JSON string from the final envelope's `result` field[^qwen] |
-| Token reporting  | ✓           | ✗[^tok]  | ✓ — `turn.completed` event's `usage` block (`input_tokens`/`output_tokens`/`cached_input_tokens`/`cache_write_input_tokens`)[^tok-codex] | ✗[^gemini]                         | ✗[^omp]                            | ✗ — no usage events in stream-json (0.30.0)[^kimi] | ✓ — `usage` (incl. `total_tokens`) on assistant messages and the final `result` envelope[^qwen] |
+| Token reporting  | ✓ — live and transcript usage verified for 2.1.284[^tok-claude] | partial[^tok] | ✓ — live and rollout usage verified against versioned fixtures[^tok-codex] | ? — versioned usage contract pending | ? — producer capture pending | partial — 0.30.0 wire usage capture | partial — 0.24.6 chat usage capture |
 | `disable_background_tasks` | ✓ (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`)[^bgtasks] | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) | ✗ (no-op) |
 | `workspace_sandboxed`[^wksandbox] | ✓ — `--permission-mode` + `--add-dir` confine tool/filesystem access to `workspace_root` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+### Runtime telemetry availability
+
+`RUNTIME_HOST_CAPABILITIES` holds a frozen `TelemetryCapability` record for
+every metric/channel pair on each of the eight production hosts, including `pi`
+(which is absent from the older runner table above). Test-only fake hosts are
+excluded. The five metric keys are `input_tokens`, `output_tokens`,
+`cache_read_input_tokens`, `cache_creation_input_tokens`, and
+`context_occupancy_tokens`. The cache names match `usage_events` columns;
+the corresponding in-memory `TokenUsage` fields are `cache_read_tokens` and
+`cache_creation_tokens`. The four channel keys are `live`, `rollout`,
+`transcript`, and `context_hook`. The first three match `usage_events.channel`.
+`context_hook` is an occupancy-only acquisition channel and creates no
+`usage_events` row. Occupancy is separate from consumption and is excluded
+from the `token_reporting` summary.
+
+Each of the 160 entries says `supported`, `unsupported`, or `unknown`.
+`supported` needs version and acquisition-channel evidence, including verified
+normalization when necessary. `unsupported` needs evidence of absence or
+inapplicability. Uninvestigated paths remain `unknown`, even if little-loops
+does not yet ingest them. These are native producer capabilities, never
+provenance or eligibility labels for individual stored observations.
+
+The `token_reporting` row in `ll-doctor` is derived from consumption entries:
+all four consumption metrics supported on at least one channel gives `full`;
+some supported gives `partial`; none supported but some unknown gives `unknown`;
+all unsupported gives `unsupported`. The row explicitly separates native
+availability from ingestion coverage. Claude and Codex are `full` for their
+captured versions and channels. OpenCode, Kimi Code, and Qwen Code are
+`partial`: their surveyed captures prove some native fields, while cache
+semantics or request identity remain open under ENH-3660, ENH-3665, and
+ENH-3662. Pi, Gemini, and omp remain `unknown` until ENH-3661,
+ENH-3663, and ENH-3664 establish a versioned producer contract. Native
+availability does not imply that little-loops ingests a host's usage today.
+`ll-verify-host-map` checks every required pair, vocabulary, duplicates,
+supported evidence notes, production-host coverage, and summary parity.
 
 [^wksandbox]: **FEAT-2878.** `HostCapabilities.workspace_sandboxed` is `True` only when `build_streaming()`'s `workspace_root` parameter actually confines tool/filesystem access to that directory (a real jail), not merely accepted and ignored. Defaults to `False` on the dataclass and is left at that default by all seven other runners; only `ClaudeCodeRunner` sets it `True`, backed by `--permission-mode` + `--add-dir` in place of the blanket `--dangerously-skip-permissions` bypass used on its default path. Every other runner's `build_streaming()` accepts `workspace_root` for `HostRunner` Protocol conformance but drops it with a `CapabilityNotSupported` warning instead of enforcing a jail.
 
@@ -309,28 +345,47 @@ Runtime capabilities reported by `ll-doctor` for each host runner.
     other non-Anthropic/non-qwen host — since the RPC path is a structurally
     different, session-based mechanism with no precedent in `HostRunner`.
 
+[^tok-claude]: **Claude Code 2.1.284 — captured and qualified (ENH-3546).**
+    A paired headless `result.usage` and on-disk `assistant.message.usage`
+    capture confirms four disjoint token components with nonzero cache reads.
+    The transcript may repeat a `message.id` under distinct outer UUIDs and
+    later update its counts. New complete observations are measured only at
+    a verified Claude Code version/host boundary. The transcript contract is
+    persisted on `raw_events` so rebuild does not promote legacy rows.
+    `ll-ctx-stats` now selects the newest Claude session's verified stored
+    usage and reports the source cursor's as-of/freshness status. On the
+    captured two-request transcript, this removes duplicated outer-UUID
+    snapshots: cache read 76,858 → 38,429, cache creation 22,446 → 11,223,
+    uncached input 36 → 18, with the same 77% hit rate. Missing or unverified
+    usage stays unavailable.
+    ENH-3546 records the capture and its limits.
+
 [^tok]: **OpenCode — deferred pending orchestration, not a permanent gap (FEAT-2123).** `opencode run --format json` *does* expose per-invocation usage: a live probe (`.ll/learning-tests/opencode.md`, 2026-08-31) confirms a `step_finish` event (`part.type == "step-finish"`) carries `part.tokens` (`input`/`output`/`reasoning`/`cache.read`/`cache.write`) and `part.cost`; no model-identifier field was found on that event. The blocker is upstream of parsing: `OpenCodeRunner.build_streaming()` (`host_runner.py`) unconditionally raises `HostNotConfigured` — no subprocess is ever spawned for OpenCode today, so there is no stream to parse until OpenCode orchestration itself is wired (a separate, larger gap than this issue's scope). Once that wiring lands, `step_finish.part.tokens` is the confirmed parse target.
 
 [^tok-codex]: **Codex CLI — confirmed and implemented (FEAT-2123).** `codex exec --json` emits NDJSON `ThreadEvent`s tagged by a `type` field; the terminal `turn.completed` event carries a `usage` object (`codex-rs/exec/src/exec_events.rs::Usage`, openai/codex `main` branch, verified 2026-09-01) with `input_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, `output_tokens`, `reasoning_output_tokens` — no `total_tokens` and no `model` field (Codex never echoes the requested model back in the JSONL stream). `run_claude_command()`'s shared per-line parser (`subprocess_utils.py`) now branches on `etype == "turn.completed"` and maps this usage block onto `TokenUsage` (`cached_input_tokens` → `cache_read_tokens`, `cache_write_input_tokens` → `cache_creation_tokens`, `model` defaults to `"unknown"`), invoking `on_usage_detailed` the same as the Claude `"result"` branch.
 
-    **`ll-ctx-stats`'s cache-rate reader — the complementary rollout-file source
-    (ENH-3429).** Independent of the `codex exec --json` `turn.completed` usage
-    above, `cli/ctx_stats.py`'s `_codex_cache_usage` derives the same four
-    `cache_read`/`cache_write`/`uncached`/`hit_rate_pct` keys the Claude reader
-    returns, but from a rollout's `event_msg.payload.type == "token_count"`
-    events (see [^codexsessions]) instead of a live `turn.completed` stream.
-    Two semantics differ from Claude and from the `turn.completed` usage block
-    above, both confirmed against a live 0.152.1 rollout
-    (`.ll/learning-tests/codex-rollout.md`): `info.total_token_usage` is
-    **cumulative** across the session (resets across a mid-session compaction),
-    so the reader sums `info.last_token_usage` across every `token_count` event
-    instead; and `last_token_usage.input_tokens` is **inclusive** of
-    `cached_input_tokens`/`cache_write_input_tokens` (unlike Claude's disjoint
-    three-way split), so `uncached = max(0, input_tokens - cached_input_tokens
-    - cache_write_input_tokens)`. The cache line only appears for sessions from
-    a CLI version that emits `token_count` events (0.152.1 confirmed; 0.130.0
-    does not — most local rollouts predate this and carry none). A
-    `token_count` event with `info: null` (rate-limit-only) is skipped.
+    Codex 0.158.0 paired exec/resume/fork fixtures add a rollout-side
+    `token_usage_record` with native `response_id`/`turn_id`, adjacent to its
+    matching `token_count`. ENH-3532 replays each proven native request once
+    into `usage_events.channel='rollout'`; old-shape-only requests retain
+    unknown request identity. The 0.158.0 live `turn.completed` usage is
+    cumulative across resume and fork, unlike the older 0.152.1 resume
+    capture. Live JSON has no native turn/response ID, so ENH-3655 refuted the
+    positional live-to-rollout span join and overlap stays unresolved.
+
+    **`ll-ctx-stats` now reads stored Codex rollout requests (ENH-3549).**
+    The verified Codex Stop hook passes the native rollout path to a detached
+    worker after the completed turn's token record is on disk. The worker
+    normalizes new rows and commits a source-tail freshness boundary. The
+    reader selects the newest session by verified host and thread ID, then
+    applies ENH-3543's coverage policy. A 0.158.0 request with native response
+    identity can contribute once to the canonical cache rate; old 0.152.1
+    `token_count`-only rows are audit-only because their request identity is
+    unverified. A same-thread live row without a proven join makes combined
+    totals unavailable while preserving live and rollout subtotals. Codex
+    `input_tokens` includes cache-read and cache-write input, so the rollout
+    normalizer subtracts those components before storage. Source freshness and
+    as-of status are shown with the rate; reads never trigger ingestion.
 
 [^runnercap]: `permission skip` and `tool allowlist` are reported `✗` by `ll-doctor`
     for OpenCode. For Codex, **ENH-2124** researched the native equivalents
@@ -801,7 +856,7 @@ the adapter.
 
 - Claude Code: [`hooks/adapters/claude-code/`](../../hooks/adapters/claude-code/) — Bash shim
 - OpenCode: [`hooks/adapters/opencode/`](../../hooks/adapters/opencode/) — TypeScript/Bun plugin
-- Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"` (SessionStart), plus PreCompact / UserPromptSubmit / PostToolUse handlers
+- Codex CLI: [`scripts/little_loops/hooks/adapters/codex/`](../../scripts/little_loops/hooks/adapters/codex/) — Bash shim with `matcher: "startup"` (SessionStart), plus PreCompact / UserPromptSubmit / PostToolUse / Stop handlers
 - Kimi Code: [`scripts/little_loops/hooks/adapters/kimi/`](../../scripts/little_loops/hooks/adapters/kimi/) — Bash shims + `hooks.toml` template (managed `[[hooks]]` block installed into `~/.kimi-code/config.toml` by `ll-init`; eight events: SessionStart, PreCompact, UserPromptSubmit, PreToolUse, PostToolUse, SessionEnd, SubagentStart/Stop)
 - Qwen Code: [`scripts/little_loops/hooks/adapters/qwen/`](../../scripts/little_loops/hooks/adapters/qwen/) — Bash shims + `settings-block.json` template (managed `ll:`-prefixed entries merged into project `.qwen/settings.json` by `ll-init`; nine event types: SessionStart, PreCompact, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd, SubagentStart/Stop)[^qwen]
 - omp: [`scripts/little_loops/hooks/adapters/omp/`](../../scripts/little_loops/hooks/adapters/omp/) —

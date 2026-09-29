@@ -3,9 +3,10 @@ id: ENH-3647
 type: ENH
 title: Carry Codex live session and invocation identity into usage_events
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
+completed_at: '2026-09-29T08:22:44Z'
 captured_at: '2026-09-29T01:55:16Z'
 parent: EPIC-3562
 epic: EPIC-3562
@@ -39,7 +40,7 @@ Capture the Codex host-observed session ID (`thread.started.thread_id`) and a lo
 - The runner captures `thread.started.thread_id` and stamps it on the invocation's collected observations; `usage_from_event`'s signature is unchanged.
 - Each live invocation gets a local UUID in the existing `invocation_id` column, marked as locally generated and never presented as host-observed.
 - Live rows reuse the existing `usage_events.session_id` column, qualified by verified host plus an identity-basis marker (`host_observed` vs `local`), with field names agreed with ENH-3532 (see epic § Schema coordination). No `host_session_id` column and no second invocation column.
-- **Which id.** `thread.started.thread_id` equals the rollout's `payload.id` and, in non-forked sessions, `payload.session_id` (fixtures). In forked rollouts `payload.session_id` is the parent's id, so this issue follows ENH-3532 gate 1 rule c: store the thread id (`payload.id`) in `usage_events.session_id`. `codex exec` cannot fork, so live rows only ever see thread ids; confirm against a 0.155 `exec --json` capture, since the fixtures are 0.152.1. ENH-3543's correlation must also require verified host, not thread ID alone.
+- **Which id.** `thread.started.thread_id` equals the rollout's `payload.id` and, in non-forked sessions, `payload.session_id` (fixtures). In forked rollouts `payload.session_id` is the parent's id, so this issue follows ENH-3532 gate 1 rule c: store the thread id (`payload.id`) in `usage_events.session_id`. The 0.158.0 `codex exec fork` capture confirms the new fork's own `thread.started.thread_id`; ENH-3543's correlation must also require verified host, not thread ID alone.
 - Rows written before this change stay unverified; nothing is backfilled.
 - `quality_regressions.py` **and `agent_quality._usage_totals`** are pinned to their current meaning (`channel = 'transcript'`), so live rows that newly carry a `session_id` do not change model-composition weights or cost-per-issue totals (`_usage_totals` would otherwise double-count tokens and add unpriced rows that can drop priced coverage below the threshold and hide the verdict). If ENH-3532 lands first and already pinned them, this is a no-op. Whether rollout/live rows should contribute is ENH-3543's decision.
 - Readers still treat live + rollout rows as an unreconciled observation sum (ENH-3528) until ENH-3543 lands.
@@ -69,7 +70,7 @@ Capture the Codex host-observed session ID (`thread.started.thread_id`) and a lo
 - `scripts/little_loops/subprocess_utils.py`, `scripts/little_loops/fsm/runners.py`, `scripts/little_loops/fsm/executor.py` (`_finish`), `scripts/little_loops/session_store/writers.py` (`record_usage_event`), `session_store/schema.py` + `schema_manifest.json` if an identity-basis column is added.
 - `scripts/little_loops/issue_history/quality_regressions.py`, `scripts/little_loops/issue_history/agent_quality.py` (`_usage_totals`) — channel pins.
 - Tests: `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_executor.py`, `test_session_store_writers.py`, schema/manifest tests, quality-regressions tests.
-- Fixtures: `scripts/tests/fixtures/codex/exec-json-turn.jsonl`, `exec-json-resume.jsonl`.
+- Fixtures: `scripts/tests/fixtures/codex/exec-json-turn.jsonl`, `exec-json-resume.jsonl`, and the paired 0.158.0 exec/resume/fork captures.
 - Docs: `docs/codex/usage.md`, `docs/reference/API.md` (`record_usage_event`).
 
 ## Implementation Steps
@@ -86,13 +87,42 @@ Capture the Codex host-observed session ID (`thread.started.thread_id`) and a lo
 - **Risk**: Low to medium — additive columns; the quality-regressions pin prevents a silent weighting change.
 - **Breaking Change**: No.
 
+The original interim reader-sum expectation applied before ENH-3543. Both changes land together; ENH-3543 now qualifies canonical totals.
+
 ## Acceptance Criteria
 
-- [ ] `thread_id` and a local invocation ID survive parser → runner → executor → `usage_events`; locally generated IDs are distinguishable from host-observed ones (fixture-driven test on `exec-json-turn.jsonl` and `exec-json-resume.jsonl`).
-- [ ] Existing `session_id`/`invocation_id` columns are reused; old schemas and pre-change rows keep conservative (unverified) behavior.
-- [ ] Live Codex rows gaining a `session_id` do not change `quality_regressions` model-composition output or `agent_quality` cost-per-issue output (regression tests).
-- [ ] Usage/cost readers still report live + rollout as an unreconciled sum; no selection change ships here.
+- [x] `thread_id` and a local invocation ID survive parser → runner → executor → `usage_events`; locally generated IDs are distinguishable from host-observed ones (fixture-driven test on `exec-json-turn.jsonl` and `exec-json-resume.jsonl`).
+- [x] Existing `session_id`/`invocation_id` columns are reused; old schemas and pre-change rows keep conservative (unverified) behavior.
+- [x] Live Codex rows gaining a `session_id` do not change `quality_regressions` model-composition output or `agent_quality` cost-per-issue output (regression tests).
+- [x] This identity stage adds no coverage policy; the separately implemented ENH-3543 selector qualifies live + rollout before canonical reporting.
 
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P2
+**Done** | Created: 2026-09-29 | Priority: P2
+
+## Implementation Evidence (2026-09-29)
+
+- The existing FSM runner callback now receives `thread.started.thread_id`; the live parser stamps `session_id`, `identity_basis='host_observed'`, and one local UUID per process onto Codex `TokenUsage`. A missing `thread.started` leaves both host identity fields `None`; it never substitutes the local invocation UUID. `usage_from_event` remains unchanged.
+- Codex 0.158.0 resume and fork live totals include earlier requests, so the parser stamps `scope_kind='unknown'`, even though the observation arrives during one invocation. The local UUID supports correlation only; it does not establish a producer request key or an overlap join.
+- The 0.152.1 and 0.158.0 producer fixtures exercise own-thread capture, resume retaining the thread ID, fork acquiring a new own-thread ID, and a distinct local invocation ID per process. `record_usage_event` persists the native thread ID, basis and local invocation UUID; an identity-free legacy live row retains `NULL` IDs. The executor passes all three fields. The model-composition and cost-per-issue readers remain pinned to transcript rows even when a live Codex row now has a session ID.
+- Focused verification: producer-backed parser/runner/executor/writer tests, 9 passed; existing subprocess and FSM runner tests, 238 passed; issue-history/chokepoint regressions, 4 passed; Ruff and targeted mypy passed. No full suite run in this wave.
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Codex live thread and invocation identity persist with an explicit identity basis, while existing cost and quality readers retain their channel pins.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:44 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`

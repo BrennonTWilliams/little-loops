@@ -241,6 +241,15 @@ class TestSelfContained:
 
 
 class TestSnapshotRoundTrip:
+    def test_predefined_usage_view_uses_qualified_audit(self, project: Path) -> None:
+        code, out = _run(project)
+        assert code == 0
+        html = out.read_text(encoding="utf-8")
+        assert 'label: "Usage cost by model and channel"' in html
+        assert "FROM usage_coverage_audit ORDER BY model, channel" in html
+        assert "FROM usage_events GROUP BY model" not in html
+        assert "raw observations for audit" in html
+
     def test_excluded_columns_absent_from_recovered_schema(
         self, project: Path, tmp_path: Path
     ) -> None:
@@ -290,7 +299,12 @@ class TestSnapshotRoundTrip:
         code, out = _run(project, since="2026-07-01")
         assert code == 0
         conn = _recover_snapshot(out.read_text(encoding="utf-8"), tmp_path / "rt.db")
-        assert _table_names(conn) == {"loop_runs", "usage_events"}
+        assert _table_names(conn) == {
+            "loop_runs",
+            "usage_events",
+            "selected_usage_events",
+            "usage_coverage_audit",
+        }
         assert len(_EXPORT_DEFAULT_TABLES) > len(_SHAREABLE_EXPORT_TYPES)
         assert _SHAREABLE_EXPORT_TYPES == ["loop_run", "usage_event"]
 
@@ -694,8 +708,8 @@ class TestAllowlistVersionLockstep:
     maintains and the control it exists to provide does not exist.
     """
 
-    PINNED_VERSION = 2
-    PINNED_HASH = "7c8c1a2737a3eaf3bb53c0f827e83b4df816dc9b683e65506e8a8c0c4f7fe5a3"
+    PINNED_VERSION = 3
+    PINNED_HASH = "bf0b2c214c0b6c4db2308bae58326b1d60b6b3aac0cae732766a9ab098ae6968"
 
     def test_allowlist_and_version_change_together(self) -> None:
         digest = hashlib.sha256(

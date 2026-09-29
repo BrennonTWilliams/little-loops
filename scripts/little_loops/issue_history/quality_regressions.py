@@ -200,9 +200,13 @@ def load_window_compositions(
 
     model_known: dict[tuple[str, str], float] = {}
     try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(usage_events)")}
+        channel_filter = (
+            " AND (channel = 'transcript' OR channel IS NULL)" if "channel" in columns else ""
+        )
         rows = conn.execute(
             "SELECT session_id, model, COUNT(*) as cnt FROM usage_events "
-            "WHERE session_id IS NOT NULL GROUP BY session_id, model"
+            "WHERE session_id IS NOT NULL" + channel_filter + " GROUP BY session_id, model"
         ).fetchall()
     except sqlite3.Error:
         rows = []

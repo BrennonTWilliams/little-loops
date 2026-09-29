@@ -85,3 +85,12 @@ def test_quality_regressions_query_is_not_flagged() -> None:
     """``session_id, model, COUNT(*)`` reads no token/cost column."""
     text = "SELECT session_id, model, COUNT(*) as cnt FROM usage_events GROUP BY 1"
     assert not any(col in text for col in _TOKEN_COST_COLUMNS)
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "little_loops"
+        / "issue_history"
+        / "quality_regressions.py"
+    ).read_text()
+    assert "channel = 'transcript'" in source

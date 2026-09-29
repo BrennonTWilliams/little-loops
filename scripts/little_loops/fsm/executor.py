@@ -4723,6 +4723,9 @@ class FSMExecutor:
                             scope_kind=usage.scope_kind,
                             observed_at=usage.observed_at,
                             observed_at_basis=usage.observed_at_basis,
+                            session_id=usage.session_id,
+                            identity_basis=usage.identity_basis,
+                            invocation_id=usage.invocation_id,
                         )
             except Exception:
                 pass  # Non-fatal: loop still completes (ENH-2724, mirrors ENH-2463)

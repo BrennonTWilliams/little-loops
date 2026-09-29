@@ -11,6 +11,7 @@ Subcommands:
              hook_event, harness, prompt_opt, verdict, context_pressure)
     skill-stats per-skill invocation/success-rate rollup (ENH-2460)
     backfill ingest on-disk sources into raw_events + issue/loop/commit tables (ENH-2581)
+    refresh  replace verified normalized raw rows from original session sources (ENH-3534)
     rebuild  wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)
     compact  sweep old raw_events into per-session retention summaries (ENH-2581)
     related  issue events for a given issue ID
@@ -53,6 +54,8 @@ from little_loops.logger import Logger
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
     VALID_KINDS,
+    HistoryError,
+    SessionHandle,
     backfill,
     backfill_incremental,
     backfill_snapshots,
@@ -69,8 +72,11 @@ from little_loops.session_store import (
     recent,
     recompress_raw_events,
     record_hook_event,
+    resolve_history_db,
     search,
 )
+from little_loops.session_store.backend import refuse_on_remote
+from little_loops.session_store.usage_refresh import refresh_raw_events
 from little_loops.user_messages import get_project_folder
 
 
@@ -93,6 +99,7 @@ Examples:
   %(prog)s subagent-retries Explore                # Sessions that re-spawned Explore
   %(prog)s backfill                               # Ingest on-disk sources (raw_events + issues/loops/commits)
   %(prog)s backfill --rebuild                     # Ingest, then materialize cache tables in one call
+  %(prog)s refresh --host claude-code --session-id ID --rebuild  # Restore from original
   %(prog)s rebuild                                # Re-derive cache tables from raw_events
   %(prog)s compact --and-prune                    # Sweep+summarize old raw_events, then delete
   %(prog)s grep "auth middleware"                 # Regex search over message_events
@@ -211,6 +218,19 @@ Examples:
         default=None,
         help="Only process JSONL files modified after DATE (ISO 8601 or YYYY-MM-DD); uses incremental mode",
     )
+
+    refresh_parser = subparsers.add_parser(
+        "refresh", help="Re-ingest verified stored session sources from their originals"
+    )
+    add_host_arg(refresh_parser, help_text="Verified stored source host to refresh")
+    refresh_parser.add_argument("--session-id", metavar="ID", help="Refresh one stored session ID")
+    refresh_parser.add_argument(
+        "--all", action="store_true", help="Refresh every verified stored source for --host"
+    )
+    refresh_parser.add_argument(
+        "--rebuild", action="store_true", help="Re-derive cache tables after raw replacement"
+    )
+    add_json_arg(refresh_parser)
     add_host_arg(
         backfill_parser,
         help_text="Host to discover session logs for (default: auto-detect from LL_HOOK_HOST env)",
@@ -722,6 +742,105 @@ def main_session() -> int:
                 )
                 print(fields)
             return 0
+
+        if args.command == "refresh":
+            if not args.host:
+                print("refresh requires --host", file=sys.stderr)
+                return 1
+            if bool(args.session_id) == bool(args.all):
+                print("refresh requires exactly one of --session-id ID or --all", file=sys.stderr)
+                return 1
+            try:
+                refuse_on_remote(args.db, "refresh_raw_events")
+                db_path = resolve_history_db(args.db)
+            except HistoryError as exc:
+                print(f"Cannot refresh source rows: {exc}", file=sys.stderr)
+                return 1
+            if not db_path.exists():
+                print(f"No history store at {db_path}", file=sys.stderr)
+                return 1
+
+            conn = connect(args.db)
+            try:
+                sql = (
+                    "SELECT source_path, MIN(session_id), "
+                    "COUNT(DISTINCT COALESCE(session_id, '')) "
+                    "FROM raw_events WHERE source_path IN ("
+                    "SELECT source_path FROM raw_events "
+                    "WHERE host = ? AND host_basis = 'handle'"
+                )
+                params: list[str] = [args.host]
+                if args.session_id:
+                    sql += " AND session_id = ?"
+                    params.append(args.session_id)
+                sql += ") GROUP BY source_path ORDER BY source_path"
+                sources = conn.execute(sql, params).fetchall()
+            finally:
+                conn.close()
+            if not sources:
+                label = f" session {args.session_id}" if args.session_id else ""
+                print(f"No verified stored sources for {args.host}{label}", file=sys.stderr)
+                return 1
+
+            handles: list[SessionHandle] = []
+            skipped: list[dict[str, Any]] = []
+            for source_path, session_id, identity_count in sources:
+                source_file = Path(source_path)
+                if identity_count != 1 or not session_id:
+                    skipped.append(
+                        {
+                            "path": source_path,
+                            "status": "skipped",
+                            "reason": "ambiguous_session_attribution",
+                            "rows": 0,
+                        }
+                    )
+                    continue
+                try:
+                    updated_at = source_file.stat().st_mtime
+                except OSError:
+                    updated_at = 0.0
+                handles.append(
+                    SessionHandle(args.host, session_id, source_file, Path.cwd(), updated_at)
+                )
+            refreshed = refresh_raw_events(args.db, handles=handles)
+            source_results = [
+                {
+                    "path": str(source.path),
+                    "status": source.status,
+                    "reason": source.reason,
+                    "rows": source.rows,
+                }
+                for source in refreshed.sources
+            ] + skipped
+            for source in source_results:
+                if source["status"] == "skipped":
+                    print(f"Skipped {source['path']}: {source['reason']}", file=sys.stderr)
+            rebuild_counts = rebuild(args.db) if args.rebuild and handles else None
+            needs_rebuild = refreshed.needs_rebuild and rebuild_counts is None
+            if args.json:
+                print_json(
+                    {
+                        "host": args.host,
+                        "sources": source_results,
+                        "rows_replaced": sum(
+                            source["rows"]
+                            for source in source_results
+                            if source["status"] == "refreshed"
+                        ),
+                        "needs_rebuild": needs_rebuild,
+                        "rebuild_counts": rebuild_counts,
+                    }
+                )
+            else:
+                changed = sum(source["status"] == "refreshed" for source in source_results)
+                unchanged = sum(source["status"] == "unchanged" for source in source_results)
+                print(f"Refreshed {changed} source(s); {unchanged} unchanged.")
+                if needs_rebuild:
+                    print("Run ll-session rebuild to re-derive usage and cache tables.")
+                elif rebuild_counts is not None:
+                    print("Rebuilt usage and cache tables from refreshed raw events.")
+            return 1 if any(source["status"] == "skipped" for source in source_results) else 0
 
         if args.command == "backfill":
             if getattr(args, "snapshots", False):

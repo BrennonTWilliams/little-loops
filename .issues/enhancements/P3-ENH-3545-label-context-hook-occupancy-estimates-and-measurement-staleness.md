@@ -3,11 +3,12 @@ id: ENH-3545
 type: ENH
 title: Label context-hook occupancy estimates and measurement staleness
 priority: P3
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
+completed_at: '2026-09-29T08:22:42Z'
 captured_at: '2026-09-24T17:40:14Z'
 labels:
 - observability
@@ -75,14 +76,48 @@ _Refreshed 2026-09-28 after BUG-3587 landed (b3b452e40)._
 
 ## Acceptance Criteria
 
-- [ ] Baseline measurement and estimate-update timestamps are distinct; a new estimate after tool activity/compaction cannot make the baseline fresh.
-- [ ] Fallback text and JSON expose staleness, reasons, scope and available observation times; legacy state files render with conservative unknown freshness.
-- [ ] A legacy state file carrying `result_token_count` renders without surfacing it as a measurement; this issue's changes preserve numeric values and guard decisions.
+- [x] Baseline measurement and estimate-update timestamps are distinct; a new estimate after tool activity/compaction cannot make the baseline fresh.
+- [x] Fallback text and JSON expose staleness, reasons, scope and available observation times; legacy state files render with conservative unknown freshness.
+- [x] A legacy state file carrying `result_token_count` renders without surfacing it as a measurement; this issue's changes preserve numeric values and guard decisions.
 
-- [ ] Tests cover missing/stale measurements, tool activity between observations, and compaction invalidation.
-- [ ] Handoff/threshold behavior is unchanged (existing `test_hooks_integration.py` expectations hold).
-- [ ] Context-monitor examples in `BUILTIN_HOOKS_GUIDE.md`, `SESSION_HANDOFF.md` and `docs/development/TROUBLESHOOTING.md` are updated.
+- [x] Tests cover missing/stale measurements, tool activity between observations, and compaction invalidation.
+- [x] Handoff/threshold behavior is unchanged (existing `test_hooks_integration.py` expectations hold).
+- [x] Context-monitor examples in `BUILTIN_HOOKS_GUIDE.md`, `SESSION_HANDOFF.md` and `docs/development/TROUBLESHOOTING.md` are updated.
+
+## Implementation Evidence
+
+- Context-state writes now carry the estimate method, session and context boundary,
+  baseline observation and estimate update times, and baseline freshness. The
+  baseline observation advances only after a valid transcript read.
+- The sentinel and context-health snapshot propagate these labels. The sentinel
+  still uses `estimated_tokens` and the same percentage threshold.
+- `ll-ctx-stats` fallback text and JSON show the context-occupancy provenance.
+  Legacy files retain their numeric estimate with unknown freshness, and
+  `result_token_count` remains ignored.
+- Focused verification: context monitor and sentinel integration tests (37 passed),
+  ctx-stats and token-provenance tests (122 passed), shell syntax, targeted Ruff
+  and Mypy checks, and `ll-loop validate context-health-monitor`.
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Done** | Created: 2026-09-24 | Priority: P3
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Context-hook output separates occupancy estimates from consumption and exposes baseline freshness and observation times.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.
+
+
+## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:42 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`

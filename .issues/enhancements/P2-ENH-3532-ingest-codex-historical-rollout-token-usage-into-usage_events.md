@@ -3,11 +3,12 @@ id: ENH-3532
 type: ENH
 title: Ingest Codex historical rollout token usage into usage_events
 priority: P2
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
+completed_at: '2026-09-29T08:22:41Z'
 captured_at: '2026-09-24T00:20:39Z'
 labels:
 - observability
@@ -149,6 +150,14 @@ Live identity capture moved to ENH-3647; coverage selection moved to ENH-3543. U
 
 **Readiness gates:**
 
+### Implemented schema and conservative request contract (2026-09-29)
+
+The v56 migration adds `raw_events.ordinal` alongside physical `line_no`. It adds nullable `usage_events.identity_basis`, `turn_id`, `request_id`, `request_identity_basis`, `stream_id`, `source_ordinal`, and `source_line_no`. **Shared contract for ENH-3647:** `session_id` is the host-observed Codex thread ID (`session_meta.payload.id` / live `thread.started.thread_id`), `identity_basis='host_observed'` only for verified identity, and `invocation_id` remains the locally generated live invocation ID. `turn_id` names the rollout's native closed span; `request_id` holds `token_usage_record.response_id`. Do not create duplicate session/invocation columns in ENH-3647.
+
+Current 0.158.0 exec/resume/fork captures confirm `token_usage_record` and an adjacent `token_count` describe the same request; replay prefers the native response record when both have identical usage and adjacent native ordinals. A mixed synthetic stream retains an old-shape-only `token_count` as an unknown observation. Exact replayed copies of a native response collapse during rebuild; conflicting reuse retains unknown rows with a diagnostic. Older `token_count` has no proven global request identity. `stream_id` (`thread ID : session_meta timestamp`) is diagnostic, **not** a uniqueness key: the page discriminator and global response-ID uniqueness remain unproven. No unique index is created at v56. Legacy raw rows with NULL ordinal remain unverified rather than receiving a fabricated key.
+
+The 0.158.0 fork has a new `session_meta.payload.id` **and** `payload.session_id`; `forked_from_id` names the parent. Its live total includes inherited parent usage (ENH-3655), while its rollout request is scoped to the new thread. Earlier 0.152.1 fork corpus behavior differs; the thread ID rule is stable across both. Rollout `provenance='measured'` requires a valid disjoint input split, valid output, an observed model, a closed turn, a verified source host/thread, and a native response ID without conflict. Old-shape-only, partial, malformed, legacy-host and incomplete-span rows remain `unknown`; all live/rollout overlap remains unresolved for ENH-3543. The focused implementation plan is `thoughts/shared/plans/2026-09-29-ENH-3532-management.md`.
+
 1. **Request key — REVISED 2026-09-29 (supersedes the earlier `(host, session_id, ordinal)` proposal, which fails on real data).** Corpus review of `~/.codex/sessions` (9,572 rollouts; fixtures are `codex-cli 0.152.1`, sessions there are written by 0.154/0.155/0.158 alphas) and a second-model consult (`/ll:advise`, opus) found:
    - **Forks collide.** `codex fork` exists in 0.152.1. In a fork, `session_meta.payload.session_id` is the **parent's** id, `payload.id` is the fork's own, `payload.forked_from_id` is set, and ordinals restart at 0. Of 15 forked rollouts (235 token events), 31 events share `(session_id, ordinal)` with a parent event carrying *different* usage — false conflicts under the old key. Forks do not copy parent usage.
    - **`payload.id` alone also collides.** 3 thread ids span more than one file (attributed to Codex Desktop paginated threads: several files, same `id`/`session_id`, ordinals restarting at 0; not independently confirmed here).
@@ -170,27 +179,27 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 
 ## Acceptance Criteria
 
-- [ ] Physical line, native ordinal, and token-event sequence remain distinct through trimmed-file/direct/DB replay fixtures; unknown request uniqueness stays explicitly unresolved even in rollout-only reports.
-- [ ] The shared session/span schema is recorded with ENH-3543 before migrations; existing `session_id`/`invocation_id` columns are reused with explicit identity basis.
+- [x] Physical line, native ordinal, and token-event sequence remain distinct through trimmed-file/direct/DB replay fixtures; unknown request uniqueness stays explicitly unresolved even in rollout-only reports.
+- [x] The shared session/span schema is recorded with ENH-3543 before migrations; existing `session_id`/`invocation_id` columns are reused with explicit identity basis.
 
-- [ ] Historical rollout usage reaches `usage_events` (`channel='rollout'`) through `normalize_codex_input` and BUG-3531's rollout container rules; `rollout-exec-resume.jsonl` yields exactly three rows (12424 uncached input / 46080 cache-read / 0 cache-write / 122 output in total; native inclusive input is 58504); live capture continues to work.
-- [ ] Fixtures cover repeated notifications, per-request vs cumulative values, compaction resets, multiple sessions, malformed/partial records, rate-limit-only records, and observed-model absence. Valid distinct requests with equal counts remain distinct.
-- [ ] Repeated ingestion and rebuild leave canonical totals stable and preserve live-only rows (relies on BUG-3530).
-- [ ] This issue verifies full-rebuild materialization; ENH-3651 supplies the shared incremental derive and catch-up. Before ENH-3549's Codex cutover, their combined ingest → incremental derive → read flow is tested end to end, including Codex raw rows ingested before ENH-3651's checkpoint or before this normalizer lands.
-- [ ] Rollout rows take their host from BUG-3542's verified attribution, never from the currently configured host; legacy-attributed rows carry an unknown host with a reason.
-- [ ] The same fixture ingested directly and replayed from stored inner payloads produces equivalent observations, including session, event time, outer type, and source position. Existing `_iter_events` consumers remain compatible.
-- [ ] Source/request keys, fallback rules, reset namespace, host-attribution discriminator, and database uniqueness are documented and fixture-backed before implementation readiness. Tests cover archive/move, copied sources, repeated notifications, conflicting duplicate keys, equal-count distinct requests, and unknown identities.
-- [ ] Interleaved sessions, out-of-order ingestion, incomplete prefixes, malformed snapshots, and compaction/reset boundaries cannot share normalization state or produce fabricated deltas. Multiple request observations in one turn remain distinct.
-- [ ] Each rollout row persists the session ID and the `task_started`/`task_complete` span `turn_id` that ENH-3543 matches on.
-- [ ] Rollout rows with a `session_id` do not change `quality_regressions` model-composition output (channel pin + regression test).
-- [ ] Rebuild and interrupted/retried replay preserve live-only rows and never leave partially replaced rollout accounting. Source relocation/copy does not change canonical totals for verified identities.
-- [ ] Partial/malformed and unproven rollout observations remain `unknown`; only producer-verified, consistent complete rows become `measured`. Empty and wrong-type usage containers obey BUG-3531's contract without raising or fabricating zero.
+- [x] Historical rollout usage reaches `usage_events` (`channel='rollout'`) through `normalize_codex_input` and BUG-3531's rollout container rules; `rollout-exec-resume.jsonl` yields exactly three rows (12424 uncached input / 46080 cache-read / 0 cache-write / 122 output in total; native inclusive input is 58504); live capture continues to work.
+- [x] Fixtures cover repeated notifications, per-request vs cumulative values, compaction resets, multiple sessions, malformed/partial records, rate-limit-only records, and observed-model absence. Valid distinct requests with equal counts remain distinct.
+- [x] Repeated ingestion and rebuild leave canonical totals stable and preserve live-only rows (relies on BUG-3530).
+- [x] This issue verifies full-rebuild materialization; ENH-3651 supplies the shared incremental derive and catch-up. Before ENH-3549's Codex cutover, their combined ingest → incremental derive → read flow is tested end to end, including Codex raw rows ingested before ENH-3651's checkpoint or before this normalizer lands.
+- [x] Rollout rows take their host from BUG-3542's verified attribution, never from the currently configured host; legacy-attributed rows carry an unknown host with a reason.
+- [x] The same fixture ingested directly and replayed from stored inner payloads produces equivalent observations, including session, event time, outer type, and source position. Existing `_iter_events` consumers remain compatible.
+- [x] Source/request keys, fallback rules, reset namespace, host-attribution discriminator, and database uniqueness are documented and fixture-backed before implementation readiness. Tests cover archive/move, copied sources, repeated notifications, conflicting duplicate keys, equal-count distinct requests, and unknown identities.
+- [x] Interleaved sessions, out-of-order ingestion, incomplete prefixes, malformed snapshots, and compaction/reset boundaries cannot share normalization state or produce fabricated deltas. Multiple request observations in one turn remain distinct.
+- [x] Each rollout row persists the session ID and the `task_started`/`task_complete` span `turn_id` that ENH-3543 matches on.
+- [x] Rollout rows with a `session_id` do not change `quality_regressions` model-composition output (channel pin + regression test).
+- [x] Rebuild and interrupted/retried replay preserve live-only rows and never leave partially replaced rollout accounting. Source relocation/copy does not change canonical totals for verified identities.
+- [x] Partial/malformed and unproven rollout observations remain `unknown`; only producer-verified, consistent complete rows become `measured`. Empty and wrong-type usage containers obey BUG-3531's contract without raising or fabricating zero.
 
-- [ ] The persisted key is unique on fork, resume, archive and paginated-thread fixtures: a forked rollout and its parent never collide, and two files sharing a `payload.id` are distinguished by the stream discriminator (fixtures added, including a captured fork).
-- [ ] With `token_usage_record` present for a proven request, exactly one observation per `response_id` is selected and its overlapping `token_count` is not also counted. A mixed/partial-stream fixture proves that old-shape-only requests are retained with the appropriate qualification. A fixture from a 0.154+ producer records its version.
-- [ ] Duplicate rule: identical `total_token_usage` + identical `last_token_usage` collapses to one observation; identical total with different `last_token_usage` keeps both (fixtures for each).
-- [ ] The legacy-ordinal policy (re-read once vs. explicitly unresolved) is recorded and tested; existing rows never silently acquire a fabricated key.
-- [ ] Rollout rows with a `session_id` change neither `quality_regressions` nor `agent_quality` cost-per-issue output (channel pins + regression tests).
+- [x] The persisted key is unique on fork, resume, archive and paginated-thread fixtures: a forked rollout and its parent never collide, and two files sharing a `payload.id` are distinguished by the stream discriminator (fixtures added, including a captured fork).
+- [x] With `token_usage_record` present for a proven request, exactly one observation per `response_id` is selected and its overlapping `token_count` is not also counted. A mixed/partial-stream fixture proves that old-shape-only requests are retained with the appropriate qualification. A fixture from a 0.154+ producer records its version.
+- [x] Duplicate rule: identical `total_token_usage` + identical `last_token_usage` collapses to one observation; identical total with different `last_token_usage` keeps both (fixtures for each).
+- [x] The legacy-ordinal policy (re-read once vs. explicitly unresolved) is recorded and tested; existing rows never silently acquire a fabricated key.
+- [x] Rollout rows with a `session_id` change neither `quality_regressions` nor `agent_quality` cost-per-issue output (channel pins + regression tests).
 
 ## Scope Boundaries
 
@@ -240,7 +249,7 @@ Historical split: BUG-3542 was the remaining prerequisite then; it is now done, 
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Done** | Created: 2026-09-24 | Priority: P2
 
 ---
 
@@ -268,6 +277,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Unresolved design decisions on observation identity/uniqueness (request key, reset namespace, ordering) leave ambiguity; wide reader/test surface.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:26 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T01:38:47 - `00481f16-3cf9-4411-85c4-2628bffdfe50.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:33:29 - `8209a6c5-0048-4df0-9c81-a0ae9f75a965.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T01:19:08 - `49a0f922-81ea-47c1-887c-a8f9378dfd2a.jsonl`
@@ -276,3 +286,19 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - `/ll:audit-issue-conflicts` - 2026-09-24T23:55:44 - `2bb94109-d967-427c-a647-9b0a7a8e368e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Versioned Codex rollout captures, replay identity, mixed-shape deduplication and conservative provenance now persist through full and incremental derivation.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.

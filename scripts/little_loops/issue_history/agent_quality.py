@@ -308,7 +308,11 @@ def _usage_totals(
     issue_window: dict[int, tuple[str, str]],
 ) -> dict[tuple[str, str], dict[str, float]]:
     try:
-        rows = [row for row in select_usage_observations(conn) if row["session_id"] is not None]
+        rows = [
+            row
+            for row in select_usage_observations(conn)
+            if row["session_id"] is not None and row["channel"] in (None, "transcript")
+        ]
     except sqlite3.Error:
         logger.warning("agent_quality: usage_events query failed", exc_info=True)
         return {}

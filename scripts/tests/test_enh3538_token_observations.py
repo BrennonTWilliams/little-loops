@@ -78,7 +78,9 @@ class TestStampAndCallbacks:
     def test_stamp_sets_host_scope_and_received_time(self) -> None:
         stamped = _stamp_usage(TokenUsage(1, 2, 3, 4, "m"), "codex")
         assert stamped.host == "codex"
-        assert stamped.scope_kind == "invocation"
+        # Codex 0.158.0 live totals carry prior resume/fork work, so the
+        # invocation is not a proven accounting scope (ENH-3655).
+        assert stamped.scope_kind == "unknown"
         assert stamped.observed_at_basis == "received"
         assert stamped.observed_at
         assert stamped.provenance == "unknown"
@@ -258,7 +260,7 @@ class TestReplay:
             [
                 (_transcript_line(full), "f1", "claude-code"),
                 (_transcript_line(partial), "f2", None),
-                (_transcript_line(full, ts=None), "f3", "codex"),
+                (_transcript_line(full, ts=None), "f3", "pi"),
             ],
         )
         conn = connect(db)
@@ -353,7 +355,7 @@ class TestExecutorPayload:
         kwargs = record.call_args.kwargs
         assert kwargs["host"] == "codex" and kwargs["provider_vendor"] == "openai"
         assert kwargs["provenance"] == "unknown"
-        assert kwargs["scope_kind"] == "invocation"
+        assert kwargs["scope_kind"] == "unknown"
         assert kwargs["observed_at_basis"] == "received"
         assert kwargs["observed_at"] == usage.observed_at
 

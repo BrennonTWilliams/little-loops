@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -37,16 +38,16 @@ from little_loops.session_store import (
     cli_event_context,
     connect_readonly,
     detect_sessions,
-    iter_events,
+    explain_no_sessions,
     resolve_history_db,
     translate_sqlite_errors,
 )
-from little_loops.subprocess_utils import normalize_codex_input
 from little_loops.token_provenance import (
     COST_COLUMN,
     TOKEN_COLUMNS,
     UNKNOWN_MODEL_BUCKET,
     ObservationGroup,
+    context_occupancy_entry,
     counted_entry,
     estimated_entry,
     footnotes,
@@ -338,78 +339,13 @@ def _load_fallback_state(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _codex_cache_usage(handle: SessionHandle) -> dict[str, Any] | None:
-    """Compute cache hit rate from a Codex rollout's ``token_count`` events.
-
-    ``last_token_usage`` (not the cumulative ``total_token_usage``, which
-    resets across a mid-session compaction) is normalized per observation via
-    :func:`~little_loops.subprocess_utils.normalize_codex_input` (Codex input is
-    inclusive of cached/cache-write tokens) and only consistent splits are
-    summed. Incomplete, malformed, or over-cached observations are excluded from
-    the rate and counted in ``inconsistent_events`` rather than clamped; a
-    mapping ``info`` without ``last_token_usage`` and ``info: null`` records
-    are not observations. With no consistent observation the rate and token
-    totals are ``None``. Always returns a dict for a Codex session (BUG-3531).
-    """
-    cache_read = cache_write = uncached = 0
-    consistent = inconsistent = 0
-
-    for event in iter_events(handle):
-        if event.type != "event_msg" or event.payload.get("type") != "token_count":
-            continue
-        info = event.payload.get("info")
-        if info is None:
-            continue
-        if not isinstance(info, dict):
-            inconsistent += 1
-            continue
-        if "last_token_usage" not in info:
-            continue
-        split = normalize_codex_input(info["last_token_usage"])
-        if (
-            not split.consistent
-            or split.uncached_input is None
-            or split.cache_read is None
-            or split.cache_write is None
-        ):
-            inconsistent += 1
-            continue
-        consistent += 1
-        cache_read += split.cache_read
-        cache_write += split.cache_write
-        uncached += split.uncached_input
-
-    counts = {
-        name: {"known": consistent, "missing": inconsistent}
-        for name in ("cache_read", "cache_write", "uncached", "hit_rate_pct")
-    }
-    result: dict[str, Any] = {
-        "cache_read": None,
-        "cache_write": None,
-        "uncached": None,
-        "hit_rate_pct": None,
-        "host": handle.host,
-        "session_id": handle.session_id,
-        "provenance": "measured",
-        "counts": counts,
-        "consistent_events": consistent,
-        "inconsistent_events": inconsistent,
-    }
-    if consistent:
-        total = cache_read + cache_write + uncached
-        result.update(cache_read=cache_read, cache_write=cache_write, uncached=uncached)
-        result["hit_rate_pct"] = round(cache_read / total * 100) if total else None
-    return result
-
-
 def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any] | None:
-    """Compute session-aggregate cache hit rate from the most recent session.
+    """Read the most recent session for hosts awaiting a stored producer contract.
 
     Picks the newest non-agent session for *host* (or, when ``host`` is
     ``None``, the newest across every registered host) via
-    :func:`detect_sessions`. Codex sessions are read through
-    :func:`_codex_cache_usage` (``token_count`` events via ``iter_events``);
-    every other host keeps the raw per-line reader over the transcript,
+    :func:`detect_sessions`. Hosts other than Claude Code and Codex keep a
+    raw per-line reader over the transcript,
     summing ``cache_read_input_tokens``, ``cache_creation_input_tokens``, and
     ``input_tokens`` across all unique assistant entries (deduplicated by
     UUID to avoid double-counting). qwen/gemini/omp real cache rates stay
@@ -425,7 +361,7 @@ def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any
     common eligible set; excluded records are counted in
     ``counts['hit_rate_pct']['missing']``). A usage mapping with none of the
     three keys is not an observation. The result carries ``provenance``
-    (``measured`` for Codex, ``unknown`` for other hosts until ENH-3546),
+    (``unknown`` until a host-specific contract is verified),
     ``session_id`` and per-component ``counts``.
     """
     handles = detect_sessions(cwd, host, include_agents=False, limit=1)
@@ -434,7 +370,7 @@ def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any
     latest = handles[0]
 
     if latest.host == "codex":
-        return _codex_cache_usage(latest)
+        return None
 
     fields = (
         ("cache_read", "cache_read_input_tokens"),
@@ -506,6 +442,120 @@ def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any
     }
 
 
+def _compute_cache_rate_from_usage(
+    handle: SessionHandle, db_path: Path
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Read one verified Claude or Codex session's stored usage.
+
+    The second return value is a diagnostic code for a missing store or
+    observation. Source freshness is read from ENH-3651's committed cursor;
+    it is never inferred from a usage row's timestamp.
+    """
+    from little_loops.history_reader.usage import select_usage_coverage
+    from little_loops.session_store.lifecycle import usage_source_freshness
+
+    if not db_path.exists():
+        return None, "no_store"
+    try:
+        conn = connect_readonly(db_path)
+    except HistoryError:
+        return None, "unreadable_store"
+    try:
+        with translate_sqlite_errors():
+            ingested = conn.execute(
+                "SELECT 1 FROM raw_events WHERE source_path IN (?, ?) AND host = ? "
+                "AND session_id = ? AND host_basis = 'handle' LIMIT 1",
+                (
+                    str(handle.path),
+                    str(handle.path.expanduser().resolve()),
+                    handle.host,
+                    handle.session_id,
+                ),
+            ).fetchone()
+            if ingested is None:
+                return None, "session_not_ingested"
+            selection = select_usage_coverage(conn, host=handle.host, session_id=handle.session_id)
+    except (HistoryError, sqlite3.Error):
+        return None, "unreadable_store"
+    finally:
+        conn.close()
+    if not selection.audit_rows:
+        return None, "ingested_without_usage"
+
+    rows = selection.selected_rows
+
+    fields = (
+        ("cache_read", "cache_read_input_tokens"),
+        ("cache_write", "cache_creation_input_tokens"),
+        ("uncached", "input_tokens"),
+    )
+    sums = {name: 0 for name, _ in fields}
+    known = {name: 0 for name, _ in fields}
+    missing = {name: 0 for name, _ in fields}
+    eligible = {name: 0 for name, _ in fields}
+    eligible_events = excluded_events = 0
+    group = ObservationGroup()
+    audit_group = ObservationGroup()
+    for row in selection.audit_rows:
+        audit_group.add(row)
+    for row in rows:
+        group.add(row)
+        values = {name: _known_int(row[column]) for name, column in fields}
+        for name, value in values.items():
+            if value is None:
+                missing[name] += 1
+            else:
+                known[name] += 1
+                sums[name] += value
+        if all(value is not None for value in values.values()):
+            eligible_events += 1
+            for name, value in values.items():
+                eligible[name] += value or 0
+        else:
+            excluded_events += 1
+    counts = {name: {"known": known[name], "missing": missing[name]} for name in sums}
+    counts["hit_rate_pct"] = {"known": eligible_events, "missing": excluded_events}
+    total = sum(eligible.values())
+    freshness = usage_source_freshness(db_path, handle.path)
+    coverage = selection.coverage
+    provenance = group.aggregate_provenance("input_tokens")
+    reportable = coverage == "non_overlapping" and provenance == "measured"
+    qualification_reason = (
+        "unverified_usage" if coverage == "non_overlapping" and provenance != "measured" else None
+    )
+    result: dict[str, Any] = {
+        **{name: (sums[name] if reportable and known[name] else None) for name in sums},
+        "hit_rate_pct": (
+            round(eligible["cache_read"] / total * 100) if total and reportable else None
+        ),
+        "host": handle.host,
+        "session_id": handle.session_id,
+        "provenance": provenance,
+        "qualification_reason": qualification_reason,
+        "counts": counts,
+        "source": "stored_usage",
+        "channels": sorted({str(row["channel"] or "unknown") for row in selection.audit_rows}),
+        "coverage": coverage,
+        "channel_subtotals": audit_group.channel_subtotals(),
+        "coverage_reason": selection.reason,
+        "freshness": freshness["status"],
+        "lag_reason": freshness.get("reason"),
+        "as_of": freshness.get("as_of"),
+        "as_of_offset": freshness.get("as_of_offset"),
+    }
+    return result, None
+
+
+_STORED_USAGE_DIAGNOSTICS = {
+    "no_store": "no history store is available",
+    "unreadable_store": "the history store is unreadable",
+    "session_not_ingested": "the selected session has not been ingested",
+    "ingested_without_usage": (
+        "the selected session was ingested without qualified usage observations"
+    ),
+}
+
+
 def _known_int(value: Any) -> int | None:
     """Coerce a transcript usage component to ``int``; absent/null/malformed → ``None``."""
     if value is None or isinstance(value, bool):
@@ -517,6 +567,7 @@ def _known_int(value: Any) -> int | None:
 
 
 _CACHE_SCOPE_REASON = "single-session transcript read (newest session only, not the whole history)"
+_STORED_CACHE_SCOPE_REASON = "single-session stored usage (newest session only)"
 
 
 def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -524,6 +575,21 @@ def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, An
     counts = cache_rate.get("counts") or {}
     provenance = cache_rate.get("provenance") or "unknown"
     host = cache_rate.get("host")
+    channels = cache_rate.get("channels") or ["transcript_file"]
+    reason = (
+        _STORED_CACHE_SCOPE_REASON
+        if cache_rate.get("source") == "stored_usage"
+        else _CACHE_SCOPE_REASON
+    )
+    if cache_rate.get("source") == "stored_usage":
+        reason += f"; stored as of {cache_rate.get('as_of') or 'unknown'}"
+        reason += f"; freshness {cache_rate.get('freshness') or 'unknown'}"
+        if cache_rate.get("lag_reason"):
+            reason += f" ({cache_rate['lag_reason']})"
+        if cache_rate.get("coverage") == "overlap_unresolved":
+            reason += "; live and transcript overlap unresolved"
+        elif cache_rate.get("coverage_reason"):
+            reason += f"; coverage {cache_rate['coverage_reason']}"
     fields = (
         ("cache_read_tokens", "cache_read", "cache_read_input_tokens"),
         ("cache_write_tokens", "cache_write", "cache_creation_input_tokens"),
@@ -534,6 +600,8 @@ def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, An
     for json_key, src_key, metric in fields:
         default_known = 1 if cache_rate.get(src_key) is not None else 0
         count = counts.get(src_key) or {"known": default_known, "missing": 0}
+        if cache_rate.get("source") == "stored_usage" and cache_rate.get(src_key) is None:
+            count = {"known": 0, "missing": int(count["known"]) + int(count["missing"])}
         entries[json_pointer(json_key)] = counted_entry(
             metric,
             provenance=provenance,
@@ -541,9 +609,9 @@ def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, An
             missing=int(count["missing"]),
             scope_kind="session",
             hosts=[host] if host else None,
-            channels=["transcript_file"],
+            channels=channels,
             session_id=cache_rate.get("session_id"),
-            reason=_CACHE_SCOPE_REASON,
+            reason=reason,
         )
     return entries
 
@@ -590,13 +658,7 @@ def _pressure_provenance(pressure: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _fallback_provenance(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Pointer → entry for the context-state fallback estimates."""
-    entries = {
-        json_pointer("estimated_tokens"): estimated_entry(
-            "estimated_tokens",
-            scope_kind="context",
-            available=state.get("estimated_tokens") is not None,
-        )
-    }
+    entries = {json_pointer("estimated_tokens"): context_occupancy_entry(state)}
     breakdown = state.get("breakdown")
     if isinstance(breakdown, dict):
         for tool in breakdown:
@@ -685,7 +747,11 @@ def _render(
         counts = cache_rate.get("counts") or {}
         excluded = int((counts.get("hit_rate_pct") or {}).get("missing") or 0)
         if cache_rate["cache_read"] is None:
-            if good == 0 and not bad:
+            if cache_rate.get("coverage") in {"overlap_unresolved", "unknown"}:
+                print(f"Cache hit rate: unavailable (coverage unresolved) {suffix_for(rate_entry)}")
+            elif cache_rate.get("qualification_reason"):
+                print(f"Cache hit rate: unavailable (usage unverified) {suffix_for(rate_entry)}")
+            elif good == 0 and not bad:
                 print(f"Cache hit rate: no usage observed {suffix_for(rate_entry)}")
             else:
                 print(
@@ -723,7 +789,18 @@ def _render(
                     f"record(s); {excluded} excluded (missing usage component)"
                 )
         host_note = f"; host: {rate_host}" if rate_host else ""
-        print(f"* {_CACHE_SCOPE_REASON}{host_note}")
+        scope_reason = (
+            _STORED_CACHE_SCOPE_REASON
+            if cache_rate.get("source") == "stored_usage"
+            else _CACHE_SCOPE_REASON
+        )
+        print(f"* {scope_reason}{host_note}")
+        if cache_rate.get("source") == "stored_usage":
+            as_of = cache_rate.get("as_of") or "unknown"
+            freshness = cache_rate.get("freshness") or "unknown"
+            lag = cache_rate.get("lag_reason")
+            detail = f" ({lag})" if lag else ""
+            print(f"  Stored usage as of {as_of}; freshness: {freshness}{detail}")
 
     if skill_stats:
         print()
@@ -826,6 +903,28 @@ def _render_fallback(state: dict[str, Any], logger: Logger) -> None:
         "Estimated tokens in context: "
         f"{format_figure(raw_estimate, entries[json_pointer('estimated_tokens')])}"
     )
+    occupancy = entries[json_pointer("estimated_tokens")]
+    scope = occupancy["scope_kind"]
+    if occupancy.get("session_id"):
+        scope += f" (session {occupancy['session_id']})"
+    if occupancy.get("context_boundary"):
+        scope += f"; boundary {occupancy['context_boundary']}"
+    print(f"Occupancy scope:           {scope}")
+    print(f"Estimate method:           {occupancy['estimate_reason']}")
+    if occupancy.get("baseline_observed_at"):
+        print(f"Baseline observed:         {occupancy['baseline_observed_at']}")
+    if occupancy.get("baseline_observation_boundary"):
+        print(f"Baseline boundary:         {occupancy['baseline_observation_boundary']}")
+    if occupancy.get("estimate_updated_at"):
+        print(f"Estimate updated:          {occupancy['estimate_updated_at']}")
+    freshness = (
+        "stale"
+        if occupancy["stale"]
+        else "fresh"
+        if occupancy["stale"] is False
+        else "freshness unknown"
+    )
+    print(f"Baseline freshness:        {freshness} ({occupancy['stale_reason']})")
     print(f"Tool calls this session:     {tool_calls}")
     if isinstance(breakdown, dict) and breakdown:
         print()
@@ -916,6 +1015,21 @@ def _print_json(
             ),
             "cache_rate_inconsistent_events": (
                 cache_rate.get("inconsistent_events") if cache_rate else None
+            ),
+            "cache_rate_source": cache_rate.get("source") if cache_rate else None,
+            "cache_rate_coverage": cache_rate.get("coverage") if cache_rate else None,
+            "cache_rate_coverage_reason": (
+                cache_rate.get("coverage_reason") if cache_rate else None
+            ),
+            "cache_rate_qualification_reason": (
+                cache_rate.get("qualification_reason") if cache_rate else None
+            ),
+            "cache_rate_freshness": cache_rate.get("freshness") if cache_rate else None,
+            "cache_rate_as_of": cache_rate.get("as_of") if cache_rate else None,
+            "cache_rate_as_of_offset": cache_rate.get("as_of_offset") if cache_rate else None,
+            "cache_rate_lag_reason": cache_rate.get("lag_reason") if cache_rate else None,
+            "cache_rate_channel_subtotals": (
+                cache_rate.get("channel_subtotals") if cache_rate else None
             ),
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
@@ -1078,7 +1192,35 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
         skill_stats = _aggregate_skill_stats(db_path)
         fallback = _load_fallback_state(state_path) if summary is None else None
         host = _resolve_host(args.host, default=None)
-        cache_rate = _compute_cache_rate_from_jsonl(cwd, host)
+        handles = detect_sessions(cwd, host, include_agents=False, limit=1)
+        if not handles:
+            _cause, reason = explain_no_sessions(cwd, host=host, include_agents=False)
+            # Write directly to stderr so JSON-only print capture remains a
+            # clean stdout document (the other CLI readers use the same pair).
+            sys.stderr.write(f"No sessions found for: {cwd}\n{reason}\n")
+        if handles and handles[0].host in {"claude-code", "codex"}:
+            selected = handles[0]
+            stored_host = "Claude" if selected.host == "claude-code" else "Codex"
+            cache_rate, diagnostic = _compute_cache_rate_from_usage(selected, db_path)
+            if diagnostic is not None:
+                sys.stderr.write(
+                    f"Stored {stored_host} usage unavailable for {selected.session_id}: "
+                    f"{_STORED_USAGE_DIAGNOSTICS[diagnostic]}.\n"
+                )
+            elif cache_rate is not None and cache_rate.get("qualification_reason"):
+                sys.stderr.write(
+                    f"Stored {stored_host} usage unavailable for {selected.session_id}: "
+                    "producer usage identity or components are unverified.\n"
+                )
+            if cache_rate is not None and cache_rate.get("freshness") != "fresh":
+                sys.stderr.write(
+                    f"Stored {stored_host} usage for {selected.session_id} is "
+                    f"{cache_rate.get('freshness') or 'unknown'} as of "
+                    f"{cache_rate.get('as_of') or 'unknown'} "
+                    f"({cache_rate.get('lag_reason') or 'lag unknown'}).\n"
+                )
+        else:
+            cache_rate = _compute_cache_rate_from_jsonl(cwd, host)
         lt_config = _load_lt_config(cwd)
         lt_stats = _compute_learning_tests_stats(cwd, lt_config)
         usage_events = _aggregate_usage_events(db_path)

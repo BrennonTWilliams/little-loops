@@ -67,6 +67,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | issue-auto-commit | Auto-commits issue-file edits | — | off |
 | **PostToolUse** | edit-batch-nudge | Nudges batching once per session after a run of consecutive unbatched single edits (`hooks.edit_batch_nudge`) | exit 0 + `additionalContext` (Claude Code); exit 2 (other hosts) | on |
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
+| **Stop** | usage-stop | Schedules a detached refresh of this session's stored token usage | — | on |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
 | **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
 | **Stop** | record-hook-event | Telemetry shim: records the session-cleanup fire to `hook_events` | — | on |
@@ -113,7 +114,8 @@ Context window fills up (Claude Code fires PreCompact before compacting)
   → PreCompact (precompact.sh): snapshots task state to .ll/ll-precompact-state.json
   → PreCompact (precompact-handoff.sh): reads state snapshot for idempotency, writes .ll/ll-continue-prompt.md; use /ll:resume after compaction to pick up work
 
-Session ends
+An assistant turn ends
+  → Stop (usage refresh): schedules a background read of the completed transcript
   → Stop (cleanup): removes locks, temp files, orphaned worktrees
 ```
 
@@ -307,7 +309,7 @@ Records a `tool_events` row (tool name, bytes in/out, cache-hit, args hash, `age
 
 **Hook:** `context-monitor.sh` (pure bash + jq)
 
-The hook most users notice. After each tool call it estimates how much context you've consumed — heuristically per tool, refined against authoritative token counts from the transcript when available — and tracks it in `.ll/ll-context-state.json`. When usage crosses the threshold it emits a rate-limited (once/60s) reminder via **exit 2**:
+The hook most users notice. After each tool call it estimates current context occupancy — heuristically per tool, refined against a measured transcript baseline when available — and tracks it in `.ll/ll-context-state.json`. The resulting `estimated_tokens` is always labelled `estimated`, since it includes tool and turn overhead beyond the measured baseline. `estimate_reason` distinguishes `transcript_baseline_plus_heuristic` from `heuristic_accumulation`. The file records `baseline_observed_at` separately from `estimate_updated_at`, the transcript mtime as `baseline_observation_boundary`, and the session/compaction `context_boundary`. Tool activity marks the baseline stale; compaction keeps it stale until another valid transcript read. A legacy state without these fields has unknown freshness. These labels do not change threshold decisions. When usage crosses the threshold it emits a rate-limited (once/60s) reminder via **exit 2**:
 
 > `[ll] Context ~N% used (tokens/limit estimated). Run /ll:handoff to preserve your work…`
 
@@ -414,13 +416,23 @@ silently clears an earlier error — the log records net state, not history.
 
 ## Stop
 
-Four hooks run after each assistant turn (Claude Code's `Stop` event). All are advisory and must never fail.
+Five hooks run after each assistant turn (Claude Code's `Stop` event). All are advisory and must never fail.
+
+### Stored usage refresh
+
+**Hook:** `usage-stop.sh` → `little_loops.hooks.usage_stop.handle`
+
+Schedules a detached worker to read the current session's transcript and update
+stored token usage after the turn completes. The hook itself returns promptly;
+the worker coalesces repeated Stop events and schedules a trailing read when
+needed. It runs only for a configured project with a transcript path, and skips
+when `LL_NON_INTERACTIVE` is set. It never blocks the assistant turn.
 
 ### Context handoff sentinel
 
 **Hook:** `context-handoff-sentinel.sh` (pure bash)
 
-If the session ended context-heavy (≥ ~50% estimated) and no handoff was completed, it writes a `.ll/ll-context-handoff-needed` sentinel so an automation worker (or your next session) knows to prompt for an explicit handoff. Gated by `context_monitor.enabled`. Silent.
+If the session ended context-heavy (≥ ~50% estimated) and no handoff was completed, it writes a `.ll/ll-context-handoff-needed` sentinel so an automation worker (or your next session) knows to prompt for an explicit handoff. The sentinel carries the estimate's scope, reason, and baseline freshness from the context-state file. A legacy `result_token_count` is ignored. Gated by `context_monitor.enabled`. Silent.
 
 ### Session cleanup
 

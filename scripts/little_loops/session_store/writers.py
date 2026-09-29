@@ -1962,9 +1962,11 @@ def record_usage_event(
     scope_kind: TokenScopeKind = "unknown",
     observed_at: str | None = None,
     observed_at_basis: ObservedAtBasis | None = None,
+    session_id: str | None = None,
+    identity_basis: str | None = None,
     invocation_id: str | None = None,
 ) -> None:
-    """Write one live per-invocation row to ``usage_events`` (ENH-2724).
+    """Write one live observation row to ``usage_events`` (ENH-2724).
 
     ENH-3538: token components may be ``None`` (unknown; the row's cost is then
     ``NULL``), and the keyword-only metadata records provenance (default
@@ -1973,7 +1975,9 @@ def record_usage_event(
 
     Unlike :func:`_backfill_usage_events` (post-hoc, ``state`` always ``NULL``),
     this is called at loop-run finish with the FSM state each invocation ran in
-    already known. ``usage_events`` has no uniqueness constraint — plain
+    already known. ``session_id`` and ``identity_basis`` carry a host-observed
+    Codex thread ID when available; ``invocation_id`` is locally generated.
+    Live observations have no producer-key uniqueness constraint — plain
     ``INSERT``, one row per :class:`~little_loops.subprocess_utils.TokenUsage`.
     """
     from little_loops.pricing import _event_date, estimate_cost_usd
@@ -1992,8 +1996,8 @@ def record_usage_event(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
             "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, channel, "
             "provenance, host, provider_vendor, scope_kind, observed_at, observed_at_basis, "
-            "invocation_id) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?)",
+            "session_id, identity_basis, invocation_id) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ts,
                 model,
@@ -2010,6 +2014,8 @@ def record_usage_event(
                 scope_kind,
                 observed_at,
                 observed_at_basis,
+                session_id,
+                identity_basis,
                 invocation_id,
             ),
         )
@@ -3625,6 +3631,400 @@ def _derive_run_id_for_ts(ts: str, windows: list[tuple[str, str, str]]) -> str |
     return matches[0] if len(matches) == 1 else None
 
 
+@dataclass(frozen=True)
+class UsageReplayRecord:
+    """One replay row with envelope metadata kept separate from its payload."""
+
+    payload: dict[str, Any]
+    event_type: str
+    ts: str
+    session_id: str | None
+    host: str | None
+    host_basis: str | None
+    source_label: str
+    line_no: int | None
+    ordinal: int | None
+    usage_contract: str | None = None
+    raw_event_id: int | None = None
+
+
+@dataclass(frozen=True)
+class UsageObservation:
+    """One assistant-message usage block prepared for stored replay."""
+
+    session_id: str
+    model: Any
+    usage: dict[str, Any]
+    qualified: bool
+    observation_key: str | None
+
+
+@dataclass(frozen=True)
+class HostUsageState:
+    """A source/host/session scope for per-host usage normalization.
+
+    No cumulative counters are shared across records until a producer contract
+    proves their grain and reset behavior.
+    """
+
+    source_label: str
+    host: str | None
+    session_id: str | None
+
+
+def normalize_host_usage(
+    record: UsageReplayRecord, *, state: HostUsageState
+) -> list[UsageObservation]:
+    """Dispatch assistant usage without qualifying unproven host semantics.
+
+    Only Claude Code 2.1.284 with an ingest-time contract marker can be
+    measured. Claude-shaped usage from other hosts remains an unknown audit
+    observation; Codex rollout and Kimi native records use separate readers.
+    Host identity always comes from the replay record, never from a caller.
+    """
+    if (
+        state.source_label != record.source_label
+        or state.host != record.host
+        or state.session_id != record.session_id
+    ):
+        raise ValueError("HostUsageState does not match replay source, host, and session")
+    if record.host in {"codex", "kimi-code"} or record.payload.get("type") != "assistant":
+        return []
+    payload = record.payload
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        return []
+    usage = message.get("usage")
+    if not isinstance(usage, dict):
+        return []
+    if usage.get("input_tokens") is None and usage.get("output_tokens") is None:
+        return []
+    # BUG-3530: a NULL session_id row would be classified as live and survive
+    # rebuild, so an assistant usage observation needs a source session ID.
+    session_id = payload.get("sessionId")
+    if not isinstance(session_id, str) or not session_id:
+        return []
+
+    from little_loops.session_store.claude_usage import (
+        CLAUDE_USAGE_CONTRACT,
+        claude_transcript_contract,
+    )
+
+    native_contract = claude_transcript_contract(
+        payload, host=record.host, host_basis=record.host_basis
+    )
+    message_id = message.get("id")
+    # A malformed current-version Claude snapshot with a producer ID is not
+    # another request; the last valid snapshot for that ID wins.
+    if (
+        record.host == "claude-code"
+        and record.host_basis == "handle"
+        and payload.get("version") == "2.1.284"
+        and isinstance(message_id, str)
+        and message_id
+        and native_contract is None
+    ):
+        return []
+    qualified = (
+        record.usage_contract == CLAUDE_USAGE_CONTRACT and native_contract == CLAUDE_USAGE_CONTRACT
+    )
+    observation_key = (
+        json.dumps([record.host, session_id, message_id], separators=(",", ":"))
+        if qualified and isinstance(message_id, str) and message_id
+        else None
+    )
+    return [
+        UsageObservation(
+            session_id=session_id,
+            model=message.get("model"),
+            usage=usage,
+            qualified=qualified,
+            observation_key=observation_key,
+        )
+    ]
+
+
+def _iter_usage_replay_records(
+    source: list[Path] | sqlite3.Cursor,
+) -> Generator[UsageReplayRecord, None, None]:
+    """Adapt direct envelopes and stored inner payloads to the same replay input."""
+    if isinstance(source, sqlite3.Cursor):
+        for row in source:
+            try:
+                payload = json.loads(_unpack_payload(row[0]))
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            yield UsageReplayRecord(
+                payload=payload,
+                source_label=str(row[1]),
+                host=row[2],
+                host_basis=row[3] if len(row) > 3 else None,
+                event_type=str(row[4] if len(row) > 4 else payload.get("type") or ""),
+                ts=str((row[5] if len(row) > 5 else payload.get("timestamp")) or ""),
+                session_id=row[6] if len(row) > 6 else payload.get("sessionId"),
+                line_no=row[7] if len(row) > 7 else None,
+                ordinal=row[8] if len(row) > 8 else None,
+                usage_contract=row[9] if len(row) > 9 else None,
+                raw_event_id=row[10] if len(row) > 10 else None,
+            )
+        return
+
+    from little_loops.session_store.claude_usage import claude_transcript_contract
+    from little_loops.session_store.sessions import parse_codex_rollout
+
+    for path in source:
+        try:
+            with path.open(encoding="utf-8") as handle:
+                first = json.loads(handle.readline())
+        except (OSError, json.JSONDecodeError, ValueError):
+            first = None
+        if isinstance(first, dict) and first.get("type") in {
+            "session_meta",
+            "event_msg",
+            "turn_context",
+            "token_usage_record",
+        }:
+            header = first.get("payload")
+            session_id = header.get("id") if isinstance(header, dict) else None
+            for event in parse_codex_rollout(path):
+                yield UsageReplayRecord(
+                    payload=event.payload,
+                    event_type=event.type,
+                    ts=event.timestamp,
+                    session_id=session_id,
+                    host="codex",
+                    host_basis="handle",
+                    source_label=str(path),
+                    line_no=event.line_no,
+                    ordinal=event.ordinal,
+                )
+            continue
+        for line_no, (line, source_label, host, host_basis) in enumerate(
+            _iter_events_with_host([path]), start=1
+        ):
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            yield UsageReplayRecord(
+                payload=payload,
+                event_type=str(payload.get("type") or ""),
+                ts=str(payload.get("timestamp") or ""),
+                session_id=payload.get("sessionId"),
+                host=host,
+                host_basis=host_basis,
+                source_label=source_label,
+                line_no=line_no,
+                ordinal=None,
+                usage_contract=claude_transcript_contract(
+                    payload, host=host, host_basis=host_basis
+                ),
+            )
+
+
+@dataclass
+class _CodexReplayState:
+    """Per-source turn/model and duplicate-notification bookkeeping."""
+
+    thread_id: str | None = None
+    current_turn: str | None = None
+    model_by_turn: dict[str, str] = field(default_factory=dict)
+    closed_turns: set[str] = field(default_factory=set)
+    last_count: str | None = None
+    preceding_record: tuple[dict[str, Any], int | None, int | None] | None = None
+    stream_id: str | None = None
+
+
+@dataclass
+class _CodexCandidate:
+    """One source request before closed-span and duplicate-key qualification."""
+
+    record: UsageReplayRecord
+    usage: dict[str, Any]
+    thread_id: str | None
+    turn_id: str | None
+    model: str | None
+    request_id: str | None
+    request_identity_basis: str
+    stream_id: str | None
+    closed: bool = False
+    conflict: bool = False
+
+
+def _codex_count_signature(info: dict[str, Any]) -> str | None:
+    total = info.get("total_token_usage")
+    last = info.get("last_token_usage")
+    if not isinstance(total, dict) or not isinstance(last, dict):
+        return None
+    return json.dumps([total, last], sort_keys=True, separators=(",", ":"))
+
+
+def _is_adjacent_record(
+    previous: tuple[dict[str, Any], int | None, int | None] | None,
+    record: UsageReplayRecord,
+    usage: dict[str, Any],
+) -> bool:
+    if previous is None or previous[0] != usage:
+        return False
+    _, ordinal, line_no = previous
+    if ordinal is not None and record.ordinal is not None:
+        return record.ordinal == ordinal + 1
+    return line_no is not None and record.line_no == line_no + 1
+
+
+def _codex_components(
+    usage: dict[str, Any],
+) -> tuple[int | None, int | None, int | None, int | None, bool]:
+    """Return disjoint components and whether a producer count is complete."""
+    from little_loops.subprocess_utils import normalize_codex_input
+
+    split = normalize_codex_input(usage)
+    output = usage.get("output_tokens")
+    valid_output = type(output) is int and output >= 0
+    complete = split.consistent and valid_output
+    return (
+        split.uncached_input,
+        output if valid_output else None,
+        split.cache_read,
+        split.cache_write,
+        complete,
+    )
+
+
+def _write_host_usage_observation(
+    conn: sqlite3.Connection,
+    replay: UsageReplayRecord,
+    observation: UsageObservation,
+    windows: list[tuple[str, str, str]],
+) -> int:
+    """Persist one prepared assistant observation; return one only for a new row."""
+    from little_loops.observability.tracing import vendor_for_runner
+    from little_loops.pricing import _event_date, estimate_cost_usd
+
+    usage = observation.usage
+    input_tokens = usage.get("input_tokens")
+    output_tokens = usage.get("output_tokens")
+    cache_read = usage.get("cache_read_input_tokens")
+    cache_creation = usage.get("cache_creation_input_tokens")
+    ts = replay.ts
+    model = observation.model
+    cost_usd = estimate_cost_usd(
+        str(model or ""),
+        input_tokens,
+        output_tokens,
+        cache_read,
+        cache_creation,
+        as_of=_event_date(ts),
+    )
+    run_id = _derive_run_id_for_ts(ts, windows)
+    observation_key = observation.observation_key
+    if observation_key is not None:
+        existing = conn.execute(
+            "SELECT id, source_raw_event_id, source_path, model, input_tokens, "
+            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
+            "provenance FROM usage_events WHERE observation_key = ?",
+            (observation_key,),
+        ).fetchone()
+        if existing is not None:
+            changed = (existing[3], existing[4], existing[5], existing[6], existing[7]) != (
+                model,
+                input_tokens,
+                output_tokens,
+                cache_read,
+                cache_creation,
+            )
+            conflict = existing[8] == "unknown" or (existing[2] != replay.source_label and changed)
+            newer = (
+                replay.raw_event_id is None
+                or existing[1] is None
+                or replay.raw_event_id >= existing[1]
+            )
+            if conflict:
+                logger.warning(
+                    "Claude message.id conflict for %s; retaining uncertain usage",
+                    observation_key,
+                )
+            if newer:
+                conn.execute(
+                    "UPDATE usage_events SET ts = ?, model = ?, input_tokens = ?, "
+                    "output_tokens = ?, cache_read_input_tokens = ?, "
+                    "cache_creation_input_tokens = ?, cost_usd = ?, run_id = ?, "
+                    "observed_at = ?, observed_at_basis = ?, source_raw_event_id = ?, "
+                    "source_path = ?, source_line_no = ?, provenance = ?, usage_contract = ? "
+                    "WHERE id = ?",
+                    (
+                        ts,
+                        model,
+                        input_tokens,
+                        output_tokens,
+                        cache_read,
+                        cache_creation,
+                        cost_usd,
+                        run_id,
+                        ts or None,
+                        "event" if ts else None,
+                        replay.raw_event_id,
+                        replay.source_label,
+                        replay.line_no,
+                        "unknown" if conflict else "measured",
+                        None if conflict else replay.usage_contract,
+                        existing[0],
+                    ),
+                )
+            elif conflict:
+                conn.execute(
+                    "UPDATE usage_events SET provenance = 'unknown', usage_contract = NULL "
+                    "WHERE id = ?",
+                    (existing[0],),
+                )
+            return 0
+    conn.execute(
+        "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
+        "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
+        "run_id, channel, provenance, host, provider_vendor, scope_kind, observed_at, "
+        "observed_at_basis, host_basis, usage_contract, source_raw_event_id, "
+        "source_path, source_line_no, observation_key) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript', ?, ?, ?, 'request', "
+        "?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            ts,
+            observation.session_id,
+            model,
+            None,
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_creation,
+            cost_usd,
+            run_id,
+            "measured" if observation.qualified else "unknown",
+            replay.host,
+            vendor_for_runner(replay.host) if replay.host else None,
+            ts or None,
+            "event" if ts else None,
+            replay.host_basis,
+            replay.usage_contract if observation.qualified else None,
+            replay.raw_event_id,
+            replay.source_label,
+            replay.line_no,
+            observation_key,
+        ),
+    )
+    _index(
+        conn,
+        content=f"{model or ''} usage",
+        kind="usage",
+        ref=str(model or ""),
+        anchor=replay.source_label,
+        ts=ts,
+    )
+    return 1
+
+
 def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
     """Seed ``usage_events`` from assistant ``message.usage`` blocks (ENH-2461).
 
@@ -3651,74 +4051,244 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     windows = _load_loop_run_windows(conn)
     from little_loops.observability.tracing import vendor_for_runner
 
-    for line, source_label, host, host_basis in _iter_events_with_host(source):
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
+    codex_states: dict[str, _CodexReplayState] = {}
+    codex_candidates: list[_CodexCandidate] = []
+    host_states: dict[tuple[str, str | None, str | None], HostUsageState] = {}
+    for replay in _iter_usage_replay_records(source):
+        record = replay.payload
+        if replay.event_type in {
+            "session_meta",
+            "turn_context",
+            "token_usage_record",
+            "event_msg",
+        } and (replay.host == "codex" or replay.event_type == "session_meta"):
+            state = codex_states.setdefault(replay.source_label, _CodexReplayState())
+            if replay.event_type == "session_meta":
+                header_id = record.get("id")
+                if isinstance(header_id, str) and header_id:
+                    state.thread_id = header_id
+                stamp = record.get("timestamp") or replay.ts
+                if isinstance(stamp, str) and stamp and state.thread_id:
+                    # Diagnostic stream label only; page uniqueness is unproven.
+                    state.stream_id = f"{state.thread_id}:{stamp}"
+            elif replay.event_type == "turn_context":
+                turn_id = record.get("turn_id")
+                model = record.get("model")
+                if isinstance(turn_id, str) and isinstance(model, str) and model:
+                    state.model_by_turn[turn_id] = model
+            elif replay.event_type == "event_msg":
+                subtype = record.get("type")
+                if subtype == "task_started":
+                    turn_id = record.get("turn_id")
+                    state.current_turn = turn_id if isinstance(turn_id, str) else None
+                    state.last_count = None
+                    state.preceding_record = None
+                elif subtype == "task_complete":
+                    turn_id = record.get("turn_id")
+                    if isinstance(turn_id, str):
+                        state.closed_turns.add(turn_id)
+                    if turn_id == state.current_turn:
+                        state.current_turn = None
+                elif subtype == "token_count":
+                    info = record.get("info")
+                    if not isinstance(info, dict) or "last_token_usage" not in info:
+                        continue  # rate-limit-only notification or no request
+                    raw_usage = info["last_token_usage"]
+                    usage = raw_usage if isinstance(raw_usage, dict) else {}
+                    if _is_adjacent_record(state.preceding_record, replay, usage):
+                        state.preceding_record = None
+                        continue  # same request already recorded with response_id
+                    state.preceding_record = None
+                    signature = _codex_count_signature(info)
+                    if signature is not None and signature == state.last_count:
+                        continue  # re-emitted identical notification
+                    state.last_count = signature
+                    codex_candidates.append(
+                        _CodexCandidate(
+                            record=replay,
+                            usage=usage,
+                            thread_id=state.thread_id or replay.session_id,
+                            turn_id=state.current_turn,
+                            model=state.model_by_turn.get(state.current_turn or ""),
+                            request_id=None,
+                            request_identity_basis="unverified",
+                            stream_id=state.stream_id,
+                        )
+                    )
+            elif replay.event_type == "token_usage_record":
+                raw_usage = record.get("usage")
+                usage = raw_usage if isinstance(raw_usage, dict) else {}
+                turn_id = record.get("turn_id")
+                native_thread = record.get("thread_id")
+                response_id = record.get("response_id")
+                valid_identity = (
+                    isinstance(turn_id, str)
+                    and bool(turn_id)
+                    and isinstance(native_thread, str)
+                    and native_thread == (state.thread_id or replay.session_id)
+                    and isinstance(response_id, str)
+                    and bool(response_id)
+                )
+                codex_candidates.append(
+                    _CodexCandidate(
+                        record=replay,
+                        usage=usage,
+                        thread_id=state.thread_id or replay.session_id,
+                        turn_id=turn_id if isinstance(turn_id, str) else None,
+                        model=state.model_by_turn.get(turn_id if isinstance(turn_id, str) else ""),
+                        request_id=response_id if isinstance(response_id, str) else None,
+                        request_identity_basis="native_response"
+                        if valid_identity
+                        else "unverified",
+                        stream_id=state.stream_id,
+                    )
+                )
+                state.preceding_record = (
+                    (
+                        usage,
+                        replay.ordinal,
+                        replay.line_no,
+                    )
+                    if valid_identity
+                    else None
+                )
             continue
-        if record.get("type") != "assistant":
-            continue
-        message = record.get("message")
-        if not isinstance(message, dict):
-            continue
-        usage = message.get("usage")
-        if not isinstance(usage, dict):
-            continue
-        input_tokens = usage.get("input_tokens")
-        output_tokens = usage.get("output_tokens")
-        cache_read = usage.get("cache_read_input_tokens")
-        cache_creation = usage.get("cache_creation_input_tokens")
-        # Every real usage block carries at least input/output; skip rows with
-        # no token signal at all (defensive against malformed/partial records).
-        if input_tokens is None and output_tokens is None:
-            continue
-        session_id = record.get("sessionId")
-        # BUG-3530: a NULL session_id row would be classified 'live' by the
-        # channel migration and survive rebuild(); skip so replay never makes one.
-        if not session_id:
-            continue
-        ts = str(record.get("timestamp") or "")
-        model = message.get("model")
-        cost_usd = estimate_cost_usd(
-            str(model or ""),
-            input_tokens,
-            output_tokens,
-            cache_read,
-            cache_creation,
-            as_of=_event_date(ts),
+
+        scoped_session = replay.session_id if isinstance(replay.session_id, str) else None
+        host_state_key = (replay.source_label, replay.host, scoped_session)
+        host_state = host_states.setdefault(
+            host_state_key,
+            HostUsageState(
+                source_label=replay.source_label,
+                host=replay.host,
+                session_id=scoped_session,
+            ),
         )
-        run_id = _derive_run_id_for_ts(ts, windows)
+        for observation in normalize_host_usage(replay, state=host_state):
+            count += _write_host_usage_observation(conn, replay, observation, windows)
+
+    # A response ID is the strongest observed request identity, but not yet a
+    # database uniqueness contract. Collapse identical replayed copies only;
+    # retain conflicting copies with unknown provenance for audit.
+    native_seen: dict[tuple[str, str], _CodexCandidate] = {}
+    distinct: list[_CodexCandidate] = []
+    for candidate in codex_candidates:
+        if candidate.request_identity_basis != "native_response" or not candidate.request_id:
+            distinct.append(candidate)
+            continue
+        key = (candidate.record.host or "", candidate.request_id)
+        earlier = native_seen.get(key)
+        if earlier is None:
+            native_seen[key] = candidate
+            distinct.append(candidate)
+        elif (
+            earlier.thread_id == candidate.thread_id
+            and earlier.turn_id == candidate.turn_id
+            and earlier.usage == candidate.usage
+        ):
+            continue
+        else:
+            earlier.conflict = True
+            candidate.conflict = True
+            distinct.append(candidate)
+            logger.warning("Codex response_id conflict for %s; retaining uncertain rows", key)
+
+    columns = (
+        "ts",
+        "session_id",
+        "model",
+        "state",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+        "cost_usd",
+        "run_id",
+        "channel",
+        "provenance",
+        "host",
+        "provider_vendor",
+        "scope_kind",
+        "observed_at",
+        "observed_at_basis",
+        "host_basis",
+        "identity_basis",
+        "turn_id",
+        "request_id",
+        "request_identity_basis",
+        "stream_id",
+        "source_ordinal",
+        "source_line_no",
+        "source_raw_event_id",
+        "source_path",
+    )
+    insert_sql = (
+        f"INSERT INTO usage_events({', '.join(columns)}) VALUES({', '.join('?' for _ in columns)})"
+    )
+    for candidate in distinct:
+        replay = candidate.record
+        state = codex_states[replay.source_label]
+        candidate.closed = bool(candidate.turn_id and candidate.turn_id in state.closed_turns)
+        input_tokens, output_tokens, cache_read, cache_write, complete = _codex_components(
+            candidate.usage
+        )
+        verified_host = replay.host == "codex" and replay.host_basis == "handle"
+        verified_thread = bool(
+            candidate.thread_id and state.thread_id == candidate.thread_id and verified_host
+        )
+        measured = bool(
+            complete
+            and candidate.model
+            and candidate.closed
+            and verified_thread
+            and candidate.request_identity_basis == "native_response"
+            and not candidate.conflict
+        )
+        ts = replay.ts
+        model = candidate.model
+        cost_usd = (
+            estimate_cost_usd(
+                model,
+                input_tokens,
+                output_tokens,
+                cache_read,
+                cache_write,
+                as_of=_event_date(ts),
+            )
+            if measured and model
+            else None
+        )
         conn.execute(
-            "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
-            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
-            "run_id, channel, provenance, host, provider_vendor, scope_kind, observed_at, "
-            "observed_at_basis, host_basis) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript', 'unknown', ?, ?, 'request', ?, ?, ?)",
+            insert_sql,
             (
                 ts,
-                session_id,
+                candidate.thread_id,
                 model,
                 None,
                 input_tokens,
                 output_tokens,
                 cache_read,
-                cache_creation,
+                cache_write,
                 cost_usd,
-                run_id,
-                host,
-                vendor_for_runner(host) if host else None,
+                None,
+                "rollout",
+                "measured" if measured else "unknown",
+                "codex" if verified_host else None,
+                vendor_for_runner("codex") if verified_host else None,
+                "request",
                 ts or None,
                 "event" if ts else None,
-                host_basis,
+                replay.host_basis if verified_host else None,
+                "host_observed" if verified_thread else None,
+                candidate.turn_id,
+                candidate.request_id,
+                candidate.request_identity_basis if verified_host else "unverified",
+                candidate.stream_id,
+                replay.ordinal,
+                replay.line_no,
+                replay.raw_event_id,
+                replay.source_label,
             ),
-        )
-        _index(
-            conn,
-            content=f"{model or ''} usage",
-            kind="usage",
-            ref=str(model or ""),
-            anchor=source_label,
-            ts=ts,
         )
         count += 1
     return count

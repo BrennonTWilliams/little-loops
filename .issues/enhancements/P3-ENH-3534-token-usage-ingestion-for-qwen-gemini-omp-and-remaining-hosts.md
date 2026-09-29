@@ -3,7 +3,7 @@ id: ENH-3534
 type: ENH
 title: Token usage ingestion for Qwen, Gemini, OMP and remaining hosts
 priority: P3
-status: open
+status: blocked
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
@@ -13,9 +13,12 @@ labels:
 - observability
 - multi-host
 blocked_by:
-- ENH-3532
-- ENH-3544
-- ENH-3648
+- ENH-3660
+- ENH-3661
+- ENH-3662
+- ENH-3663
+- ENH-3664
+- ENH-3665
 relates_to:
 - ENH-3528
 - ENH-3543
@@ -80,12 +83,12 @@ Use the existing shared observation selector for reporting; ENH-3543 owns reconc
 
 ### Types
 
-- Reuses `UsageObservation` and `UsageReplayRecord` from ENH-3532.
-- `HostUsageState` — per-host, per-session bookkeeping (the generalization of ENH-3532's `CodexUsageState`); holds cumulative state only for hosts ENH-3648 finds cumulative.
+- Reuses `UsageReplayRecord` from ENH-3532. The shipped ENH-3532 Codex path is candidate-based rather than the proposed `UsageObservation`/`normalize_codex_usage` API; ENH-3534 defines `UsageObservation` for the assistant-message path in `writers.py`.
+- `HostUsageState` binds a source, host and session for the assistant-message adapter. It holds no cumulative state until a host's grain and reset behavior are verified.
 
 ### Signatures
 
-- `normalize_host_usage(record: UsageReplayRecord, *, state: HostUsageState) -> list[UsageObservation]` — dispatches on `record`'s verified host to a per-host normalizer; returns an empty list for records without usage. Same shape as ENH-3532's `normalize_codex_usage(record, *, state)` so direct-file and database replay share one adapter; per-host state carries only key/span bookkeeping unless the host's grain is cumulative (ENH-3648 finding). Takes the verified host from the record, never a caller-supplied string.
+- `normalize_host_usage(record: UsageReplayRecord, *, state: HostUsageState) -> list[UsageObservation]` — dispatches assistant-message usage using the host on the replay record, never a caller-supplied host. It returns no observation for records without usage or for the separate Codex/Kimi native paths. For now it emits at most one observation; only persisted Claude 2.1.284 contract evidence qualifies it as measured. Other Claude-shaped blocks remain unknown audit rows.
 
 ### Call Path
 
@@ -98,9 +101,48 @@ Verdict at time of check: **VALID** (no corrections needed; this section is a re
 
 Checked 2026-09-24: `_compute_cache_rate_from_jsonl` (`ctx_stats.py` L402) docstring confirms qwen/gemini/omp cache rates are unreachable because normalizers strip `message.usage`; `normalize_host_usage` not yet present, as proposed. Blocker ENH-3532 is open.
 
+## Implementation checkpoint (2026-09-29)
+
+`session_store/usage_refresh.py` now has an explicit source-refresh entry point. It
+re-parses supplied `SessionHandle` originals and replaces one source's normalized
+`raw_events` inside a transaction only when the stored rows have verified
+handle-based host attribution and have not been compacted. It skips missing,
+unparseable, changing, mismatched, or field-dropping sources with a structured diagnostic; it
+does not relabel legacy rows. The result states when callers must run `rebuild`
+to re-derive usage and other cache rows. The focused upgrade test starts with a
+stored normalized payload whose usage was removed, refreshes the available
+source, rebuilds twice, and checks stable counts, attribution, and live-only
+row preservation. The missing-original test keeps stored rows and yields no
+invented usage.
+
+After ENH-3651's v58 migration, replacement also deletes the selected
+source's cursor, source-linked non-live usage rows, and its old usage search
+entries in the same transaction. It clears the derive checkpoint so the next
+incremental derive must replay from raw events. A reader sees the missing
+source cursor as `unknown` until a writer re-establishes its tail proof.
+Legacy usage rows without source links require a full `rebuild` before use.
+
+The ENH-3648 survey leaves each of the six hosts with an incomplete producer
+contract. ENH-3660 through ENH-3665 own the corresponding evidence gaps. No
+remaining-host normalizer is qualified as measured in this checkpoint. The
+`ll-session refresh --host ... --session-id ...|--all [--rebuild]` command now
+selects only verified stored originals and reports a skip for each unavailable
+or unsafe source. A refresh commits raw replacement before the
+separate rebuild call, so a failed or interrupted rebuild must be retried.
+
+The shared assistant-message dispatch is now wired into `_backfill_usage_events`
+with a source/host/session-scoped `HostUsageState`. It preserves Claude's
+ingest-time measured contract and duplicate handling. A surviving usage block
+from a different host is retained only as an unknown audit row. Codex still
+uses its closed-span candidate path, and Kimi's native records do not pass
+through this adapter. No six-host parser or metric normalization was added:
+the survey did not prove the input/cache semantics needed to derive disjoint
+components. ENH-3660–ENH-3665 remain the owners of those contracts, so this
+issue remains blocked on the six native producer contracts.
+
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Blocked** | Created: 2026-09-24 | Priority: P3
 
 
 ## Session Log

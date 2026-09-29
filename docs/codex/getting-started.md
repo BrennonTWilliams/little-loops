@@ -42,7 +42,7 @@ ll-init --hosts codex --dry-run
 
 ## Trust prompt
 
-The first time you start `codex` after install, it shows a hook-trust dialog for every new hook entry in `.codex/hooks.json`. little-loops registers six handler entries across four events: `SessionStart` (×2 — `session-start.sh`, `drift-check.sh`), `PreCompact`, `UserPromptSubmit`, and `PostToolUse` (×2 — `post-tool-use.sh`, plus `edit-batch-nudge.sh` on an `Edit|Write|MultiEdit` matcher).
+The first time you start `codex` after install, it shows a hook-trust dialog for every new hook entry in `.codex/hooks.json`. little-loops registers seven handler entries across five events: `SessionStart` (×2 — `session-start.sh`, `drift-check.sh`), `PreCompact`, `UserPromptSubmit`, `PostToolUse` (×2 — `post-tool-use.sh`, plus `edit-batch-nudge.sh` on an `Edit|Write|MultiEdit` matcher), and `Stop` (`usage-stop.sh`).
 
 Each hook has one of four statuses:
 

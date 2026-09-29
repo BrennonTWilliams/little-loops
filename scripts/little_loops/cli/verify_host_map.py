@@ -49,7 +49,10 @@ from little_loops.adapters.capabilities import HOST_CAPABILITIES
 from little_loops.host_runner import (
     _HOST_RUNNER_REGISTRY,
     RUNTIME_HOST_CAPABILITIES,
+    TELEMETRY_CHANNELS,
+    TELEMETRY_METRICS,
     HostCapabilities,
+    token_reporting_summary,
 )
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
@@ -160,6 +163,34 @@ def _check_runtime_contradiction() -> list[str]:
                 f"host '{host}' runtime entry's flags is not the same object as "
                 f"{runner_cls.__name__}.capabilities"
             )
+
+        required_pairs: set[tuple[str, str]] = {
+            (metric, channel) for metric in TELEMETRY_METRICS for channel in TELEMETRY_CHANNELS
+        }
+        seen_pairs: set[tuple[str, str]] = set()
+        for item in entry.telemetry:
+            pair = (item.metric, item.channel)
+            if item.metric not in TELEMETRY_METRICS or item.channel not in TELEMETRY_CHANNELS:
+                errors.append(f"host '{host}' telemetry has unknown metric/channel {pair!r}")
+            if item.availability not in {"supported", "unsupported", "unknown"}:
+                errors.append(
+                    f"host '{host}' telemetry {pair!r} has unknown availability {item.availability!r}"
+                )
+            if pair in seen_pairs:
+                errors.append(f"host '{host}' telemetry has duplicate pair {pair!r}")
+            seen_pairs.add(pair)
+            if item.availability == "supported" and not item.note:
+                errors.append(f"host '{host}' telemetry {pair!r} lacks supporting evidence note")
+        for missing_pair in sorted(required_pairs - seen_pairs):
+            errors.append(f"host '{host}' telemetry is missing {missing_pair!r}")
+
+        expected_token_status = token_reporting_summary(entry.telemetry)
+        for row in entry.report_rows:
+            if row.name == "token_reporting" and row.status != expected_token_status:
+                errors.append(
+                    f"host '{host}' token_reporting is {row.status!r} but telemetry "
+                    f"summary is {expected_token_status!r}"
+                )
 
         for row in entry.report_rows:
             if row.name not in flag_names:

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 55
+SCHEMA_VERSION = 58
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -97,6 +97,8 @@ _KINDLESS_TABLES = frozenset(
         "summary_nodes",
         "summary_spans",
         "raw_events",
+        # Source-tail checkpoints are internal replay state, not searchable events.
+        "usage_source_cursors",
         "correction_retirements",
         # (ENH-2997) keyed by issue_id, not session_id — readers take the most
         # recent row for an issue, so there is no "recent by kind" concept to
@@ -1467,6 +1469,55 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE raw_events ADD COLUMN host_basis TEXT;
     ALTER TABLE usage_events ADD COLUMN host_basis TEXT;
+    """,
+    # v56 (ENH-3532): native Codex rollout identity and replay position.
+    # Nullable columns preserve legacy uncertainty. In particular, a file's
+    # physical line is not its native ordinal, and a local invocation ID is
+    # never a producer turn/request ID. Identity uniqueness is deliberately
+    # deferred until page-stream and mixed-notification coverage are proven.
+    """
+    ALTER TABLE raw_events ADD COLUMN ordinal INTEGER;
+    ALTER TABLE usage_events ADD COLUMN identity_basis TEXT;
+    ALTER TABLE usage_events ADD COLUMN turn_id TEXT;
+    ALTER TABLE usage_events ADD COLUMN request_id TEXT;
+    ALTER TABLE usage_events ADD COLUMN request_identity_basis TEXT;
+    ALTER TABLE usage_events ADD COLUMN stream_id TEXT;
+    ALTER TABLE usage_events ADD COLUMN source_ordinal INTEGER;
+    ALTER TABLE usage_events ADD COLUMN source_line_no INTEGER;
+    """,
+    # v57 (ENH-3546): persisted producer qualification for Claude usage.
+    # Legacy raw rows retain NULL even when their payload looks eligible; a
+    # rebuild must never upgrade them using evidence discovered later.
+    """
+    ALTER TABLE raw_events ADD COLUMN usage_contract TEXT;
+    ALTER TABLE usage_events ADD COLUMN usage_contract TEXT;
+    """,
+    # v58 (ENH-3651): source-tail and derive completion proof. A source cursor
+    # is advanced only with the raw insert and usage derive in one transaction.
+    # Legacy usage rows keep NULL identity/link columns until one-time catch-up.
+    """
+    ALTER TABLE usage_events ADD COLUMN source_raw_event_id INTEGER;
+    ALTER TABLE usage_events ADD COLUMN source_path TEXT;
+    ALTER TABLE usage_events ADD COLUMN observation_key TEXT;
+    CREATE UNIQUE INDEX idx_usage_events_source_raw_id
+        ON usage_events(source_raw_event_id) WHERE source_raw_event_id IS NOT NULL;
+    CREATE UNIQUE INDEX idx_usage_events_observation_key
+        ON usage_events(observation_key) WHERE observation_key IS NOT NULL;
+    CREATE INDEX idx_usage_events_source_path ON usage_events(source_path);
+    CREATE TABLE usage_source_cursors (
+        source_path TEXT PRIMARY KEY,
+        host TEXT NOT NULL,
+        session_id TEXT,
+        device INTEGER NOT NULL,
+        inode INTEGER NOT NULL,
+        committed_offset INTEGER NOT NULL,
+        committed_line_no INTEGER NOT NULL,
+        tail_sha256 TEXT NOT NULL,
+        source_mtime_ns INTEGER NOT NULL,
+        derived_raw_event_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
     """,
 ]
 

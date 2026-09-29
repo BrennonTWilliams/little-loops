@@ -90,6 +90,7 @@ class SessionEvent:
     host: str
     payload: dict[str, Any] = field(default_factory=dict)
     line_no: int | None = None
+    ordinal: int | None = None
 
 
 _STATE_DB_RE = re.compile(r"^state_(\d+)\.sqlite$")
@@ -1026,6 +1027,7 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
                     host="codex",
                     payload=normalized,
                     line_no=line_no,
+                    ordinal=record.get("ordinal") if type(record.get("ordinal")) is int else None,
                 )
                 continue
             payload = record.get("payload")
@@ -1035,6 +1037,7 @@ def parse_codex_rollout(path: Path) -> Iterator[SessionEvent]:
                 host="codex",
                 payload=payload if isinstance(payload, dict) else {},
                 line_no=line_no,
+                ordinal=record.get("ordinal") if type(record.get("ordinal")) is int else None,
             )
 
 

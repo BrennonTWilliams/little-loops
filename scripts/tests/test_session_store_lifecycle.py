@@ -770,7 +770,8 @@ class TestBackfillHostBasisBug3542:
             got = dict(conn.execute("SELECT session_id, host_basis FROM usage_events").fetchall())
         finally:
             conn.close()
-        assert got == {"cs": "handle", "ls": None}
+        codex_thread = json.loads(self.FIXTURE.read_text().splitlines()[0])["payload"]["id"]
+        assert got == {"cs": "handle", "ls": None, codex_thread: "handle"}
 
     def test_iterator_yields_none_basis_for_short_cursors_and_files(self, tmp_path: Path) -> None:
         from little_loops.session_store.writers import _iter_events, _iter_events_with_host

@@ -71,6 +71,12 @@ __all__ = [
     "QwenRunner",
     "TEST_ONLY_BINARIES",
     "TEST_ONLY_HOSTS",
+    "TELEMETRY_CHANNELS",
+    "TELEMETRY_METRICS",
+    "TelemetryCapability",
+    "TelemetryAvailability",
+    "TelemetryChannel",
+    "TelemetryMetric",
     "apply_host_cli_from_config",
     "build_anthropic_request",
     "build_batch_request",
@@ -83,6 +89,8 @@ __all__ = [
     "resolve_host_named",
     "resolve_model_alias",
     "resolve_model_hint",
+    "telemetry_matrix",
+    "token_reporting_summary",
     "run_blocking_json",
 ]
 
@@ -455,12 +463,12 @@ class AutomationContext:
 class CapabilityEntry:
     """A single host capability with its support status.
 
-    ``status`` is one of ``"full"``, ``"partial"``, or ``"unsupported"``.
+    ``status`` is one of ``"full"``, ``"partial"``, ``"unknown"``, or ``"unsupported"``.
     ``note`` carries an optional human-readable explanation (e.g. workaround).
     """
 
     name: str
-    status: Literal["full", "partial", "unsupported"]
+    status: Literal["full", "partial", "unknown", "unsupported"]
     note: str = ""
 
 
@@ -580,6 +588,140 @@ class HostRunner(Protocol):
         ...
 
 
+TelemetryAvailability = Literal["supported", "unsupported", "unknown"]
+# Match usage_events columns. TokenUsage uses cache_read_tokens and
+# cache_creation_tokens for the corresponding in-memory fields.
+TelemetryMetric = Literal[
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+    "context_occupancy_tokens",
+]
+# live, rollout, transcript match usage_events.channel; context_hook is an
+# occupancy-only source and does not produce usage_events rows.
+TelemetryChannel = Literal["live", "rollout", "transcript", "context_hook"]
+TELEMETRY_METRICS: tuple[TelemetryMetric, ...] = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+    "context_occupancy_tokens",
+)
+TELEMETRY_CHANNELS: tuple[TelemetryChannel, ...] = ("live", "rollout", "transcript", "context_hook")
+_CONSUMPTION_METRICS = frozenset(TELEMETRY_METRICS) - {"context_occupancy_tokens"}
+_CONSUMPTION_METRIC_ORDER: tuple[TelemetryMetric, ...] = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
+_TELEMETRY_AVAILABILITY = frozenset(("supported", "unsupported", "unknown"))
+_NOT_INVESTIGATED = "Not investigated; native availability is unknown (ingestion is separate)."
+_CLAUDE_CHANNEL_EVIDENCE: tuple[tuple[TelemetryChannel, str], ...] = (
+    (
+        "live",
+        "Claude Code 2.1.284 stream-json result.usage paired with system/init; "
+        "scripts/tests/fixtures/claude/README.md verifies four disjoint components.",
+    ),
+    (
+        "transcript",
+        "Claude Code 2.1.284 assistant message.usage with version, sessionId and "
+        "message.id; scripts/tests/fixtures/claude/README.md records repeated snapshots.",
+    ),
+)
+_CODEX_CHANNEL_EVIDENCE: tuple[tuple[TelemetryChannel, str], ...] = (
+    (
+        "live",
+        "codex-cli 0.152.1 exec --json turn.completed.usage; BUG-3531 fixtures "
+        "verify inclusive input and normalization to uncached input.",
+    ),
+    (
+        "rollout",
+        "codex-cli 0.152.1 rollout event_msg.token_count last_token_usage; "
+        "scripts/tests/fixtures/codex/README.md records per-turn fields and limits.",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class TelemetryCapability:
+    """Native availability for one metric on one acquisition channel.
+
+    A supported entry needs version and channel evidence. This says what a
+    producer can expose, never how an individual stored observation was acquired.
+    """
+
+    metric: TelemetryMetric
+    channel: TelemetryChannel
+    availability: TelemetryAvailability
+    note: str | None = None
+
+
+def telemetry_matrix(*overrides: TelemetryCapability) -> tuple[TelemetryCapability, ...]:
+    """Fill all metric/channel pairs with unknown unless explicitly overridden."""
+    entries: dict[tuple[str, str], TelemetryCapability] = {}
+    for entry in overrides:
+        pair = (entry.metric, entry.channel)
+        if entry.metric not in TELEMETRY_METRICS or entry.channel not in TELEMETRY_CHANNELS:
+            raise ValueError(f"unknown telemetry metric/channel: {pair!r}")
+        if entry.availability not in _TELEMETRY_AVAILABILITY:
+            raise ValueError(f"unknown telemetry availability: {entry.availability!r}")
+        if pair in entries:
+            raise ValueError(f"duplicate telemetry metric/channel: {pair!r}")
+        entries[pair] = entry
+    return tuple(
+        entries.get(
+            (metric, channel), TelemetryCapability(metric, channel, "unknown", _NOT_INVESTIGATED)
+        )
+        for metric in TELEMETRY_METRICS
+        for channel in TELEMETRY_CHANNELS
+    )
+
+
+def token_reporting_summary(
+    telemetry: tuple[TelemetryCapability, ...],
+) -> Literal["full", "partial", "unknown", "unsupported"]:
+    """Summarize native consumption metrics; occupancy is independent.
+
+    Each consumption metric needs support on at least one channel for ``full``.
+    Any support yields ``partial`` otherwise; uncertainty outranks absence.
+    """
+    if not telemetry:
+        return "unknown"
+    supported = {item.metric for item in telemetry if item.availability == "supported"}
+    if _CONSUMPTION_METRICS <= supported:
+        return "full"
+    if _CONSUMPTION_METRICS & supported:
+        return "partial"
+    if any(
+        item.availability == "unknown" for item in telemetry if item.metric in _CONSUMPTION_METRICS
+    ):
+        return "unknown"
+    return "unsupported"
+
+
+_TOKEN_REPORTING_CAPABILITY = "token_reporting"
+
+
+def _token_reporting_row(telemetry: tuple[TelemetryCapability, ...]) -> CapabilityEntry:
+    status = token_reporting_summary(telemetry)
+    evidence = next(
+        (
+            item.note
+            for item in telemetry
+            if item.metric in _CONSUMPTION_METRICS
+            and item.availability == "supported"
+            and item.note
+        ),
+        None,
+    )
+    note = f"Native usage availability: {status}; ingestion coverage is separate."
+    if evidence:
+        note += f" Evidence: {evidence}"
+    return CapabilityEntry(_TOKEN_REPORTING_CAPABILITY, status, note)
+
+
 @dataclass(frozen=True)
 class RuntimeHostEntry:
     """One host's runtime capability surface: flags, binary, and report rows.
@@ -594,6 +736,7 @@ class RuntimeHostEntry:
     binary: str
     flags: HostCapabilities
     report_rows: tuple[CapabilityEntry, ...] = ()
+    telemetry: tuple[TelemetryCapability, ...] = ()
 
 
 # ENH-3453: the runtime half of the declarative host capability map —
@@ -607,6 +750,13 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
     "claude-code": RuntimeHostEntry(
         host="claude-code",
         binary="claude",
+        telemetry=telemetry_matrix(
+            *(
+                TelemetryCapability(metric, channel, "supported", note)
+                for channel, note in _CLAUDE_CHANNEL_EVIDENCE
+                for metric in _CONSUMPTION_METRIC_ORDER
+            )
+        ),
         flags=HostCapabilities(
             streaming=True,
             permission_skip=True,
@@ -667,6 +817,13 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
     "codex": RuntimeHostEntry(
         host="codex",
         binary="codex",
+        telemetry=telemetry_matrix(
+            *(
+                TelemetryCapability(metric, channel, "supported", note)
+                for channel, note in _CODEX_CHANNEL_EVIDENCE
+                for metric in _CONSUMPTION_METRIC_ORDER
+            )
+        ),
         flags=HostCapabilities(
             streaming=True,
             permission_skip=True,
@@ -723,24 +880,55 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
                 "codex CLAUDE.md/AGENTS.md suppression support not confirmed; "
                 "defer-until-confirmed, mirrors tool_allowlist posture",
             ),
-            # FEAT-2123: codex exec --json's terminal "turn.completed" event
-            # carries a usage block; run_claude_command() parses it into
-            # TokenUsage via on_usage_detailed, same contract as the claude
-            # "result" event. No model field on the wire (defaults to "unknown").
-            CapabilityEntry(
-                "token_reporting",
-                "full",
-                "codex exec --json's turn.completed event carries a usage block "
-                "(input_tokens/output_tokens/cached_input_tokens/"
-                "cache_write_input_tokens); parsed into TokenUsage by "
-                "run_claude_command()'s shared event-type branch. Codex input is "
-                "inclusive of cached tokens and is normalized to uncached input",
-            ),
         ),
     ),
     "opencode": RuntimeHostEntry(
         host="opencode",
         binary="opencode",
+        telemetry=telemetry_matrix(
+            TelemetryCapability(
+                "output_tokens",
+                "live",
+                "supported",
+                "OpenCode 1.1.53 live step_finish.part.tokens.output in live-v1.1.53.jsonl; "
+                "reasoning inclusion is unverified.",
+            ),
+            TelemetryCapability(
+                "cache_read_input_tokens",
+                "live",
+                "supported",
+                "OpenCode 1.1.53 live step_finish.part.tokens.cache.read in "
+                "live-v1.1.53.jsonl; only zero captured.",
+            ),
+            TelemetryCapability(
+                "cache_creation_input_tokens",
+                "live",
+                "supported",
+                "OpenCode 1.1.53 live step_finish.part.tokens.cache.write in "
+                "live-v1.1.53.jsonl; only zero captured.",
+            ),
+            TelemetryCapability(
+                "output_tokens",
+                "transcript",
+                "supported",
+                "OpenCode 1.1.53 stored step-finish.tokens.output in stored-v1.1.53.jsonl; "
+                "part.id matches the live record.",
+            ),
+            TelemetryCapability(
+                "cache_read_input_tokens",
+                "transcript",
+                "supported",
+                "OpenCode 1.1.53 stored step-finish.tokens.cache.read in "
+                "stored-v1.1.53.jsonl; only zero captured.",
+            ),
+            TelemetryCapability(
+                "cache_creation_input_tokens",
+                "transcript",
+                "supported",
+                "OpenCode 1.1.53 stored step-finish.tokens.cache.write in "
+                "stored-v1.1.53.jsonl; only zero captured.",
+            ),
+        ),
         flags=HostCapabilities(),
         report_rows=(
             CapabilityEntry(
@@ -753,6 +941,7 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
     "pi": RuntimeHostEntry(
         host="pi",
         binary="pi",
+        telemetry=telemetry_matrix(),
         flags=HostCapabilities(),
         report_rows=(
             CapabilityEntry(
@@ -765,6 +954,7 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
     "gemini": RuntimeHostEntry(
         host="gemini",
         binary="gemini",
+        telemetry=telemetry_matrix(),
         flags=HostCapabilities(
             streaming=True,
             permission_skip=True,
@@ -811,6 +1001,7 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
     "omp": RuntimeHostEntry(
         host="omp",
         binary="omp",
+        telemetry=telemetry_matrix(),
         flags=HostCapabilities(
             streaming=True,
             permission_skip=True,
@@ -866,6 +1057,29 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
     "kimi-code": RuntimeHostEntry(
         host="kimi-code",
         binary="kimi",
+        telemetry=telemetry_matrix(
+            TelemetryCapability(
+                "output_tokens",
+                "transcript",
+                "supported",
+                "Kimi Code 0.30.0 stored usage.record.usage.output in "
+                "stored-v0.30.0.jsonl; reasoning inclusion is unverified.",
+            ),
+            TelemetryCapability(
+                "cache_read_input_tokens",
+                "transcript",
+                "supported",
+                "Kimi Code 0.30.0 stored usage.record.usage.inputCacheRead in "
+                "stored-v0.30.0.jsonl; nonzero cache reads captured.",
+            ),
+            TelemetryCapability(
+                "cache_creation_input_tokens",
+                "transcript",
+                "supported",
+                "Kimi Code 0.30.0 stored usage.record.usage.inputCacheCreation in "
+                "stored-v0.30.0.jsonl; only zero captured.",
+            ),
+        ),
         flags=HostCapabilities(
             streaming=True,
             permission_skip=True,
@@ -917,6 +1131,22 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
     "qwen": RuntimeHostEntry(
         host="qwen",
         binary="qwen",
+        telemetry=telemetry_matrix(
+            TelemetryCapability(
+                "output_tokens",
+                "transcript",
+                "supported",
+                "Qwen Code 0.24.6 assistant usageMetadata.candidatesTokenCount in "
+                "usage-pair-v0.24.6.jsonl; reasoning inclusion is unverified.",
+            ),
+            TelemetryCapability(
+                "cache_read_input_tokens",
+                "transcript",
+                "supported",
+                "Qwen Code 0.24.6 assistant usageMetadata.cachedContentTokenCount in "
+                "usage-pair-v0.24.6.jsonl; only zero captured.",
+            ),
+        ),
         flags=HostCapabilities(
             streaming=True,
             permission_skip=True,
@@ -989,7 +1219,10 @@ def render_capability_report(entry: RuntimeHostEntry) -> CapabilityReport:
         host=entry.host,
         binary=entry.binary,
         version="",
-        capabilities=list(entry.report_rows),
+        capabilities=[
+            *(row for row in entry.report_rows if row.name != _TOKEN_REPORTING_CAPABILITY),
+            *([_token_reporting_row(entry.telemetry)] if entry.telemetry else []),
+        ],
     )
 
 

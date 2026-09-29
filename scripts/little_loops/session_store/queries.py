@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -184,9 +185,58 @@ _SHAREABLE_COLUMNS: dict[str, list[str]] = {
         "observed_at",
         "observed_at_basis",
     ],
+    # ENH-3543 generated snapshot surfaces. These keys document and version
+    # their complete shareable schemas even though they are not export types.
+    "selected_usage_events": [
+        "ts",
+        "session_id",
+        "model",
+        "state",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+        "cost_usd",
+        "provider_vendor",
+        "run_id",
+        "invocation_id",
+        "channel",
+        "host",
+        "host_basis",
+        "provenance",
+        "scope_kind",
+        "observed_at",
+        "observed_at_basis",
+        "coverage",
+    ],
+    "usage_coverage_audit": [
+        "model",
+        "channel",
+        "coverage",
+        "coverage_reason",
+        "raw_observation_count",
+        "raw_input_tokens",
+        "raw_output_tokens",
+        "raw_cache_read_input_tokens",
+        "raw_cache_creation_input_tokens",
+        "raw_cost_usd",
+        "raw_missing_cost_count",
+        "selected_observation_count",
+        "known_input_tokens",
+        "known_output_tokens",
+        "known_cache_read_input_tokens",
+        "known_cache_creation_input_tokens",
+        "known_cost_usd",
+        "known_missing_cost_count",
+        "canonical_input_tokens",
+        "canonical_output_tokens",
+        "canonical_cache_read_input_tokens",
+        "canonical_cache_creation_input_tokens",
+        "canonical_cost_usd",
+    ],
 }
 
-_SHAREABLE_ALLOWLIST_VERSION: int = 2
+_SHAREABLE_ALLOWLIST_VERSION: int = 3
 
 # The export types the shareable allowlist covers — the default `--tables` set
 # for `ll-artifact dashboard` in BOTH modes (D16/D22). Deliberately NOT
@@ -264,6 +314,189 @@ def _snapshot_select(
     return sql
 
 
+_SNAPSHOT_COMPONENTS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+    "cost_usd",
+)
+
+
+@dataclass
+class _SnapshotTotals:
+    """Numeric observation subtotals with missing-component tracking."""
+
+    count: int = 0
+    sums: dict[str, int | float] = field(default_factory=dict)
+    missing: dict[str, int] = field(default_factory=dict)
+
+    def add(self, row: Mapping[str, Any]) -> None:
+        self.count += 1
+        for column in _SNAPSHOT_COMPONENTS:
+            value = row.get(column)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and (column == "cost_usd" or (isinstance(value, int) and value >= 0))
+            ):
+                self.sums[column] = self.sums.get(column, 0) + value
+            else:
+                self.missing[column] = self.missing.get(column, 0) + 1
+
+    def value(self, column: str, *, strict: bool = False) -> int | float | None:
+        """Return an observed subtotal, or a complete total when strict."""
+        if self.count == 0 or (strict and self.missing.get(column, 0)):
+            return None
+        return self.sums.get(column)
+
+
+def _snapshot_usage_selection(conn: sqlite3.Connection, since: str | None) -> None:
+    """Materialize selected usage and model/channel audit from one selector result.
+
+    Generated schemas contain only allowlisted accounting fields. In
+    particular, source paths, native request/turn IDs and coverage group keys
+    never leave the source store, including in local mode.
+    """
+    from little_loops.history_reader.usage import select_usage_coverage
+
+    selection = select_usage_coverage(conn, since=since)
+    conn.execute(
+        "CREATE TABLE snap.selected_usage_events ("
+        "ts TEXT, session_id TEXT, model TEXT, state TEXT, input_tokens INTEGER, "
+        "output_tokens INTEGER, cache_read_input_tokens INTEGER, "
+        "cache_creation_input_tokens INTEGER, cost_usd REAL, provider_vendor TEXT, "
+        "run_id TEXT, invocation_id TEXT, channel TEXT, host TEXT, host_basis TEXT, "
+        "provenance TEXT, scope_kind TEXT, observed_at TEXT, observed_at_basis TEXT, "
+        "coverage TEXT)"
+    )
+    selected_columns = _SHAREABLE_COLUMNS["selected_usage_events"]
+    selected_sql = (
+        "INSERT INTO snap.selected_usage_events ("
+        + ", ".join(selected_columns)
+        + ") VALUES ("
+        + ", ".join("?" for _ in selected_columns)
+        + ")"
+    )
+    conn.executemany(
+        selected_sql,
+        (
+            tuple(
+                row.get("_coverage") if col == "coverage" else row.get(col)
+                for col in selected_columns
+            )
+            for row in selection.selected_rows
+        ),
+    )
+
+    conn.execute(
+        "CREATE TABLE snap.usage_coverage_audit ("
+        "model TEXT, channel TEXT, coverage TEXT, coverage_reason TEXT, "
+        "raw_observation_count INTEGER, raw_input_tokens INTEGER, raw_output_tokens INTEGER, "
+        "raw_cache_read_input_tokens INTEGER, raw_cache_creation_input_tokens INTEGER, "
+        "raw_cost_usd REAL, raw_missing_cost_count INTEGER, "
+        "selected_observation_count INTEGER, known_input_tokens INTEGER, "
+        "known_output_tokens INTEGER, known_cache_read_input_tokens INTEGER, "
+        "known_cache_creation_input_tokens INTEGER, known_cost_usd REAL, "
+        "known_missing_cost_count INTEGER, canonical_input_tokens INTEGER, "
+        "canonical_output_tokens INTEGER, canonical_cache_read_input_tokens INTEGER, "
+        "canonical_cache_creation_input_tokens INTEGER, canonical_cost_usd REAL)"
+    )
+    raw_totals: dict[tuple[str | None, str], _SnapshotTotals] = {}
+    selected_totals: dict[tuple[str | None, str], _SnapshotTotals] = {}
+    model_selected_totals: dict[str | None, _SnapshotTotals] = {}
+    model_coverage: dict[str | None, set[str]] = {}
+    model_reasons: dict[str | None, set[str]] = {}
+
+    def _key(row: Mapping[str, Any]) -> tuple[str | None, str]:
+        model = row.get("model")
+        channel = row.get("channel")
+        return (
+            model if isinstance(model, str) else None,
+            channel if channel in {"live", "rollout", "transcript"} else "unknown",
+        )
+
+    for group in selection.groups:
+        for row in group.audit_rows:
+            key = _key(row)
+            raw_totals.setdefault(key, _SnapshotTotals()).add(row)
+            model_coverage.setdefault(key[0], set()).add(group.coverage)
+            if group.reason:
+                reason = group.reason
+                if (
+                    not isinstance(reason, str)
+                    or not reason.isascii()
+                    or not reason.replace("_", "").isalnum()
+                ):
+                    reason = "unclassified"
+                model_reasons.setdefault(key[0], set()).add(reason[:64])
+        for row in group.selected_rows:
+            key = _key(row)
+            selected_totals.setdefault(key, _SnapshotTotals()).add(row)
+            model_selected_totals.setdefault(key[0], _SnapshotTotals()).add(row)
+
+    audit_columns = _SHAREABLE_COLUMNS["usage_coverage_audit"]
+    audit_sql = (
+        "INSERT INTO snap.usage_coverage_audit ("
+        + ", ".join(audit_columns)
+        + ") VALUES ("
+        + ", ".join("?" for _ in audit_columns)
+        + ")"
+    )
+    audit_rows: list[tuple[Any, ...]] = []
+    for (model, channel), raw in raw_totals.items():
+        known = selected_totals.get((model, channel), _SnapshotTotals())
+        model_known = model_selected_totals.get(model, _SnapshotTotals())
+        statuses = model_coverage.get(model, set())
+        coverage = (
+            "overlap_unresolved"
+            if "overlap_unresolved" in statuses
+            else "unknown"
+            if "unknown" in statuses
+            else "non_overlapping"
+        )
+        canonical = coverage == "non_overlapping"
+        reasons = ",".join(sorted(model_reasons.get(model, set()))) or None
+        audit_rows.append(
+            (
+                model,
+                channel,
+                coverage,
+                reasons,
+                raw.count,
+                raw.value("input_tokens"),
+                raw.value("output_tokens"),
+                raw.value("cache_read_input_tokens"),
+                raw.value("cache_creation_input_tokens"),
+                raw.value("cost_usd"),
+                raw.missing.get("cost_usd", 0),
+                known.count,
+                known.value("input_tokens"),
+                known.value("output_tokens"),
+                known.value("cache_read_input_tokens"),
+                known.value("cache_creation_input_tokens"),
+                known.value("cost_usd"),
+                known.missing.get("cost_usd", 0),
+                known.value("input_tokens", strict=True)
+                if canonical and not model_known.missing.get("input_tokens")
+                else None,
+                known.value("output_tokens", strict=True)
+                if canonical and not model_known.missing.get("output_tokens")
+                else None,
+                known.value("cache_read_input_tokens", strict=True)
+                if canonical and not model_known.missing.get("cache_read_input_tokens")
+                else None,
+                known.value("cache_creation_input_tokens", strict=True)
+                if canonical and not model_known.missing.get("cache_creation_input_tokens")
+                else None,
+                known.value("cost_usd", strict=True)
+                if canonical and not model_known.missing.get("cost_usd")
+                else None,
+            )
+        )
+    conn.executemany(audit_sql, audit_rows)
+
+
 def build_snapshot_db(
     db: Path,
     dest: Path,
@@ -306,16 +539,23 @@ def build_snapshot_db(
         )
 
     conn = _connect_readonly(Path(db))
+    conn.row_factory = sqlite3.Row
     try:
         schema_version = read_schema_version(conn)
         conn.execute("ATTACH DATABASE ? AS snap", (str(dest),))
         try:
+            conn.execute("BEGIN")
             for type_name in tables:
                 table, ts_col = _EXPORT_TABLE_MAP[type_name]
                 sql = _snapshot_select(conn, table, ts_col, local_mode, since)
                 params = (since,) if since else ()
                 conn.execute(sql, params)
+            if "usage_event" in tables:
+                _snapshot_usage_selection(conn, since)
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.execute("DETACH DATABASE snap")
     finally:

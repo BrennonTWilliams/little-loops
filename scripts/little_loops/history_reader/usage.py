@@ -12,7 +12,8 @@ them despite each backing a different table.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,9 +24,16 @@ from little_loops.history_reader._base import (
     logger,
 )
 from little_loops.history_reader.models import UsageEvent
-from little_loops.token_provenance import ObservationGroup, group_rows
+from little_loops.token_provenance import (
+    ObservationGroup,
+    group_rows,
+    row_channel,
+    row_host_verified,
+)
 
 __all__ = [
+    "CoverageGroup",
+    "CoverageSelection",
     "agent_usage",
     "aggregate_usage",
     "cost_attribution",
@@ -33,6 +41,7 @@ __all__ = [
     "mcp_server_usage",
     "recent_tool_events",
     "recent_usage_events",
+    "select_usage_coverage",
     "select_usage_observations",
     "waste_attribution",
 ]
@@ -255,6 +264,9 @@ _OPTIONAL_USAGE_COLUMNS = (
     "scope_kind",
     "observed_at",
     "observed_at_basis",
+    "identity_basis",
+    "turn_id",
+    "request_identity_basis",
 )
 
 # UsageEvent's trailing fields (ENH-3580) -- a narrower set than
@@ -273,23 +285,112 @@ _USAGE_EVENT_OPTIONAL_COLUMNS = (
 )
 
 
-def select_usage_observations(
+@dataclass(frozen=True)
+class CoverageGroup:
+    """One internally reconciled coverage group and its report-window rows."""
+
+    audit_rows: tuple[Mapping[str, Any], ...]
+    selected_rows: tuple[Mapping[str, Any], ...]
+    coverage: str
+    reason: str | None
+    channel_subtotals: dict[str, dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class CoverageSelection:
+    """Canonical eligibility and raw audit evidence from one coverage policy."""
+
+    groups: tuple[CoverageGroup, ...]
+    audit_rows: tuple[Mapping[str, Any], ...]
+    selected_rows: tuple[Mapping[str, Any], ...]
+    coverage: str
+    reason: str | None
+
+
+def _verified_usage_identity(row: Mapping[str, Any]) -> bool:
+    """Require both a source-verified host and a producer-observed own thread."""
+    if not row.get("session_id") or not row_host_verified(row):
+        return False
+    channel = row_channel(row)
+    if channel == "live":
+        return row.get("identity_basis") == "host_observed"
+    if channel == "rollout":
+        return row.get("identity_basis") == "host_observed"
+    # Claude transcript replay predates the identity_basis column; its
+    # session ID is supplied by the verified source handle (ENH-3656).
+    return channel == "transcript"
+
+
+def _coverage_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Keep verified host/thread pairs separate without exporting the key."""
+    if _verified_usage_identity(row):
+        return ("verified", row["host"], row["session_id"])
+    if row.get("session_id"):
+        return ("unverified", row["session_id"])
+    return ("unidentified", row["id"])
+
+
+def _classify_coverage(
+    rows: Sequence[Mapping[str, Any]], *, ambiguous_cross_channel: bool
+) -> tuple[str, str | None]:
+    """Never infer a live-to-rollout join from counts, order, or timestamps."""
+    channels = {row_channel(row) for row in rows}
+    live = "live" in channels
+    replay = any(channel != "live" for channel in channels)
+    if ambiguous_cross_channel:
+        return "overlap_unresolved", "unverified_cross_channel_identity"
+    if live and replay:
+        return "overlap_unresolved", "live_replay_join_unproven"
+    if len(channels) > 1:
+        return "overlap_unresolved", "cross_channel_join_unproven"
+    if any(
+        row_channel(row) == "live"
+        and row.get("host") == "codex"
+        and row.get("scope_kind") != "invocation"
+        for row in rows
+    ):
+        return "unknown", "codex_live_scope_unknown"
+    if any(
+        row_channel(row) == "live"
+        and row.get("host") == "codex"
+        and not _verified_usage_identity(row)
+        for row in rows
+    ):
+        return "unknown", "codex_live_identity_unverified"
+    if any(
+        row_channel(row) == "rollout"
+        and row.get("host") == "codex"
+        and (
+            row.get("request_identity_basis") != "native_response"
+            or not _verified_usage_identity(row)
+            or not row.get("turn_id")
+            or row.get("provenance") != "measured"
+        )
+        for row in rows
+    ):
+        return "unknown", "rollout_request_identity_unverified"
+    return "non_overlapping", None
+
+
+def select_usage_coverage(
     conn: sqlite3.Connection,
     *,
     since: str | None = None,
     require_run_id: bool = False,
-) -> Iterator[sqlite3.Row]:
-    """Stream every ``usage_events`` row -- the single token/cost selection point (ENH-3528).
+    host: str | None = None,
+    session_id: str | None = None,
+) -> CoverageSelection:
+    """Reconcile producer coverage before applying report-window filters.
 
-    All token/cost aggregation reads go through here so a coverage selector
-    (ENH-3543) can replace the selection policy in one place. For now every row
-    is yielded (the unreconciled observation sum). Columns missing from older
-    schemas are selected as ``NULL``. *since* is an ISO 8601 lower bound on
-    ``ts``; *require_run_id* keeps only rows with a non-NULL ``run_id`` (no
-    ``IN (...)`` list, which would hit SQLite's bound-parameter limit). Raises
-    ``sqlite3.OperationalError`` when the table is absent. Rows must be
-    consumed while *conn* is open.
+    `audit_rows` retains every observation; `selected_rows` contains only
+    canonical-eligible rows. No live/rollout counterpart is suppressed because
+    Codex 0.158.0 exposes no native live-to-rollout request key (ENH-3655).
+    Unresolved groups therefore have empty `selected_rows`, their full audit
+    rows, channel subtotals, and a stable reason code. Report filters cannot
+    turn a partial group into complete coverage.
     """
+    if session_id is not None and host is None:
+        raise ValueError("select_usage_coverage: session_id requires host")
     present = {row[1] for row in conn.execute("PRAGMA table_info(usage_events)")}
     if not present:
         raise sqlite3.OperationalError("no such table: usage_events")
@@ -303,18 +404,91 @@ def select_usage_observations(
     )
     clauses: list[str] = []
     params: list[Any] = []
-    if since is not None:
-        clauses.append("ts >= ?")
-        params.append(since)
-    if require_run_id and "run_id" in present:
-        clauses.append("run_id IS NOT NULL")
-    elif require_run_id:
-        return
+    if session_id is not None:
+        if not {"host", "host_basis", "session_id", "channel", "identity_basis"}.issubset(present):
+            return CoverageSelection((), (), (), "unknown", "no_verified_identity_columns")
+        clauses.extend(
+            (
+                "host = ?",
+                "session_id = ?",
+                "((channel = 'live' AND identity_basis = 'host_observed') "
+                "OR (channel IS NOT NULL AND channel != 'live' AND host_basis = 'handle'))",
+            )
+        )
+        params.extend((host, session_id))
+    elif host is not None:
+        if "host" not in present:
+            return CoverageSelection((), (), (), "unknown", "no_host_column")
+        clauses.append("host = ?")
+        params.append(host)
     if clauses:
         sql += "WHERE " + " AND ".join(clauses) + " "
     sql += "ORDER BY id"
     cursor = conn.execute(sql, params)
-    yield from cursor
+    columns = [column[0] for column in cursor.description]
+    rows = [dict(zip(columns, row, strict=True)) for row in cursor]
+    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(_coverage_key(row), []).append(row)
+    channels = {row_channel(row) for row in rows}
+    ambiguous_cross_channel = (
+        "live" in channels
+        and any(channel != "live" for channel in channels)
+        and any(not _verified_usage_identity(row) for row in rows)
+    )
+    groups: list[CoverageGroup] = []
+    audit_rows: list[Mapping[str, Any]] = []
+    selected_rows: list[Mapping[str, Any]] = []
+    for members in grouped.values():
+        coverage, reason = _classify_coverage(
+            members, ambiguous_cross_channel=ambiguous_cross_channel
+        )
+        visible = [
+            {**row, "_coverage": coverage, "_coverage_reason": reason}
+            for row in members
+            if (since is None or row["ts"] >= since)
+            and (not require_run_id or row.get("run_id") is not None)
+        ]
+        if not visible:
+            continue
+        audit = tuple(visible)
+        selected = audit if coverage == "non_overlapping" else ()
+        audit_group = ObservationGroup()
+        for row in audit:
+            audit_group.add(row)
+        groups.append(
+            CoverageGroup(audit, selected, coverage, reason, audit_group.channel_subtotals())
+        )
+        audit_rows.extend(audit)
+        selected_rows.extend(selected)
+    audit_rows.sort(key=lambda row: row["id"])
+    selected_rows.sort(key=lambda row: row["id"])
+    statuses = {group.coverage for group in groups}
+    coverage = (
+        "overlap_unresolved"
+        if "overlap_unresolved" in statuses
+        else "unknown"
+        if "unknown" in statuses or not statuses
+        else "non_overlapping"
+    )
+    reason = next((group.reason for group in groups if group.reason), None)
+    return CoverageSelection(
+        tuple(groups), tuple(audit_rows), tuple(selected_rows), coverage, reason
+    )
+
+
+def select_usage_observations(
+    conn: sqlite3.Connection,
+    *,
+    since: str | None = None,
+    require_run_id: bool = False,
+    host: str | None = None,
+    session_id: str | None = None,
+) -> Iterator[Mapping[str, Any]]:
+    """Yield audit observations annotated by the shared coverage selector."""
+    yield from select_usage_coverage(
+        conn, since=since, require_run_id=require_run_id, host=host, session_id=session_id
+    ).audit_rows
 
 
 def _provenance_fields(group: ObservationGroup) -> dict[str, Any]:
@@ -325,10 +499,8 @@ def _provenance_fields(group: ObservationGroup) -> dict[str, Any]:
         "coverage": coverage,
         "channel_subtotals": group.channel_subtotals(),
     }
-    if coverage == "overlap_unresolved":
-        fields["coverage_reason"] = (
-            "live and transcript observations may cover the same work; unreconciled observation sum"
-        )
+    if coverage != "non_overlapping":
+        fields["coverage_reason"] = group.coverage_reason() or "coverage_unverified"
     return fields
 
 
@@ -508,8 +680,9 @@ def waste_attribution(
         conn.close()
     result: list[dict] = []
     for loop_name, slot in per_loop.items():
-        tokens_total = None if slot["total_missing"] else slot["total"]
-        tokens_wasted = None if slot["wasted_missing"] else slot["wasted"]
+        canonical = slot["group"].coverage() == "non_overlapping"
+        tokens_total = None if slot["total_missing"] or not canonical else slot["total"]
+        tokens_wasted = None if slot["wasted_missing"] or not canonical else slot["wasted"]
         result.append(
             {
                 "loop_name": loop_name,

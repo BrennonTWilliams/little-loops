@@ -3,11 +3,12 @@ id: ENH-3546
 type: ENH
 title: Establish Claude usage producer contract and measured provenance
 priority: P2
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
+completed_at: '2026-09-29T08:22:43Z'
 captured_at: '2026-09-24T17:40:15Z'
 labels:
 - observability
@@ -89,15 +90,40 @@ Capture and document assistant `uuid` and `message.id` behavior across repeated 
 - **Effort**: Small to medium (mostly evidence capture).
 - **Risk**: Low to medium — must not certify fields whose semantics are unverified.
 
+## Captured Producer Evidence (2026-09-29)
+
+The sanitized `scripts/tests/fixtures/claude/` captures come from Claude Code
+2.1.284. The paired headless `result.usage` and on-disk transcript have two
+requests with nonzero cache reads. The live result's four token components
+equal the sums of the requests' final transcript components (18 uncached
+input, 11223 cache creation, 38429 cache read, 165 output). The transcript
+records each carry `version: 2.1.284`, giving ingest a producer-version
+signal that does not depend on a current machine-wide CLI version.
+
+One request appears twice under the same `message.id` and different outer
+`uuid`s in the paired capture. A second real 2.1.284 transcript sample has
+five records for one `message.id`: four report output 4, then the final one
+reports output 481. Thus the last valid snapshot of a verified message ID is
+the final request observation; outer UUIDs are record IDs, not request IDs.
+ENH-3651 owns applying this identity rule in full and incremental derivation.
+
+The fixtures do not establish a contract for omitted components or an all-zero
+usage block, so these remain unknown. The measured predicate requires all four
+components to be nonnegative non-boolean integers, a verified Claude Code
+host/path, and the captured version. Anthropic's API usage documentation
+defines the three input fields as disjoint components; see the fixture README.
+Legacy raw rows retain unknown eligibility across rebuild even if their
+stored payload contains a qualifying version and values.
+
 ## Acceptance Criteria
 
-- [ ] A non-Claude producer with a Claude-shaped usage block remains unknown under the Claude contract; absent/unverified host/path evidence cannot be promoted.
-- [ ] Legacy transcript observations remain unknown after migration, rebuild and repeated replay, even when their component values look complete; newly qualified observations remain measured through replay.
-- [ ] The per-path predicate covers malformed components/containers and explicit zero; no invalid component is coerced into measured zero, and a captured CLI version does not certify unversioned legacy input.
+- [x] A non-Claude producer with a Claude-shaped usage block remains unknown under the Claude contract; absent/unverified host/path evidence cannot be promoted.
+- [x] Legacy transcript observations remain unknown after migration, rebuild and repeated replay, even when their component values look complete; newly qualified observations remain measured through replay.
+- [x] The per-path predicate covers malformed components/containers and explicit zero; no invalid component is coerced into measured zero, and a captured CLI version does not certify unversioned legacy input.
 
-- [ ] Fixtures plus a README record the contract for both Claude paths, including repeated assistant record identity (`uuid` versus `message.id`), changed usage on a repeated ID and the final-usage boundary; unsupported cases are explicitly unknown.
-- [ ] Contract-satisfying new rows persist as `measured`; malformed, partial or unverified rows stay `unknown`; legacy rows are unchanged (tests).
-- [ ] Live and transcript paths set provenance explicitly only at a verified host/path eligibility boundary; component validation and related docstrings are updated.
+- [x] Fixtures plus a README record the contract for both Claude paths, including repeated assistant record identity (`uuid` versus `message.id`), changed usage on a repeated ID and the final-usage boundary; unsupported cases are explicitly unknown.
+- [x] Contract-satisfying new rows persist as `measured`; malformed, partial or unverified rows stay `unknown`; legacy rows are unchanged (tests).
+- [x] Live and transcript paths set provenance explicitly only at a verified host/path eligibility boundary; component validation and related docstrings are updated.
 
 ## Confidence Check Notes
 
@@ -112,8 +138,25 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Done** | Created: 2026-09-24 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T08:22:43 - `688ef729-26a9-43d5-8442-56084d826e08.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:02:57 - `1524097a-5772-41c1-ba3b-6e5742f08a6c.jsonl`
+
+
+## Resolution
+
+- **Action**: Implement
+- **Completed**: 2026-09-29
+- **Status**: Done
+
+### Changes Made
+
+- Claude 2.1.284 live and transcript captures establish measured eligibility; legacy and unverified usage stays unknown through replay.
+
+### Verification Results
+
+- Full local suite: 27,525 passed, 301 skipped.
+- Ruff lint and format, host-map verifier and private-reference verifier: passed. The configured mypy command is blocked by this environment's untyped `ruamel` dependency; a run with the project config and Python 3.12 target reports existing `no-any-return` and `unused-ignore` errors across the package.
