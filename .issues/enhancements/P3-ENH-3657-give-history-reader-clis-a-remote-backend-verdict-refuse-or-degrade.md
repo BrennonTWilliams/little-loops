@@ -14,11 +14,11 @@ relates_to:
 - ENH-3658
 blocked_by:
 - BUG-3652
-confidence_score: 75
-outcome_confidence: 43
+confidence_score: 65
+outcome_confidence: 51
 score_complexity: 5
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 10
 ---
 
@@ -95,7 +95,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/history.py`, `cli/harness.py`, `cli/logs.py`, `cli/ctx_stats.py`, `decisions.py`, `user_messages.py`, `mcp_server/tools.py`, `session_store/backend.py` (`_REMOTE_REFUSALS`), `skills/improve-claude-md/SKILL.md`; sites and line numbers are in BUG-3652's caller table. Serve sites (`harness.py` ×5, `history.py` `rework`/`quality`/`audit-issue-collisions`/`sessions`/`root`, MCP `history_search`) edit only the pre-resolve; refuse/degrade sites add the boundary catch or fallback. `issue_history/evolution.py:_open_db` (sqlite-only choke point shared by `analyze` and CT-0) changes only if made remote-aware.
+- `scripts/little_loops/cli/history.py`, `cli/harness.py`, `cli/logs.py`, `cli/ctx_stats.py`, `decisions.py`, `user_messages.py`, `mcp_server/tools.py`, `session_store/backend.py` (`_REMOTE_REFUSALS`), `skills/improve-claude-md/SKILL.md`; sites and line numbers are in BUG-3652's caller table. Only `cli/harness.py` ×5 is a serve site (edits only the pre-resolve, plus the read-mode ensure seam); every other site — including `history.py` `rework`/`quality`/`audit-issue-collisions`/`sessions`/`root` and MCP `history_search` — refuses or degrades by adding `refuse_on_remote` and the boundary catch or fallback, and is served later by ENH-3668. `issue_history/evolution.py:_open_db` (sqlite-only choke point shared by `analyze` and CT-0) changes only if made remote-aware.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/ctx_stats.py:_build_parser` — epilog "Exit codes" lists only `0`/`1 - No data found`; add the remote-refusal cause to exit 1 if `main_ctx_stats` refuses [Agent 2 finding]
@@ -376,31 +376,32 @@ Verdict at time of check: **VALID** (no content edits needed; this section is a 
 
 ## Confidence Check Notes
 
-> **Update 2026-09-29:** concerns 1–3 and 6 below (table contradiction, `refuse_on_remote(None, …)`, catch/prefix/channel, MCP `root=`) are resolved by the re-scope; the `blocked_by: BUG-3652` edge and cleared `verify_verdict` resolve 4–5. Re-run `/ll:verify-issues` and `/ll:confidence-check` before implementing.
-
 _Added by `/ll:confidence-check` on 2026-09-29_
 
-**Readiness Score**: 75/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 43/100 → LOW
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 51/100 → LOW
 
-_Re-scored 2026-09-29 after the refine/wire/gap-analysis passes; all deterministic gates (Program Design, dependencies, learning tests, claim/parity/structure/decision gaps) are clean, so the score is held down by unreconciled design, not structure._
+_Re-scored after the ENH-3668 re-scope. Program Design, learning-test, claim/parity/structure and decision gates are clean; the readiness score is held down by the unresolved `blocked_by: BUG-3652` edge (Dependencies Hard Override), not by structure._
 
 ### Concerns
-- `## Expected Behavior` (and its "Default verdict: refuse" lead-in) still contradicts `## Implementation Steps`/`## Integration Map`: it sends ~11 sites (`cli/harness.py` ×5, `cli/history.py` `rework`/`quality`/`audit-issue-collisions`/`sessions`/`root`, MCP `history_search`) to "refuse", while the research says they can *serve* remote reads once the `resolve_history_db()` pre-resolve is dropped. Reconcile the table into serve / refuse / degrade before coding and verify each serve site against `HranaStub`.
-- Decision Rules still say `refuse_on_remote(None, ...)`; the correction (pass `args.db` where a `--db` flag exists, i.e. `ll-ctx-stats`) lives only in a research bullet. Fold it into the rule so the escape hatch is consistent.
-- Catch class (`HistoryUnsupported` vs `HistoryError`), boundary prefix, and degrade-notice channel (`print(stderr)` vs `logger.warning`) are recorded as an implementer's call; pick one convention up front so four CLIs do not diverge.
-- `verify_verdict: NON_VALID` sits in frontmatter; re-run `/ll:verify-issues` after the table is reconciled.
-- BUG-3652 ("land first") is still `open` and is not in `blocked_by`; both edit `_REMOTE_REFUSALS` and want the `remote` fixture hoisted, so whichever lands second must reconcile.
-- `refuse_on_remote` has no `root=`, so `refuse_on_remote(None, "history_search")` reads cwd config, not the MCP `project_root` config. Decide: cwd-only semantics, or resolve against `project_root` first.
+- Proposed Solution 1(c) (read-mode remote ensure in `open_history_readonly`) is the one shared-seam edit `ll-harness` serve depends on, and is not yet verified against `HranaStub`; every other new mechanism is a call-site edit on existing seams. Verify first when implementing.
+- `ll-session search --fts` is deferred to ENH-3668 on the argument that it passes the caller's own `--db`; confirm no unhandled `HistoryBackendNotLocal` path while implementing.
+
+### Gaps to Address
+- **Unresolved dependency**: `blocked_by` BUG-3652 is `open` (its own blocker BUG-3659 is done). It hoists the shared `remote` fixture and edits the same `_REMOTE_REFUSALS` / `_REJECTED` — land it first, or drop the edge if the fixture hoist is split out.
 
 ### Outcome Risk Factors
-- Broad enumeration across ~20 code sites (8 `cli/history.py`, 5 `cli/harness.py`, `logs`, `ctx_stats`, `decisions`, `user_messages`, MCP, CT-0 skill block) plus ~12 doc files and 3 loop/skill consumers. Sites do not receive a uniform substitution, so this is not a Pattern B mechanical fanout; per-site depth is moderate (boundary catch inside `cli_event_context`, serve sites gaining a network dependency).
-- Open design decisions remain: the serve-vs-refuse split per site, `loops/lib/cli.yaml` fallback vs documented exit 1 (item 5), `sft-corpus` `stage` (`--reader db` swallowed exit 1 yields an empty corpus that routes to `enrich` as success), the MCP `root=` handling, and whether `ll-session search --fts` is in scope.
-- Every verdict test is new and there is no shared `remote` fixture yet (copied in five files); existing `test_cli_harness.py` tests call `cmd_*` directly, so the boundary catch is not covered by them.
-- The new refusal exit 1 can trip loop gates (`ll_history_summary`, `sft-corpus`, `ll-logs-telemetry-digest` `run_stats` greps `"No history.db found"`).
-- Serve sites cannot distinguish an unreachable remote from an empty store (`_connect_readonly` maps `HistoryError` to `None`); the acceptance criteria do not cover it.
+- Broad enumeration across ~20 code sites (8 `cli/history.py`, 5 `cli/harness.py`, `logs`, `ctx_stats`, `decisions`, `user_messages`, MCP, CT-0) plus ~12 doc files; per-site depth is moderate (boundary catch inside `cli_event_context`), not a uniform Pattern B substitution.
+- Every verdict test is new and the `remote` fixture is copied in five files until BUG-3652 hoists it; `test_cli_harness.py` calls `cmd_*` directly, so the boundary catch is not covered by existing tests.
+- New refusal exit 1 can trip loop gates (`ll_history_summary`, `sft-corpus`, `ll-logs-telemetry-digest` `run_stats` greps `"No history.db found"`).
+- Serve sites cannot tell an unreachable remote from an empty store (`_connect_readonly` maps `HistoryError` to `None`); accepted for `ll-harness`, distinguished in ENH-3668.
+
+## Resolved Concerns
+
+- [resolved 2026-09-29 by /ll:confidence-check follow-up] Integration Map "Serve sites" line contradicted the re-scoped table — reworded so only `cli/harness.py` serves; all other reader sites refuse or degrade.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T22:09:09 - `c419efbf-94bc-4735-80cf-772ead8ae35e.jsonl`
 - `/ll:verify-issues` - 2026-09-29T22:05:34 - `b6e9a962-45bc-4981-a31d-f5f911dc70c3.jsonl`
 - `/ll:verify-issues` - 2026-09-29T21:59:39 - `f8adf1da-5f55-4437-ac1b-3cda2eb8384a.jsonl`
 - `/ll:confidence-check` - 2026-09-29T17:10:54 - `bd506705-1a67-435c-95c6-e7a6cced7523.jsonl`

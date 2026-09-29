@@ -13,7 +13,7 @@ captured_at: '2026-09-29T05:29:44Z'
 decision_needed: false
 reconcile_attempted: true
 verify_verdict: VALID
-confidence_score: 85
+confidence_score: 65
 outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
@@ -34,7 +34,7 @@ Five sites (`serve.py` ×2, `dashboard.py`, `doctor_trim.py`, `cli/loop/run.py`)
 
 ## Expected Behavior
 
-Class (c)-shaped sites refuse or skip explicitly instead of silently reading a nonexistent file: `doctor_trim` calls `refuse_on_remote(db, "trim")`; the artifact and workflow-sequence sites skip with a stated reason on a `RemoteTarget`. Decide per site whether the `context-monitor.sh` rows should reach the remote store (route via the target-aware seam) or stay a documented silent drop.
+Class (c)-shaped sites refuse or skip explicitly instead of silently reading a nonexistent file: `cmd_dashboard` refuses (`refuse_on_remote(db, "snapshot_export")`); `main_doctor` skips `--trim` via `_remote_target()`; the artifact `serve`/page-factory/`run.py --serve` sites skip with a stated reason on a `RemoteTarget`; the workflow-sequence site keeps its JSONL degrade. `context-monitor.sh` rows are routed to the remote store (Option A, decided).
 
 ## Motivation
 
@@ -84,7 +84,7 @@ Rejected option: needs only a doc string pinned in `test_wiring_reference_docs.p
 
 ## Scope Boundaries
 
-- In scope: the four hand-built `.ll/history.db` paths and `hooks/scripts/context-monitor.sh`.
+- In scope: the five hand-built `.ll/history.db` paths (`serve.py` ×2, `dashboard.py`, `doctor_trim.py`, `cli/loop/run.py`), the `main_doctor` `--trim` guard, and `hooks/scripts/context-monitor.sh`.
 - Out of scope: `resolve_history_db()` callers (BUG-3652 for startup/write paths, ENH-3657 for readers).
 
 ## Integration Map
@@ -95,7 +95,7 @@ Rejected option: needs only a doc string pinned in `test_wiring_reference_docs.p
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/artifact/serve.py:173` — second hand-built site in `_make_page_html_factory()` (`db_path=config.project_root / ".ll" / "history.db"` into `build_dashboard_html`); the first is `make_history_route()` at `:92`, whose `db_path.stat()` ETag key also reads the local file [Agent 1 finding, confirmed by grep]
 - `scripts/little_loops/cli/loop/run.py:691` — hand-built `db_path=_config.project_root / ".ll" / "history.db"` in the `ll-loop run --serve` dashboard render (`build_dashboard_html(..., serve_context=serve_ctx)`); same `allow_missing` degrade, no `except` around it, so an uncaught raise here would abort `--serve` startup [Agent 1 + Agent 2 finding, confirmed by grep]
-- `scripts/little_loops/cli/doctor.py:1837` — `main_doctor` call to `collect_trim_report(Path.cwd(), window_days=...)` needs a handler (or `collect_trim_report` must skip rather than raise) to keep `--trim` advisory; `main_doctor` runs inside `cli_event_context`, which re-raises with `exit_code = 1` [Agent 1 + Agent 2 finding]
+- `scripts/little_loops/cli/doctor.py:1837` — `main_doctor` call to `collect_trim_report(Path.cwd(), window_days=...)` needs a `_remote_target()` guard in `main_doctor` (decided; `collect_trim_report` stays unchanged) to keep `--trim` advisory; `main_doctor` runs inside `cli_event_context`, which re-raises with `exit_code = 1` [Agent 1 + Agent 2 finding]
 - `hooks/scripts/context-monitor.sh:56-58` in `record_handoff_needed()` and `:82-84` in `record_context_pressure()` — the two `resolve_history_db(".ll/history.db")` pre-resolves to drop under Option A; also drop the now-unused `resolve_history_db` from the two `from little_loops.session_store import ...` lines [Agent 1 finding, confirmed by grep]
 
 ### Dependent Files (Callers/Importers)
@@ -133,7 +133,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_remote_doctor.py` — `main_doctor(["--trim"])` under `remote`: exit code equals `main_doctor([])`, no `Traceback`, no `TOKEN` in output; needs the two autouse canned-hint fixtures from `test_cli_doctor_trim.py` (`_canned_model_hints`, `_canned_code_query`); local twin in `test_cli_doctor_trim.py` [Agent 3 finding]
 - `scripts/tests/test_feat3323_sse_bridge.py` — `TestHistoryRoute` sibling under a libsql config: reason surfaced, `len(remote.requests)` unchanged, no `history.db` created, plus `--db`/local twin; `_make_page_html_factory` has no direct test today — follow the direct-call style of `test_missing_db_with_serve_context_renders_empty_snapshot_instead_of_failing` [Agent 3 finding]
 - `scripts/tests/test_feat3304_artifact_dashboard.py` — `cmd_dashboard` under `remote` via the `_run` helper: exit 1, message names `libsql` (not "history database not found"), no `Traceback`; `--db` override twin still runs locally [Agent 3 finding]
-- `scripts/tests/test_remote_operation_matrix.py::_REJECTED` — add `("trim", lambda: refuse_on_remote(Path(".ll/history.db"), "trim"))`; no meta-test enforces the key set, so the row is manual; ENH-3657 edits the same list — merge, don't overwrite [Agent 3 finding]
+- `scripts/tests/test_remote_operation_matrix.py::_REJECTED` — no new row: `cmd_dashboard` reuses the existing `snapshot_export` operation and the `--trim` guard is not a refusal; ENH-3657 edits the same list — merge, don't overwrite [Agent 3 finding]
 - `cli/loop/run.py` `--serve` dashboard render — no test drives it (`build_dashboard_html`/`ServeContext` appear only in test_feat3304/3323/3504 and test_enh3558_escape_ingest); closest pattern is the patched-`build_dashboard_html` spy at `test_feat3304_artifact_dashboard.py::test_cmd_dashboard_delegates_to_build_dashboard_html_with_no_serve_context` [Agent 3 finding]
 - `scripts/tests/test_history_target_hook_audit.py::_PATHS` — optional `context_monitor` entry; its helpers are in-process, so a shell hook needs a `subprocess` wrapper or a direct `record_session_lifecycle_event(root/".ll"/"history.db", ...)` call [Agent 2 + Agent 3 finding]
 
@@ -219,7 +219,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Handle a `RemoteTarget` at each hand-built default path via `resolve_history_store` (an explicit `--db` / `db_path=` / `LL_HISTORY_DB` stays local and unchanged): **refuse** in `cmd_dashboard` (`refuse_on_remote(db, "snapshot_export")` naming `libsql`, exit 1, not "history database not found"); **skip with a stated reason** in `collect_trim_report` (keeps `--trim` advisory — `main_doctor` exit code unchanged, no traceback), `serve.py`'s `make_history_route()` and `_make_page_html_factory()` (reason must fit the route's payload/status contract), and `cli/loop/run.py`'s `--serve` dashboard render. `workflow_sequence/io.py:_load_messages_from_db` needs no change (its silent JSONL fallback is already a correct degrade). (Per Codebase Research Findings: five sites, not four; `refuse_on_remote` for `trim` is not usable at `collect_trim_report` without a handler.)
+1. Handle a `RemoteTarget` at each hand-built default path via `resolve_history_store` (an explicit `--db` / `db_path=` / `LL_HISTORY_DB` stays local and unchanged): **refuse** in `cmd_dashboard` (`refuse_on_remote(db, "snapshot_export")` naming `libsql`, exit 1, not "history database not found"); **skip with a stated reason** in `main_doctor` via `_remote_target()` for `--trim` (`collect_trim_report` / `doctor_trim.py` stay local-only and unchanged; keeps `--trim` advisory — exit code unchanged, no traceback), `serve.py`'s `make_history_route()` and `_make_page_html_factory()` (reason must fit the route's payload/status contract), and `cli/loop/run.py`'s `--serve` dashboard render. `workflow_sequence/io.py:_load_messages_from_db` needs no change (its silent JSONL fallback is already a correct degrade). (Per Codebase Research Findings: five sites, not four; the `--trim` guard lives in `main_doctor`, so no `trim` refusal is registered and no `_REJECTED` `trim` row is needed.)
 2. In `hooks/scripts/context-monitor.sh`, implement **Option A** (selected, see Decision Rationale): drop both `resolve_history_db(".ll/history.db")` pre-resolves in `record_handoff_needed()` / `record_context_pressure()`, pass the literal `.ll/history.db` to the writers so the seam routes to the remote target, drop the unused `resolve_history_db` import, and keep `>/dev/null 2>&1 || true`. **Also detach both writes from the hook's critical path** (e.g. `( record_context_pressure ) </dev/null >/dev/null 2>&1 &`; redirect stdin/stdout/stderr so the hook runner does not wait on inherited fds): the calls at `:532–588` run *before* `exit 2` (`:582`), and remote latency (python3 startup + verify round-trip + insert, each bounded by `telemetry_timeout_ms` = 1500, ×2 on a threshold crossing) can exceed the 5s hook timeout (`hooks.json:138`) and drop the `/ll:handoff` reminder. Pressure volume is already capped at ≤1/s plus threshold crossings (`:497–507`), so no new sampling scheme is needed. **Decided (advise review, 2026-09-29): keep the detached writes; there is no synchronous fallback.** Ordering synchronous writes after the reminder does not help — the reminder *is* the `exit 2`, so a hook-timeout kill loses it regardless. Verify the detached-child behaviour under Claude Code empirically (does the host wait on children whose fds are redirected?) as part of the slow-stub test below; if the hook cannot return promptly with a slow-but-reachable remote, that is a blocking finding to raise, not a cue to fall back.
 3. Add remote-stub tests and local twins (see Tests); run `python -m pytest scripts/tests/` with `ruff check` and `mypy` clean.
 
@@ -231,7 +231,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - Outcome: under a libsql backend, no site reports "not found" or renders an empty-as-if-fresh result for a default-shaped path; each names the remote backend as the reason. Check: a remote-fixture test per site asserts the reason text and that a `--db`/`db_path` override still takes the local path.
 - Outcome: `ll-doctor --trim` under remote leaves `ll-doctor`'s exit code unchanged and raises no traceback (`main_doctor` has no handler around `collect_trim_report`). Check: a `test_remote_doctor.py`-style test plus the local twin in `test_cli_doctor_trim.py`.
 - Outcome: the `context-monitor.sh` decision is recorded (Option A/B under Proposed Solution). Check: under Option A, a `HranaStub` fixture sees the lifecycle/pressure rows arrive and a stopped stub leaves the hook exiting 0 with no stderr; `test_hooks_integration.py::test_python_failure_does_not_flip_exit_code` keeps passing.
-- Outcome: a `trim` operation is registered wherever the rejected-operation set is enumerated (`_REJECTED` row) if the refuse route is chosen; a specific `_REMOTE_REFUSALS` reason is optional since the generic wording applies. Coordinate with ENH-3657, which edits the same dict and list.
+- Outcome: no new refused operation is registered (`cmd_dashboard` reuses `snapshot_export`; `--trim` skips in `main_doctor`), so `_REJECTED` / `_REMOTE_REFUSALS` need no ENH-3658 entry; coordinate with ENH-3657, which edits the same dict and list.
 - Outcome: any new user-facing sentence in `docs/reference/CONFIGURATION.md` / `CLI.md` is pinned in `test_wiring_reference_docs.py::DOC_STRINGS_PRESENT` and passes `test_docs_audience_gate.py`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -240,9 +240,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update `scripts/little_loops/cli/loop/run.py` — handle a `RemoteTarget` at the `build_dashboard_html(db_path=..., serve_context=serve_ctx)` call (~`:691`); it has no `except`, so a raise aborts `ll-loop run --serve`
 - Update `scripts/little_loops/cli/artifact/serve.py` — both `make_history_route()` (`:92`, incl. the `db_path.stat()` ETag key) and `_make_page_html_factory()` (`:173`); the route catches only `ValueError`, so a stated reason must fit its payload/status contract
-- Update `scripts/little_loops/cli/doctor.py` `main_doctor` (`:1837`) — add a handler around `collect_trim_report` (or skip inside it) so `--trim` stays advisory and leaves the exit code unchanged
+- Update `scripts/little_loops/cli/doctor.py` `main_doctor` (`:1837`) — guard the `collect_trim_report` call with `_remote_target()` (informational line in text mode, `unsupported`-style entry in JSON mode) so `--trim` stays advisory and leaves the exit code unchanged; `doctor_trim.py` is not edited
 - Update `hooks/scripts/context-monitor.sh` — drop both `resolve_history_db(".ll/history.db")` pre-resolves (`:58`, `:84`) and the unused import on `:56`/`:82`; keep `>/dev/null 2>&1 || true`, keep `check_compaction` / `.compacted_at`, avoid non-portable shell syntax
-- Add `("trim", ...)` row to `scripts/tests/test_remote_operation_matrix.py::_REJECTED` if the refuse route is used; merge with ENH-3657's edits to `_REJECTED` and `_REMOTE_REFUSALS`
 - Add remote-fixture tests + local twins: `context-monitor.sh` subprocess under `remote` (rows arrive; stopped stub exits 0 with empty stderr), `main_doctor(["--trim"])`, `cmd_dashboard`, `TestHistoryRoute` sibling, `_make_page_html_factory`, `run.py --serve` render
 - Update `docs/reference/CLI.md` (`--trim`, `ll-artifact dashboard`) and the "Remote history backend" reference section (site refusals only — not a `context-monitor.sh` drop note, which Option A rejects) with end-user wording; pin new strings in `test_wiring_reference_docs.py::DOC_STRINGS_PRESENT`
 - Do not touch `scripts/little_loops/cli/logs.py` (`_cmd_dead_skills`, `_cmd_stats` hand-built paths) — owned by ENH-3657 (its Expected Behavior table now lists both as **refuse**)
@@ -256,7 +255,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `cmd_dashboard`, `collect_trim_report`, both `serve.py` sites (`make_history_route`, `_make_page_html_factory`) and the `cli/loop/run.py` `--serve` render resolve through `resolve_history_store` and handle a `RemoteTarget` explicitly (refuse or skip, naming the remote backend); no site reports "not found" or renders an empty-as-if-fresh result. `--db` / `db_path=` / `LL_HISTORY_DB` overrides still take the local path.
+- [ ] `cmd_dashboard`, `main_doctor`'s `--trim` path, both `serve.py` sites (`make_history_route`, `_make_page_html_factory`) and the `cli/loop/run.py` `--serve` render resolve through `resolve_history_store` and handle a `RemoteTarget` explicitly (refuse or skip, naming the remote backend); no site reports "not found" or renders an empty-as-if-fresh result. `--db` / `db_path=` / `LL_HISTORY_DB` overrides still take the local path.
 - [ ] `ll-doctor --trim` under remote leaves `ll-doctor`'s exit code unchanged and raises no traceback.
 - [ ] `context-monitor.sh` (Option A) no longer pre-resolves; under a remote stub the lifecycle and pressure rows arrive, and with the stub stopped the hook exits 0 with empty stderr.
 - [ ] With a **slow-but-reachable** remote stub (latency ≥ the hook's 5s timeout), a subprocess test using `capture_output` sees `context-monitor.sh` return in **under 2s** with exit 2 and the reminder on stderr — remote writes never sit on the critical path (this also checks the parent does not wait on the detached child through inherited pipes).
@@ -318,15 +317,29 @@ Verdict at time of check: **VALID** (no content edits needed; this section is a 
 
 _Added by `/ll:confidence-check` on 2026-09-29_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
 **Outcome Confidence**: 68/100 → MODERATE
 
+_Re-scored after the two Opus reviews. All deterministic gates (Program Design, learning-test, claim/parity/structure/decision) are clean; the readiness score is held down by the unresolved `blocked_by: BUG-3652` edge (Dependencies Hard Override)._
+
 ### Concerns
-- Summary/Current Behavior say all five hand-built sites test `is_file()` / `.exists()`, but `cli/loop/run.py:691` only builds the path (degrade is via `serve_context`/`allow_missing`) — `format-check` flags `is_file (claimed in cli/loop/run.py)`; reword to "build the path by hand" (caps Criterion 4).
-- Step 2's detached-write mechanism for `context-monitor.sh` (`( record_* ) </dev/null >/dev/null 2>&1 &`) has no precedent in `hooks/scripts/` and its behavior under Claude Code is explicitly unverified; the stated fallback (synchronous writes ordered after the reminder) is the safe path if it blocks.
-- Refusal/catcher conventions remain contested repo-wide; the per-site outcomes are now fixed in Decision Rules (`main_doctor` guard via `_remote_target()`, HTTP 501 JSON for `make_history_route`, refuse in `cmd_dashboard`), but the `_make_page_html_factory` / `run.py --serve` "skip the history panel" shape is still described only loosely.
+- Detached writes in `context-monitor.sh` (`( record_* ) </dev/null >/dev/null 2>&1 &`) have no precedent in `hooks/scripts/`, and whether Claude Code waits on children with redirected fds is unverified. The slow-stub `capture_output` test (<2s, exit 2) is the check; a failure there is a blocking finding, not a cue to fall back.
+- `ServeContext.history_unavailable_reason` is new API surface shared by `_make_page_html_factory` and `run.py --serve`; keep the reason string in one constant as decided.
+
+### Gaps to Address
+- **Unresolved dependency**: `blocked_by` BUG-3652 is `open` (its own blocker BUG-3659 is done). It hoists the shared `remote` fixture and edits the same `_REMOTE_REFUSALS` / `_REJECTED` — land it first.
+
+### Outcome Risk Factors
+- Broad enumeration across 7 change sites (5 hand-built paths, `main_doctor`, one hook script) with local-to-moderate per-site depth, plus 4 doc files and ~6 test files.
+- Unproven mechanism: backgrounded remote writes in a shell hook under Claude Code's 5s hook timeout (see Concerns); six new remote-stub tests have no existing shell-hook-under-remote precedent.
+
+## Resolved Concerns
+
+- [resolved 2026-09-29 by /ll:confidence-check follow-up] `collect_trim_report` guard stated two ways — Implementation Step 1, the first Acceptance Criterion and the `main_doctor` Wiring Phase line now match the decided `main_doctor` + `_remote_target()` shape (and the now-moot `_REJECTED` `trim` row was dropped).
+- [resolved 2026-09-29 by /ll:confidence-check follow-up] Scope Boundaries said "four" hand-built paths — now lists all five plus the `main_doctor` guard and hook.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T22:09:10 - `c419efbf-94bc-4735-80cf-772ead8ae35e.jsonl`
 - `/ll:verify-issues` - 2026-09-29T22:05:35 - `b6e9a962-45bc-4981-a31d-f5f911dc70c3.jsonl`
 - `/ll:verify-issues` - 2026-09-29T21:59:39 - `f8adf1da-5f55-4437-ac1b-3cda2eb8384a.jsonl`
 - `/ll:confidence-check` - 2026-09-29T15:35:24 - `4e126c30-e610-4bf7-836c-7acf607ff2dd.jsonl`
