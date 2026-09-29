@@ -11,11 +11,11 @@ learning_tests_required:
 - hrana-http
 verify_verdict: VALID
 reconcile_attempted: true
-confidence_score: 80
-outcome_confidence: 45
+confidence_score: 90
+outcome_confidence: 53
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 0
 ---
 
@@ -423,26 +423,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-28_
+_Added by `/ll:confidence-check` on 2026-09-28 (re-score after the design restatement)_
 
-**Readiness Score**: 80/100 → PROCEED WITH CAUTION (below the 85 config gate)
-**Outcome Confidence**: 45/100 → LOW
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 53/100 → LOW
 
 ### Concerns
-- The `hrana-http` record is `proven` but carries 2 contradicted claims (stream-expired code on Turso; `SQLITE_BUSY` under write contention). The issue's criteria already absorb both, but the rubric applies a -5 modifier to duplicate-implementation scoring until they are treated as settled.
-- Requirements clarity relies on FEAT-3524 sections (§1 config precedence, §1a `HistoryTarget`, §1b env relay, §7 operation matrix, §7a ingestion watermark, §8 telemetry budget, §9 migrate, §10 identity stamp). That issue is cancelled, so its design is not restated here.
-- New conventions still to decide: `url_env`/`auth_token_env` config naming, and whether `HistoryUnsupported` gains an operation field or uses a message convention.
-
-### Gaps to Address
-- Restate the FEAT-3524 sections that Implementation Steps 5-7 depend on directly in this issue, so it can be implemented without the cancelled predecessor.
+- The `hrana-http` record is `proven` but carries 2 contradicted claims (expired-stream code on Turso; `SQLITE_BUSY` under write contention). The criteria already absorb both, but the rubric keeps a -5 modifier on the duplicate-implementation score while any claim is contradicted.
+- Two conditional items are settled only as tests: the copied-session double-ingest check, and dedup keys for derived tables that have none.
 
 ### Outcome Risk Factors
-- Broad enumeration across 12+ files in Files to Modify, plus 50+ history call sites that bypass the chokepoint and stay hard-sqlite unless moved.
-- Deep per-site complexity for the chokepoint retype: `Backend`, `open_history`, `open_history_readonly` and `connect_readonly` move from `Path`/`sqlite3.Connection` to `HistoryTarget`/`HistoryConnection`.
-- Wide blast radius: 15+ dependents of the chokepoint entry points must keep working unchanged for `sqlite`.
-- Unresolved scope decision: which bypassing call sites migrate is deferred to an operation matrix that is not restated in this issue.
+- Broad enumeration across 12+ files in Files to Modify, plus roughly 50 history call sites that reach the low-level connect seam.
+- Moderate per-site complexity: the chokepoint retype moves `Backend`, `open_history`, `open_history_readonly` and `connect_readonly` from `Path`/`sqlite3.Connection` to `HistoryTarget`/`HistoryConnection`.
+- Wide blast radius: 15+ dependents of the chokepoint entry points must keep working unchanged for `sqlite`. Splitting the SQLite-only `HistoryTarget` refactor (Step 2) into its own blocking issue would cut the change surface of this issue.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T02:39:42 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:35:02 - `73686e01-7e81-40c2-bf94-43634394b513.jsonl`
 - `/ll:verify-issues` - 2026-09-29T02:33:55 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:reconcile-issue` - 2026-09-29T02:31:02 - `efa5da7e-d183-4626-be25-08b53ab75362.jsonl`
