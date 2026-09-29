@@ -73,7 +73,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 
 ### Files to Modify
 - `scripts/little_loops/loops/brainstorm.yaml` — every child rewrites or adds states here
-- `scripts/little_loops/brainstorm_engine.py` — new (FEAT-3582); every later child adds commands here
+- `scripts/little_loops/brainstorm_engine.py` — new (FEAT-3667); every later child adds commands here
 - Profile data files (FEAT-3583; `.json` preferred to avoid loop-discovery `rglob` scanners)
 - `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` / `KNOWN_UNFENCED_PROMPT_SITES` for new and removed prompt states
 - `README.md` + `scripts/README.md`, `CHANGELOG.md` (breaking change, FEAT-3582)
@@ -91,28 +91,30 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`
 
 ### Cross-Child Contracts (Astra review, 2026-09-25)
-- **Data contract** (stable IDs, common fields, enumerated axis bins, canonical `portfolio.json`, generation vs. finalist floors) is owned by FEAT-3582; other children extend it only.
+- **Data contract** (stable IDs, common fields incl. top-level optional `grounded`, enumerated axis bins, canonical `portfolio.json`, generation vs. finalist floors) is specified in FEAT-3582 and implemented by FEAT-3667; other children extend it only.
 - **Validation before sinks**: `validate_portfolio` gates `route_sink`; no sink fires on an invalid run.
 - **Profile precedence**: mode selects the base profile, explicit knobs override it, `""` means inherit (FEAT-3583).
-- **Ordering**: FEAT-3582 → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586}; FEAT-3596 is hard-blocked only by FEAT-3582/3583 (so P4 FEAT-3586 does not gate it) but cannot close until all optional children are done.
+- **Ordering**: FEAT-3667 (engine module) → FEAT-3582 (loop rewrite) → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586}; FEAT-3596 is hard-blocked only by FEAT-3667/3582/3583 (so P4 FEAT-3586 does not gate it) but cannot close until all optional children are done.
 - **Profile plumbing** (2026-09-28 review): FEAT-3582 owns `resolve_profile`, the `profile.json` schema, and the `artifact` profile; FEAT-3583 extends them (presets, classifier, overrides).
-- **Tournament runs as a sub-loop** (one parent `max_steps` step; finalists ≤ 8, full round-robin ≈ 28 pair calls + ≤ 3 probe calls); `diverge` runs once per lens with round-robin framings. `top_k` is removed; `winners.md` = portfolio members.
+- **Tournament runs as a sub-loop** (one parent `max_steps` step; finalists ≤ 8, full round-robin judged **one call per round** — ≈ 7 round calls + 1 batched probe call; child `max_steps: 45`, `timeout: 1800`; parent `timeout: 5400` keeps a 600 s tail so salvage/portfolio/finalize always run, and `check_floors --stage pre_tournament` fails `insufficient_time` early); `diverge` runs once per lens with round-robin framings. `top_k` is removed; `winners.md` = portfolio members.
 - **Grounding shape** (FEAT-3584): `touchpoints` (must exist) vs `creates` (must not collide); `shortlist` keeps a reserve so no back-edge into `ground`/`materialize`.
 - **Pre-mortem is annotate-only in v1** (FEAT-3586, 2026-09-29): one critic call + one defender call over winner and runner-up; no demotion, concession, or `winner: null`. `winner` is always non-null; an unmitigated `fatal` risk is a report flag (`unmitigated_fatal`), not a gate. Demotion is a follow-up that must bring its own concession signal and Data Contract change.
-- **Engine module** (2026-09-29): deterministic logic lives in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), called from thin YAML states via `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine <cmd>`; later children add commands (`resolve-profile`, probes, `annotate`), not inline scripts.
+- **Engine module** (2026-09-29): deterministic logic lives in `scripts/little_loops/brainstorm_engine.py` (FEAT-3667, split out of FEAT-3582; CLI contract table lives there), called from thin YAML states via `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine <cmd>`; later children add commands (`resolve-profile`, probes, `annotate`), not inline scripts.
 - **Filter pipeline** (2026-09-29): `finalists.json` (`{finalists, reserve, dropped, judge_mode, assets}`) is rewritten in place by every filtering state; order `dedup → ground_codebase → shortlist → check_floors(generation) → ground_web → materialize → check_floors(pre_tournament) → tournament`. Floors count `grounded != false` ideas and are enforced before any judge call.
 - **Knob defaults live in profiles** (2026-09-29): floor, `max_finalists`, and `ideas_per_round` context keys default to `""` (inherit); the pinned numbers are profile data, so a profile can lower them and an explicit context value still wins.
+
+- **Pre-implementation review** (2026-09-29, `/ll:advise` with Opus; nothing measured): profile gates fold into engine routing tokens (no gate states); `dedup` re-tags cells blind to the generator's tags; `reframe` is a forced ranking; cap tie-break by generation order; `abstention_rate` recorded (`> 0.25` low confidence, `> 0.5` fails validation); `materialize` is 4 fixed batched states (FEAT-3585); `classify_mode` reports the chosen mode in the report header so a wrong auto-selection is visible and rerunnable with `mode=`.
 
 ## Impact
 
 - **Priority**: P2 - brainstorm is a shipped built-in loop whose core machinery is inert in every observed run
-- **Effort**: Large - six children; full rewrite of a ~460-line loop plus profiles, grounding, rendering, and pre-mortem
+- **Effort**: Large - seven children; full rewrite of a ~460-line loop plus profiles, grounding, rendering, and pre-mortem
 - **Risk**: Medium - replaces a shipped loop's behavior; mitigated by `ll-loop validate`, deterministic script-side scoring, and FEAT-3596 fixtures
 - **Breaking Change**: Yes - removed context keys (`novelty_threshold`, `max_saturation`, `novelty_backend`) and portfolio output shape
 
 ## Goal
 
-One engine whose core is **C + B + A** — reframe the problem (true double diamond),
+One engine whose core is **C + B + A** — reframe the problem (true double diamond; on by default for `functional`/`business`, off by default for `artifact`/`visual`, overridable with `reframe=`),
 diverge with structural quality-diversity (MAP-Elites-style grid), select via a
 script-driven pairwise tournament — with an optional **D** adversarial pre-mortem
 finisher. Mode-specific behavior lives in **profiles as data**, not in duplicated
@@ -152,12 +154,15 @@ Out of scope:
 - Embedding-based novelty (the `novelty_backend` placeholder is removed, not built).
 
 ## Children
-- **FEAT-3582** — Brainstorm engine core: reframe, grid diverge, pairwise tournament, portfolio (open)
+- **FEAT-3667** — Brainstorm engine module: deterministic core, CLI contract, and artifact profile (open)
+- **FEAT-3582** — Brainstorm engine core: reframe, grid diverge, pairwise tournament, portfolio (open; loop side, blocked by FEAT-3667)
 - **FEAT-3583** — Brainstorm mode profiles with automatic mode selection (open)
 - **FEAT-3584** — Brainstorm ground state with codebase and web evidence probes (open)
 - **FEAT-3585** — Brainstorm materialize state: rendered mockups judged visually (open)
 - **FEAT-3586** — Brainstorm optional pre-mortem finisher (open)
 - **FEAT-3596** — Brainstorm engine integration, reference runs, and evaluation (open)
+- **FEAT-3667** — Brainstorm engine module: deterministic core, CLI contract, and artifact profile (open)
+
 
 
 
@@ -170,9 +175,9 @@ Out of scope:
 - A run with fewer than the configured minimum ideas routes to `failed`, never `done`,
   and no sink executes on a failed run.
 - Diversity is measured non-LLM: occupied grid cells ≥ a configured floor.
-- Finalists are ranked by a full round-robin of pairwise matches with
+- Finalists are ranked by a full round-robin of pairwise matches, judged one round per call, with
   counterbalanced presentation order (top-3 head-to-heads re-judged reversed in
-  independent calls); the schedule is built and scored by script.
+  an independent call); the schedule is built and scored by script.
 - Versus the old loop on 2 fixed briefs (FEAT-3596): fewer retained duplicates, more
   occupied cells, token/runtime cost recorded.
 - Each of the 4 modes has a profile and at least one reference run producing its
@@ -181,8 +186,8 @@ Out of scope:
   an explicit `mode=` override bypasses classification.
 - `ll-loop validate` passes (MR rules, per-run artifact isolation under
   `${context.run_dir}/`).
-- Cost ceiling: a default `mode=artifact` run makes ≤ 45 LLM calls (old loop ≈ 12).
-- Judge reliability is observable: tournament `tie_rate` is recorded and the report
+- Cost ceiling: a default run (`mode: auto`, classifier included) makes ≤ 30 LLM calls (old loop 14 measured 2026-09-29, 13 without the finalize summary; expected ≈ 22 = 1 classify + 1 frame + 9 diverge + 1 dedup + 1 shortlist + ≈ 8 judge, +1 reframe when the profile enables it). Total input/output tokens are **recorded, not gated**, until the baseline exists — per-session overhead (≈ 94k tokens per call in the 2026-06-27 run) makes call count the wrong unit for cost.
+- Judge reliability is observable: tournament `tie_rate` and `abstention_rate` are recorded and the report
   flags `low_confidence` rankings.
 
 ## Related Key Documentation

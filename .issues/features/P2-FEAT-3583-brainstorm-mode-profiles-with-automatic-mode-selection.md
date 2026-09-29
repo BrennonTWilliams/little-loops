@@ -14,6 +14,7 @@ labels:
 - captured
 blocked_by:
 - FEAT-3582
+- FEAT-3667
 reconcile_attempted: true
 confidence_score: 75
 outcome_confidence: 75
@@ -81,11 +82,11 @@ EPIC-3581 identifies a mode mismatch: visual designs need rendered candidates ju
 
 ## Proposed Solution
 
-FEAT-3582 already ships `resolve_profile`, the `profile.json` schema, and the `artifact` profile. This issue **extends** them (it does not introduce them): three more presets, `classify_mode`, per-knob overrides in `resolve_profile`, and flipping the `mode` default to `auto`. Profiles live as `.json` data under `scripts/little_loops/loops/brainstorm-profiles/`:
+FEAT-3667 already ships `resolve-profile`, the `profile.json` schema, and the `artifact` profile (FEAT-3582 wires the state). This issue **extends** them (it does not introduce them): three more presets, `classify_mode`, per-knob overrides in `resolve_profile`, and flipping the `mode` default to `auto`. Profiles live as `.json` data under `scripts/little_loops/loops/brainstorm-profiles/`:
 
 - Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes with enumerated bins, profile-specific idea fields (under the core `extra` object), `ground` (none|codebase|web), `materialize` (none|render), tournament rubric, `premortem`, and output shape (rendering only).
-- `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below `0.6` falls back to `artifact`. Malformed or unknown-mode output also falls back to `artifact` and is recorded as such.
-- `resolve_profile` (engine-module command `resolve-profile`, extended from FEAT-3582; `little_loops.brainstorm_engine`): (1) base profile = explicit `mode=` if set, else classifier mode, else `artifact`; (2) each knob whose context value is non-empty overrides the base profile's value; (3) writes `${context.run_dir}/profile.json` including which knobs were overridden. An invalid explicit `mode=` or knob value fails the run (exit 1 → `finalize_failed`) rather than silently falling back.
+- `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below `0.6` falls back to `artifact`. Malformed or unknown-mode output also falls back to `artifact` and is recorded as such. LLM self-reported confidence is poorly calibrated, so the run **makes the choice visible**: the loop prints `Mode: <x> (auto, confidence <c>) — rerun with mode=<y> to override` at start, and the report header repeats it. The four reference briefs in FEAT-3596 are the calibration data for the `0.6` threshold.
+- `resolve_profile` (engine-module command `resolve-profile`, extended from FEAT-3667; `little_loops.brainstorm_engine`): (1) base profile = explicit `mode=` if set, else classifier mode, else `artifact`; (2) each knob whose context value is non-empty overrides the base profile's value; (3) writes `${context.run_dir}/profile.json` including which knobs were overridden. An invalid explicit `mode=` or knob value fails the run (exit 1 → `finalize_failed`) rather than silently falling back.
 
 Downstream states read resolved values from `profile.json`, and gated states route the way `route_sink` does today.
 
@@ -94,13 +95,13 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 ### Types
 
 - `Axis`: `{name: str, bins: [str]}` — cell values must be members of `bins`
-- `Profile`: `{mode: str, reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
+- `Profile` (`extra` idea fields per mode are listed in § Pinned Preset Contents; the schema test asserts them): `{mode: str, reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
 - `ModeDecision`: `{mode: str, confidence: float, rationale: str}`
 
 ### Signatures
 
 - `classify_mode(brief: str) -> ModeDecision` — LLM state; result written to the run dir
-- `resolve_profile(mode: str, overrides: dict[str, str], decision: ModeDecision | None) -> Profile` — deterministic script; empty-string override = inherit
+- `resolve_profile(mode: str, overrides: dict[str, str], decision: ModeDecision | None) -> Profile` — deterministic engine function behind `resolve-profile` (FEAT-3667 CLI contract); empty-string override = inherit
 
 ### Call Path
 
@@ -109,7 +110,7 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/brainstorm.yaml` — add `classify_mode`; extend the FEAT-3582 `resolve_profile` state with overrides; thread resolved values into `frame`/`diverge`/`tournament`/output prompts; add `mode` context key
+- `scripts/little_loops/loops/brainstorm.yaml` — add `classify_mode`; extend the FEAT-3582 `resolve_profile` state with overrides (engine side: FEAT-3667); thread resolved values into `frame`/`diverge`/`tournament`/output prompts; add `mode` context key
 - New profile files (`.json`, decided 2026-09-28, e.g. `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json`, so unfiltered `rglob("*.yaml")` loop scanners never read them — Wiring Phase finding) — no `scripts/pyproject.toml` edit needed (`little_loops/**` is included wholesale, `pyproject.toml:203`); confirm with `ll-verify-package-data`
 
 ### Dependent Files (Callers/Importers)
@@ -159,11 +160,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 **Tests**
 - Profile schema validation: model on `scripts/tests/test_enh1768_profile_system.py` (required-layer-file assertions) and `test_package_data_manifest.py` [Agent 3]
 - `scripts/tests/test_builtin_loop_hardcode_gate.py` and `test_builtin_loop_interpolation.py` (rglob) — run against any YAML profile files [Agent 3]
-- `resolve_profile` and stubbed-classifier routing: use the `_bash` helper pattern in `test_brainstorm.py` (`TestPopLensEmptyQueue` shape) [Agent 3]
+- `resolve_profile` precedence tests are **direct-import tests of `little_loops.brainstorm_engine`** (`test_brainstorm_engine.py`, superseding the earlier `_bash` note); stubbed-classifier routing is a wiring test that pre-writes the classifier output file [Agent 3]
 
 **Configuration**
 - Validator: `classify_mode`/gated routes using `evaluate: classify` need `default:`/`_:` (`_validate_classify_route_default`); an `llm_structured` classifier needs `on_error`/`cannot_judge` (`_validate_abstention_route`) [Agent 2]
-- Adds 2 fixed steps (`classify_mode`, `resolve_profile`) to the `max_steps: 60` budget tracked in FEAT-3582 [Agent 2]
+- Adds 1 fixed step (`classify_mode`; `resolve_profile` is already in FEAT-3582's count) to the `max_steps: 60` budget tracked in FEAT-3582 [Agent 2]
 
 ## Implementation Steps
 
@@ -198,6 +199,7 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review); the schema test must assert thes
 | `extra` idea fields | — | `palette`, `layout_summary` | `touchpoints`, `creates` (FEAT-3584) | `assumptions`, `target_customer` |
 | rubric focus | breadth, distinctness, memorability | visual clarity, hierarchy, fit to brief | feasibility in this codebase, leverage, blast radius | demand evidence, differentiation, cost to test |
 
+- `output_shape: grid` renders the **grid map in addition to** the portfolio section (FEAT-3582 Acceptance Criteria: `brainstorm.md` presents a portfolio + the grid map); `portfolio` and `winner_risks` render the portfolio without the full grid map. `portfolio.json` is identical for all shapes.
 - Classifier confidence threshold: `0.6` (`>=` accepts). The classifier prompt lists the four modes with the one-line profile description; malformed/unknown output → `artifact`, recorded in `profile.json`.
 - `visual` keeps `premortem` off and `business` keeps `materialize` off; mixed briefs use per-knob overrides.
 

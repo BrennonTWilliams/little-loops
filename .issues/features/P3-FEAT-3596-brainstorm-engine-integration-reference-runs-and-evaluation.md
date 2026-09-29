@@ -14,6 +14,7 @@ labels:
 blocked_by:
 - FEAT-3582
 - FEAT-3583
+- FEAT-3667
 relates_to:
 - FEAT-2248
 - FEAT-3584
@@ -36,7 +37,22 @@ _2026-09-28:_ Hard-blocked only by FEAT-3582 and FEAT-3583. FEAT-3584/3585/3586 
 
 ## Baseline (captured 2026-09-29)
 
-The old loop is replaced in place by FEAT-3582, so its baseline is preserved outside the tree: `postmortems/brainstorm-baseline/` (gitignored, local-only) holds verbatim copies of the four historical `.loops/runs/brainstorm-*` dirs plus `BASELINE.md` (per-run ideas, LLM calls, tokens, wall-clock, pairwise difflib). Before FEAT-3582 lands, pin the pre-rewrite commit SHA here (tree HEAD at snapshot: `2fe16824a`) and run the old loop on the 2 fixed briefs from a worktree at that SHA. The historical runs do not record their briefs, and two used different models (`claude-sonnet-4-6` vs `MiniMax-M3`), so token totals are not comparable without the cache columns. "Duplicates retained" and "occupied cells" must use one identical tagging pass over both loops' ideas, not the new loop's own dedup.
+The old loop is replaced in place by FEAT-3582, so its baseline is preserved outside the tree: `postmortems/brainstorm-baseline/` (gitignored, local-only) holds verbatim copies of the four historical `.loops/runs/brainstorm-*` dirs plus `BASELINE.md` (per-run ideas, LLM calls, tokens, wall-clock, pairwise difflib). **Do this before FEAT-3667/FEAT-3582 merge.** Pin the pre-rewrite commit SHA here (tree HEAD at snapshot: `2fe16824a`, verified to exist 2026-09-29). Because every little-loops project is `local-editable` against this checkout, `ll-loop run brainstorm` from an old-SHA worktree still resolves the **new** loop once FEAT-3582 is on `main`, which would silently spoil the baseline. So run the old loop from an extracted copy: `git show 2fe16824a:scripts/little_loops/loops/brainstorm.yaml > <scratch>/brainstorm-baseline.yaml` (rename `name:` to `brainstorm-baseline`; copy `loops/lib/common.yaml` alongside if `import:` does not resolve). The old loop is pure YAML plus stdlib `python3`, so it has no package dependency on the new module.
+
+**The 2 fixed briefs (pinned 2026-09-29)** — verbatim, reused for old and new:
+1. _(artifact-shaped)_ "Suggest names and one-line taglines for an open-source CLI that watches a repository's issue backlog and drafts implementation plans."
+2. _(functional-shaped, grounded in this repo)_ "Design how little-loops should let a user pause a running FSM loop, edit its context, and resume it without losing state." The historical runs do not record their briefs, and two used different models (`claude-sonnet-4-6` vs `MiniMax-M3`), so token totals are not comparable without the cache columns. "Duplicates retained" and "occupied cells" must use one identical tagging pass over both loops' ideas, not the new loop's own dedup.
+
+### Old-loop baseline results (recorded 2026-09-29, before FEAT-3667/3582)
+
+Ran the old loop on both pinned briefs from an extracted copy (SHA `2fe16824a`, model `claude-sonnet-5-5`); full table and run dirs are in `postmortems/brainstorm-baseline/BASELINE.md` (§ Fresh old-loop baseline) and `fresh-20260929/`.
+
+| brief | ideas kept | LLM calls | output tok | total context tok (incl. cache) | wall-clock | max / median difflib |
+|---|---|---|---|---|---|---|
+| 1 artifact | 42 / 45 | 14 | 23,502 | ≈ 879k | 336 s | 0.56 / 0.31 |
+| 2 functional | 45 / 45 | 14 | 26,829 | ≈ 889k | 354 s | 0.54 / 0.07 |
+
+Consequences for this issue: (a) the old loop's call count is **14** (13 excluding the `finalize_done` summary), not ≈ 12 — compare new vs old on the same definition; (b) difflib dedup fired once on the short-text brief (3 dropped) — the "never fires" claim is true for prose ideas but not for short names, so report both briefs separately; (c) still to do here: the common tagging pass for "duplicates retained" and "occupied cells" over `fresh-20260929/*/ideas.jsonl`.
 
 ## Current Behavior
 
@@ -67,16 +83,16 @@ old loop.
   new `winners.md` (still `text`/`rationale` keys) unchanged, with or without the
   annotate-only premortem.
 - **Combined budget**: pin `max_steps` and `timeout` for the worst case (all
-  features on, F framings × L lenses, round-robin pairs + probe, materialize, and the
-  fixed premortem cost of 4 parent steps / 2 LLM calls) and update `test_max_steps_is_60` deliberately.
+  features on, L lenses, `classify_mode`, `ground_codebase`, `ground_web`, materialize's 4 fixed states, the tournament sub-loop, and the
+  fixed premortem cost of 3 parent steps / 2 LLM calls; profile gates cost 0 steps). FEAT-3582's rough worst case is ≈ 56 steps against 60 with no slack on the salvage path, so expect `max_steps` ≈ 75 and update `test_max_steps_is_60` deliberately. **Timeout** is derived, not guessed: `parent timeout ≥ PRE_TOURNAMENT_WORST_S + TOURNAMENT_TIMEOUT_S (1800) + TAIL_S (600)`, where `PRE_TOURNAMENT_WORST_S` = per-call latency measured in the baseline/reference runs (44–97 s in the 2026-06 runs) × the pre-tournament call count with everything on (9 diverge + classify + frame + reframe + dedup + shortlist + `ground_web` + materialize author/canary), plus screenshot time. Keep the engine constants (`PARENT_TIMEOUT_S` etc.) and a test asserting they equal `brainstorm.yaml`.
 - **Comparison vs old loop** on 2 fixed briefs: duplicates retained, occupied grid
   cells, LLM call count, total input/output tokens, wall-clock runtime, and the
   tournament `tie_rate` (judge position sensitivity on the top-3 head-to-heads; FEAT-3582 — measure it here before revisiting the round-robin format). No LLM-judged "usefulness"
   metric.
-- **Cost ceiling**: a default (`mode=artifact`) run makes ≤ 45 LLM calls (old loop
-  ≈ 12; estimate for the new core ≈ 1 frame + 1 reframe + 9 diverge + 1 dedup + 1
-  shortlist + ≤ 31 judge (28 round-robin pairs + ≤ 3 probes) ≈ 44 — one call under the ceiling, so `max_finalists` must not rise above 8). A run exceeding it fails the comparison and needs
-  a documented reason.
+- **Cost ceiling**: a default run (`mode: auto`, classifier included) makes ≤ 30 LLM calls (old loop
+  14 measured 2026-09-29; estimate for the new core ≈ 1 classify + 1 frame + (1 reframe when enabled) + 9 diverge + 1 dedup + 1
+  shortlist + ≈ 8 judge (≤ 7 batched round calls + 1 probe call) ≈ 21–22, leaving real slack; `max_finalists` must still not rise above 8). A run exceeding it fails the comparison and needs
+  a documented reason. Total input/output tokens and cache columns are **recorded, not gated** (per-session overhead was ≈ 94k tokens per call in the 06-27 run, so call count alone is the wrong cost unit); also record `tie_rate`, `abstention_rate`, and the per-brief wall-clock so the batched-judging trade-off (possible in-round anchoring, FEAT-3582 Review Decision 28) can be evaluated.
 
 ## Program Design
 
@@ -88,7 +104,7 @@ old loop.
 ### Signatures
 
 - `run_failure_fixture(fixture: FailureFixture, tmp_path: Path) -> str` — drives the loop with stubbed outputs, returns the terminal state
-- `worst_case_steps(framings: int, lenses: int, finalists: int) -> int` — step arithmetic backing the pinned `max_steps` (premortem is a fixed +4, no rounds)
+- `worst_case_steps(lenses: int, finalists: int) -> int` — step arithmetic backing the pinned `max_steps` (premortem is a fixed +3, materialize a fixed ≈ 5, gates +0)
 
 ### Call Path
 

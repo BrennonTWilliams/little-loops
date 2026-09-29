@@ -7,6 +7,14 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T15:29:40Z'
+verify_verdict: VALID
+confidence_score: 85
+outcome_confidence: 54
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
+size: Large
 ---
 
 # ENH-3666: Batch backfill --rebuild commits to shorten history.db write lock
@@ -46,11 +54,25 @@ Shorten the write-lock window of `rebuild()` without exposing a partially replac
 - `scripts/little_loops/session_store/lifecycle.py` — `rebuild()` (transaction structure, `_REBUILD_TABLES` wipe, meta/checkpoint writes)
 - `scripts/little_loops/session_store/writers.py` — `_backfill_*` parsers and `mine_corrections_from_messages` if they need to commit/yield per batch
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/__init__.py` — only if a new public helper is introduced; `rebuild`, `backfill_incremental`, `_REBUILD_TABLES`, `_REBUILD_SEARCH_KINDS`, `_BUSY_TIMEOUT_MS`, `_compact_sessions`, `mine_corrections_from_messages` are already re-exported in `__all__`; `_backfill_sessions`/`_backfill_tool_events`/`_backfill_skill_events`/`_backfill_usage_events`/`_backfill_prompt_opt`/`_set_usage_derive_checkpoint` are **not** re-exported (tests patch them on `lifecycle`) [Agent 1 finding]
+- `scripts/little_loops/session_store/lifecycle.py` — `_compact_sessions` / `_maybe_soft_threshold_summary` / `_call_llm_for_summary`: the single host-CLI `subprocess` spawn in this file is pinned by `test_enh3184_spawn_site_guard.py` (`(1, 0)`); do not add a spawn or exemption when restructuring [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/session.py` — `ll-session rebuild` and `ll-session backfill --rebuild`
 - `scripts/little_loops/session_store/lifecycle.py` — `backfill()` and the refresh path call `rebuild(db, config=config, ...)` when `also_rebuild` is set
 - `scripts/little_loops/cli/backfill_worker.py` — detached `--rebuild` worker spawned from `scripts/little_loops/hooks/session_start.py` (`handle`)
 - `scripts/little_loops/session_store/usage_refresh.py` — documents `rebuild(db)` as the follow-up when `needs_rebuild` is set
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/hooks/usage_stop.py` — in `handle`, spawns `little_loops.cli.backfill_worker ... --usage-trigger` on every Claude/Codex Stop; it writes `usage_events` + the `usage_derive_*` checkpoint and today serialises behind `rebuild()`'s lock, so it is a live interleaving writer once the lock is yielded (`backfill_worker.main` rejects `--usage-trigger` with `--rebuild`, so it never rebuilds itself) [Agent 2 finding]
+- `scripts/little_loops/cli/backfill_worker.py` — in `_refresh_usage_source`, calls `refresh_usage_source` (a `BEGIN IMMEDIATE` deriver, same hazard class as `_run_usage_trigger`) [Agent 1 finding]
+- `scripts/little_loops/cli/session.py` — in `main_session`, `refresh_raw_events` call (~ `refresh` branch) and the "Run ll-session rebuild to re-derive usage and cache tables." hint (~840); argparse `--rebuild` help/epilog text (~15, ~101-103, ~231, ~260-280) [Agent 1/2 finding]
+- `scripts/little_loops/cli/ctx_stats.py` — in `_compute_cache_rate_from_usage`, calls `usage_source_freshness`, which reads `usage_derive_version`/`usage_derive_raw_id`; a yielded rebuild that stamps the checkpoint late/early changes what it reports (a `rebuild_in_progress` marker would need a decision here) [Agent 1 finding]
+- `scripts/little_loops/session_store/lifecycle.py` — in `usage_source_freshness` and `_derive_usage_incremental_conn`, readers of the `usage_derive_*` checkpoint that `_set_usage_derive_checkpoint` writes; `backfill_usage_incremental` and `refresh_usage_source`/`_refresh_codex_usage_source` also write it [Agent 1/2 finding]
+- `scripts/little_loops/session_store/backend.py` — `refuse_on_remote` refusal-reason map has a `"rebuild"` entry ("deletes derived tables globally with no concurrency guarantee"); must remain the first call in `rebuild()` (pinned by `test_remote_operation_matrix.py`), and its reason text becomes stale if rebuild gains concurrency guarantees [Agent 1 finding]
+- `scripts/little_loops/session_store/schema.py` — in the `meta` seed DDL (~504-505, `last_rebuild_version` seeded NULL) and `_apply_migrations`; writing `rebuild_in_progress` **inline** (upsert, like `last_rebuild_version`) needs no migration, seed, `SCHEMA_VERSION` bump, or `schema_manifest.json` change — `_schema_manifest()` reads `sqlite_master`/`table_info` only, never `meta` rows [Agent 2 finding]
+- Readers named in the conditional-branch analysis (`history_reader/*`, `cli/history.py`, `cli/logs.py`, `issue_history/*`, `cli/doctor.py`) have **no** hit for any rebuild/`usage_derive_*` meta key today; they become touchpoints only if the chosen design has readers check an in-progress marker (`cli/doctor.py` reads `SCHEMA_VERSION` via `_schema_manifest`, not `meta` rows) [Agent 1 finding, inferred]
 
 ### Similar Patterns
 - `scripts/little_loops/session_store/schema.py` — migration runner wraps its sequence in one `BEGIN IMMEDIATE` (same lock-window trade-off)
@@ -60,12 +82,48 @@ Shorten the write-lock window of `rebuild()` without exposing a partially replac
 - `scripts/tests/test_session_store_lifecycle.py` — existing `rebuild()` coverage; add concurrent-writer test here
 - `scripts/tests/test_enh_omp_normalizer.py`, `scripts/tests/test_session_store_incremental_usage.py`, `scripts/tests/test_backfill_worker_usage_trigger.py` — must keep passing
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+Tests likely to break / re-scope:
+- `scripts/tests/test_session_store_lifecycle.py` — `TestCompactSession` (~1341-1496) calls `_compact_sessions(conn, config); conn.commit()` directly and patches `little_loops.session_store.subprocess.run`; a signature change to `_compact_sessions` (e.g. a commit/yield callback) breaks these, in `TestCompactSession` [Agent 3 finding]
+- `scripts/tests/test_session_store_lifecycle.py` — existing coverage, update in `TestRebuild::test_rebuild_updates_last_rebuild_version` (~1890): natural home for asserting `last_rebuild_version` is stamped only after every phase [Agent 3 finding]
+- `scripts/tests/test_session_store_incremental_usage.py` — in `test_catchup_failure_rolls_back_rows_and_checkpoint` (~189, patches `lifecycle._backfill_usage_events`), `test_failed_append_derive_leaves_committed_cursor_stale`, `test_normalizer_version_change_replays_historical_rows`: not `rebuild()` tests but pin the phase-patching seam (phase functions looked up on `lifecycle` at call time — keep that if phase calls move into helpers) [Agent 3 finding]
+- `scripts/tests/test_session_store_usage_refresh.py` — in `test_refresh_recovers_stripped_usage_and_rebuild_is_stable` (~67): asserts `COUNT(*) FROM meta WHERE key LIKE 'usage_derive_%' == 0` after `refresh_raw_events`; a new marker key must not live in the `usage_derive_` namespace (`rebuild_in_progress` is safe) [Agent 3 finding]
+- `scripts/tests/test_session_store_schema.py` — in `test_meta_seeds_present` (~900), `test_schema_version_matches_migrations_length`, and the `_REBUILD_TABLES`/`_REBUILD_SEARCH_KINDS` membership guards: break only if the design adds a seeded meta key, a migration-created shadow table, or changes those constants [Agent 2/3 finding]
+- `scripts/tests/test_remote_operation_matrix.py` — in `TestRejectedOperations::test_raises_naming_the_operation_before_any_network_call`: requires `refuse_on_remote(db, "rebuild")` to stay first in `rebuild()` [Agent 1/3 finding]
+- `scripts/tests/test_hook_session_start.py` — in `TestSessionStartRebuild::test_rebuild_flag_added_on_fresh_db` / `test_rebuild_flag_omitted_when_already_current`: pin the `last_rebuild_version < SCHEMA_VERSION` gate; unchanged if stamp-on-success is preserved [Agent 3 finding]
+- `scripts/tests/test_history_store_chokepoint_gate.py` — AST gate forbidding raw `sqlite3.connect(` in `scripts/little_loops/` (only `_ALLOWLIST` entries exempt); a shadow/side-DB design must open connections via `_pkg.connect()`/`open_history()`, not `sqlite3.connect` [Agent 2 finding]
+- `scripts/tests/test_enh3184_spawn_site_guard.py` — pins `session_store/lifecycle.py` to `(1, 0)` spawn sites/exemptions [Agent 2 finding]
+- Broad `rebuild(` oracle users that must keep passing (output equivalence): `test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`, `test_session_discovery.py`, `test_enh3534_host_usage_dispatch.py`, `test_enh3543_usage_coverage.py`, `test_claude_usage_producer.py`, `test_ll_session.py` (~1208-1240, ~1549), `test_assistant_messages.py`, `test_enh_2511_mcp_telemetry.py`, `test_enh_2497_agent_type.py`, `test_workflow_sequence_analyzer.py` [Agent 3 finding]
+- `scripts/tests/test_ll_session_refresh.py` — in `test_refresh_from_original_and_rebuild_on_request` (~74): real end-to-end `refresh --all --rebuild --json`, asserts `rebuild_counts["usage_events"] == 1`; the 9-key return dict must stay stable [Agent 2/3 finding]
+
+New tests to write (no existing precedent for a *real* held lock):
+- `scripts/tests/test_session_store_lifecycle.py` — concurrent-writer test in `TestRebuild`: model the thread shape on `test_session_store_writers.py::TestRecordAttemptAndAdmitRetry::test_allocation_serialises_across_connections` and the "no `locked` in stderr" assertion on `test_worktree_utils.py::test_concurrent_writers_share_one_db_without_locking_errors` (~401, subprocess writers); use `threading.Event`/`Barrier` to fire the `cli_events` insert mid-replay [Agent 3 finding]
+- Commit-count / lock-window assertion: wrap the connection via `patch.object(writers._pkg, "connect", fake_connect)` with a counting `commit()` — models: `test_enh_2505_subagent_runs.py::_TracingConnection` (~893) and `test_session_store_writers.py::_FailUpdateConn` (~572, has `__getattr__` passthrough, the more complete form). No existing commit-counting convention (`set_progress_handler`, `total_changes`, `set_trace_callback`: 0 hits) [Agent 3 finding]
+- Interrupted/resume test: closest template is `test_session_store_incremental_usage.py::test_catchup_failure_rolls_back_rows_and_checkpoint` (inject failure via `monkeypatch` of `lifecycle._backfill_usage_events`, assert marker + state, re-run to completion); `test_normalizer_version_change_replays_historical_rows` models a version-keyed marker forcing replay [Agent 3 finding]
+- Mid-phase failure asserting `last_rebuild_version` not advanced and no partial derived set visible (replaces the deliberately re-scoped rollback tests) [Agent 3 finding]
+- Large-store seeding: `TestRebuild._seed_raw_events` is class-local and inserts one row; `test_remote_ingestion_telemetry.py::_transcript(..., n=450)` is the nearest bulk generator. No shared many-row raw_events fixture exists [Agent 3 finding]
+- Unmocked `ll-session backfill --rebuild` / worker `--rebuild` coverage is thin: `test_ll_session.py::test_backfill_reports_messages_count` mocks `cli.session.backfill`; `test_enh_3166_qwen_normalizer.py::test_flags_are_position_insensitive` (~685) is the only in-process `backfill_worker.main(... --rebuild)` test; `TestSessionStartRebuild` fakes `Popen` [Agent 3 finding]
+
 ### Documentation
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — `ll-session rebuild` / `backfill --rebuild` notes (lines ~198–220); describe new lock/in-progress behavior
 - `docs/reference/CLI.md`, `docs/reference/API.md` — `rebuild` reference
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/HISTORY_SESSION_GUIDE.md:~190-204` — describes `rebuild` in the "Since ENH-2581" callout under `Getting Started: Backfill` ("wipes and re-derives … safe and repeatable") [Agent 2 finding]
+- `docs/reference/CLI.md:~4501` — states "Repeating `--rebuild` is safe if an earlier rebuild failed" in the `ll-session refresh` safety text; also `backfill` flags (`--rebuild` row ~4484), `rebuild` flags ("Wipes and re-derives … Idempotent", ~4514-4525), command table rows (~4388, ~4397) [Agent 2 finding]
+- `docs/reference/API.md:~10150-10158` — `rebuild()` block ("Updates the `last_rebuild_version` meta key to `SCHEMA_VERSION`") and the `raw_events / rebuild / compact` intro (~10116-10118); `cli_event_context` paragraph (~10185) documents the 5000 ms `busy_timeout` and the `enter failed` warning (cites `schema.py:1405` by raw line number — stale-line risk) [Agent 2 finding]
+- `docs/ARCHITECTURE.md:~695` — `raw_events` table row states `last_rebuild_version` "gates the SessionStart hook's opt-in-on-migration `--rebuild` pass"; sequence diagram (~772) `backfill_incremental()` "--rebuild only when SCHEMA_VERSION > last_rebuild_version"; v53 row (~723) [Agent 2 finding]
+- `docs/codex/usage.md:~131-139` — "A rebuild preserves live rows and replaces …" rollout-rows semantics [Agent 2 finding]
+- `CHANGELOG.md` — new entry goes in a concrete `## [X.Y.Z]` section at release prep, never `[Unreleased]` (see memory: feedback_changelog_no_unreleased) [Agent 2 finding]
+- Audience gate: these are `docs/guides|reference` files — write for the end user (no `scripts/tests/` or `scripts/little_loops/` paths; cite `little_loops.session_store.lifecycle`) (`test_docs_audience_gate.py`)
+
 ### Configuration
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No config key needed. If a batch-size/lock-budget key is added anyway: `scripts/little_loops/config-schema.json` (`history` block, `additionalProperties: false`), its dataclass in `scripts/little_loops/config/features.py`, `scripts/tests/test_config_schema.py::_DATACLASS_SECTION_MAP` + `TestDataclassSectionMapCompleteness` (fail on any unmapped dataclass), and `docs/reference/CONFIGURATION.md`; `RetentionConfig` is the precedent for a config `lifecycle.py` loads raw [Agent 2 finding]
+- `hooks/hooks.json`, `.claude-plugin/plugin.json`, `.claude/CLAUDE.md`, `skills/`, `commands/`, `agents/`, and all loop YAMLs: searched, no reference to `rebuild`/`backfill_worker`/`last_rebuild_version` — no registration wiring needed. `backfill_worker` is run as `python -m` (no `pyproject.toml` entry point) [Agent 1/2 finding]
 
 ### Codebase Research Findings
 
@@ -138,6 +196,21 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - Outcomes to hold whatever route is chosen (constraints, not a recipe): (1) no `rebuild()` write transaction outlasts `_BUSY_TIMEOUT_MS`, checked with a test that runs a second-connection `cli_events` insert during `rebuild()` (thread + barrier shape, post-state assertion — no wall-clock bound); (2) readers see full-old or full-new derived data or a detectable in-progress state — decide explicitly what happens to the two existing rollback tests (`test_rebuild_rolls_back_replacement_when_replay_fails`, `test_rebuild_failure_rolls_back_usage_delete`) since a per-phase-commit design cannot satisfy them as written; (3) `last_rebuild_version` and the usage-derive checkpoint are stamped only after every phase, and the checkpoint's `raw_events` high-water mark must be the id actually replayed, not `MAX(id)` at the end, if `raw_events` can grow while the lock is yielded; (4) `usage_events` `channel = 'live'` rows and `search_index` rows outside `_REBUILD_SEARCH_KINDS` survive, and `rebuild()` output stays equivalent to the incremental derive oracle in `test_session_store_incremental_usage.py`.
 - Decide, and record in the issue, how the other `BEGIN IMMEDIATE` derivers of `usage_events` (`backfill_usage_incremental`, `refresh_usage_source`, `refresh_raw_events`) are excluded or reconciled during a yielded rebuild, and how the `_compact_sessions` path (host-CLI subprocess and `_maybe_soft_threshold_summary` writer thread) fits the lock-window budget.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/session_store/lifecycle.py` `rebuild()` — keep `refuse_on_remote(db, "rebuild")` as the first line; keep the 9-key return dict; open any new connection via `_pkg.connect()`, never `sqlite3.connect` (`test_history_store_chokepoint_gate.py`)
+- Update `scripts/little_loops/session_store/lifecycle.py` `_compact_sessions` — keep the direct `_compact_sessions(conn, config)` signature callable (`TestCompactSession`) and add no `subprocess` spawn (`test_enh3184_spawn_site_guard.py`)
+- Decide interleaving with `hooks/usage_stop.py` `handle` → `backfill_worker` `_run_usage_trigger` / `_refresh_usage_source` and the `BEGIN IMMEDIATE` derivers (`backfill_usage_incremental`, `refresh_usage_source`, `refresh_raw_events`); record the decision (exclude via lock/marker vs reconcile) in the issue
+- Write `rebuild_in_progress` inline (meta upsert); do not seed it or add a migration (avoids `SCHEMA_VERSION` bump, `test_meta_seeds_present`, `test_schema_version_matches_migrations_length`, `schema_manifest.json`); do not name it `usage_derive_*`
+- Re-scope `test_session_store_lifecycle.py::TestBackfillUsageEvents::test_rebuild_failure_rolls_back_usage_delete` and `test_enh3532_codex_rollout_usage.py::test_rebuild_rolls_back_replacement_when_replay_fails` to the chosen old-or-new/in-progress guarantee
+- Update `scripts/little_loops/cli/ctx_stats.py` `_compute_cache_rate_from_usage` (and any other `usage_source_freshness` reader) if the design makes `usage_derive_*` state ambiguous mid-rebuild
+- Update `scripts/little_loops/session_store/backend.py` `refuse_on_remote` reason text for `"rebuild"` only if it stops being accurate
+- Add tests to `scripts/tests/test_session_store_lifecycle.py` — concurrent-writer (real second connection), commit-count/lock-window wrapper, interrupted-then-resume, `last_rebuild_version` stamped only after all phases
+- Update `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/CLI.md` (~4501, ~4514-4525), `docs/reference/API.md` (~10150-10158, ~10185), `docs/ARCHITECTURE.md` (~695, ~772), `docs/codex/usage.md` (~131-139) — lock/in-progress behavior and the "repeating `--rebuild` is safe" claim
+- Update `scripts/little_loops/cli/session.py` `main_session` `--rebuild` help/epilog and the refresh hint (~840) if user-visible behavior changes
+
 ## Impact
 
 - **Priority**: P3 - Degrades telemetry on large stores during rebuild; no data loss and a workaround exists (avoid running during active work)
@@ -167,7 +240,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-29 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-29_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 54/100 → LOW
+
+### Concerns
+- The atomicity strategy is still undecided (shadow-table swap vs per-phase commits with a `rebuild_in_progress` marker vs lock yielding). Implementation Step 1 is itself "decide and record", and the repo convention (all-or-nothing derived-table rewrites) is deliberately being departed from without a chosen justification.
+- The two existing rollback tests (`test_rebuild_rolls_back_replacement_when_replay_fails`, `test_rebuild_failure_rolls_back_usage_delete`) cannot pass unchanged under a per-phase-commit design, so they must be re-scoped.
+
+### Outcome Risk Factors
+- Unresolved design decision: the atomic-visibility strategy, the batch boundary (per phase vs per N `raw_events` rows), and the `rebuild_in_progress` marker's value shape and reader behavior are all open. Needs `/ll:decide-issue` before coding.
+- Deep per-site complexity: restructuring the single `BEGIN IMMEDIATE` transaction changes the partial-set safety contract, and the usage-derive checkpoint must record the replayed `raw_events` high-water mark, not `MAX(id)` at the end.
+- Wide change surface: interleaving writers (`backfill_usage_incremental`, `refresh_usage_source`, `refresh_raw_events`, `usage_stop` worker), `_compact_sessions` (host-CLI subprocess and writer thread) and the `usage_source_freshness` readers must be reconciled with a yielded lock.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T17:31:21 - `6954bfd1-9884-42d0-92b6-2f9281481f9e.jsonl`
+- `/ll:verify-issues` - 2026-09-29T17:30:08 - `b91509d0-b878-4a4b-8a91-f007479a3527.jsonl`
+- `/ll:wire-issue` - 2026-09-29T17:28:22 - `895f2500-d57c-473f-8b79-7862769ce029.jsonl`
 - `/ll:refine-issue` - 2026-09-29T17:21:15 - `529a7815-065c-4e6d-81e5-103be1433280.jsonl`
 - `/ll:format-issue` - 2026-09-29T17:15:20 - `65eead6e-6648-47e3-bb45-1774131ddd9c.jsonl`
 - `/ll:capture-issue` - 2026-09-29T15:29:47 - `85fc47a8-e1b6-45fa-ba9d-e5941d3c8ece.jsonl`

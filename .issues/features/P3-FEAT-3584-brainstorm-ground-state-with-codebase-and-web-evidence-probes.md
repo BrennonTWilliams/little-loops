@@ -98,11 +98,11 @@ Issue-ID probing activates only when `.issues/` / `ll-issues` is available so th
 
 - `Source`: `{url: str, quote: str, verified: bool | null}` — `null` = retrieval failed
 - `Evidence`: `{anchors: [str], sources: [Source], assumptions: [str]}`
-- `IdeaRecord.extra` gains `touchpoints: [str]`, `creates: [str]`, `evidence: Evidence` and `grounded: true | false | "unknown"`
+- `IdeaRecord.extra` gains `touchpoints: [str]`, `creates: [str]`, `evidence: Evidence`; the **top-level** `IdeaRecord.grounded: true | false | "unknown"` field (optional; absent = unverified) is defined by FEAT-3582's Data Contract and written here (pinned 2026-09-29 — not `extra.grounded`)
 
 ### Signatures
 
-- `probe_anchor(anchor: str) -> bool` — file/symbol/issue-ID existence check, no LLM
+- `probe_anchor(anchor: str) -> bool` — file/symbol/issue-ID existence check, no LLM (engine commands `probe-anchor`/`probe-source`, added to the FEAT-3667 CLI contract table; exit 0 with `grounded: false` for "not found", exit 2 for a crash)
 - `probe_source(url: str, quote: str) -> bool | None` — fetch + fixed-string match, no LLM; `None` on retrieval failure
 - `ground_idea(idea: IdeaRecord, source: str) -> IdeaRecord` — attaches evidence and sets `grounded`
 
@@ -198,8 +198,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   retrieval failure and HTTP 401/403/429 (`unknown`), non-http(s) scheme and
   private-range host (rejected → `unknown`), no web capability (`unknown`, not
   dropped).
-- Grounding results recorded per idea in `ideas.jsonl` (`evidence`, tri-state
-  `grounded`).
+- Grounding results recorded per idea in `ideas.jsonl`: top-level tri-state `grounded`, and `evidence` under `extra`.
 - A `grounded: false` finalist is replaced by its cell's reserve candidate (no
   back-edge) via an in-place rewrite of `finalists.json` (FEAT-3582 § Data Contract → Finalists file); if
   that leaves fewer than 2 finalists, `check_floors --stage pre_tournament` fails the run to
@@ -209,6 +208,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Tests cover probe pass/fail with fixture ideas.
 
 ## Review Decisions
+
+_Added 2026-09-29 (EPIC-3581 pre-implementation review, `/ll:advise` with Opus):_
+
+- **Stale directives are superseded, not deleted, until `/ll:reconcile-issue` runs after FEAT-3667 lands** (line anchors shift): where § Similar Patterns, § Wiring Additions → Tests, § Implementation Steps 2 and the Codebase Research Findings describe inline `_bash`-extracted probe scripts, an inline `ground` state, or "adds 1 fixed step", read them as: probes are FEAT-3667 engine commands tested by direct import; `ground_codebase` and `ground_web` are the only new parent steps (2 + 1 LLM search), and the profile gate is routed by `check_floors` (no `ground_gate` state).
+- `grounded` is a top-level optional field (see Types); `evidence` stays in `extra`.
 
 _Added 2026-09-29 (EPIC-3581 second review):_
 

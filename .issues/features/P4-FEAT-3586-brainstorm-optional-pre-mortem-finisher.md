@@ -65,8 +65,8 @@ EPIC-3581 approach D adds an adversarial pre-mortem to reduce false confidence i
 
 Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.yaml`, after `portfolio` and before `validate_portfolio`:
 
-- `premortem_gate` — routes on the resolved `premortem` value (`classify`-style routing like `route_sink`, with a `default:` route past the finisher).
-- `premortem_critic` (LLM, one call, winner + runner-up) → `premortem_defender` (LLM, one call) → `annotate` (script: engine command `annotate`). Total **4 parent steps** including the gate; no rounds, no counter, no `premortem_rounds`, no `retry_counter`, no per-run counter file.
+- No separate gate state (2026-09-29): the `portfolio` engine command prints `premortem` or `validate` as its last stdout line from the resolved profile, and `portfolio` routes on it (`evaluate: classify`, `_:` default → `validate_portfolio`). A disabled finisher costs **zero** parent steps.
+- `premortem_critic` (LLM, one call, winner + runner-up) → `premortem_defender` (LLM, one call) → `annotate` (script: engine command `annotate`). Total **3 parent steps** (critic, defender, `annotate`; the gate is folded into `portfolio`); no rounds, no counter, no `premortem_rounds`, no `retry_counter`, no per-run counter file.
 - `annotate` is a command of `little_loops.brainstorm_engine` (FEAT-3582 § Solution): it reads the two LLM outputs from files, validates the schema and idea-body immutability, writes `premortem.json`, updates `portfolio.json` `flags`, and never touches `winners.md`, `ideas.jsonl` idea rows, `ranking`, or slots.
 - Report rendering adds the `Risks & Kill Criteria` section from `premortem.json`.
 
@@ -90,7 +90,7 @@ All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `pyth
 
 ### Call Path
 
-`portfolio` -> `premortem_gate` -> `premortem_critic` -> `premortem_defender` -> `annotate` -> `validate_portfolio` -> `route_sink`
+`portfolio` -> (token `premortem`) `premortem_critic` -> `premortem_defender` -> `annotate` -> `validate_portfolio` -> `route_sink`
 
 ## Integration Map
 
@@ -117,7 +117,7 @@ All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `pyth
 
 ### Configuration
 - Context key: `premortem` (resolved from profile; FEAT-3583 override, default `""`). No `premortem_rounds`.
-- Step budget: +4 parent steps when enabled (gate, critic, defender, `annotate`); the gate alone (+1) when disabled. Owned by FEAT-3596's combined budget.
+- Step budget: +3 parent steps when enabled (critic, defender, `annotate`); +0 when disabled. Owned by FEAT-3596's combined budget.
 
 ### Codebase Research Findings
 
