@@ -39,6 +39,25 @@ Change the allowlist keys from line numbers to symbol anchors resolved via `ast`
 ### Tests
 - The same two tests; add one that shifts a line and confirms the gate still passes.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
+
+- Detection today is a per-physical-line regex (`_PATTERN`), not `ast`; the current allowlist matches the scan exactly (31 hits, 16 files, no drift). Of those 31, 3 are comment lines (`issue_history/parsing.py:53`, `issue_parser.py:4369`, `sync.py:291`), 3 are docstring lines inside multi-line strings (`issue_parser.py:351`, `session_store/writers.py:3175`, `cli/issues/prioritize.py:61`), and 2 sit inside the ~465-line module-level `_TOOLS` literal (`mcp_server/tools.py:848`, `:1006`) where no `def`/`class` encloses them.
+- Comments are not `ast` nodes, so anchors for them can only come from line-span resolution over `FunctionDef`/`ClassDef` `lineno..end_lineno`. All 3 current comment entries sit physically inside a function body, so none resolves to `<module>`.
+- Same-symbol collisions under a `<symbol>::<matched text>` key (verified by an `ast` line-span scan): `cli/issues/search.py` `_parse_priority_filter::P\d` (lines 114, 120); `hooks/post_tool_use.py` `_maybe_auto_commit::P[0-5]` (98, 108); `mcp_server/tools.py` `_TOOLS::P[0-5]` (848, 1006); and `issue_parser.py` module-level assignments (50, 58, 2116) if `<module>` is the fallback. Two of these pairs carry *different* justification strings, so a single key cannot hold both.
+- Methods carry class context: `_parse_type_and_id` and `_generate_id_from_filename` (`IssueParser`), `_extract_issue_id` (`GitHubSyncManager`). A leaf-name anchor is ambiguous across classes; the dotted-vs-leaf choice is not fixed by current code.
+- Line-pinned drift is a long-standing recurring cost: BUG-3448 was a whole issue for `mcp_server/tools.py` drift, and ~20 other issue files record "allowlist line numbers updated for the resulting shift". The class's own maintenance comment ("Re-derive line numbers…") and the ENH-3623 re-measure comment above the `issue_parser.py` entries are line-number-specific and become obsolete with the re-key.
+- Origin: BUG-3286 § Tests / Completeness verification (Implementation Step 10) specified the "frozen set of `path:line` entries, each with a one-line reason".
+
+_Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
+
+- Convention held across the suite: allowlist guards are a bidirectional pair — a "new un-allowlisted hit fails" test and a "stale entry fails" test (`test_history_store_chokepoint_gate.py`, `test_host_resolution_chokepoint_gate.py`, `test_builtin_loops.py::TestValidatorWarningBudget`, `test_bug3269_test_cmd_resolution_gate.py`); two guards fold both into one exact-set equality with a message naming both diffs (`TestMr11MarkerSet.test_marker_set_matches_enumeration`, `TestInterpSweepBaseline.test_completeness_guard`). Current staleness check here differs: it re-applies `_PATTERN` at a recorded line rather than re-running the scan and diffing.
+- Convention held for keying by enclosing scope: the only precedent is `test_usage_selection_chokepoint_gate.py` (`_enclosing_functions`, `_ALLOWLIST: dict[tuple[str, str], str]` keyed `(rel_path, enclosing_function)`, fallback literal `"<module>"`); it resolves `def`/`async def` only, no classes, and has no multiplicity handling. `scripts/little_loops/issues/anchors.py:resolve_anchor` is a regex backwards scan (no `ast`, display-string output) and no test uses it as an allowlist key.
+- Convention held for gate-regression tests: feed a synthetic inline source string (or `tmp_path` file) to the same scanner the gate uses, as a positive/negative pair (`test_host_resolution_chokepoint_gate.py::test_gate_detects_a_stray_site`, `::test_gate_ignores_non_reads`; `test_usage_selection_chokepoint_gate.py::test_gate_detects_a_stray_site`). No test in `scripts/tests` copies a real source file such as `session_store/writers.py` and mutates it — Implementation Step 3's temp-copy approach has no precedent, and a synthetic snippet with a shifted-lines variant would satisfy the same acceptance criterion without coupling the test to `writers.py` content. This is a contested choice for the implementer.
+- Helper placement is mixed: `test_issue_parser.py` uses both module-level private helpers (`_parse_issue_frontmatter`, defined above its class) and class `@staticmethod` helpers; standalone gate modules use module-level private functions. The file has no `import ast` today. `TestPriorityRegexCompletenessAllowlist` has no helper methods and both tests duplicate the repo-root/scan setup inline.
+- Failure messages in sibling guards tell the contributor what to do ("add a reasoned allowlist entry", "justify here or convert to resolve_priority"); the existing message here also lists new line numbers for manual update, which the re-key removes.
+
 ## Scope Boundaries
 
 - **In scope**: re-keying `_ALLOWLIST` in `TestPriorityRegexCompletenessAllowlist` from line numbers to symbol anchors; adapting the two existing tests; adding one line-shift regression test.
@@ -60,6 +79,13 @@ Change the allowlist keys from line numbers to symbol anchors resolved via `ast`
 `TestPriorityRegexCompletenessAllowlist.test_no_unallowlisted_raw_priority_regex` -> `_scan_priority_regex_hits` -> `_enclosing_symbol`
 
 `TestPriorityRegexCompletenessAllowlist.test_allowlist_entries_still_exist` -> `_scan_priority_regex_hits` -> `_enclosing_symbol`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
+
+- Constraint on `_scan_priority_regex_hits -> dict[str, set[str]]`: a set of `"<symbol>::<pattern>"` anchors collapses same-symbol duplicates (4 collision groups above). Under set semantics a *new* raw regex added inside an already-allowlisted symbol (e.g. a third `"pattern": "^P[0-5]$"` in `_TOOLS`) passes silently, and removing one of a colliding pair leaves the other satisfying the key so no stale entry is reported. This conflicts with the Acceptance Criteria ("newly added raw priority regex still fails"; "removed regex reports a stale entry") unless occurrence multiplicity is preserved in the scan result and the allowlist (e.g. a per-anchor count, or an ordinal within the symbol). Whether an occurrence count or per-hit ordinal is the right key is an implementation judgment; the property required is that the count of hits per anchor is compared, not just presence.
+- Constraint on `_enclosing_symbol`: it must handle module-level assignment targets that span many lines (`_TOOLS`, lines 826–1290) and comment/docstring lines that `ast` never yields as statements — line-span containment against `FunctionDef`/`ClassDef`/`Assign` nodes, not per-node `ast.walk` attribution. Nested defs/methods resolve to the innermost containing span.
 
 ## Implementation Steps
 
@@ -90,5 +116,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-29T04:55:38 - `4499f980-478f-43ad-ae6e-d08229ebdabd.jsonl`
 - `/ll:format-issue` - 2026-09-29T04:50:00 - `d770577e-1f76-4a53-b5c3-a8661dec6288.jsonl`
 - `/ll:capture-issue` - 2026-09-29T04:19:25 - `4d45d755-73ff-4de3-8bd1-bb8e866143f2.jsonl`
