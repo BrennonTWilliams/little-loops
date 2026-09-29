@@ -1,0 +1,12 @@
+{
+  "id": "50e48abf-4cfc-4dc5-953f-d7a74b8e2919",
+  "type": "decision",
+  "timestamp": "2026-09-29T06:23:36Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Sibling hooks already pass a default-shaped path and reach the remote store via the seam; the drop is an artifact of the pre-resolve; shell || true stays the fail-soft guard.",
+  "rule": "Option A: route context-monitor.sh rows via target-aware seam (drop resolve_history_db pre-resolve)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep silent drop and document it",
+  "issue": "ENH-3658"
+}
