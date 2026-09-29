@@ -15,7 +15,7 @@ labels:
 relates_to:
 - FEAT-2248
 reconcile_attempted: true
-confidence_score: 85
+confidence_score: 90
 outcome_confidence: 66
 score_complexity: 5
 score_test_coverage: 25
@@ -320,18 +320,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25_
+_Added by `/ll:confidence-check` on 2026-09-28_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Readiness Score**: 90/100 → PROCEED
 **Outcome Confidence**: 66/100 → MODERATE
 
 ### Concerns
-- Defaults for `min_ideas`, `min_cells`, and the number of framings `reframe` selects are still unpinned; pin them before implementing `validate_portfolio`.
-- The `max_steps` budget (60) is exceeded for F=3 framings; pin a core-only budget (raise `max_steps`, cap F·L, or batch lenses) before starting.
-
-### Outcome Risk Factors
-- Deep per-site complexity: most states of one loop YAML are rewritten (graph restructure, new tournament/dedup scripts), and existing tests that assert removed behavior must be rewritten.
-- Validator/registry coupling (`fence.py` `FENCE_ROLES`, `loop_interpolation_baseline.json`, MR-10/MR-11, warning budget) means a small miss fails the gates.
+- The child tournament loop file (name, location under `scripts/little_loops/loops/`, its `max_steps: 60`) is not named in `Files to Modify`; only the Wiring Phase says to verify placement against loop discovery and `ll-verify-package-data`. Name it before starting.
+- § Data Contract says the finalist floor is "at least 2 eligible finalists after every filtering step (… premortem)", but FEAT-3586 makes all-conceded a valid `winner: null` outcome. State that `eligible` is not reduced by concession (it equals `conceded` when all concede), so `validate_portfolio` does not reject that case.
+- Prior concerns (unpinned defaults, `max_steps` budget) are resolved by Review Decisions 2 and 7 and are no longer raised.
 
 
 ## Session Log

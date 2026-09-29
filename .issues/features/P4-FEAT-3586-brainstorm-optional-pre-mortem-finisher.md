@@ -16,7 +16,7 @@ blocked_by:
 - FEAT-3582
 - FEAT-3583
 reconcile_attempted: true
-confidence_score: 80
+confidence_score: 75
 outcome_confidence: 64
 score_complexity: 10
 score_test_coverage: 18
@@ -213,19 +213,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25_
+_Added by `/ll:confidence-check` on 2026-09-28_
 
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (dependency hard override)
 **Outcome Confidence**: 64/100 → MODERATE
 
 ### Gaps to Address
 - Unresolved dependencies (hard override): `blocked_by` FEAT-3582 and FEAT-3583 are both `Open`. The `portfolio`/`validate_portfolio` states and resolved `premortem` profile value this issue extends do not exist yet.
 
 ### Concerns
-- "Winner (and optionally the runner-up)" leaves the critiqued-finalist count open; pin it.
+- "Round" is undefined: `premortem_rounds` is shared by winner, runner-up, and promoted finalists, but the issue does not say whether one round is one idea's critic+defender pass or one pass over the whole critiqued set. Pin it, and pin the default (must be ≥ 2 for `_validate_zero_retry_counter`; ≥ 3 if a round is one idea and a promotion must fit).
+- FEAT-3582's finalist floor ("≥ 2 eligible finalists after every filtering step … premortem") conflicts on its face with the all-conceded-is-valid rule here; the fix belongs in FEAT-3582's Data Contract (see its Concerns).
+- Critiqued-finalist count is pinned (winner + runner-up); the earlier concern is resolved.
 
 ### Outcome Risk Factors
-- Moderate per-site complexity: `apply_verdicts` demotes/promotes across `portfolio.json`, `winners.md`, and `ideas.jsonl`, and `validate_portfolio` must be extended for all-conceded.
+- Moderate per-site complexity: `apply_verdicts` demotes/promotes across `portfolio.json`, `winners.md`, and `ideas.jsonl` with the slot-recompute rules, and `validate_portfolio` must be extended for all-conceded.
 - No executable test exists for the hand-rolled round counter pattern (`diagnosis_retry`), so the bound test must be written from scratch; also constrained by `max_steps` and `_validate_zero_retry_counter`.
 
 

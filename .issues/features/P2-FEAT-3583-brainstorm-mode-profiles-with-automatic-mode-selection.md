@@ -15,7 +15,7 @@ labels:
 blocked_by:
 - FEAT-3582
 reconcile_attempted: true
-confidence_score: 70
+confidence_score: 75
 outcome_confidence: 75
 score_complexity: 14
 score_test_coverage: 25
@@ -225,21 +225,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25_
+_Added by `/ll:confidence-check` on 2026-09-28_
 
-**Readiness Score**: 70/100 → STOP — ADDRESS GAPS
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (dependency hard override)
 **Outcome Confidence**: 75/100 → MODERATE
 
 ### Gaps to Address
-- _2026-09-28: preset contents and threshold now pinned in § Pinned Preset Contents; profile storage decided (`.json`); `resolve_profile` base moved into FEAT-3582. Re-run `/ll:confidence-check`._
-- Unresolved dependency (hard override): `blocked_by` FEAT-3582 is `Open`. Implement FEAT-3582 first, or remove the dependency if it no longer applies.
-- The four presets' contents (axes/bins, rubrics, per-mode defaults) and the classifier confidence threshold value are not specified; pin them.
+- Unresolved dependency (hard override): `blocked_by` FEAT-3582 is `Open`. Implement FEAT-3582 first, or remove the dependency if it no longer applies. The rest of the issue is otherwise ready (preset contents, threshold, and `.json` profile storage are now pinned).
 
 ### Concerns
+- `artifact` is pinned to `output_shape: grid`, while FEAT-3582's Acceptance Criteria say `brainstorm.md` presents "a portfolio + the grid map" for the core engine. Reconcile: state that `grid` renders the grid map in addition to the portfolio section.
+- The `Profile` type in § Program Design omits the profile-specific idea fields (`extra`) that § Pinned Preset Contents pins per mode; add them so the schema test has one source of truth.
 - Line anchors in the Codebase Research Findings describe the pre-FEAT-3582 file and will shift once it lands.
-
-### Outcome Risk Factors
-- Profile storage location is "prefer `.json`, or a YAML dir verified against scanners": decide it up front, since a wrong choice trips unfiltered `rglob("*.yaml")` scanners and `PACKAGE_DATA_ASSETS`.
 
 
 ## Session Log
