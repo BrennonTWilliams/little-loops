@@ -149,7 +149,7 @@ A rejected operation raises `HistoryUnsupported` (naming the operation) before a
 | full `backfill` (`ll-session backfill`) | rejected: overwrites other machines' rows |
 | `backfill_incremental` and `backfill_raw_events` (SessionStart worker) | supported, with the per-machine watermark (section 6) |
 | `prune()`, `ll-session compact`, `compact --and-prune`, `recompress` | rejected: rewrite or delete `raw_events` other machines use |
-| `VACUUM`, `sweep_stale_refs` | rejected: local-file operations |
+| `VACUUM` | rejected: local-file operation (the `hooks/sweep_stale_refs.py` hook only writes a lifecycle event row, an ordinary supported event write) |
 | reads, event writes, search, `ll-history`, `ll-logs`, digests, context compaction (`little_loops.compaction`) | supported |
 | snapshot export | rejected (`ATTACH` to a local destination is unavailable) |
 

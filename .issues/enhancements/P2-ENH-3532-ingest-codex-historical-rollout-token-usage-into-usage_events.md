@@ -16,9 +16,12 @@ relates_to:
 - BUG-3542
 - ENH-3528
 - ENH-3543
+- ENH-3546
 - ENH-3647
 blocks:
 - ENH-3543
+- ENH-3549
+- ENH-3534
 reconcile_attempted: true
 confidence_score: 85
 outcome_confidence: 48
@@ -55,6 +58,7 @@ Codex rollout usage is persisted as normalized, provenance-labeled observations.
 - `scripts/little_loops/session_store/{schema,queries}.py`, `scripts/little_loops/session_store/schema_manifest.json` — append-only migration for observation identity/uniqueness and any required attribution/coverage metadata; identity fields consumed by ENH-3543; aggregate selection and export reconciliation belong to ENH-3543. Reuse ENH-3538's columns rather than adding them again.
 - `scripts/little_loops/cli/ctx_stats.py` — ENH-3549 owns switching cache reporting to stored observations with equivalent session selection; no second reader migration belongs here.
 - `scripts/little_loops/issue_history/quality_regressions.py` — counts `usage_events` rows `WHERE session_id IS NOT NULL` per session for model-composition weights; today that predicate means `channel = 'transcript'`. Rollout rows carrying a `session_id` would silently enter the weighting, so pin the query to `channel = 'transcript'` (no-op if ENH-3647 landed first). ENH-3543 decides whether it later reads through the selector.
+- `scripts/little_loops/issue_history/agent_quality.py` — `_usage_totals` (cost per issue) reads every `usage_events` row with a non-NULL `session_id` through `select_usage_observations`. Rollout (and, after ENH-3647, live) rows carrying a `session_id` would double-count tokens and add unpriced rows that can drop priced coverage below the threshold and hide the verdict. Pin it to `channel = 'transcript'` alongside `quality_regressions` until ENH-3543 routes it through the reconciling selector.
 - Schema: this issue's migration is ordered in the epic's § Schema coordination with ENH-3647 and ENH-3546; ~20 tests pin `SCHEMA_VERSION`.
 - Tests: `test_session_store_writers.py`, `test_session_store_lifecycle.py`, schema/manifest tests, Codex parser tests, `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_executor.py`, `test_cli_ctx_stats.py`, `test_history_reader_usage.py`, `test_feat3304_artifact_dashboard.py`, and `scripts/tests/fixtures/codex/`.
 - Docs: `docs/codex/usage.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/HOST_COMPATIBILITY.md`.
@@ -138,10 +142,24 @@ Moved to ENH-3543. Until it lands, rollout rows and live rows for the same work 
 - No fixture contains a repeated `last_token_usage`: the four interactive observations (14002/107, 21854/135, 22068/82, 26079/237) are distinct and each follows a tool-call output. Recorded: **no duplicate notifications observed in 0.152.1.**
 - `task_started` and `task_complete` carry `payload.turn_id`, a native span key. It is the span identity ENH-3543 matches on; it is not a request key (the interactive turn holds four observations).
 - `session_meta.payload.context_window.window_id` exists on every session. It is an unverified lead for the compaction/reset namespace (gate 2).
+- **Corpus findings 2026-09-29** (local `~/.codex/sessions`, newer than the fixtures): forks reuse the parent's `payload.session_id` with ordinals restarting at 0; 44 events in 20 files (0.154/0.155 alphas) repeat the previous event's `total_token_usage`, 39 of them with an identical `last_token_usage`; 0.154+ adds `token_usage_record` alongside `token_count`. The "no duplicate notifications observed" statement above holds for 0.152.1 only. Gate 1 records the consequences; add a fixture per shape (see Acceptance Criteria).
 
 **Readiness gates:**
 
-1. **Request key — proposed, confirm at implementation start.** Source-event key: `(host, session_id, ordinal)`, where the namespace is the session's single rollout file (resume appends to it; archive moves it unchanged). Persist `ordinal` on **`raw_events`** (new nullable column; the stored inner payload lacks it, and rebuild replays from `raw_events`), then copy it into `usage_events` on replay. Rows without a native ordinal (legacy or non-Codex) get no key and stay excluded from verified-deduplicated claims — no line-number fallback. Unique index: partial `idx_usage_events_dedup ON usage_events(host, session_id, source_ordinal) WHERE channel = 'rollout' AND source_ordinal IS NOT NULL`, created repair-first per the migration convention. Conflicting content on a repeated key must surface (not `INSERT OR IGNORE`): compare on conflict and record/raise a diagnostic. Remaining check: a forked session (`codex fork`, if it exists in 0.152.1) must not reuse the parent's `session_id` with a restarted ordinal; if it does, `window_id` or the fork ID joins the key.
+1. **Request key — REVISED 2026-09-29 (supersedes the earlier `(host, session_id, ordinal)` proposal, which fails on real data).** Corpus review of `~/.codex/sessions` (9,572 rollouts; fixtures are `codex-cli 0.152.1`, sessions there are written by 0.154/0.155/0.158 alphas) and a second-model consult (`/ll:advise`, opus) found:
+   - **Forks collide.** `codex fork` exists in 0.152.1. In a fork, `session_meta.payload.session_id` is the **parent's** id, `payload.id` is the fork's own, `payload.forked_from_id` is set, and ordinals restart at 0. Of 15 forked rollouts (235 token events), 31 events share `(session_id, ordinal)` with a parent event carrying *different* usage — false conflicts under the old key. Forks do not copy parent usage.
+   - **`payload.id` alone also collides.** 3 thread ids span more than one file (attributed to Codex Desktop paginated threads: several files, same `id`/`session_id`, ordinals restarting at 0; not independently confirmed here).
+   - **Two event shapes.** 0.154+ writes a top-level `token_usage_record` event (own `ordinal`; payload `thread_id`, `turn_id`, `session_id`, `root_turn_id`, `response_id`, `usage{input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_output_tokens, total_tokens}`, `turn_token_usage`, `thread_token_usage`) *in addition to* `token_count`. Every one of 123 scanned files with records also had `token_count` with info, so reading both double-counts every request. `cache_write_input_tokens` is reported there.
+
+   Revised rules (confirm each against fixtures at implementation start):
+   - **a. Observation source.** Where `token_usage_record` exists, it is the observation: key `(host, response_id)`, span `turn_id`, keep `root_turn_id`; `token_count` on those files is not counted. Older rollouts (no `token_usage_record`) use `token_count.last_token_usage`.
+   - **b. Key without a `response_id`.** `(host, payload.id, stream discriminator, ordinal)`. Candidate discriminator: the file's `session_meta.timestamp` (backed by only 3 threads — verify before relying on it). No physical-line fallback.
+   - **c. Meaning of `session_id` on usage rows.** Decide once, record here and in ENH-3647/ENH-3549. Recommended: the **thread** id (`payload.id`), matching `sessions.py` (`payload.get("id")`), `SessionHandle` and `raw_events.session_id`, so ENH-3549's handle lookup agrees. Keep `forked_from_id` / root id as separate attributes if needed. Subagent threads differ from their parent under this rule; that is intended.
+   - **d. Duplicate notifications.** Consecutive events in one stream with identical `total_token_usage` **and** identical `last_token_usage` are a duplicate notification (39 of 44 same-total events in the corpus). Same total with a *different* `last_token_usage` (the other 5) are real requests with a non-advancing total and must be counted. Equality signal only: never difference or sum `total_token_usage`.
+   - **e. Legacy ordinals.** `_backfill_raw_events` uses `INSERT OR IGNORE` on `(source_path, line_no)`, so the new nullable `raw_events.ordinal` is never filled for existing rows, and archived files have moved. Either re-read sources once with an `UPDATE`, or keep legacy rows explicitly unresolved (no key, excluded from verified-deduplicated claims). Pick one and test it.
+   - **f. Per-stream state** is keyed by `(thread, stream discriminator)`, never `session_id` alone; rebuild's `ORDER BY id` must not interleave subagent or page streams into one duplicate comparison.
+   - **g. Uniqueness and conflicts.** Partial unique indexes for the two key shapes (`channel = 'rollout'` and the key columns non-NULL), created repair-first per the migration convention. A repeated key with conflicting content surfaces a diagnostic, not `INSERT OR IGNORE`. A wrong key forces drop-and-recreate plus a rebuild in every editable-install project, so land the key decision before the migration.
+   - **Not verified (advisor dissent):** whether all 15 forks are subagent spawns (14 confirmed); whether `raw_events.session_id` for Codex is `payload.id` in every path (inferred from `session_id_for`); whether 0.155 `exec --json` emits turn ids.
 2. **Reset namespace — decided (conservative).** `last_token_usage` is per request, so compaction does not affect per-request rows; only ENH-3543's span-sum consistency check is affected. Record `window_id` on the span if cheap, so ENH-3543 can detect a mid-span window change and downgrade to unresolved.
 3. **Ordering — closed.** No cumulative state is needed; `CodexUsageState` holds only the current span `turn_id` and the session ID.
 
@@ -164,6 +182,12 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 - [ ] Rebuild and interrupted/retried replay preserve live-only rows and never leave partially replaced rollout accounting. Source relocation/copy does not change canonical totals for verified identities.
 - [ ] Partial/malformed and unproven rollout observations remain `unknown`; only producer-verified, consistent complete rows become `measured`. Empty and wrong-type usage containers obey BUG-3531's contract without raising or fabricating zero.
 
+- [ ] The persisted key is unique on fork, resume, archive and paginated-thread fixtures: a forked rollout and its parent never collide, and two files sharing a `payload.id` are distinguished by the stream discriminator (fixtures added, including a captured fork).
+- [ ] With `token_usage_record` present, exactly one observation per `response_id` is written and `token_count` is not also counted; older rollouts fall back to `last_token_usage`. A fixture from a 0.154+ producer records its version.
+- [ ] Duplicate rule: identical `total_token_usage` + identical `last_token_usage` collapses to one observation; identical total with different `last_token_usage` keeps both (fixtures for each).
+- [ ] The legacy-ordinal policy (re-read once vs. explicitly unresolved) is recorded and tested; existing rows never silently acquire a fabricated key.
+- [ ] Rollout rows with a `session_id` change neither `quality_regressions` nor `agent_quality` cost-per-issue output (channel pins + regression tests).
+
 ## Scope Boundaries
 
 - **In scope**: Codex rollout normalization/ingestion, metadata-bearing replay, request/reset identity, persisted uniqueness, idempotent transactional replay.
@@ -173,7 +197,7 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 
 ## Implementation Steps
 
-1. Confirm readiness gate 1's proposed key (fork-session check) and record the final migration/index; gates 2–3 are closed.
+1. Capture a fork fixture and a 0.154+ fixture (`token_usage_record`, a re-emitted notification, a non-advancing total, a subagent, a paginated thread); confirm gate 1's revised rules and record the final migration/index; gates 2–3 are closed.
 2. Add metadata-bearing adapters for direct files and database replay (persist the rollout `ordinal` if needed), reading BUG-3542's attribution.
 3. Add persisted observation identity/uniqueness; implement transactional, idempotent rollout replay with relocation/copy/interruption regressions.
 4. Verify ingestion/rebuild against malformed, partial, mixed-host and legacy fixtures; update schemas/docs and run focused tests plus required project checks.
@@ -232,6 +256,8 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Prerequisite prose refreshed by the epic review: BUG-3542 is done; identity/readiness decisions below remain outstanding.
 - Three readiness gates (request key, reset namespace, ordering) were open at scoring time. 2026-09-28: gates 2 and 3 closed from fixtures; gate 1 has a proposed key and index pending a fork-session check. Re-score after confirming.
 - The session-identity column must be agreed with ENH-3543 before either migration lands (see Scope Boundary note).
+
+- 2026-09-29: the score above predates the revised gate 1 (fork/paginated-thread collisions, `token_usage_record`, duplicate rule). Re-score after the fixtures land.
 
 ### Outcome Risk Factors
 - Moderate-to-deep per-site complexity across ~8 source modules plus an append-only schema migration and transactional replay.
