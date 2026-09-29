@@ -44,7 +44,9 @@ in :func:`main_hooks`.
 Every dispatched call is wrapped in :func:`little_loops.session_store.hook_event_context`
 (ENH-2506), recording one ``hook_events`` row per fire (exit code, duration,
 stderr preview) gated on ``analytics.capture.hooks``. The wrap is best-effort
-and never alters the handler's exit code or exception propagation.
+and never alters the handler's exit code or exception propagation; :func:`main_hooks`
+also swallows a failure raised by the wrap itself once the handler has finished, so a
+dead history endpoint cannot drop the handler's stdout/feedback (BUG-3659).
 
 Public exports:
     LLHookEvent: host-agnostic hook event payload
@@ -238,17 +240,28 @@ def main_hooks() -> int:
     if intent != "usage_stop" and _hooks_telemetry_enabled(root):
         from little_loops.session_store import hook_event_context
 
-        with hook_event_context(
-            root / ".ll" / "history.db",
-            session_id=event.session_id,
-            event_name=_INTENT_EVENT_NAME.get(intent, intent),
-            matcher=str(payload.get("tool_name")) if payload.get("tool_name") else None,
-            script=f"little_loops.hooks.{intent}",
-        ) as completion:
-            result = handler(event)
-            completion.exit_code = result.exit_code
-            if result.feedback:
-                completion.stderr_preview = result.feedback
+        handled: LLHookResult | None = None
+        try:
+            with hook_event_context(
+                root / ".ll" / "history.db",
+                session_id=event.session_id,
+                event_name=_INTENT_EVENT_NAME.get(intent, intent),
+                matcher=str(payload.get("tool_name")) if payload.get("tool_name") else None,
+                script=f"little_loops.hooks.{intent}",
+            ) as completion:
+                handled = handler(event)
+                completion.exit_code = handled.exit_code
+                if handled.feedback:
+                    completion.stderr_preview = handled.feedback
+        except Exception:
+            # A handler exception (result never bound) propagates as before; a failure
+            # raised by the telemetry wrap after the handler finished must not drop the
+            # handler's stdout/feedback or change the exit code (BUG-3659).
+            if handled is None:
+                raise
+        if handled is None:  # pragma: no cover - unreachable: the wrap yielded or raised
+            return 0
+        result = handled
     else:
         result = handler(event)
     if result.stdout is not None:

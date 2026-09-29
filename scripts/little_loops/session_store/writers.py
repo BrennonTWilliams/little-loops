@@ -48,6 +48,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Errors a best-effort event writer degrades on: local SQLite failures plus every remote
+# history failure (``HranaUnavailable``, ``HistorySuppressed``, ...), which are
+# ``HistoryError`` subclasses and NOT ``sqlite3.Error`` (BUG-3659).
+_DEGRADE_ERRORS: tuple[type[Exception], ...] = (sqlite3.Error, HistoryError)
+
+
+def _log_degraded(message: str, name: str, exc: Exception) -> None:
+    """Log a skipped best-effort write; a deliberately suppressed remote write is debug-only."""
+    if isinstance(exc, HistorySuppressed):
+        # Already reported once when the unreachable window opened; no traceback per fire.
+        logger.debug("%s for %r (%s)", message, name, exc)
+    else:
+        logger.warning("%s for %r (%s: %s)", message, name, type(exc).__name__, exc)
+
+
 def _connect_telemetry(path: Path | str | RemoteTarget) -> sqlite3.Connection:
     """``schema.connect`` for a best-effort event write: under a remote backend it runs with
     the telemetry latency budget (FEAT-3535); for local SQLite it is exactly ``connect``."""
@@ -699,19 +714,27 @@ def skill_event_context(
         effective_path: Path | RemoteTarget = Path(db_path)
         gate_open = False
     else:
-        effective_path = resolve_history_store(db_path)
-        if config is not None:
-            from little_loops.config.features import (
-                AnalyticsCaptureConfig,
-                feature_enabled_for,
-            )
+        effective_path = Path(db_path)
+        try:
+            effective_path = resolve_history_store(db_path)
+            if config is not None:
+                from little_loops.config.features import (
+                    AnalyticsCaptureConfig,
+                    feature_enabled_for,
+                )
 
-            analytics_cfg = config.get("analytics", {})
-            if analytics_cfg.get("enabled") is False:
-                gate_open = False
-            else:
-                capture = AnalyticsCaptureConfig.from_dict(analytics_cfg.get("capture", {}))
-                gate_open = feature_enabled_for({"skills": capture.skills}, "skills", skill_name)
+                analytics_cfg = config.get("analytics", {})
+                if analytics_cfg.get("enabled") is False:
+                    gate_open = False
+                else:
+                    capture = AnalyticsCaptureConfig.from_dict(analytics_cfg.get("capture", {}))
+                    gate_open = feature_enabled_for(
+                        {"skills": capture.skills}, "skills", skill_name
+                    )
+        except Exception as exc:
+            # Resolution/config failures must never stop the skill from running (BUG-3659).
+            _log_degraded("skill_event_context: setup failed", skill_name, exc)
+            gate_open = False
     ts = _now()
     if gate_open:
         try:
@@ -730,13 +753,11 @@ def skill_event_context(
                 ts=ts,
             )
             conn.commit()
-        except sqlite3.Error:
-            logger.warning("skill_event_context: insert failed for %r", skill_name, exc_info=True)
+        except _DEGRADE_ERRORS as exc:
+            _log_degraded("skill_event_context: insert failed", skill_name, exc)
             if conn is not None:
-                try:
+                with suppress(*_DEGRADE_ERRORS):
                     conn.close()
-                except sqlite3.Error:
-                    pass
             conn = None
             row_id = None
     start = time.time()
@@ -763,12 +784,11 @@ def skill_event_context(
                     (exit_code, 1 if success else 0, duration_ms, row_id),
                 )
                 conn.commit()
-            except sqlite3.Error:
-                logger.warning(
-                    "skill_event_context: update failed for %r", skill_name, exc_info=True
-                )
+            except _DEGRADE_ERRORS as exc:
+                _log_degraded("skill_event_context: update failed", skill_name, exc)
             finally:
-                conn.close()
+                with suppress(*_DEGRADE_ERRORS):
+                    conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -804,8 +824,8 @@ def record_hook_event(
     effective_path = resolve_history_store(db_path)
     try:
         conn = _connect_telemetry(effective_path)
-    except sqlite3.Error:
-        logger.warning("record_hook_event: connect failed for %r", event_name, exc_info=True)
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("record_hook_event: connect failed", event_name, exc)
         return
     try:
         conn.execute(
@@ -833,10 +853,11 @@ def record_hook_event(
             ts=ts,
         )
         conn.commit()
-    except sqlite3.Error:
-        logger.warning("record_hook_event: insert failed for %r", event_name, exc_info=True)
+    except _DEGRADE_ERRORS as exc:
+        _log_degraded("record_hook_event: insert failed", event_name, exc)
     finally:
-        conn.close()
+        with suppress(*_DEGRADE_ERRORS):
+            conn.close()
 
 
 @dataclass
@@ -890,17 +911,22 @@ def hook_event_context(
         raise
     finally:
         duration_ms = int((time.monotonic() - start) * 1000)
-        record_hook_event(
-            db_path,
-            ts=ts,
-            session_id=session_id,
-            event_name=event_name,
-            matcher=matcher,
-            script=script,
-            exit_code=completion.exit_code,
-            duration_ms=duration_ms,
-            stderr_preview=completion.stderr_preview,
-        )
+        try:
+            record_hook_event(
+                db_path,
+                ts=ts,
+                session_id=session_id,
+                event_name=event_name,
+                matcher=matcher,
+                script=script,
+                exit_code=completion.exit_code,
+                duration_ms=duration_ms,
+                stderr_preview=completion.stderr_preview,
+            )
+        except Exception as exc:
+            # Telemetry must never replace a propagating handler exception or fail a
+            # clean fire (e.g. resolution errors ahead of record_hook_event's own guards).
+            _log_degraded("hook_event_context: record failed", event_name, exc)
 
 
 _COMMIT_MSG_ISSUE_RE = re.compile(

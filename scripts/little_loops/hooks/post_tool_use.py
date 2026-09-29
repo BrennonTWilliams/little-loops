@@ -9,8 +9,9 @@ op (tool name), and optional issue ID extracted from the path.
 Guarded by the ``analytics.enabled`` config flag — when absent or false, the
 handler is a no-op so projects that do not opt in pay no SQLite cost on the
 hot tool-call path. SQLite failures (locked store, missing path, schema drift)
-degrade silently: the ``__init__.main_hooks`` dispatcher has no try/except, so
-any exception here would surface to the host as a hook failure.
+degrade silently: the ``__init__.main_hooks`` dispatcher does not guard handler
+exceptions (only the telemetry wrap around them), so any exception here would
+surface to the host as a hook failure.
 """
 
 from __future__ import annotations

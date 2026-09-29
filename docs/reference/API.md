@@ -9988,7 +9988,7 @@ Call sites raise/catch `HistoryError` subclasses instead of raw `sqlite3.*`
 exceptions; `translate_sqlite_errors()` wraps a call site's `execute()`/
 `commit()` block and re-raises the matching subclass so a best-effort writer
 that used to catch `sqlite3.Error` catches `HistoryError` instead, with
-identical degrade behavior (log and continue, never raise). `open_history()`
+identical degrade behavior (log and continue, never raise); the shared tuple `_DEGRADE_ERRORS = (sqlite3.Error, HistoryError)` in `session_store/writers.py` is what `record_hook_event()` and `skill_event_context()` catch. `open_history()`
 and `connect_readonly()` still return a plain `sqlite3.Connection` — Phase A
 translates errors narrowly around driver calls rather than through a
 translating connection wrapper type. `check_same_thread=False` is for a
@@ -10199,7 +10199,7 @@ def skill_event_context(
 ) -> Generator[SkillEventCompletion, None, None]
 ```
 
-Skill-host analogue of `cli_event_context()` (ENH-2460): inserts a `skill_events` row on enter and updates `exit_code`, `success`, and `duration_ms` on exit. Yields a mutable `SkillEventCompletion` handle — hosts that observe a concrete process exit code (e.g. `ll-action invoke`) set `completion.exit_code` before the block exits; otherwise a clean exit records `exit_code=0, success=1` and a raise records `exit_code=1, success=0`. Best-effort per the EPIC-1707 contract: a missing/locked database never blocks the wrapped skill body. Same capture suppression as `cli_event_context()` (ENH-3449): `analytics.enabled` present-and-false or a `skills` glob exclusion when `config` is provided, and the `LL_ANALYTICS_CAPTURE=0` kill switch skips db resolution entirely (covers `ll-action`, the sole production caller; hooks-layer `skill_events` via `record_skill_event` is not covered and stays `analytics.enabled`-gated).
+Skill-host analogue of `cli_event_context()` (ENH-2460): inserts a `skill_events` row on enter and updates `exit_code`, `success`, and `duration_ms` on exit. Yields a mutable `SkillEventCompletion` handle — hosts that observe a concrete process exit code (e.g. `ll-action invoke`) set `completion.exit_code` before the block exits; otherwise a clean exit records `exit_code=0, success=1` and a raise records `exit_code=1, success=0`. Best-effort per the EPIC-1707 contract: a missing/locked database or an unreachable remote history endpoint never blocks the wrapped skill body. Same capture suppression as `cli_event_context()` (ENH-3449): `analytics.enabled` present-and-false or a `skills` glob exclusion when `config` is provided, and the `LL_ANALYTICS_CAPTURE=0` kill switch skips db resolution entirely (covers `ll-action`, the sole production caller; hooks-layer `skill_events` via `record_skill_event` is not covered and stays `analytics.enabled`-gated).
 
 ### hook_event_context
 
@@ -10215,7 +10215,7 @@ def hook_event_context(
 ) -> Generator[HookEventCompletion, None, None]
 ```
 
-Hook-fire analogue of `skill_event_context()` (ENH-2506): measures elapsed time with `time.monotonic()` and writes one `hook_events` row on exit via `record_hook_event()` — `exit_code`, `duration_ms`, `stderr_preview`. Yields a mutable `HookEventCompletion` handle; a clean exit records `exit_code=0`, a raise records `exit_code=1` (and re-raises — this wrap never alters the wrapped hook's exit code or exception propagation), and a caller that observes the paired handler's own `LLHookResult.exit_code` (e.g. `main_hooks()`) sets `completion.exit_code` explicitly before the block exits. Best-effort per the EPIC-1707 contract. `main_hooks()` (`hooks/__init__.py`) wraps every Python-dispatched intent with this single context manager around the `handler(event)` call, gated on `analytics.enabled` + `analytics.capture.hooks`; `Stop`/`SessionEnd` (bash-only, never routed through `main_hooks()`) are instead covered by the `hooks/scripts/record-hook-event.sh` shim, which calls `ll-session record-hook-event` directly.
+Hook-fire analogue of `skill_event_context()` (ENH-2506): measures elapsed time with `time.monotonic()` and writes one `hook_events` row on exit via `record_hook_event()` — `exit_code`, `duration_ms`, `stderr_preview`. Yields a mutable `HookEventCompletion` handle; a clean exit records `exit_code=0`, a raise records `exit_code=1` (and re-raises — this wrap never alters the wrapped hook's exit code or exception propagation), and a caller that observes the paired handler's own `LLHookResult.exit_code` (e.g. `main_hooks()`) sets `completion.exit_code` explicitly before the block exits. Best-effort per the EPIC-1707 contract, including an unreachable remote history endpoint (a failure recording the row never replaces the handler's exception). `main_hooks()` (`hooks/__init__.py`) also swallows a failure raised by the wrap itself once the handler has finished, so the handler's stdout, feedback and exit code are always delivered. `main_hooks()` wraps every Python-dispatched intent with this single context manager around the `handler(event)` call, gated on `analytics.enabled` + `analytics.capture.hooks`; `Stop`/`SessionEnd` (bash-only, never routed through `main_hooks()`) are instead covered by the `hooks/scripts/record-hook-event.sh` shim, which calls `ll-session record-hook-event` directly.
 
 ### record_hook_event
 
@@ -10236,7 +10236,7 @@ def record_hook_event(
 ) -> None
 ```
 
-Write one `hook_events` row and index it in `search_index` with `kind="hook_event"` (ENH-2506). `stderr_preview` is truncated to 512 bytes. Best-effort: a missing/locked database logs and returns rather than raising. Live-write-only — no `_backfill_hook_events` exists, since the Claude Code host does not emit hook execution results into the transcript JSONL.
+Write one `hook_events` row and index it in `search_index` with `kind="hook_event"` (ENH-2506). `stderr_preview` is truncated to 512 bytes. Best-effort: a missing/locked database, or an unreachable/suppressed remote history endpoint, logs and returns rather than raising (`HistorySuppressed` at debug, other errors as one warning). Live-write-only — no `_backfill_hook_events` exists, since the Claude Code host does not emit hook execution results into the transcript JSONL.
 
 ### record_harness_event
 

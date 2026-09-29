@@ -3,10 +3,11 @@ id: BUG-3659
 type: BUG
 title: Hook dispatch and ll-action crash under a dead remote history endpoint
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T06:51:55Z'
+completed_at: '2026-09-29T15:57:28Z'
 verify_verdict: VALID
 confidence_score: 100
 outcome_confidence: 86
@@ -182,12 +183,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Fixed 2026-09-29. Added `_DEGRADE_ERRORS`/`_log_degraded` in `session_store/writers.py`; `record_hook_event` and `skill_event_context` (setup, enter, exit-update, close) now degrade on remote `HistoryError`s (debug for `HistorySuppressed`, one warning otherwise). `hook_event_context` guards its `record_hook_event` call so it cannot replace a handler exception, and `main_hooks` swallows a wrap failure once the handler has finished. Tests: `test_remote_hooks.py::TestDeadEndpointDegrades`. Full suite: 27539 passed.
+
 ## Status
 
 **Open** | Created: 2026-09-29 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T15:57:28 - `0aeb51ea-248a-4c27-a531-ab2676055a68.jsonl`
+- `/ll:ready-issue` - 2026-09-29T15:48:58 - `db4cb08b-d09f-47f5-b858-0d644403de90.jsonl`
 - `/ll:confidence-check` - 2026-09-29T15:46:03 - `b9f63681-22db-44ce-ad41-11a9e55eecc2.jsonl`
 - `/ll:verify-issues` - 2026-09-29T15:44:48 - `940ad7ce-416b-4a9d-93ee-b729c7bab54f.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-29T15:43:04 - `b286ef2e-43a0-42ba-b50e-dd67b7f3b73e.jsonl`
