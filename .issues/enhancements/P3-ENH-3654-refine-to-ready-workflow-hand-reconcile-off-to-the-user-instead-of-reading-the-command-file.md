@@ -4,7 +4,7 @@ type: ENH
 title: 'refine-to-ready workflow: hand reconcile off to the user instead of reading
   the command file'
 priority: P3
-status: open
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T04:19:37Z'

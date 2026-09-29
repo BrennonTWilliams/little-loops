@@ -39,11 +39,34 @@ Change the allowlist keys from line numbers to symbol anchors resolved via `ast`
 ### Tests
 - The same two tests; add one that shifts a line and confirms the gate still passes.
 
+## Scope Boundaries
+
+- **In scope**: re-keying `_ALLOWLIST` in `TestPriorityRegexCompletenessAllowlist` from line numbers to symbol anchors; adapting the two existing tests; adding one line-shift regression test.
+- **Out of scope**: changing which raw priority regexes are allowlisted or their justification text; converting any allowlisted regex to `resolve_priority`; the detection pattern `_PATTERN`; other line-number-pinned allowlists elsewhere in the test suite.
+
+## Program Design
+
+### Types
+
+- `_ALLOWLIST: dict[str, dict[str, str]]` — relative path -> `{"<symbol>::<matched pattern text>": justification}`
+
+### Signatures
+
+- `_enclosing_symbol(tree: ast.AST, lineno: int) -> str` — nearest enclosing `def`/`class` name, or the module-level assignment target, else `"<module>"`
+- `_scan_priority_regex_hits(src_root: Path) -> dict[str, set[str]]` — relative path -> set of `"<symbol>::<pattern>"` anchors
+
+### Call Path
+
+`TestPriorityRegexCompletenessAllowlist.test_no_unallowlisted_raw_priority_regex` -> `_scan_priority_regex_hits` -> `_enclosing_symbol`
+
+`TestPriorityRegexCompletenessAllowlist.test_allowlist_entries_still_exist` -> `_scan_priority_regex_hits` -> `_enclosing_symbol`
+
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add `_enclosing_symbol` and `_scan_priority_regex_hits` helpers (via `ast`) that resolve each `_PATTERN` match to a `"<symbol>::<pattern>"` anchor; comment-only lines fall back to the enclosing symbol or `"<module>"`.
+2. Re-key every `_ALLOWLIST` entry to its anchor, keeping the justification strings, and point both existing tests at the shared scan helper.
+3. Add a regression test that inserts lines above an allowlisted regex in a temp copy of `session_store/writers.py` and confirms the gate still passes, plus checks that a new un-allowlisted regex fails and a removed one reports a stale entry.
+4. Run `python -m pytest scripts/tests/test_issue_parser.py -k PriorityRegexCompleteness` and confirm all pass.
 
 ## Impact
 
@@ -67,4 +90,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-29T04:50:00 - `d770577e-1f76-4a53-b5c3-a8661dec6288.jsonl`
 - `/ll:capture-issue` - 2026-09-29T04:19:25 - `4d45d755-73ff-4de3-8bd1-bb8e866143f2.jsonl`
