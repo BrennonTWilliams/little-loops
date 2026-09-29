@@ -768,6 +768,31 @@ def _backfill_sessions(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cu
     return count
 
 
+_REMOTE_INSERT_CHUNK = 200
+_REMOTE_RAW_INSERT = (
+    "INSERT OR IGNORE INTO raw_events"
+    "(ts, session_id, host, host_basis, source_path, line_no, event_type, raw_line, parsed_json)"
+    " SELECT ?, ?, ?, 'handle', ?, ?, ?, ?, ?"
+    " WHERE NOT EXISTS (SELECT 1 FROM raw_events WHERE session_id IS ? AND line_no = ?)"
+)
+
+
+def _watermark_key(db: Path | str) -> str:
+    """The ``meta`` key holding the ingestion watermark for the store *db* resolves to.
+
+    SQLite keeps the single global ``last_raw_event_ts``. A shared remote store keeps one key
+    per machine: a global key would let one machine's progress silently skip another
+    machine's older, not-yet-ingested transcripts.
+    """
+    from little_loops.session_store.db import resolve_history_target
+    from little_loops.session_store.libsql import machine_id
+    from little_loops.session_store.targets import RemoteTarget
+
+    if isinstance(resolve_history_target(db), RemoteTarget):
+        return f"last_raw_event_ts:{machine_id()}"
+    return "last_raw_event_ts"
+
+
 def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle]) -> int:
     """Parse *handles* via ``iter_events`` and INSERT OR IGNORE one row per event.
 
@@ -794,12 +819,44 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
     are both the re-serialized ``event.payload`` (D6) — no longer verbatim
     for per-line hosts, but JSON-equal to the parser's own output.
     """
+    remote = not hasattr(conn, "create_function")
     count = 0
+    pending: list[tuple[Any, ...]] = []
+
+    def _flush() -> int:
+        # Remote (FEAT-3535): one atomic batch per chunk instead of a round trip per event,
+        # and dedup on (session_id, line_no) so a copied session file at another path is not
+        # ingested twice (the (source_path, line_no) unique index cannot catch it).
+        if not pending:
+            return 0
+        added = conn.executemany(_REMOTE_RAW_INSERT, pending).rowcount
+        pending.clear()
+        return int(added)
+
     for handle in handles:
         source_path = str(handle.path)
         for event in iter_events(handle):
             serialized = json.dumps(event.payload)
             session_id = event.payload.get("sessionId") or handle.session_id
+            packed = _pack_payload(serialized)
+            if remote:
+                pending.append(
+                    (
+                        event.timestamp,
+                        session_id,
+                        handle.host,
+                        source_path,
+                        event.line_no,
+                        event.type or "unknown",
+                        packed,
+                        packed,
+                        session_id,
+                        event.line_no,
+                    )
+                )
+                if len(pending) >= _REMOTE_INSERT_CHUNK:
+                    count += _flush()
+                continue
             cur = conn.execute(
                 "INSERT OR IGNORE INTO raw_events"
                 "(ts, session_id, host, host_basis, source_path, line_no, event_type,"
@@ -812,11 +869,13 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
                     source_path,
                     event.line_no,
                     event.type or "unknown",
-                    _pack_payload(serialized),
-                    _pack_payload(serialized),
+                    packed,
+                    packed,
                 ),
             )
             count += cur.rowcount
+    if remote:
+        count += _flush()
     return count
 
 
@@ -856,9 +915,9 @@ def backfill_raw_events(
         )
         count = _backfill_raw_events(conn, filtered)
         conn.execute(
-            "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
+            "INSERT INTO meta(key, value) VALUES(?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (_now(),),
+            (_watermark_key(db), _now()),
         )
         conn.commit()
     finally:
@@ -1188,7 +1247,9 @@ def backfill_incremental(
     if since_ts is None:
         conn = _pkg.connect(db)
         try:
-            row = conn.execute("SELECT value FROM meta WHERE key = 'last_raw_event_ts'").fetchone()
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = ?", (_watermark_key(db),)
+            ).fetchone()
         finally:
             conn.close()
         raw = row[0] if (row and row[0]) else None

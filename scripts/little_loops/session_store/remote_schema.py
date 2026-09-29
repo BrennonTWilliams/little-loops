@@ -219,13 +219,18 @@ def clear_verification_cache() -> None:
         _VERIFIED.clear()
 
 
-def check_access(client: HranaClient, cfg: BackendConfig, *, write: bool) -> RemoteState:
+def check_access(
+    client: HranaClient, cfg: BackendConfig, *, write: bool, persist: bool = False
+) -> RemoteState:
     """Apply the open-time policy for one statement (state is read once per process).
 
     * ``project_id`` is required, and a store stamped for another project is refused for
       reads and writes alike.
     * Writes need a store at exactly the installed version: behind means "run the migrate
       command", ahead means "upgrade little-loops". Strict reads proceed either way.
+
+    ``persist=True`` (telemetry paths only) also consults and refreshes the file-backed
+    verification cache, so a one-process-per-event hook skips the round trip.
     """
     if not cfg.project_id:
         raise HistoryUnsupported(
@@ -234,10 +239,20 @@ def check_access(client: HranaClient, cfg: BackendConfig, *, write: bool) -> Rem
     key = (client.base_url, cfg.project_id)
     with _LOCK:
         state = _VERIFIED.get(key)
+    if state is None and persist:
+        from little_loops.session_store import remote_telemetry
+
+        # A file-cached state stays out of the in-process cache: explicit reads must not
+        # inherit a TTL-stale telemetry entry.
+        state = remote_telemetry.load_verified(client.base_url, cfg.project_id)
     if state is None:
         state = read_state(client)
         with _LOCK:
             _VERIFIED[key] = state
+        if persist:
+            from little_loops.session_store import remote_telemetry
+
+            remote_telemetry.store_verified(client.base_url, cfg.project_id, state)
     _check_project(state, cfg.project_id)
     if write:
         total = len(_migrations())

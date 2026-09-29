@@ -61,6 +61,11 @@ class HistoryUnavailable(HistoryError):
     """The store could not be opened (missing, locked, or otherwise unreachable)."""
 
 
+class HistorySuppressed(HistoryUnavailable):
+    """A best-effort write was skipped on purpose (unreachable marker, or a store that needs
+    ``ll-session migrate``). Already reported once; callers log it at debug level only."""
+
+
 class HistoryIntegrityError(HistoryError):
     """A write violated a constraint (unique/foreign-key/check)."""
 
@@ -364,17 +369,24 @@ def connect_readonly(target: Path | str | HistoryTarget | None = None) -> sqlite
 
 
 def open_history(
-    target: Path | str | HistoryTarget | None = None, *, check_same_thread: bool = True
+    target: Path | str | HistoryTarget | None = None,
+    *,
+    check_same_thread: bool = True,
+    telemetry: bool = False,
 ) -> sqlite3.Connection:
     """Open a writable connection, ensuring the schema first.
 
     An explicit *target* opens that file; a default-shaped *target* resolves
     via the existing ``resolve_history_db()`` precedence. ``check_same_thread``
     is forwarded to :meth:`Backend.connect` (ENH-3526: ``SQLiteTransport``'s
-    long-lived cross-thread connection).
+    long-lived cross-thread connection). ``telemetry=True`` (FEAT-3535) marks a best-effort
+    caller: a remote backend then applies its telemetry latency budget; SQLite ignores it.
     """
     resolved = _resolve_once(target)
-    return resolve_backend(resolved.provider).connect(resolved, check_same_thread=check_same_thread)
+    backend = resolve_backend(resolved.provider)
+    if telemetry and hasattr(backend, "connect_telemetry"):
+        return backend.connect_telemetry(resolved)  # type: ignore[no-any-return]
+    return backend.connect(resolved, check_same_thread=check_same_thread)
 
 
 def open_history_readonly(

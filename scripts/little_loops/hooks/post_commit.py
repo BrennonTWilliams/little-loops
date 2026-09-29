@@ -85,7 +85,7 @@ def record_head_commit(db_path: Path | str, repo_root: Path | None = None) -> bo
 def main() -> int:
     """Entry point for ``python -m little_loops.hooks.post_commit``. Always exits 0."""
     try:
-        from little_loops.session_store import resolve_history_db
+        from little_loops.session_store import DEFAULT_DB_PATH
 
         cwd = Path.cwd()
         # Only record inside little-loops projects: require an existing .ll/
@@ -94,7 +94,7 @@ def main() -> int:
 
         if not os.environ.get("LL_HISTORY_DB") and not (cwd / ".ll").is_dir():
             return 0
-        record_head_commit(resolve_history_db(), cwd)
+        record_head_commit(DEFAULT_DB_PATH, cwd)
     except Exception:
         # Never block or fail a commit.
         return 0

@@ -1680,7 +1680,14 @@ def connect(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> sqlite3.Conne
     if isinstance(resolved, RemoteTarget):
         from little_loops.session_store.backend import resolve_backend
 
-        return resolve_backend(resolved.provider).connect(resolved)  # type: ignore[return-value]
+        backend = resolve_backend(resolved.provider)
+        from little_loops.session_store import remote_telemetry
+
+        # Event writers open inside ``telemetry_scope()``; a remote backend then gives
+        # them the telemetry latency budget (FEAT-3535). Explicit callers get the full bound.
+        if remote_telemetry.in_telemetry_scope() and hasattr(backend, "connect_telemetry"):
+            return backend.connect_telemetry(resolved)  # type: ignore[no-any-return]
+        return backend.connect(resolved)  # type: ignore[return-value]
     db_path = ensure_db(resolved)
     conn = sqlite3.connect(str(db_path))
     _configure_connection(conn)

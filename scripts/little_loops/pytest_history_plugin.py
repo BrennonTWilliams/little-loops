@@ -123,11 +123,11 @@ class LLHistoryPlugin:
     # -- internals ----------------------------------------------------------
 
     def _record(self) -> None:
-        from little_loops.session_store import record_test_run_event, resolve_history_db
+        from little_loops.session_store import DEFAULT_DB_PATH, record_test_run_event
 
         duration_s = time.monotonic() - self._start_monotonic
         record_test_run_event(
-            resolve_history_db(),
+            DEFAULT_DB_PATH,
             ts=self.started_at,
             ended_at=_now_iso(),
             total=self.passed + self.failed + self.errored + self.skipped,

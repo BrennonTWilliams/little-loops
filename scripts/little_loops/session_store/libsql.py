@@ -19,20 +19,57 @@ Scope and deliberate differences from local SQLite:
 
 from __future__ import annotations
 
+import logging
+import os
+import socket
+import uuid
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
-from little_loops.session_store import remote_schema
+from little_loops.session_store import remote_schema, remote_telemetry
 from little_loops.session_store.backend import (
+    HistoryIntegrityError,
+    HistoryOperationError,
+    HistorySuppressed,
     HistoryTarget,
+    HistoryUnavailable,
     HistoryUnsupported,
     RemoteTarget,
 )
-from little_loops.session_store.hrana import HranaClient, HranaResult
+from little_loops.session_store.hrana import HranaClient, HranaResult, HranaStreamLost
 from little_loops.session_store.targets import BackendConfig
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_TIMEOUT_S = 10.0
+
+
+def machine_id() -> str:
+    """A stable random identifier for this machine, used only for the ingestion watermark.
+
+    ``LL_MACHINE_ID`` overrides; otherwise it lives in ``~/.ll/machine-id`` (machine-local,
+    never in a repository). Never raises: when the file cannot be read or created it falls
+    back to the hostname, which is stable enough to keep a watermark per machine.
+    """
+    override = os.environ.get("LL_MACHINE_ID", "").strip()
+    if override:
+        return override
+    path = Path.home() / ".ll" / "machine-id"
+    try:
+        existing = path.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+    except OSError:
+        pass
+    new = uuid.uuid4().hex
+    try:
+        os.makedirs(path.parent, exist_ok=True)
+        path.write_text(new + "\n", encoding="utf-8")
+    except OSError:
+        return socket.gethostname()
+    return new
+
 
 _READ_ONLY_PREFIXES = ("select", "with", "explain", "values", "pragma table_")
 
@@ -118,11 +155,17 @@ class LibsqlConnection:
     in_transaction = False
 
     def __init__(
-        self, client: HranaClient, *, read_only: bool = False, config: BackendConfig | None = None
+        self,
+        client: HranaClient,
+        *,
+        read_only: bool = False,
+        config: BackendConfig | None = None,
+        telemetry: bool = False,
     ) -> None:
         self._client = client
         self._read_only = read_only
         self._config = config
+        self._telemetry = telemetry
         # Legacy callers assign ``conn.row_factory = sqlite3.Row``; rows are always
         # name-and-index addressable here, so the assignment is accepted and ignored.
         self.row_factory: Any = None
@@ -138,16 +181,44 @@ class LibsqlConnection:
                 "this connection is read-only; refusing a write before any network call",
                 operation="write",
             )
-        if self._config is not None:
-            remote_schema.check_access(self._client, self._config, write=is_write)
+        if self._config is None:
+            return
+        endpoint = self._client.base_url
+        if self._telemetry and remote_telemetry.unreachable_active(endpoint):
+            raise HistorySuppressed("remote history store marked unreachable; skipping telemetry")
+        try:
+            self._run(
+                lambda: remote_schema.check_access(
+                    self._client, self._config, write=is_write, persist=self._telemetry
+                )
+            )
+        except HistoryUnsupported as exc:
+            if not self._telemetry:
+                raise
+            remote_telemetry.warn_once(f"unsupported:{exc.operation}:{exc}", f"history: {exc}")
+            raise HistorySuppressed(str(exc)) from exc
+
+    def _run(self, call: Any, *args: Any) -> Any:
+        """Run one client call, keeping the telemetry-path state files honest."""
+        try:
+            result = call(*args)
+        except HistoryUnavailable as exc:
+            if self._telemetry and not isinstance(exc, (HistorySuppressed, HranaStreamLost)):
+                remote_telemetry.mark_unreachable(self._client.base_url)
+            raise
+        except (HistoryOperationError, HistoryIntegrityError):
+            if self._telemetry:
+                remote_telemetry.invalidate_verified(self._client.base_url)
+            raise
+        return result
 
     def execute(self, sql: str, parameters: Sequence[Any] = ()) -> LibsqlCursor:
         self._guard(sql)
-        return LibsqlCursor(self._client.execute(sql, parameters))
+        return LibsqlCursor(self._run(self._client.execute, sql, parameters))
 
     def executemany(self, sql: str, seq_of_parameters: Iterable[Sequence[Any]]) -> LibsqlCursor:
         self._guard(sql)
-        return LibsqlCursor(rowcount=self._client.execute_many(sql, seq_of_parameters))
+        return LibsqlCursor(rowcount=self._run(self._client.execute_many, sql, seq_of_parameters))
 
     def commit(self) -> None:
         return None
@@ -189,6 +260,15 @@ class LibsqlBackend:
         """
         remote = _remote(target, "connect")
         return LibsqlConnection(self._client(remote), config=remote.config)
+
+    def connect_telemetry(self, target: Path | HistoryTarget) -> LibsqlConnection:
+        """A best-effort writer: bounded by ``telemetry_timeout_ms``, skipping on the
+        unreachable marker, and using the file-backed verification cache."""
+        remote = _remote(target, "connect")
+        timeout = remote.config.telemetry_timeout_ms / 1000.0
+        return LibsqlConnection(
+            self._client(remote, timeout=timeout), config=remote.config, telemetry=True
+        )
 
     def connect_readonly(self, target: Path | HistoryTarget) -> LibsqlConnection:
         """Read-only connection: writes are refused client-side before any network call."""

@@ -27,6 +27,22 @@ if TYPE_CHECKING:
     from little_loops.parallel.git_lock import GitLock
 
 
+def export_history_db_env() -> None:
+    """Export ``LL_HISTORY_DB`` so descendants share this checkout's history store.
+
+    ``setdefault``: an explicit caller/test override always wins, and a nested worktree
+    inherits the outermost repo's DB. When the resolved target is a remote store there is
+    no path to export, so this exports nothing and does not raise: descendants resolve the
+    same ``history.backend`` config and reach the same store (FEAT-3535).
+    """
+    from little_loops.session_store.db import resolve_history_store
+    from little_loops.session_store.targets import RemoteTarget
+
+    store = resolve_history_store()
+    if not isinstance(store, RemoteTarget):
+        os.environ.setdefault("LL_HISTORY_DB", str(store))
+
+
 def detect_default_branch(repo_path: Path, git_lock: GitLock | None = None) -> str:
     """Resolve the repository's default/integration branch (BUG-2323).
 
@@ -331,9 +347,7 @@ def setup_worktree(
     # instead of creating a throwaway <worktree>/.ll/history.db that teardown
     # deletes. setdefault: an explicit caller/test override always wins, and a
     # nested worktree inherits the outermost repo's DB rather than re-resolving.
-    from little_loops.session_store.db import resolve_history_db
-
-    os.environ.setdefault("LL_HISTORY_DB", str(resolve_history_db()))
+    export_history_db_env()
 
     if worktree_path.exists():
         cleanup_worktree(

@@ -32,7 +32,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import little_loops.session_store as _pkg
-from little_loops.session_store.backend import HistoryError, translate_sqlite_errors
+from little_loops.session_store import remote_telemetry
+from little_loops.session_store.backend import (
+    HistoryError,
+    HistorySuppressed,
+    translate_sqlite_errors,
+)
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_store
 from little_loops.session_store.schema import _LOOP_EVENT_TYPES
 from little_loops.session_store.targets import RemoteTarget
@@ -41,6 +46,14 @@ if TYPE_CHECKING:
     from little_loops.subprocess_utils import ObservedAtBasis, TokenProvenance, TokenScopeKind
 
 logger = logging.getLogger(__name__)
+
+
+def _connect_telemetry(path: Path | str | RemoteTarget) -> sqlite3.Connection:
+    """``schema.connect`` for a best-effort event write: under a remote backend it runs with
+    the telemetry latency budget (FEAT-3535); for local SQLite it is exactly ``connect``."""
+    with remote_telemetry.telemetry_scope():
+        return _pkg.connect(path)
+
 
 # NOTE: internal calls in this module go through ``_pkg.connect``/``_pkg.ensure_db``
 # (the package's re-exported names) rather than importing ``connect``/``ensure_db``
@@ -225,7 +238,7 @@ def write_file_event(
         capture = AnalyticsCaptureConfig.from_dict(config.get("analytics", {}).get("capture", {}))
         if not capture.file_events:
             return
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     ts = _now()
     try:
         conn.execute(
@@ -259,7 +272,7 @@ def record_correction(
         if not capture.corrections:
             return
     content = content[:512]
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     ts = _now()
     try:
         conn.execute(
@@ -293,7 +306,7 @@ def record_skill_event(
         if not feature_enabled_for({"skills": capture.skills}, "skills", skill_name):
             return
     args = args[:200]
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     ts = _now()
     try:
         conn.execute(
@@ -395,7 +408,7 @@ def record_issue_snapshot(
     fm_json = json.dumps({k: str(v) for k, v in fm.items() if v is not None}, sort_keys=True)
 
     issue_num = normalize_issue_id(issue_id)
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     ts = _now()
     try:
         cursor = conn.execute(
@@ -450,7 +463,7 @@ def record_issue_event(
     ``_warn_on_dedup_collision``.
     """
     issue_num = normalize_issue_id(issue_id)
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     ts = _now()
     try:
         cursor = conn.execute(
@@ -575,7 +588,7 @@ def cli_event_context(
                         {"cli_commands": capture.cli_commands}, "cli_commands", binary
                     )
         if gate_open:
-            conn = _pkg.connect(effective_path)
+            conn = _connect_telemetry(effective_path)
             cursor = conn.execute(
                 "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
                 (ts, binary, json.dumps(args[:50])),
@@ -583,7 +596,9 @@ def cli_event_context(
             row_id = cursor.lastrowid
             conn.commit()
     except Exception as exc:
-        logger.warning(
+        # A deliberately skipped remote write (unreachable marker, store needing migration)
+        # was already reported once; repeating it on every invocation is noise.
+        (logger.debug if isinstance(exc, HistorySuppressed) else logger.warning)(
             "cli_event_context: enter failed for %r (%s: %s)", binary, type(exc).__name__, exc
         )
         if conn is not None:
@@ -700,7 +715,7 @@ def skill_event_context(
     ts = _now()
     if gate_open:
         try:
-            conn = _pkg.connect(effective_path)
+            conn = _connect_telemetry(effective_path)
             cursor = conn.execute(
                 "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
                 (ts, session_id, skill_name, args),
@@ -788,7 +803,7 @@ def record_hook_event(
     ts = ts or _now()
     effective_path = resolve_history_store(db_path)
     try:
-        conn = _pkg.connect(effective_path)
+        conn = _connect_telemetry(effective_path)
     except sqlite3.Error:
         logger.warning("record_hook_event: connect failed for %r", event_name, exc_info=True)
         return
@@ -950,7 +965,7 @@ def record_commit_event(
     if issue_id is None:
         issue_id = _infer_issue_id(message, branch)
     files_json = json.dumps(list(files)) if files is not None else None
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     ts = ts or _now()
     try:
         cursor = conn.execute(
@@ -1075,7 +1090,7 @@ def record_test_run_event(
     ``analytics.capture.test_runs`` gate; it is accepted but not yet used.
     """
     names = list(failing_names) if failing_names else []
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         conn.execute(
             "INSERT INTO test_run_events("
@@ -1306,7 +1321,7 @@ def record_harness_event(
 
     ENH-3476 adds the nullable v52 ``channels_json`` kwarg, default ``None``.
     """
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         new_id = _insert_harness_event(
             conn,
@@ -1397,7 +1412,7 @@ def admit_retry(
     an UPDATE on ``harness_events`` is permitted, but ``harness_admissions``
     stays append-only.
     """
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     prior_isolation = conn.isolation_level
     conn.isolation_level = None
     try:
@@ -1460,7 +1475,7 @@ def record_attempt(
     """
     if attempt_kind == "infra_retry" and (retry_of is None or reason is None):
         raise ValueError("attempt_kind='infra_retry' requires both retry_of and reason")
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     prior_isolation = conn.isolation_level
     conn.isolation_level = None
     try:
@@ -1522,7 +1537,7 @@ def record_prompt_opt_event(
     separately.
     """
     ts = ts or _now()
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         conn.execute(
             "INSERT INTO prompt_opt_events("
@@ -1575,7 +1590,7 @@ def record_verdict_event(
     structurally — a mismatched pair fails the INSERT.
     """
     severity_json = json.dumps(severity_counts) if severity_counts is not None else None
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         conn.execute(
             "INSERT INTO verdict_events("
@@ -1638,7 +1653,7 @@ def record_review_event(
     """
     severity_json = json.dumps(severity_counts) if severity_counts is not None else None
     findings_json = json.dumps(findings_json_summary) if findings_json_summary is not None else None
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         conn.execute(
             "INSERT INTO review_events("
@@ -1752,7 +1767,7 @@ def record_orchestration_run(
     effective_started_at = started_at or (_now() if in_flight else None)
     index_ts = effective_ended_at or effective_started_at or _now()
     index_ref = f"{run_id}:{issue_id}"
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         cursor = conn.execute(
             "INSERT INTO orchestration_runs("
@@ -1824,7 +1839,7 @@ def record_prepatch_evidence(
     """
     if not issue_id:
         return False
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         conn.execute(
             "INSERT INTO prepatch_evidence(issue_id, run_id, state, evidence_json, created_at) "
@@ -1889,7 +1904,7 @@ def record_loop_run_summary(
 
         ll_version = _ll_version
     ts = ended_at or _now()
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         cursor = conn.execute(
             "INSERT OR IGNORE INTO loop_runs("
@@ -1971,7 +1986,7 @@ def record_usage_event(
         cache_creation_tokens,
         as_of=_event_date(observed_at) or _event_date(ts),
     )
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         conn.execute(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
@@ -2012,7 +2027,7 @@ def update_loop_run_diagnostics(db_path: Path | str, run_id: str, diagnostics_pa
     """
     if not run_id or not diagnostics_path:
         return False
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     try:
         cursor = conn.execute(
             "UPDATE loop_runs SET diagnostics_path = ? WHERE run_id = ?",
@@ -2071,7 +2086,7 @@ def record_learning_test_event(
     assertions_json = json.dumps(assertions)
     claims = " ".join(str(a.get("claim", "")) for a in assertions if isinstance(a, dict))
 
-    conn = _pkg.connect(db_path)
+    conn = _connect_telemetry(db_path)
     ts = _now()
     try:
         conn.execute(
@@ -2179,7 +2194,7 @@ def record_session_lifecycle_event(
     ts = ts or _now()
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
         conn.execute(
             "INSERT INTO session_lifecycle_events"
             "(ts, session_id, event, detail, head_sha, branch)"
@@ -2231,7 +2246,7 @@ def record_context_pressure_event(
     ts = ts or _now()
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
         conn.execute(
             "INSERT INTO context_pressure_events"
             "(ts, session_id, used_pct, used_tokens_est, threshold_crossed, crossed_level,"
@@ -2301,7 +2316,7 @@ def write_advisor_consult(
     ts = ts or _now()
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
         conn.execute(
             "INSERT INTO advisor_consults"
             "(ts, session_id, task_key, signal, advisor_host, advisor_model, main_model,"
@@ -2370,7 +2385,7 @@ def write_research_triage(
     ts = ts or _now()
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
         conn.executemany(
             "INSERT INTO research_triage_events"
             "(ts, session_id, issue_id, axis, covered, reason, refined_at, evidence)"
@@ -2411,7 +2426,7 @@ def write_credential_scope(
     ts = ts or _now()
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
         conn.execute(
             "INSERT INTO credential_scope_events"
             "(ts, run_id, state, scopes_json, var_names_json)"
@@ -2459,7 +2474,7 @@ def record_subagent_run_start(
     started_at = started_at or ts
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
         cursor = conn.execute(
             "INSERT OR IGNORE INTO subagent_runs("
             "ts, parent_session_id, agent_id, agent_type, started_at, status, "
@@ -2511,7 +2526,7 @@ def record_subagent_run_stop(
     ended_at = ended_at or _now()
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
         cursor = conn.execute(
             "UPDATE subagent_runs SET ended_at = ?, status = ?, "
             "agent_transcript_path = COALESCE(?, agent_transcript_path), "
@@ -2576,7 +2591,7 @@ def reconcile_stale_subagent_runs(
     """
     conn: sqlite3.Connection | None = None
     try:
-        conn = _pkg.connect(db_path)
+        conn = _connect_telemetry(db_path)
 
         # Short-circuit before touching tool_events at all when there is
         # nothing running (uses idx_subagent_status; Decision 1b).
@@ -2939,7 +2954,7 @@ class SQLiteTransport:
         self._lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
         try:
-            self._conn = _pkg.open_history(self._path, check_same_thread=False)
+            self._conn = _pkg.open_history(self._path, check_same_thread=False, telemetry=True)
         except HistoryError:
             logger.warning(
                 "SQLiteTransport: could not open %s; sink disabled", self._path, exc_info=True
