@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T05:29:43Z'
+verify_verdict: NON_VALID
+
 ---
 
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
@@ -182,6 +184,15 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - **Escape hatch**: `LL_HISTORY_DB` set, or an explicit non-default `--db`, bypasses the refusal and runs against the local file.
 - **Degrade notice**: one line on stderr, only under a remote target, never on stdout (stdout of `ll-history summary`, `ll-logs`, `ll-ctx-stats` is consumed by loops).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
+
+- **Signature correction (gap-analysis)**: the `generate_from_completed(project_root, config, ...)` signature above is stale — the current definition is `generate_from_completed(config: BRConfig) -> int` (`decisions.py:578`). It derives `project_root = Path(config.project_root)` internally and pre-resolves with `resolve_history_db(root=project_root)` (`:596`), which is the line that raises `HistoryBackendNotLocal` under a remote target.
+- **Degrade branch already exists**: `generate_from_completed` already imports `scan_completed_issues`, `scan_completed_issues_from_db` and `HistoryDbUnavailable` (`issue_history/parsing.py:339`, `:469`) and only takes the DB branch when `db_path.exists()`. The remote degrade is therefore a matter of keeping the pre-resolve from raising and routing to the existing scan branch — not adding a new scan path. The "replaces `scan_completed_issues_from_db`" wording in the Call Path describes the remote case only; the local branch must stay DB-first (`test_honors_ll_history_db_env_override`).
+- **Pre-resolve shapes differ per site** (relevant to which sites are "default-shaped"): `user_messages.py:1198` passes the *relative* `DEFAULT_DB_PATH`; `cli/logs.py:1721` passes nothing; `cli/logs.py:1965` passes an absolute `cwd_path / ".ll" / "history.db"`; `cli/ctx_stats.py:1074` passes `cwd / DEFAULT_DB_RELPATH` unless `--db` is given (an explicit `--db` already bypasses the pre-resolve); `mcp_server/tools.py:172` passes `project_root / DEFAULT_DB_PATH` with `root=project_root`; the eight `cli/history.py` sites (`:501`, `:551`, `:592`, `:628`, `:731`, `:755`, `:780`, `:797`) all pass an absolute `project_root / DEFAULT_DB_PATH`.
+- **Anchor drift**: `docs/reference/API.md` now carries the "SQLite-only prerequisite" phrase at `:9949` (BUG-3652 cites `:9946`); `docs/ARCHITECTURE.md:758` ("SQLite-only chokepoint") still resolves. `loops/lib/cli.yaml` `ll_history_summary` begins at `:59` with the `description` at `:60`–`:64`; the `:66` cited in Proposed Solution item 5 lands on the `action_type`/`action` lines of that fragment.
+
 ## Implementation Steps
 
 1. Add the shared reader reason to `_REMOTE_REFUSALS` and matching `_REJECTED` rows; implement the per-site verdicts from the table (refuse at subcommand entry, or degrade).
@@ -231,5 +242,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue:gap-analysis` - 2026-09-29T06:11:37 - `236872ac-1b8a-494a-8a4f-024f9ae7329e.jsonl`
 - `/ll:wire-issue` - 2026-09-29T06:08:54 - `6853b72a-3d36-49af-862a-88cc681f2623.jsonl`
 - `/ll:refine-issue` - 2026-09-29T06:01:38 - `fce6088f-c5fa-4a10-a502-c439e3fca2a1.jsonl`
