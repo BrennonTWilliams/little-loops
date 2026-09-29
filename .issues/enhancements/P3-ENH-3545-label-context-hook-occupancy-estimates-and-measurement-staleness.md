@@ -26,7 +26,7 @@ Label context-occupancy figures produced by the context hooks as `estimated`, an
 
 _Refreshed 2026-09-28 after BUG-3587 landed (b3b452e40)._
 
-- `hooks/scripts/context-monitor.sh` computes `estimated_tokens` as `transcript_baseline_tokens + TOKENS` (per-tool heuristic) when a transcript baseline exists, else `estimated_tokens + TOKENS`. The baseline is a measurement of the transcript at `last_baseline_mtime`; the sum is an estimate, but nothing labels it.
+- `hooks/scripts/context-monitor.sh` computes `NEW_TOKENS` as `TRANSCRIPT_BASELINE + TOKENS` (per-tool heuristic) when a transcript baseline exists, else `CURRENT_TOKENS + TOKENS`, and persists it as `estimated_tokens`. The baseline is a measurement of the transcript at `last_baseline_mtime`; the sum is an estimate, but nothing labels it.
 - BUG-3587 removed the `result_token_count` tier from `context-monitor.sh` and `context-handoff-sentinel.sh` and deleted the issue-manager on-usage writer closure; invocation consumption no longer enters the state file or guard decisions. The sentinel now uses `estimated_tokens` only.
 - State files written before BUG-3587 may still carry a stale `result_token_count` key; nothing reads it.
 - Nothing marks a baseline as stale after tool activity or compaction, and the state distinguishes neither baseline measurement time nor estimate update time (`last_baseline_mtime` is the transcript file's mtime, not an observation timestamp).

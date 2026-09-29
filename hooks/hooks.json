@@ -244,7 +244,7 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/adapters/claude-code/stop.sh",
-            "timeout": 190,
+            "timeout": 310,
             "statusMessage": "Consulting advisor on working diff..."
           }
         ]
