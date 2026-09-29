@@ -153,6 +153,7 @@
     "disable_background_tasks": false
   },
   "advisor": {
+    "host": "claude-code",
     "model": "claude-opus-5-5",
     "timeout_seconds": 600
   }
