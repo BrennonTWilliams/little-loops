@@ -10,6 +10,7 @@ captured_at: '2026-09-24T00:46:29Z'
 learning_tests_required:
 - hrana-http
 verify_verdict: DIRECTIVE_DRIFT
+reconcile_attempted: true
 ---
 
 # FEAT-3535: Remote libSQL history backend via stdlib Hrana-over-HTTP client
@@ -101,19 +102,65 @@ or CI runners have no shared history/analytics store.
 ## Integration Map
 
 ### Files to Modify
-- `little_loops/session_store/backend.py`: register `LibsqlBackend`; move to the
-  `HistoryTarget` target type.
+- `little_loops/session_store/backend.py`: register `LibsqlBackend` in `_BACKEND_MAP`; move
+  `Backend`/`open_history`/`open_history_readonly`/`connect_readonly` to the `HistoryTarget`
+  target type; source the provider from config inside `resolve_backend`/the entry points
+  (all currently call `resolve_backend()` with no argument and `BackendProvider` is
+  `Literal["sqlite"]`); add a capability string per unsupported operation.
 - New module for the Hrana HTTP client, beside `session_store/backend.py`.
-- The remaining Files to Modify, Dependent Files, Tests and Documentation lists are
-  inherited from FEAT-3524's Integration Map, which was verified 2026-09-22/23.
+- `little_loops/session_store/db.py`: `_resolve_db_path` precedence must carry the target
+  type (`LL_HISTORY_DB`, then `history.db_path`, then default).
+- `little_loops/hooks/__init__.py::main_hooks` and `hooks/post_tool_use.py`: both hard-code
+  `<root>/.ll/history.db` and bypass `resolve_history_db`, so they do not follow a
+  `_resolve_once` change alone. `hooks/session_start.py`, `hooks/post_commit.py` and
+  `pytest_history_plugin.py` read `LL_HISTORY_DB` independently and need the same
+  target-type handling.
+- `little_loops/session_store/schema.py`: remote migration path via atomic `batch`
+  (preserve re-read-under-lock semantics; `_configure_connection` pragmas and the
+  `_schema_manifest` structural comparison have no remote analogue yet).
+- `little_loops/config-schema.json` (`history` block, `additionalProperties: false`),
+  `config/features.py::HistoryConfig.from_dict`, `config/core.py`: declare `history.backend`.
+- `little_loops/cli/session.py::_build_parser`: add the `migrate` subparser (module
+  docstring and epilog too).
+- `little_loops/cli/doctor.py::_history_db_data`: remote probe branch (currently hard-codes
+  `Path.cwd() / DEFAULT_DB_PATH` and a SQLite-header check); never echo the auth token.
+- Remaining call sites that bypass the chokepoint (`writers.py` ~30 and `lifecycle.py` 12
+  `schema.connect` sites, `queries.py`, `workflow_sequence/io.py`, `compaction/result.py`,
+  `issue_history/parsing.py`, `cli/harness.py`, `cli/history_context.py`,
+  `fsm/continuity.py`) stay hard-sqlite unless moved; scope which are migrated per the
+  operation matrix (§7).
+
+### Dependent Files (Callers/Importers)
+- Chokepoint callers that must keep working unchanged for `sqlite`:
+  `session_store/writers.py::SQLiteTransport`, `session_store/lifecycle.py`
+  (`recompress`/`prune`/retirement run `VACUUM`), `history_reader/_base.py::_connect_readonly`
+  (~80 reader functions; also serves `issue_history/{agent_quality,collisions,rework}.py`),
+  `cli/history.py`, `cli/ctx_stats.py`, `cli/logs.py`, `issue_history/workspace_quality.py`,
+  `issue_history/evolution.py`, `cli/doctor.py`, `cli/doctor_trim.py`.
+- A `HistoryError`-only backend is not caught by the ~127 `except sqlite3.(Error|OperationalError)`
+  sites (e.g. `writers.py::record_hook_event`, `cli/doctor.py::_history_db_data`); review each
+  site's best-effort role.
 
 ### Tests
-- New learning test `hrana-http` (prerequisite).
-- Remote integration tests selected by `LL_TEST_LIBSQL_URL` + `LL_TEST_LIBSQL_AUTH_TOKEN`:
-  they skip only when that configuration is absent, and a failure against a configured
-  endpoint fails the test.
-- Unit tests for the Hrana client against a local stub HTTP server: timeouts, error-code
-  mapping, batch encoding.
+- New learning test `hrana-http` (proven 2026-09-28).
+- Remote integration tests marked `pytest.mark.integration` and selected by
+  `LL_TEST_LIBSQL_URL` + `LL_TEST_LIBSQL_AUTH_TOKEN`: they skip only when that configuration
+  is absent, and a failure against a configured endpoint fails the test.
+- Unit tests for the Hrana client against a real stdlib stub HTTP server bound to
+  `127.0.0.1` port 0 in a daemon thread (`test_flux_image_generator.py::flux_stub` pattern;
+  `shutdown()` then `server_close()`): timeouts, error-code mapping, batch encoding. The
+  blackhole-connect timeout needs a real socket; mocked `urlopen` cannot prove it.
+- Keep green: `test_session_store_backend.py` (`TestResolveBackend`,
+  `TestProtocolConformance`, `TestCapabilityGate`), `test_history_store_chokepoint_gate.py`,
+  `test_session_store_writers.py`, `test_session_store_lifecycle.py`, `test_config_schema.py`,
+  `test_config.py::TestHistoryConfig`, `test_wiring_reference_docs.py`,
+  `test_wiring_init_and_configure.py`.
+
+### Documentation
+- `docs/reference/CONFIGURATION.md` (`history.backend`), `docs/reference/CLI.md`
+  (`ll-session migrate`), `skills/configure/areas.md` `## Area: history` (decide knowingly
+  whether `backend` follows the fuller or thinner `workspace_manifest_path` precedent);
+  skill/README edits trip the mirror gates (`ll-adapt --host <gemini|kimi-code|qwen> --apply`).
 
 ### Codebase Research Findings
 
@@ -169,7 +216,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ## Acceptance Criteria
 
 - [ ] With `history.backend` unset or `provider: sqlite`, the existing history test suite passes unchanged.
-- [ ] `resolve_backend("libsql")` returns a `LibsqlBackend`; history reads and writes round-trip against a `sqld` endpoint.
+- [ ] `resolve_backend("libsql")` returns a `LibsqlBackend`; with `history.backend.provider: libsql`, the chokepoint entry points (`open_history`, `open_history_readonly`, `connect_readonly`) and the hook paths (`main_hooks`, `post_tool_use`) select it without callers passing a provider, and history reads and writes round-trip against a `sqld` endpoint.
 - [ ] Every network wait uses a socket-level timeout; a connect to a blackholed host fails within the configured limit and raises a `HistoryError` subclass.
 - [ ] Hrana error codes map to `HistoryError` classes without message matching, per the Error Code Mapping table under Program Design: `SQLITE_CONSTRAINT` to `HistoryIntegrityError`; `STREAM_EXPIRED` (sqld) and `SQLITE_BUSY` (Turso idle-transaction rollback) to one retryable stream-lost class; HTTP 400/401/403 and `BLOCKED` to `HistoryUnavailable`; `SQL_PARSE_ERROR` and `SQLITE_UNKNOWN` to `HistoryOperationError`.
 - [ ] Unsupported operations (FTS5, maintenance, `ATTACH`, `create_function`, snapshot export) raise a capability-limitation error naming the operation.
@@ -233,13 +280,23 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ## Implementation Steps
 
 1. ~~Produce `.ll/learning-tests/hrana-http.md`~~ Done 2026-09-28 (proven; see Error Code Mapping under Program Design).
-2. Land FEAT-3524 §1a's SQLite-only `HistoryTarget` refactor, with no behavior change.
-3. Add the Hrana HTTP client and its unit tests.
-4. Add `history.backend` config and `LibsqlBackend`.
+2. Land FEAT-3524 §1a's SQLite-only `HistoryTarget` refactor, with no behavior change. It
+   covers the three chokepoint entry points, `_resolve_once`, `main_hooks` and
+   `post_tool_use` (both hard-code `<root>/.ll/history.db`), and the independent
+   `LL_HISTORY_DB` readers (`session_start`, `post_commit`, `pytest_history_plugin`).
+3. Add the Hrana HTTP client and its unit tests (real stdlib stub server on `127.0.0.1`).
+   The client parses both the per-result `error` and the top-level HTTP-error body, and maps
+   codes per the Error Code Mapping table.
+4. Add `history.backend` config (schema, `HistoryConfig.from_dict`, `config/core.py`),
+   source the provider from config inside the chokepoint, define a capability string per
+   unsupported operation, and add `LibsqlBackend`.
 <!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
-5. Remote migrations via atomic `batch`, plus `ll-session migrate`.
-6. Operation matrix, per-machine ingestion, telemetry budget, and the doctor diagnostic.
-7. Docs and the `/ll:configure` history-area mirrors.
+5. Remote migrations via atomic `batch` (no interactive transaction), plus `ll-session migrate`.
+6. Operation matrix, per-machine ingestion, telemetry budget, and the doctor diagnostic
+   (remote probe branch in `_history_db_data`; the auth token is never echoed by doctor,
+   `HistoryConfig.to_dict`, or logs).
+7. Docs and the `/ll:configure` history-area mirrors (run `ll-adapt` mirror gates after
+   skill/README edits).
 
 ## Impact
 
@@ -273,6 +330,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-29T02:31:02 - `efa5da7e-d183-4626-be25-08b53ab75362.jsonl`
 - `/ll:verify-issues` - 2026-09-29T02:24:24 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:refine-issue` - 2026-09-29T01:36:58 - `53ec1cbf-a55d-477a-91f3-8081b28d4c2d.jsonl`
 - `/ll:refine-issue` - 2026-09-24T00:55:16 - `851cba84-d70b-4baa-8370-ffdce9646511.jsonl`
