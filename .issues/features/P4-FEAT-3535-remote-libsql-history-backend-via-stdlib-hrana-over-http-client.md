@@ -11,12 +11,14 @@ learning_tests_required:
 - hrana-http
 verify_verdict: VALID
 reconcile_attempted: true
-confidence_score: 90
-outcome_confidence: 53
+confidence_score: 70
+outcome_confidence: 71
 score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
-score_change_surface: 0
+score_change_surface: 18
+blocked_by:
+- ENH-3650
 ---
 
 # FEAT-3535: Remote libSQL history backend via stdlib Hrana-over-HTTP client
@@ -187,19 +189,16 @@ Postgres, MySQL or a general SQL dialect layer; other Turso engines or drivers; 
 ## Integration Map
 
 ### Files to Modify
-- `little_loops/session_store/backend.py`: register `LibsqlBackend` in `_BACKEND_MAP`; move
-  `Backend`/`open_history`/`open_history_readonly`/`connect_readonly` to the `HistoryTarget`
-  target type; source the provider from config inside `resolve_backend`/the entry points
-  (all currently call `resolve_backend()` with no argument and `BackendProvider` is
-  `Literal["sqlite"]`); add a capability string per unsupported operation.
+- `little_loops/session_store/backend.py`: register `LibsqlBackend` in `_BACKEND_MAP`; source
+  the provider from config inside `resolve_backend`/the entry points (`BackendProvider` is
+  `Literal["sqlite"]` today); add the `wal` and `snapshot_export` capability strings and
+  the `HistoryUnsupported.operation` attribute. The `HistoryTarget` retype of `Backend`,
+  `_resolve_once` and the entry points is delivered first by ENH-3650.
 - New module for the Hrana HTTP client, beside `session_store/backend.py`.
-- `little_loops/session_store/db.py`: `_resolve_db_path` precedence must carry the target
-  type (`LL_HISTORY_DB`, then `history.db_path`, then default).
-- `little_loops/hooks/__init__.py::main_hooks` and `hooks/post_tool_use.py`: both hard-code
-  `<root>/.ll/history.db` and bypass `resolve_history_db`, so they do not follow a
-  `_resolve_once` change alone. `hooks/session_start.py`, `hooks/post_commit.py` and
-  `pytest_history_plugin.py` read `LL_HISTORY_DB` independently and need the same
-  target-type handling.
+- Hook paths and the environment-override readers (`main_hooks`, `post_tool_use`,
+  `session_start`, `post_commit`, `pytest_history_plugin`) and `db.py::_resolve_db_path`
+  move onto the target seam in ENH-3650; this issue only adds the `RemoteTarget` branch
+  (relay export, ingestion worker target).
 - `little_loops/session_store/schema.py`: remote migration path via atomic `batch`
   (preserve re-read-under-lock semantics; `_configure_connection` pragmas and the
   `_schema_manifest` structural comparison have no remote analogue yet).
@@ -212,8 +211,9 @@ Postgres, MySQL or a general SQL dialect layer; other Turso engines or drivers; 
 - Remaining call sites that bypass the chokepoint (`writers.py` ~30 and `lifecycle.py` 12
   `schema.connect` sites, `queries.py`, `workflow_sequence/io.py`, `compaction/result.py`,
   `issue_history/parsing.py`, `cli/harness.py`, `cli/history_context.py`,
-  `fsm/continuity.py`) stay hard-sqlite unless moved; scope which are migrated per the
-  operation matrix (§7).
+  `fsm/continuity.py`) reach the target-aware `schema.connect` seam from ENH-3650, so under
+  a `RemoteTarget` each is fail-closed per the operation matrix (Proposed Design section 5)
+  rather than migrated site by site.
 
 ### Dependent Files (Callers/Importers)
 - Chokepoint callers that must keep working unchanged for `sqlite`:
@@ -371,10 +371,9 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 ## Implementation Steps
 
 1. ~~Produce `.ll/learning-tests/hrana-http.md`~~ Done 2026-09-28 (proven; see Error Code Mapping under Program Design).
-2. Land FEAT-3524 §1a's SQLite-only `HistoryTarget` refactor, with no behavior change. It
-   covers the three chokepoint entry points, `_resolve_once`, `main_hooks` and
-   `post_tool_use` (both hard-code `<root>/.ll/history.db`), and the independent
-   `LL_HISTORY_DB` readers (`session_start`, `post_commit`, `pytest_history_plugin`).
+2. ~~Land the SQLite-only `HistoryTarget` refactor~~ Split out as ENH-3650 (blocks this issue): it
+   covers the chokepoint entry points, `_resolve_once`, the target-aware `schema.connect` seam,
+   `main_hooks`, `post_tool_use` and the independent `LL_HISTORY_DB` readers.
 3. Add the Hrana HTTP client and its unit tests (real stdlib stub server on `127.0.0.1`).
    The client parses both the per-result `error` and the top-level HTTP-error body, and maps
    codes per the Error Code Mapping table.
@@ -423,21 +422,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-28 (re-score after the design restatement)_
+_Added by `/ll:confidence-check` on 2026-09-28 (re-score after splitting out ENH-3650)_
 
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 53/100 → LOW
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override: ENH-3650 is open; the aggregate is 90 once it is done)
+**Outcome Confidence**: 71/100 → MODERATE
 
 ### Concerns
 - The `hrana-http` record is `proven` but carries 2 contradicted claims (expired-stream code on Turso; `SQLITE_BUSY` under write contention). The criteria already absorb both, but the rubric keeps a -5 modifier on the duplicate-implementation score while any claim is contradicted.
 - Two conditional items are settled only as tests: the copied-session double-ingest check, and dedup keys for derived tables that have none.
 
+### Gaps to Address
+- Blocked by ENH-3650 (the SQLite-only `HistoryTarget` refactor). Implement it first, then re-run `/ll:confidence-check FEAT-3535`.
+
 ### Outcome Risk Factors
-- Broad enumeration across 12+ files in Files to Modify, plus roughly 50 history call sites that reach the low-level connect seam.
-- Moderate per-site complexity: the chokepoint retype moves `Backend`, `open_history`, `open_history_readonly` and `connect_readonly` from `Path`/`sqlite3.Connection` to `HistoryTarget`/`HistoryConnection`.
-- Wide blast radius: 15+ dependents of the chokepoint entry points must keep working unchanged for `sqlite`. Splitting the SQLite-only `HistoryTarget` refactor (Step 2) into its own blocking issue would cut the change surface of this issue.
+- Broad enumeration across roughly 10 files in Files to Modify (new client module, backend registration, config schema and wiring, migrate subcommand, doctor branch, ingestion worker).
+- Moderate per-site complexity: a new protocol client with baton, batch and error-code handling, plus a remote migration path.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T02:44:43 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:39:42 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:35:02 - `73686e01-7e81-40c2-bf94-43634394b513.jsonl`
 - `/ll:verify-issues` - 2026-09-29T02:33:55 - `82825f0f-e592-4590-85b9-5a65863337be.jsonl`
