@@ -11,6 +11,12 @@ reconcile_attempted: true
 verify_verdict: NON_VALID
 relates_to:
 - BUG-3652
+confidence_score: 75
+outcome_confidence: 43
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
@@ -332,21 +338,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 _Added by `/ll:confidence-check` on 2026-09-29_
 
 **Readiness Score**: 75/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 47/100 → LOW
+**Outcome Confidence**: 43/100 → LOW
+
+_Re-scored 2026-09-29 after the refine/wire/gap-analysis passes; all deterministic gates (Program Design, dependencies, learning tests, claim/parity/structure/decision gaps) are clean, so the score is held down by unreconciled design, not structure._
 
 ### Concerns
-- `## Expected Behavior` table is stale against the Codebase Research Findings: it defaults ~11 sites (`cli/harness.py` ×5, `cli/history.py` `rework`/`quality`/`audit-issue-collisions`/`sessions`/`root`, MCP `history_search`) to "refuse", but research shows they are remote-capable if the `resolve_history_db()` pre-resolve is dropped. `ll-issues format-check` flags this as `unmarked_superseded_directive`. Reconcile the table (serve / refuse / degrade) before coding, and verify per site against `HranaStub`.
+- `## Expected Behavior` (and its "Default verdict: refuse" lead-in) still contradicts `## Implementation Steps`/`## Integration Map`: it sends ~11 sites (`cli/harness.py` ×5, `cli/history.py` `rework`/`quality`/`audit-issue-collisions`/`sessions`/`root`, MCP `history_search`) to "refuse", while the research says they can *serve* remote reads once the `resolve_history_db()` pre-resolve is dropped. Reconcile the table into serve / refuse / degrade before coding and verify each serve site against `HranaStub`.
+- Decision Rules still say `refuse_on_remote(None, ...)`; the correction (pass `args.db` where a `--db` flag exists, i.e. `ll-ctx-stats`) lives only in a research bullet. Fold it into the rule so the escape hatch is consistent.
+- Catch class (`HistoryUnsupported` vs `HistoryError`), boundary prefix, and degrade-notice channel (`print(stderr)` vs `logger.warning`) are recorded as an implementer's call; pick one convention up front so four CLIs do not diverge.
 - `verify_verdict: NON_VALID` sits in frontmatter; re-run `/ll:verify-issues` after the table is reconciled.
-- BUG-3652 ("land first") is still `open` and is not in `blocked_by`; confirm the shared `_REMOTE_REFUSALS` / `remote` fixture work does not collide with it.
+- BUG-3652 ("land first") is still `open` and is not in `blocked_by`; both edit `_REMOTE_REFUSALS` and want the `remote` fixture hoisted, so whichever lands second must reconcile.
 - `refuse_on_remote` has no `root=`, so `refuse_on_remote(None, "history_search")` reads cwd config, not the MCP `project_root` config. Decide: cwd-only semantics, or resolve against `project_root` first.
 
 ### Outcome Risk Factors
-- Broad enumeration across ~20 code sites (8 `cli/history.py`, 5 `cli/harness.py`, `logs`, `ctx_stats`, `decisions`, `user_messages`, MCP, CT-0 skill block) plus ~12 doc files and 3 loop/skill consumers. Sites do not receive a uniform substitution, so this is not a Pattern B mechanical fanout.
-- Open design decisions remain: the serve-vs-refuse split per site, `loops/lib/cli.yaml` fallback vs documented exit 1 (item 5), `sft-corpus` `stage` (`--reader db` swallowed exit 1 yields an empty corpus that routes to `enrich` as success), and the MCP `root=` handling.
-- Every verdict test is new and there is no shared `remote` fixture yet; existing `test_cli_harness.py` tests call `cmd_*` directly, so the boundary catch is not covered by them.
+- Broad enumeration across ~20 code sites (8 `cli/history.py`, 5 `cli/harness.py`, `logs`, `ctx_stats`, `decisions`, `user_messages`, MCP, CT-0 skill block) plus ~12 doc files and 3 loop/skill consumers. Sites do not receive a uniform substitution, so this is not a Pattern B mechanical fanout; per-site depth is moderate (boundary catch inside `cli_event_context`, serve sites gaining a network dependency).
+- Open design decisions remain: the serve-vs-refuse split per site, `loops/lib/cli.yaml` fallback vs documented exit 1 (item 5), `sft-corpus` `stage` (`--reader db` swallowed exit 1 yields an empty corpus that routes to `enrich` as success), the MCP `root=` handling, and whether `ll-session search --fts` is in scope.
+- Every verdict test is new and there is no shared `remote` fixture yet (copied in five files); existing `test_cli_harness.py` tests call `cmd_*` directly, so the boundary catch is not covered by them.
 - The new refusal exit 1 can trip loop gates (`ll_history_summary`, `sft-corpus`, `ll-logs-telemetry-digest` `run_stats` greps `"No history.db found"`).
+- Serve sites cannot distinguish an unreachable remote from an empty store (`_connect_readonly` maps `HistoryError` to `None`); the acceptance criteria do not cover it.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T17:10:54 - `bd506705-1a67-435c-95c6-e7a6cced7523.jsonl`
 - `/ll:verify-issues` - 2026-09-29T16:04:55 - `d2886606-137b-4448-b1f0-22d8e796de6d.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-29T16:03:21 - `b2df855d-9a45-4710-92a2-763b4f73c99e.jsonl`
 - `/ll:verify-issues` - 2026-09-29T15:59:32 - `dec2cde6-1a0c-4895-8a02-4d69f3488107.jsonl`
