@@ -123,7 +123,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_edit_batch_hook.py` `TestNoStrayDirCreation::test_claude_project_dir_anchors_state_there` — shape for the missing root-consistency test (config under `CLAUDE_PROJECT_DIR`/`project_root/.ll`, cwd in a subdir) and for a disabled-with-no-project case asserting no `.ll/` is created (cf. `test_no_project_and_no_claude_project_dir_is_noop`) [Agent 3 finding]
 - `scripts/tests/test_edit_batch_hook.py` `TestRobustness::test_state_write_failure_passes_through` — monkeypatches `edit_batch_nudge.atomic_write_json`; keep `_load_settings` from reusing that name, and keep `_now`, `_STATE_FILENAME`, `_load_state`, `_NUDGE_THRESHOLD`, `_BATCH_WINDOW_SECONDS` importable (line 19–22, 236, 249) [Agent 3 finding]
 - `scripts/tests/test_hook_intents.py` `test_dispatch_edit_batch_nudge_happy_path` (:406) / `..._codex_host` (:442) — run `python -m little_loops.hooks edit_batch_nudge` with `cwd=tmp_path` and no config, so they should pass unchanged; the Codex variant sets `LL_HOOK_HOST=codex` so `resolve_config_path` probes `.codex/` first, finds nothing, falls through. Optional new subprocess case: `.ll/ll-config.json` with `enabled: false` → empty stdout/stderr, no state file [Agent 3 finding]
-- **Test isolation — scrub `CLAUDE_PROJECT_DIR`**: both `test_hook_intents.py` subprocess cases inherit `os.environ` (the Codex one via `env={**os.environ, ...}`, the other implicitly), and `scripts/tests/conftest.py` does not scrub `CLAUDE_PROJECT_DIR`. When pytest runs inside a Claude Code session the handler already writes state to the developer's real project `.ll/`; after this change it would also *read* that project's `ll-config.json` / `ll.local.md`, so a local `enabled: false` would fail the happy-path assertions. Pass an env with `CLAUDE_PROJECT_DIR` removed to both existing cases and to any new subprocess case
+- **Test isolation — scrub `CLAUDE_PROJECT_DIR`**: all four `test_hook_intents.py` edit-batch subprocess cases (`test_dispatch_edit_batch_nudge_happy_path` :406, `..._happy_path_codex_host` :442, `..._single_edit_silent` :466, `..._passthrough` :479) inherit `os.environ` (the Codex one via `env={**os.environ, ...}`, the rest implicitly), and `scripts/tests/conftest.py` does not scrub `CLAUDE_PROJECT_DIR`. When pytest runs inside a Claude Code session the handler already writes state to the developer's real project `.ll/`; after this change it would also *read* that project's `ll-config.json` / `ll.local.md`, so a local `enabled: false` would fail the happy-path assertions and a local `threshold: 1` would make `single_edit_silent` nudge. Route all four cases (and any new subprocess case) through one shared env helper that removes `CLAUDE_PROJECT_DIR` (and merges per-test extras such as `LL_HOOK_HOST`)
 - `scripts/tests/test_sweep_stale_refs.py` `_write_config` (:37–42) and `scripts/tests/test_pre_compact.py` `_write_rubric_config` (:293) — sibling config-writing helpers; pattern reference only [Agent 3 finding]
 - `scripts/tests/test_config.py` `test_to_dict_never_modelled_sections_empty_when_absent` (:1372–1382) and `test_config_schema.py::TestSchemaValueParity` — assert `hooks` passes through `to_dict()` raw; will not check the new defaults and stay green unless a `hooks` dataclass is introduced (then register it in `_DATACLASS_SECTION_MAP`, :1387) [Agent 2/3 finding]
 - `scripts/tests/test_docs_audience_gate.py::test_user_docs_are_end_user_facing[CONFIGURATION.md]` / `[BUILTIN_HOOKS_GUIDE.md]` — fails on `scripts/tests/…` paths or "this repo" wording in the new doc text [Agent 3 finding]
@@ -135,7 +135,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md` — see Files to Modify above (:68, :122–133, :355–384, :525–543, :569–570)
 - `docs/reference/API.md:10662` — documents only the `drift_check` throttle key and has no `edit_batch_nudge` section; no change needed [Agent 1/2 finding]
-- `site/reference/CONFIGURATION/index.html`, `site/search/search_index.json` — tracked built copies of `CONFIGURATION.md`; regenerate via the docs build rather than hand-editing [Agent 1 finding]
+- `site/reference/CONFIGURATION/index.html`, `site/search/search_index.json` — tracked built copies of `CONFIGURATION.md`; left untouched by this issue (rebuilt by the docs release flow, never hand-edited) [Agent 1 finding]
 
 ### Configuration
 - `scripts/little_loops/config-schema.json`
@@ -153,7 +153,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 - **Constraint — polarity**: `feature_enabled(config_data, dot_path)` (`config/features.py`) returns `False` for a missing key, so it cannot back a default-`true` toggle; an absent `enabled` must mean enabled.
 - **Constraint — current invalid-value behavior**: with any config-sourced value, a non-numeric `threshold`/`window_seconds` raises `TypeError` inside `handle`'s outer `except Exception` → exit 0 with no state write, i.e. indistinguishable from disabled; `bool` is an `int` subclass (`True` behaves as threshold 1); `threshold <= 1` already nudges on the first unbatched edit; `window_seconds <= 0` means only `MultiEdit` resets the run (timing never batches, barring clock skew).
 - **Related, reconciled**: ENH-2471 (`status: done`) anticipated a top-level `edit_batch_nudge.enabled`, default **off**, mirroring `learning_tests.enabled` (its Configuration section and a `/ll:configure edit-batch-nudge` area mapping). Nothing landed in `config-schema.json`; this issue's placement (`hooks.edit_batch_nudge.*`) and polarity (default **on**, preserving shipped behavior) supersede it. Verified no consumer of ENH-2471's key: `grep -rn "edit.batch" skills/ commands/ scripts/little_loops/init/` returns nothing, so no dangling references need updating.
-- **Test shape evidence**: `scripts/tests/test_edit_batch_hook.py` `clock` fixture chdirs into `tmp_path`, unsets `CLAUDE_PROJECT_DIR`, and creates `.ll/` (without a resolvable project every assertion sees a silent exit 0); no test there writes config yet. Config-driven precedent: `scripts/tests/test_drift_check.py::test_custom_throttle_days_from_config` (:235); opt-out precedent asserting the state file is absent: `TestOptOut::test_env_var_disable_skips_entirely`; `ll.local.md` precedent: `scripts/tests/test_hook_session_start.py` `_write_local` (:117) / `test_local_overrides_deep_merge` (:121). `docs/reference/API.md` had uncommitted working-tree changes when this was researched.
+- **Test shape evidence**: `scripts/tests/test_edit_batch_hook.py` `clock` fixture chdirs into `tmp_path`, unsets `CLAUDE_PROJECT_DIR`, and creates `.ll/` (without a resolvable project every assertion sees a silent exit 0); no test there writes config yet. Config-driven precedent: `scripts/tests/test_drift_check.py::test_custom_throttle_days_from_config` (:235); opt-out precedent asserting the state file is absent: `TestOptOut::test_env_var_disable_skips_entirely`; `ll.local.md` precedent: `scripts/tests/test_hook_session_start.py` `_write_local` (:117) / `test_local_overrides_deep_merge` (:121).
 
 ## Program Design
 
@@ -177,32 +177,26 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 ### Decision Rules
 - `enabled`: only an explicit `false` disables; absent, non-bool, or unreadable config → enabled. A truthiness helper that treats absent as `False` (`feature_enabled`) would silently disable the hook on every unconfigured project
-- `threshold`: must be a true `int` (reject `bool`), `>= 1`; anything else → `_NUDGE_THRESHOLD`
+- `threshold`: must be an `int` (reject `bool`) or an integral `float` (`3.0` — `float.is_integer()`, coerced to `int`), `>= 1`; anything else → `_NUDGE_THRESHOLD`. Accepting integral floats keeps the handler in agreement with the schema: JSON Schema's `integer` type accepts `3.0`, so rejecting it would pass validation yet silently fall back (most likely from YAML in `ll.local.md`)
 - `window_seconds`: must be an `int` or `float` (reject `bool`; JSON `3` parses to `int` and is accepted), finite (`math.isfinite` — reject YAML `.inf`/`.nan` and Python-JSON `NaN`/`Infinity`, which would silently disable nudging via the tunable rather than via `enabled`), and `>= 0`; anything else → `_BATCH_WINDOW_SECONDS`; `0` is valid and means timing never batches (only `MultiEdit` resets the run)
 - Per-key fallback: an invalid value falls back for that key only; valid sibling keys still apply
 - Escape hatch: a missing, unreadable, or malformed config file or `ll.local.md` never raises and never disables — it yields the defaults, keeping the hook's never-raise contract
+- Shape guards: `_load_settings` checks `isinstance(..., dict)` at every level (merged root, `hooks`, `hooks.edit_batch_nudge`) and treats any non-dict as absent. Without them a shape such as `hooks: []` or `edit_batch_nudge: true` would raise inside `handle`'s outer `except Exception` → exit 0 with no state write, i.e. silently indistinguishable from disabled
 - Ordering: config root and state root are the same `Path` returned by `_resolve_project_root` (`CLAUDE_PROJECT_DIR` first, else upward from payload `cwd`); `_load_settings` and the `enabled` gate run before `_resolve_state_path`, so a disabled hook never `mkdir`s. When no project resolves the hook remains a silent no-op that creates no `.ll/`
 
 ## Implementation Steps
 
-1. Add the `hooks.edit_batch_nudge` schema entry with defaults and bounds.
-2. Extract `_resolve_project_root()` and refactor `_resolve_state_path` to take the resolved root; add `_load_settings(root)`, honoring `.ll/ll.local.md` overrides and falling back to the constants on any failure.
-3. Wire `enabled`, `threshold`, and `window_seconds` into `handle()`; return before state resolution when disabled.
-4. Add tests to `scripts/tests/test_edit_batch_hook.py` and update `docs/reference/CONFIGURATION.md`.
-5. Verify: `python -m pytest scripts/tests/test_edit_batch_hook.py`, then the full suite, `ruff check scripts/`, and `python -m mypy scripts/little_loops/`.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `docs/guides/BUILTIN_HOOKS_GUIDE.md` — summary row (:68), `### Edit-batch nudge` prose (:355–384; replace "fixed" window/threshold wording with the config keys), `## Safe by Default` (:130–131), `## Turning Hooks Off` JSON example (:529–535), and `## Configuration Reference` rows (:569–570); end-user wording only (`test_docs_audience_gate.py`)
-- Update `docs/reference/CONFIGURATION.md` `### hooks` JSON example (:1523–1541) in addition to the key-table rows
-- Add `test_edit_batch_nudge_in_schema` to `scripts/tests/test_config_schema.py` (model: `test_hooks_pre_compact_rubric_in_schema`, :1104)
-- Add a root-consistency test (config under `CLAUDE_PROJECT_DIR`, cwd in a subdir) and a disabled-without-project test (no `.ll/` created) to `scripts/tests/test_edit_batch_hook.py`, following `TestNoStrayDirCreation`
-- Scrub `CLAUDE_PROJECT_DIR` from the subprocess env in `scripts/tests/test_hook_intents.py` `test_dispatch_edit_batch_nudge_happy_path` / `..._codex_host` (and any new subprocess case) so the developer's real project config cannot leak into them
-- Keep `_load_settings` from shadowing `atomic_write_json` (monkeypatched by `TestRobustness::test_state_write_failure_passes_through`) and preserve `_NUDGE_THRESHOLD`, `_BATCH_WINDOW_SECONDS`, `_STATE_FILENAME`, `_load_state`, `_now` as importable names
-- Do not add a `hooks` dataclass; if one is introduced anyway, register it in `_DATACLASS_SECTION_MAP` (`test_config_schema.py:1387`)
-- Rebuild `site/` (tracked HTML copy of `CONFIGURATION.md`) only if the docs build is part of the normal flow; no skill/command edits, so no `ll-adapt` mirror regeneration and no README copy sync are needed
+1. **Schema**: add the `hooks.edit_batch_nudge` entry with defaults and bounds to `config-schema.json`; add `test_edit_batch_nudge_in_schema` to `scripts/tests/test_config_schema.py` (model: `test_hooks_pre_compact_rubric_in_schema`, :1104). Do not add a `hooks` dataclass; if one is introduced anyway, register it in `_DATACLASS_SECTION_MAP` (`test_config_schema.py:1387`).
+2. **Root refactor**: extract `_resolve_project_root()` and refactor `_resolve_state_path` to take the resolved root.
+3. **Settings loader**: add `_load_settings(root)` — merge `.ll/ll.local.md` over the base config, apply the shape guards and per-key rules from Decision Rules (including integral-float `threshold`), fall back to the constants on any failure. Do not shadow `atomic_write_json` (monkeypatched by `TestRobustness::test_state_write_failure_passes_through`); keep `_NUDGE_THRESHOLD`, `_BATCH_WINDOW_SECONDS`, `_STATE_FILENAME`, `_load_state`, `_now` importable.
+4. **Handler**: wire `enabled`, `threshold`, and `window_seconds` into `handle()`; return before `_resolve_state_path` when disabled.
+5. **Handler tests** in `scripts/tests/test_edit_batch_hook.py`: disabled (no state file), custom threshold (incl. `3.0`), custom window, per-key invalid fallback, malformed shapes (`hooks: []`, `edit_batch_nudge: true`, `edit_batch_nudge: "off"` → defaults, enabled), `ll.local.md` override both directions, root consistency (config under `CLAUDE_PROJECT_DIR`, cwd in a subdir), and disabled-without-`.ll/` (no `.ll/` created), following `TestNoStrayDirCreation`.
+6. **Subprocess test isolation**: in `scripts/tests/test_hook_intents.py`, route all four edit-batch cases (:406, :442, :466, :479) through one shared env helper that removes `CLAUDE_PROJECT_DIR`.
+7. **Docs** (end-user wording only — `test_docs_audience_gate.py`):
+   - `docs/reference/CONFIGURATION.md` — `hooks` key-table rows (~:1497) and the `### hooks` JSON example (:1523–1541)
+   - `docs/guides/BUILTIN_HOOKS_GUIDE.md` — summary row (:68), `### Edit-batch nudge` prose (:355–384; replace "fixed" window/threshold wording with the config keys), `## Safe by Default` (:130–131), `## Turning Hooks Off` JSON example (:529–535), `## Configuration Reference` rows (:569–570)
+   - Do not hand-edit or regenerate `site/`; it is rebuilt by the docs release flow, not per-issue. No skill/command edits, so no `ll-adapt` mirror regeneration and no README copy sync.
+8. **Verify**: `python -m pytest scripts/tests/test_edit_batch_hook.py scripts/tests/test_hook_intents.py scripts/tests/test_config_schema.py scripts/tests/test_docs_audience_gate.py`, then the full suite, `ruff check scripts/`, and `python -m mypy scripts/little_loops/`.
 
 ## Acceptance Criteria
 
@@ -210,11 +204,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `enabled: false` in `.ll/ll-config.json` (or `.ll/ll.local.md`) suppresses the nudge and writes no state
 - [ ] Unset config preserves current behavior exactly
 - [ ] Tests cover disabled, custom threshold, and custom window
-- [ ] Invalid values (`bool`, non-numeric, below minimum, non-finite `window_seconds`) fall back per key to the defaults, and valid sibling keys still apply
+- [ ] Invalid values (`bool`, non-numeric, below minimum, non-finite `window_seconds`, non-integral `threshold`) fall back per key to the defaults, and valid sibling keys still apply; an integral float `threshold: 3.0` is accepted as `3`
+- [ ] Malformed shapes (`hooks: []`, `hooks.edit_batch_nudge: true` / `"off"`) yield the defaults with the hook enabled — never a silent disable
 - [ ] `.ll/ll.local.md` overrides the base config in both directions: base `enabled: true` + local `enabled: false` disables; local `enabled: null` removes the key → enabled
 - [ ] Config under `CLAUDE_PROJECT_DIR` is honored when the event cwd is a subdirectory (config root == state root)
 - [ ] Disabled with `CLAUDE_PROJECT_DIR` pointing at a dir without `.ll/` creates no `.ll/`; no resolvable project remains a silent no-op
-- [ ] `test_hook_intents.py` edit-batch subprocess cases run with `CLAUDE_PROJECT_DIR` scrubbed from the env
+- [ ] All four `test_hook_intents.py` edit-batch subprocess cases run with `CLAUDE_PROJECT_DIR` scrubbed from the env via one shared helper
 
 ## Impact
 

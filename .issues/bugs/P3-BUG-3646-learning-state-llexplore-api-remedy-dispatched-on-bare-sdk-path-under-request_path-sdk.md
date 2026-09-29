@@ -12,8 +12,6 @@ verify_verdict: VALID
 labels:
 - loops
 - multi-host
-blocks:
-- ENH-3548
 confidence_score: 95
 outcome_confidence: 86
 score_complexity: 18
@@ -45,6 +43,7 @@ Under `request_path: sdk`/`batch` (state-level or `orchestration.request_path`) 
 
 - The `/ll:explore-api` remedy always runs on the host CLI (it needs the agentic tool loop), regardless of the configured request path, and emits the usual one-shot `request_path_downgrade` warning when sdk/batch was configured.
 - `_model_consumer_paths` reports `["cli"]` for a learning state, so the preflight resolves its hint against the CLI host.
+- `ll-loop validate`'s mirror (`structural_rules.py:_static_model_paths`) reports only `("cli", False)` for a learning state, so validate and preflight agree exactly.
 
 ## Motivation
 
@@ -63,6 +62,10 @@ def _learning_remedy_state(state: StateConfig, target: str = "") -> StateConfig:
 ```
 
 Use it at the dispatch site (`self._run_action(remedy.action, remedy, ctx)` with `remedy = self._learning_remedy_state(state, target)`) and in `_model_consumer_paths`'s learning branch (`self._learning_remedy_state(state)`). With `action` set, `_SKILL_INVOKE_RE` matches in both places. `StateConfig` has no `__post_init__`, so setting `action=` on the copy is safe. Nothing else reads `state.action` from the copy (see Side Effects to Expect).
+
+Update the validate-time mirror to match: in `structural_rules.py:_static_model_paths`, the learning branch (`return action_paths(state.action)`, ~`:497-498`) becomes `return [("cli", False)]`. Today it passes `state.action` (`None` for a learning state), so under sdk/batch it yields `[("sdk", False), ("cli", True)]`, which reproduces this bug at validate time.
+
+**Optional (message clarity):** under the helper approach, a learning state's downgrade reason reads "state action invokes a /ll: skill…", though the author wrote no `action:`. An alternative is a dedicated `state.type == "learning"` check in `_compute_request_path`, before the `_SKILL_INVOKE_RE` check, with its own reason (e.g. "type: learning state's /ll:explore-api remedy requires the host CLI's agentic tool loop"). That makes the validate mirror a literal one-line match. The shared helper is worth keeping either way, because it removes the duplicated `_dc_replace` copy.
 
 ## Program Design
 
@@ -84,7 +87,8 @@ Use it at the dispatch site (`self._run_action(remedy.action, remedy, ctx)` with
 ## Integration Map
 
 - `scripts/little_loops/fsm/executor.py` — learning remedy dispatch, `_model_consumer_paths`, `_compute_request_path`
-- `scripts/little_loops/fsm/validation/structural_rules.py` — ENH-3548's validate-time mirror for learning states must be updated to CLI-only when this lands
+- `scripts/little_loops/fsm/validation/structural_rules.py` — **required**: `_static_model_paths`'s learning branch becomes `return [("cli", False)]`. ENH-3548 (done, commit 416b8e230) shipped this mirror copying the buggy executor behavior: `action_paths(state.action)` with `state.action is None` yields an `anthropic-api` path plus a CLI fallback under sdk/batch.
+- `scripts/tests/test_model_hints.py::TestValidateAgreesWithPreflight::test_agreement` — **required**: remove `"learning"` from the exemption `elif case not in ("sdk", "learning"):` (~`:1356`) so validate and preflight must agree exactly for learning states. This must land together with the `structural_rules.py` change: with only the executor fixed, the `{"anthropic-api": {"coding": False}}` override case gets a validate warning with no matching preflight failure.
 - Tests: learning-state tests in `scripts/tests/` (remedy under `request_path: sdk` with credentials patched available → dispatched via CLI; preflight hint resolved against the CLI host)
 
 ### Codebase Research Findings
@@ -93,9 +97,10 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 - Dependents of the changed computation: `_compute_request_path` has three call sites — `_resolve_request_path` (`executor.py:3555`, run-time, emits the one-shot `request_path_downgrade`), and `_model_consumer_paths` (`:3758` learning branch, `:3764` generic branch). `_model_consumer_paths` has one caller, `_preflight_model_hints` (`:3739`). `_resolve_request_path` is called only from `_run_action` (`:2577`, prompt-mode actions only).
 - Invariants to preserve: `action_start` payload and fragment-store key derive from `action_template`, not `state.action`; the `# BUG:` fix's contract (remedy runs as a prompt-mode slash command, `is_slash_command=True` to the runner) must keep holding; the downgrade check applies even under an explicit per-state `request_path` override.
-- ENH-3548's validate-time mirror is **not yet in code** (`_validate_model_hint_resolution` and a `host_cli=` kwarg on `validate_fsm` exist nowhere in `scripts/`; ENH-3548 is `open`). `structural_rules.py` today has no request-path logic for learning states (`_consumes_model_hint` has no learning branch; the learning rule at ~`:616-645` checks only targets/`max_retries`/routes). The mirror update is therefore conditional on ENH-3548 landing first, and ENH-3548 currently specs a learning state as "resolved on the configured path… until BUG-3646 lands".
+- ENH-3548's validate-time mirror **is in code** (landed in commit 416b8e230; ENH-3548 is `done`): `_validate_model_hint_resolution` and `_static_model_paths` in `structural_rules.py`, with `host_cli=`/`model_hints=` kwargs on `validate_fsm`/`load_and_validate`. Its learning branch mirrors the *current, buggy* executor: `action_paths(state.action)` gets `None`, so no `_SKILL_INVOKE_RE` match, and under sdk/batch it returns `[("sdk", False), ("cli", True)]`. ENH-3548's learning-state AC ("checked against the CLI host only… never `anthropic-api`") is ticked but does not hold in code. This issue delivers it. The agreement test hides the gap by exempting `"learning"` from the strict validate-⇔-preflight check (`test_model_hints.py:~1356`) — [corrected by manual review 2026-09-28].
 - Tests — existing coverage and gaps: `test_learning_state.py::TestLearningStateExploreApiDispatchMode` (regression for the earlier `action_type` fix; asserts `is_slash_command == [True]`) must keep passing; no learning test in `test_learning_state.py` or `test_model_hints.py` constructs an `OrchestrationConfig` or sets `request_path`. `test_model_hints.py::TestLearningState` (`test_unmapped_hint_fails_preflight`, `test_resolved_hint_reaches_remedy`) covers the preflight/dispatch hint path for learning states and must keep passing. No test anywhere calls `_compute_request_path`, `_model_consumer_paths` or `_dispatch_live` directly.
-- Conventions in Force (test side): "dispatched to the CLI" is asserted as `not mock_dispatch.called` (patching `little_loops.host_runner.dispatch_anthropic_request`) plus `mock_runner.calls == [...]`, with `OrchestrationConfig(request_path="sdk")` — `test_fsm_executor.py::TestRequestPathDispatchWiring` (`test_request_path_sdk_downgrades_for_skill_invoking_action`, BUG-2831) and `test_model_hints.py::TestCliActionDispatch`. The downgrade event is asserted via `_of(events, "request_path_downgrade")`. Preflight behavior is tested end to end through `executor.run()`, not by calling `_model_consumer_paths`. Credentials are made available by `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`; the only direct patch of `FSMExecutor._sdk_credentials_available` in tests is the `False` form (`test_model_hints.py:415`) — no test patches it to `True`.
+- Conventions in Force (test side): "dispatched to the CLI" is asserted as `not mock_dispatch.called` (patching `little_loops.host_runner.dispatch_anthropic_request`) plus `mock_runner.calls == [...]`, with `OrchestrationConfig(request_path="sdk")` — `test_fsm_executor.py::TestRequestPathDispatchWiring` (`test_request_path_sdk_downgrades_for_skill_invoking_action`, BUG-2831) and `test_model_hints.py::TestCliActionDispatch`. The downgrade event is asserted via `_of(events, "request_path_downgrade")`. Preflight behavior is tested end to end through `executor.run()`, not by calling `_model_consumer_paths`. Credentials are usually made available by `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)` (the preferred convention for new tests). Direct patches of `FSMExecutor._sdk_credentials_available` exist in both forms: `False` at `test_model_hints.py:415` and `True` at `test_model_hints.py:1347` (`TestValidateAgreesWithPreflight::test_agreement`).
+- Batch dispatch does not go through `dispatch_anthropic_request`: `_dispatch_live`'s batch branch calls `host_runner.dispatch_batch_request` / `poll_batch_result`, and returns an error `ActionResult` early when `run_dir` is absent from context. A batch-parametrized test that patches only `dispatch_anthropic_request` and asserts `not mock_dispatch.called` passes even before the fix. See `test_fsm_executor.py::TestRequestPathDispatchWiring::test_request_path_batch_submits_polls_and_clears_tracker` for the batch patch targets.
 - Conventions in Force (validate/runtime): validate-time rules deliberately duplicate executor predicates with a "Mirrors …" docstring rather than importing `executor` (`structural_rules.py:_is_shell_state`, `_consumes_model_hint`); only `_SKILL_INVOKE_RE` is shared. Divergence is caught by an agreement test (specified in ENH-3548, unwritten).
 
 ### Dependent Files (Callers/Importers)
@@ -119,27 +124,31 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — `orchestration.request_path` section lists the downgrade triggers (`/ll:` skill action, `tools:`); optionally note that a `type: learning` state's implicit `/ll:explore-api` remedy always runs on the host CLI [Agent 2 finding]
 - `docs/reference/EVENT-SCHEMA.md` — `### request_path_downgrade` (fires at most once per run) and `### learning_explore_invoked` sections; optional cross-note that a learning remedy under sdk/batch triggers the downgrade [Agent 1/2 finding]
 - `docs/reference/API.md` — `FSMExecutor._resolve_request_path()` bullet lists only importability/credential probes and omits the BUG-2831 skill check; update alongside this fix [Agent 2 finding]
-- `.issues/enhancements/P3-ENH-3548-validate-time-model-hint-warnings-and-hint-documentation.md` — updated 2026-09-28 to treat learning states as CLI-only and declare `blocked_by: [BUG-3646]`; no further edit needed when this lands
+- `.issues/enhancements/P3-ENH-3548-validate-time-model-hint-warnings-and-hint-documentation.md` — `done` (416b8e230) despite its `blocked_by: [BUG-3646]` edge; its learning-state AC is ticked but the shipped mirror doesn't satisfy it. Optionally add a note there that BUG-3646 delivers it.
 - `.issues/enhancements/P2-ENH-3547-wire-model-hint-resolution-through-loop-dispatch-and-lifecycle.md` — records the learning-remedy path decision now being reversed [Agent 1 finding]
 
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_learning_state.py` — add `TestLearningStateRequestPathSdk` (skeleton: `TestLearningStateExploreApiDispatchMode::test_explore_api_dispatched_as_slash_command`, `_MockRunner`, `_learning_fsm`): `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`, patch `little_loops.host_runner.dispatch_anthropic_request`; assert `not mock_dispatch.called`, `runner.calls == ["/ll:explore-api <target>"]`, one `request_path_downgrade` event across multiple targets/retries [Agent 3 finding]
+- `scripts/tests/test_learning_state.py` — add `TestLearningStateRequestPathSdk` (skeleton: `TestLearningStateExploreApiDispatchMode::test_explore_api_dispatched_as_slash_command`, `_MockRunner`, `_learning_fsm`): `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`, patch `little_loops.host_runner.dispatch_anthropic_request` **and** `little_loops.host_runner.dispatch_batch_request`; assert neither is called, `runner.calls == ["/ll:explore-api <target>"]`, one `request_path_downgrade` event across multiple targets/retries [Agent 3 finding]
   - Parametrize over `request_path` `"sdk"` and `"batch"` — `_compute_request_path` treats them identically, and both must downgrade [review 2026-09-28]
+  - For `batch`, the `runner.calls` assertion is the one that fails before the fix. The batch branch never calls `dispatch_anthropic_request`, so asserting only that mock isn't called passes trivially. Patch `dispatch_batch_request` too (it may never be reached without `run_dir`), so the test can't make a network call if a context supplies one [review 2026-09-28]
   - Parametrize over where the path is declared: `OrchestrationConfig(request_path=...)` (loop-wide) and `request_path:` on the learning state itself (per-state override, which `_resolve_request_path`'s docstring says the skill downgrade still overrides) [review 2026-09-28]
 - `scripts/tests/test_model_hints.py::TestLearningState` — add sdk variants using `_fsm(hint)`/`_execute`/`_of`: (a) `LL_HOST_CLI=claude-code`, hint resolves to `haiku` with `model_backend == "claude-code"`; (b) `LL_HOST_CLI=codex` + unmapped hint → `model_hint_error` at preflight, `runner.calls == []`, no downgrade event at preflight; (c) `fake` host modelled on `TestCliActionDispatch::test_downgrade_re_resolves_for_cli_host` [Agent 3 finding]
+- `scripts/tests/test_model_hints.py::TestValidateAgreesWithPreflight::test_agreement` — remove `"learning"` from `elif case not in ("sdk", "learning"):` so validate and preflight must agree exactly for learning states; fails until `_static_model_paths` is fixed [review 2026-09-28]
 - `scripts/tests/test_fsm_executor.py::TestRequestPathDispatchWiring` — optional learning-state sibling of `test_request_path_sdk_downgrades_for_skill_invoking_action` [Agent 3 finding]
 - Regression set to re-run (no updates expected): `test_learning_state.py` (incl. `TestLearningStateExploreApiDispatchMode`), `test_model_hints.py` (`TestLearningState`, `TestPreflight::test_preflight_emits_no_downgrade_event`, `TestCliActionDispatch`), `TestRequestPathDispatchWiring::test_request_path_sdk_unchanged_for_pure_evaluator_action` [Agent 3 finding]
-- Note: no test patches `_sdk_credentials_available` to `True` — use the `ANTHROPIC_API_KEY` env convention [Agent 3 finding]
+- Note: prefer the `ANTHROPIC_API_KEY` env convention for new tests; `_sdk_credentials_available` is patched to `True` only in the agreement test (`test_model_hints.py:1347`) [corrected 2026-09-28]
 
 ## Implementation Steps
 
-1. Write failing tests first (credentials via `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`, not a `_sdk_credentials_available` patch; `dispatch_anthropic_request` patched):
-   - `test_learning_state.py::TestLearningStateRequestPathSdk` — parametrized over `sdk`/`batch` and loop-wide vs per-state declaration: the remedy goes through the action runner (`not mock_dispatch.called`, `runner.calls == ["/ll:explore-api <target>"]`) and exactly one `request_path_downgrade` event fires across several targets/retries.
+1. Write failing tests first (credentials via `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`; `dispatch_anthropic_request` and `dispatch_batch_request` patched):
+   - `test_learning_state.py::TestLearningStateRequestPathSdk` — parametrized over `sdk`/`batch` and loop-wide vs per-state declaration: the remedy goes through the action runner (neither dispatcher called, `runner.calls == ["/ll:explore-api <target>"]`) and exactly one `request_path_downgrade` event fires across several targets/retries.
    - `test_model_hints.py::TestLearningState` sdk variants — the preflight half, tested end to end through `executor.run()` (no test calls `_model_consumer_paths` directly): the hint resolves against the CLI host (`model_backend` is the host name), and an unmapped hint on a non-Claude host fails at preflight with no runner calls.
+   - `test_model_hints.py::TestValidateAgreesWithPreflight::test_agreement` — drop `"learning"` from the exemption.
 2. Add `_learning_remedy_state()` and use it at the dispatch site and in `_model_consumer_paths`'s learning branch.
-3. Update docs (API.md, CONFIGURATION.md; EVENT-SCHEMA.md optional).
+3. Change `structural_rules.py:_static_model_paths`'s learning branch to `return [("cli", False)]` and update its docstring (learning remedy is always CLI).
+4. Update docs (API.md, CONFIGURATION.md; EVENT-SCHEMA.md optional).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -147,12 +156,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Add `TestLearningStateRequestPathSdk` to `scripts/tests/test_learning_state.py` and sdk-config cases to `scripts/tests/test_model_hints.py::TestLearningState` (env-key credentials, not a `_sdk_credentials_available` patch)
 - Update `docs/reference/API.md` (`FSMExecutor._resolve_request_path()` bullet) and `docs/reference/CONFIGURATION.md` (`orchestration.request_path` downgrade triggers) to cover the learning remedy
-- ENH-3548 already updated (2026-09-28) to treat learning states as CLI-only; optionally add a one-line note to ENH-3547 (done) that its learning-remedy path decision was reversed here
+- Fix `structural_rules.py:_static_model_paths`'s learning branch to CLI-only and drop the `"learning"` exemption from `test_agreement` (ENH-3548 shipped the mirror against the buggy executor)
+- Optionally add a one-line note to ENH-3548 and ENH-3547 (both done) that BUG-3646 delivers/reverses their learning-remedy path handling
 
 ## Impact
 
 - **Priority**: P3 - only affects learning states under a non-default `request_path`
-- **Effort**: Small - one helper replacing two `_dc_replace` call sites, plus tests
+- **Effort**: Small - one helper replacing two `_dc_replace` call sites, a one-line validate-mirror change, plus tests
 - **Risk**: Low - changes only the request path for the learning remedy
 - **Breaking Change**: No
 
@@ -178,11 +188,12 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 - [ ] Under sdk/batch, exactly one `request_path_downgrade` event (and stderr warning) is emitted for a learning state, across all its targets and retries; under `cli`, none is.
 - [ ] `_model_consumer_paths` returns `["cli"]` for a learning state under any request path, so the preflight resolves its hint against the CLI host (verified end to end through `executor.run()`).
 - [ ] The dispatch site and the preflight build the remedy copy through one shared helper.
+- [ ] `structural_rules.py:_static_model_paths` returns only `("cli", False)` for a learning state under any request path, and `test_agreement` passes with `"learning"` removed from its exemption (validate and preflight agree exactly).
 - [ ] Existing `TestLearningStateExploreApiDispatchMode` and `test_model_hints.py::TestLearningState` tests still pass.
 
 ## Related
 
-- ENH-3548 — blocked by this issue; its validate-time mirror treats learning states as CLI-only, which matches the preflight only after this lands.
+- ENH-3548 — done (416b8e230). It shipped the validate-time mirror against the buggy executor, and its learning-state AC (CLI host only, never `anthropic-api`) is delivered here rather than by ENH-3548.
 - ENH-3547 — introduced `_compute_request_path` / `_model_consumer_paths`.
 - Follow-up candidate (not in scope): MR-12 (`_validate_pruning_profile`) skips learning states because it reads `state.action`. Once the remedy always runs on the CLI through `action_runner`, learning states arguably deserve the same pruning-profile guidance as other `/ll:` states.
 
@@ -196,6 +207,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `manual review` - 2026-09-28 - ENH-3548 found already landed (416b8e230) with a learning mirror copying the bug: made the `_static_model_paths` fix and `test_agreement` exemption removal required, added AC; dropped stale `blocks: [ENH-3548]`; batch tests must also patch `dispatch_batch_request`; corrected `_sdk_credentials_available` patch claim; noted optional learning-specific downgrade reason
 - `manual review` - 2026-09-28 - reconciled Step 1 with the env-key test convention; added downgrade-event AC, sdk/batch and per-state parametrization, shared `_learning_remedy_state` helper, latch side effect; set `blocks: [ENH-3548]` and updated ENH-3548 to CLI-only learning states; noted MR-12 follow-up
 - `/ll:confidence-check` - 2026-09-28T23:38:36 - `11482c9b-ffe7-4717-8544-400c53005e5c.jsonl`
 - `/ll:verify-issues` - 2026-09-28T23:37:23 - `32aeb86c-0b9a-4909-acf8-c825531b5ad2.jsonl`

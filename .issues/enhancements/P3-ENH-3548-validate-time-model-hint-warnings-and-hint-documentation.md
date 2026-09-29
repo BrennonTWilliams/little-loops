@@ -14,8 +14,6 @@ verify_verdict: VALID
 labels:
 - multi-host
 - loops
-blocked_by:
-- BUG-3646
 confidence_score: 90
 outcome_confidence: 67
 score_complexity: 14
@@ -48,7 +46,7 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 - An `sdk`/`batch` state is checked against both `anthropic-api` and (for a state-level hint) the CLI host, because the environmental downgrades (`anthropic` not importable, no credentials) are unknowable at validate time. The CLI-fallback warning text says so ("if the sdk path downgrades to cli").
 - States that always downgrade to CLI (a `/ll:` skill action per `_SKILL_INVOKE_RE`, or `tools:` per BUG-2831) are checked for CLI only.
 - Terminal, sub-loop (`loop:`) and `human_approval` states consume no model and are never checked.
-- A `type: learning` state (with `learning:` set) has exactly one path, the **CLI host**, and **no evaluator path** (`_model_consumer_paths` returns early). Its implicit `/ll:explore-api` remedy is a `/ll:` skill, so it always downgrades to CLI regardless of `request_path` — treat it like any other CLI-only `/ll:` state and never check it against `anthropic-api`. This matches the executor only once BUG-3646 lands (it builds the remedy copy with `action` set, via `_learning_remedy_state`, so `_SKILL_INVOKE_RE` matches); this issue is `blocked_by` BUG-3646 so the mirror is written once, against the fixed behavior.
+- A `type: learning` state (with `learning:` set) has exactly one path, the **CLI host**, and **no evaluator path** (`_model_consumer_paths` returns early). Its implicit `/ll:explore-api` remedy is a `/ll:` skill, so it always downgrades to CLI regardless of `request_path` — treat it like any other CLI-only `/ll:` state and never check it against `anthropic-api`. This matches the executor only once BUG-3646 lands (it builds the remedy copy with `action` set, via `_learning_remedy_state`, so `_SKILL_INVOKE_RE` matches); this issue was `blocked_by` BUG-3646 so the mirror would be written once, against the fixed behavior. **Post-completion note (2026-09-28):** this issue landed before BUG-3646, and the shipped learning branch mirrors the unfixed executor. BUG-3646 now owns the CLI-only mirror (see Resolution → Known gap).
 - Warning messages name the fix, e.g. `set orchestration.model_hints.<backend>.<hint> in .ll/ll-config.json`.
 - An unresolvable `llm.model_hint` warns **once per (hint, backend)** at `path=llm.model_hint`, not once per consuming state. State-level warnings use `path=states.<name>.model_hint` with the `[state: <name>]` prefix and an `(ENH-3548)` tag.
 - When `host_cli` is `None` (the in-process callers below, or no host found), resolution warnings are skipped. Vocabulary and exclusivity errors from ENH-3527 still fire. `model_hints=None` means built-in mappings only; it does not by itself skip warnings.
@@ -224,7 +222,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [x] `cmd_validate` derives `host_cli` from `resolve_host()` (not `orchestration.host_cli` directly); with no host found it emits no resolution warnings and does not error. A test pins the host via `LL_HOST_CLI` and asserts validate and `_preflight_model_hints` agree on the same loop.
 - [x] `validate_fsm`/`load_and_validate` accept `host_cli`/`model_hints`; with `host_cli=None`, no resolution warnings fire and existing callers' output is unchanged.
 - [x] An out-of-vocabulary hint produces only ENH-3527's vocabulary ERROR, no resolution WARNING.
-- [x] A literal-`model:` state on the evaluator path does not warn about an unresolvable `llm.model_hint`; a `type: learning` state gets no evaluator-path check and is checked against the CLI host only, under any `request_path` (never `anthropic-api`).
+- [x] A literal-`model:` state on the evaluator path does not warn about an unresolvable `llm.model_hint`; a `type: learning` state gets no evaluator-path check and is checked against the CLI host only, under any `request_path` (never `anthropic-api`). _(Correction 2026-09-28: the evaluator-path half holds. The CLI-only half does not: under `sdk`/`batch` the shipped mirror also checks `anthropic-api`, matching the unfixed executor. Delivered by BUG-3646.)_
 - [x] `ll-loop validate` with an invalid `orchestration.model_hints` exits 1 with a validate error instead of an uncaught `ValueError`.
 - [x] `haiku-gen` fires for a generator state with `model_hint: burst`, not for a `burst` verdict state (`_is_llm_judged`), is suppressed by `haiku_generator_ok`, and still emits exactly one WARNING for a `model:`-only haiku state.
 - [x] `ll-loop validate` surfaces the resolution WARNING in both the plain (`caplog`) and `--json` (`violations[].message`) output branches.
@@ -251,6 +249,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Tests: resolution matrix and a validate-vs-preflight agreement test in `test_model_hints.py`; `haiku-gen` cases; `cmd_validate` CLI tests (plain and `--json`, no-host, invalid config); pinned-signature spike and `test_ll_logs.py` updated; doc-presence registry entries. Full suite: 27095 passed, 292 skipped.
 - Docs: new `Loop model_hint support matrix` in `HOST_COMPATIBILITY.md`; `API.md`, `CLI.md`, `CONFIGURATION.md`, `LOOPS_GUIDE.md`, `generalized-fsm-loop.md`, `HARNESS_OPTIMIZATION_GUIDE.md`, `skills/review-loop/reference.md`. `API.md`'s `Path | None` corrected to `str | None`.
 - Deviation from the plan: no separate plan file was written (the issue's Program Design served as the plan); `ll-adapt --apply` for gemini/kimi-code/qwen adapted 0 files.
+- **Known gap (added 2026-09-28 by manual review):** landed before its `blocked_by` BUG-3646. `_static_model_paths`'s learning branch calls `action_paths(state.action)`; `state.action` is `None` for a learning state, so under `sdk`/`batch` it yields `[("sdk", False), ("cli", True)]`, which mirrors the unfixed executor rather than the CLI-only spec. `test_agreement` exempts `"learning"` from the strict check. BUG-3646 changes the branch to `[("cli", False)]` and removes the exemption. The stale `blocked_by` edge was dropped.
 
 ## Confidence Check Notes
 
@@ -283,6 +282,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - [resolved 2026-09-28 by manual review] ARCH-121 requires a `*_ok` suppression flag for every new validate rule — decided: exemption for host-dependent hint-resolution warnings, recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`.
 
 ## Session Log
+- `manual review` - 2026-09-28 - post-completion: dropped stale `blocked_by: [BUG-3646]`; recorded that the learning-state CLI-only mirror was not delivered (AC correction + Resolution known gap); BUG-3646 owns it
 - `/ll:manage-issue` - 2026-09-29T00:04:57 - `9f6d1486-da8d-460c-9ae8-dad3ff47feac.jsonl`
 - `manual review` - 2026-09-28 - added `blocked_by: [BUG-3646]`; learning states are now CLI-only in Expected Behavior, the agreement-test matrix and the ACs (no interim `anthropic-api` mirror)
 - `/ll:ready-issue` - 2026-09-28T23:51:11 - `1e35f0ba-f9a3-4b2b-9bb2-0165c66c87c5.jsonl`
