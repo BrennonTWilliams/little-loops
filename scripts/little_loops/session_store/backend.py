@@ -39,13 +39,18 @@ import importlib
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
-from little_loops.session_store.db import resolve_history_db
+from little_loops.session_store.db import resolve_history_target
+from little_loops.session_store.targets import (  # noqa: F401 - re-exported
+    BackendConfig,
+    HistoryTarget,
+    LocalTarget,
+    RemoteTarget,
+)
 
-BackendProvider = Literal["sqlite"]
+BackendProvider = Literal["sqlite", "libsql"]
 
 
 class HistoryError(Exception):
@@ -78,43 +83,6 @@ class HistoryBackendNotLocal(HistoryUnsupported):
 
 class HistoryOperationError(HistoryError):
     """A database operation failed for a reason other than the three above."""
-
-
-@dataclass(frozen=True)
-class BackendConfig:
-    """Connection settings for a non-filesystem provider (ENH-3650).
-
-    Deliberately minimal: FEAT-3535 owns the real field set (auth, timeouts).
-    Nothing produces one until a second provider is registered.
-    """
-
-    provider: str
-    url: str | None = None
-
-
-@dataclass(frozen=True)
-class LocalTarget:
-    """A history store on the local filesystem (the only target produced today)."""
-
-    path: Path
-
-    @property
-    def provider(self) -> str:
-        return "sqlite"
-
-
-@dataclass(frozen=True)
-class RemoteTarget:
-    """A history store with no filesystem path (reserved for FEAT-3535)."""
-
-    config: BackendConfig
-
-    @property
-    def provider(self) -> str:
-        return self.config.provider
-
-
-HistoryTarget = LocalTarget | RemoteTarget
 
 
 def _describe(target: HistoryTarget) -> str:
@@ -295,6 +263,7 @@ class SqliteBackend:
 # that imports HistoryError/Backend back from this module does not cycle.
 _BACKEND_MAP: dict[str, tuple[str, str]] = {
     "sqlite": ("little_loops.session_store.backend", "SqliteBackend"),
+    "libsql": ("little_loops.session_store.libsql", "LibsqlBackend"),
 }
 
 
@@ -317,8 +286,11 @@ def resolve_backend(provider: str = "sqlite") -> Backend:
 def _resolve_once(
     target: Path | str | HistoryTarget | None, *, reresolve_absolute: bool = False
 ) -> HistoryTarget:
-    """Resolve *target* to a :class:`HistoryTarget`. Only a :class:`LocalTarget`
-    is produced until FEAT-3535 registers a second provider.
+    """Resolve *target* to a :class:`HistoryTarget`.
+
+    A :class:`RemoteTarget` is produced only when ``history.backend.provider`` is a remote
+    provider and *target* is default-shaped (``None`` or ``.ll/history.db``) with
+    ``LL_HISTORY_DB`` unset (FEAT-3535); every other input yields a :class:`LocalTarget`.
 
     An already-typed target passes through untouched. Otherwise the path is
     resolved via :func:`resolve_history_db`, except for an already-absolute
@@ -347,7 +319,7 @@ def _resolve_once(
     if isinstance(target, (LocalTarget, RemoteTarget)):
         return target
     if target is None or reresolve_absolute or not Path(target).is_absolute():
-        return LocalTarget(resolve_history_db(target))
+        return resolve_history_target(target)
     return LocalTarget(Path(target))
 
 

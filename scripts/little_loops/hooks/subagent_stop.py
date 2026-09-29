@@ -37,10 +37,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
         # still carries the outcome when a matching ``agent_id`` exists.
         agent_transcript_path = payload.get("agent_transcript_path") or payload.get("response")
 
-        from little_loops.session_store import record_subagent_run_stop, resolve_history_db
+        from little_loops.session_store import record_subagent_run_stop
 
         record_subagent_run_stop(
-            resolve_history_db(Path.cwd() / ".ll" / "history.db"),
+            Path.cwd() / ".ll" / "history.db",
             parent_session_id=event.session_id or payload.get("session_id"),
             agent_id=agent_id,
             agent_type=agent_type,

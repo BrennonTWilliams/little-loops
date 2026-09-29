@@ -684,12 +684,12 @@ class TestCliEventContext:
         monkeypatch.delenv("LL_HISTORY_DB", raising=False)
 
         def _must_not_resolve(*_a: object, **_k: object) -> Path:
-            raise AssertionError("resolve_history_db must not run when LL_ANALYTICS_CAPTURE is set")
+            raise AssertionError("resolve_history_store must not run when LL_ANALYTICS_CAPTURE is set")
 
         def _must_not_connect(*_a: object, **_k: object) -> sqlite3.Connection:
             raise AssertionError("connect must not run when LL_ANALYTICS_CAPTURE is set")
 
-        monkeypatch.setattr(writers_mod, "resolve_history_db", _must_not_resolve)
+        monkeypatch.setattr(writers_mod, "resolve_history_store", _must_not_resolve)
         monkeypatch.setattr(ss, "connect", _must_not_connect)
 
         ran = False

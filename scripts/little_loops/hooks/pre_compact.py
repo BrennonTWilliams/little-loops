@@ -176,10 +176,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
 def _record_compaction(compacted_at: str, session_id: str | None, root: Path) -> None:
     """Best-effort ``compaction`` lifecycle row — never raises (ENH-2495)."""
     try:
-        from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+        from little_loops.session_store import record_session_lifecycle_event
 
         record_session_lifecycle_event(
-            resolve_history_db(root / ".ll" / "history.db"),
+            root / ".ll" / "history.db",
             session_id=session_id,
             event="compaction",
             detail={"source": "host_precompact", "state_preserved": True},

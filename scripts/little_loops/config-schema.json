@@ -2213,6 +2213,44 @@
           "default": null,
           "description": "Override the default .ll/history.db location; relative paths resolve against the project root. The LL_HISTORY_DB env var takes precedence over this (ENH-2623)."
         },
+        "backend": {
+          "type": "object",
+          "description": "Where history.db lives (FEAT-3535). provider 'sqlite' (default) is the local file; 'libsql' targets a remote libSQL endpoint (sqld or Turso Cloud) over Hrana-over-HTTP. The endpoint and auth token are read from the environment variables named here; a literal token is never accepted. Set the endpoint in .ll/ll.local.md so a clone does not silently join a shared store.",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": ["sqlite", "libsql"],
+              "default": "sqlite",
+              "description": "Store backend. Unset or 'sqlite' behaves exactly as before."
+            },
+            "url": {
+              "type": ["string", "null"],
+              "default": null,
+              "description": "Non-secret literal endpoint URL (libsql://, https:// or http://). Give exactly one of url or url_env."
+            },
+            "url_env": {
+              "type": ["string", "null"],
+              "default": null,
+              "description": "Name of the environment variable holding the endpoint URL (LL_HISTORY_URL when neither url nor url_env is set)."
+            },
+            "auth_token_env": {
+              "type": "string",
+              "default": "LL_HISTORY_AUTH_TOKEN",
+              "description": "Name of the environment variable holding the auth token. The token itself is never stored in config, echoed by ll-doctor, or written to logs."
+            },
+            "project_id": {
+              "type": ["string", "null"],
+              "default": null,
+              "description": "Required when provider is 'libsql': stamped into the remote store by 'll-session migrate' and compared on every remote open, so unrelated projects cannot share one store."
+            },
+            "telemetry_timeout_ms": {
+              "type": "integer",
+              "default": 1500,
+              "description": "Total time budget in milliseconds for a best-effort telemetry write to the remote store (hooks, CLI event context). Explicit reads use a longer bound."
+            }
+          },
+          "additionalProperties": false
+        },
         "workspace_manifest_path": {
           "type": ["string", "null"],
           "default": null,

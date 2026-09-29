@@ -9,8 +9,21 @@ depends on this module (for ``ensure_db``/``connect``), not the reverse.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
+from typing import Any
+
+from little_loops.session_store.targets import (
+    DEFAULT_TELEMETRY_TIMEOUT_MS,
+    DEFAULT_TOKEN_ENV,
+    BackendConfig,
+    HistoryTarget,
+    LocalTarget,
+    RemoteTarget,
+)
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path(".ll/history.db")
 
@@ -118,7 +131,9 @@ def _resolve_db_path(path: Path | str | None = None, *, root: Path | None = None
     return (root or Path.cwd()) / DEFAULT_DB_PATH
 
 
-def resolve_history_db(path: Path | str | None = None, *, root: Path | None = None) -> Path:
+def resolve_history_db(
+    path: Path | str | HistoryTarget | None = None, *, root: Path | None = None
+) -> Path:
     """Return the DB path via the unified env → config → default chain (ENH-2623).
 
     ``LL_HISTORY_DB`` takes precedence, then the ``history.db_path`` config key,
@@ -128,5 +143,135 @@ def resolve_history_db(path: Path | str | None = None, *, root: Path | None = No
 
     *root* (BUG-3181) anchors the config lookup and the default at a known project
     root instead of walking up from ``Path.cwd()``; omitted, behavior is unchanged.
+
+    Raises:
+        HistoryBackendNotLocal: ``history.backend`` selects a remote provider for this
+            (default-shaped) *path*. No fabricated path is ever returned; callers that can
+            reach a remote store use :func:`resolve_history_target`.
     """
-    return _resolve_db_path(path, root=root)
+    target = resolve_history_target(path, root=root)
+    if isinstance(target, RemoteTarget):
+        from little_loops.session_store.backend import HistoryBackendNotLocal
+
+        raise HistoryBackendNotLocal(
+            f"history.backend provider {target.provider!r} has no local database path",
+            operation="resolve_history_db",
+        )
+    return target.path
+
+
+# -- history.backend (FEAT-3535) -------------------------------------------
+
+# Per-process cache keyed by the resolved ``.ll/`` directory. ``None`` means "sqlite".
+_BACKEND_CONFIG_CACHE: dict[str, BackendConfig | None] = {}
+
+
+def clear_backend_config_cache() -> None:
+    """Forget every cached ``history.backend`` resolution (tests, config reloads)."""
+    _BACKEND_CONFIG_CACHE.clear()
+
+
+def _read_backend_block(root: Path) -> dict[str, Any]:
+    """Return the merged ``history.backend`` mapping for *root* (``{}`` when absent).
+
+    Applies the ``.ll/ll.local.md`` frontmatter deep merge, which is why this does not
+    reuse :func:`_config_db_path` (that reads the raw JSON and would ignore a local
+    endpoint override). Raises on a malformed config; the caller degrades.
+    """
+    from little_loops.config.core import (
+        LOCAL_OVERRIDE_FILENAME,
+        deep_merge,
+        parse_local_override_frontmatter,
+        resolve_config_path,
+    )
+
+    cfg_path = resolve_config_path(root)
+    data: dict[str, Any] = {}
+    if cfg_path is not None:
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    local = root / ".ll" / LOCAL_OVERRIDE_FILENAME
+    if local.is_file():
+        overrides = parse_local_override_frontmatter(local.read_text(encoding="utf-8"))
+        if overrides:
+            data = deep_merge(data, overrides)
+    history = data.get("history") or {}
+    block = history.get("backend") if isinstance(history, dict) else None
+    return block if isinstance(block, dict) else {}
+
+
+def _backend_config_from_block(block: dict[str, Any]) -> BackendConfig | None:
+    provider = block.get("provider") or "sqlite"
+    if provider == "sqlite":
+        return None
+    timeout = block.get("telemetry_timeout_ms")
+    return BackendConfig(
+        provider=str(provider),
+        url=block.get("url") or None,
+        url_env=block.get("url_env") or None,
+        auth_token_env=block.get("auth_token_env") or DEFAULT_TOKEN_ENV,
+        project_id=block.get("project_id") or None,
+        telemetry_timeout_ms=timeout if isinstance(timeout, int) else DEFAULT_TELEMETRY_TIMEOUT_MS,
+    )
+
+
+def load_backend_config(*, root: Path | None = None) -> BackendConfig | None:
+    """Return the configured non-sqlite backend, or ``None`` for the local SQLite store.
+
+    Never raises: this sits on the hook hot path. A malformed config degrades to
+    ``None`` with a one-time warning (the result is cached, so it is not repeated). Results
+    are cached per process, keyed by the resolved project.
+    """
+    try:
+        from little_loops.paths import resolve_ll_dir
+
+        ll_dir = resolve_ll_dir(start=root)
+    except (OSError, ValueError):
+        return None
+    if ll_dir is None:
+        return None
+    key = str(ll_dir)
+    if key in _BACKEND_CONFIG_CACHE:
+        return _BACKEND_CONFIG_CACHE[key]
+    try:
+        cfg = _backend_config_from_block(_read_backend_block(ll_dir.parent))
+    except (OSError, ValueError, TypeError, AttributeError):
+        logger.warning(
+            "history.backend: could not read the project config under %s; using the local "
+            "sqlite store",
+            ll_dir,
+        )
+        cfg = None
+    _BACKEND_CONFIG_CACHE[key] = cfg
+    return cfg
+
+
+def resolve_history_target(
+    path: Path | str | HistoryTarget | None = None, *, root: Path | None = None
+) -> HistoryTarget:
+    """Return the store target: a :class:`RemoteTarget` when ``history.backend`` selects a
+    remote provider and *path* is default-shaped with ``LL_HISTORY_DB`` unset, otherwise a
+    :class:`LocalTarget` from :func:`resolve_history_db`'s precedence.
+
+    An explicit non-default path and an ``LL_HISTORY_DB`` override are deliberate local
+    targets and never redirect to the remote store; ``history.db_path`` is ignored under a
+    remote provider. An already-typed target passes through unchanged.
+    """
+    if isinstance(path, (LocalTarget, RemoteTarget)):
+        return path
+    if _is_default_shaped(path) and not os.environ.get("LL_HISTORY_DB"):
+        cfg = load_backend_config(root=root)
+        if cfg is not None:
+            return RemoteTarget(cfg)
+    return LocalTarget(_resolve_db_path(path, root=root))
+
+
+def resolve_history_store(
+    path: Path | str | HistoryTarget | None = None, *, root: Path | None = None
+) -> Path | RemoteTarget:
+    """Like :func:`resolve_history_target`, but a local store is returned as its plain
+    ``Path`` (exactly what :func:`resolve_history_db` returns), so a caller that hands the
+    result to ``schema.connect`` and logs it keeps its SQLite behavior unchanged; only a
+    remote store comes back as a :class:`RemoteTarget`.
+    """
+    target = resolve_history_target(path, root=root)
+    return target if isinstance(target, RemoteTarget) else target.path

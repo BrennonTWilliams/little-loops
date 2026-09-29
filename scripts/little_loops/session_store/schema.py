@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from little_loops.session_store.db import DEFAULT_DB_PATH
+from little_loops.session_store.targets import RemoteTarget
 
 if TYPE_CHECKING:
     from little_loops.session_store.backend import HistoryTarget
@@ -1597,24 +1598,34 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         conn.isolation_level = prior_isolation
 
 
-def _local_db_path(target: Path | str | HistoryTarget) -> Path:
-    """Resolve the target-aware seam's argument to a local database path (ENH-3650).
+def _seam_target(target: Path | str | HistoryTarget) -> HistoryTarget:
+    """Resolve the target-aware seam's argument to a :data:`HistoryTarget` (ENH-3650).
 
-    Routes through :func:`backend._resolve_once` with ``reresolve_absolute=True``,
-    which reproduces :func:`db._resolve_db_path`'s precedence exactly, so a
-    ``Path``/``str`` resolves as it always did. An already-typed
-    :class:`LocalTarget` is honored verbatim; a :class:`RemoteTarget` is refused
-    before anything is created (fail-closed).
-
-    Raises:
-        HistoryUnsupported: *target* is a remote target.
+    Routes through :func:`backend._resolve_once` with ``reresolve_absolute=True``, which
+    reproduces :func:`db._resolve_db_path`'s precedence exactly, so a ``Path``/``str``
+    resolves as it always did. An already-typed target is honored verbatim. Under a
+    remote ``history.backend`` a default-shaped path resolves to the remote target
+    (FEAT-3535).
     """
     from little_loops.session_store import backend
 
-    resolved = backend._resolve_once(target, reresolve_absolute=True)
+    return backend._resolve_once(target, reresolve_absolute=True)
+
+
+def _local_db_path(target: Path | str | HistoryTarget) -> Path:
+    """Return the local database path for *target*, refusing a remote one before anything
+    is created (fail-closed).
+
+    Raises:
+        HistoryBackendNotLocal: *target* resolves to a remote store.
+    """
+    from little_loops.session_store import backend
+
+    resolved = _seam_target(target)
     if not isinstance(resolved, backend.LocalTarget):
-        raise backend.HistoryUnsupported(
-            f"the local-SQLite schema seam does not support a {resolved.provider!r} target."
+        raise backend.HistoryBackendNotLocal(
+            f"the local-SQLite schema seam has no path for a {resolved.provider!r} target.",
+            operation="ensure_db",
         )
     return resolved.path
 
@@ -1665,7 +1676,12 @@ def connect(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> sqlite3.Conne
 
     Rows are returned as :class:`sqlite3.Row` so callers can index by name.
     """
-    db_path = ensure_db(path)
+    resolved = _seam_target(path)
+    if isinstance(resolved, RemoteTarget):
+        from little_loops.session_store.backend import resolve_backend
+
+        return resolve_backend(resolved.provider).connect(resolved)  # type: ignore[return-value]
+    db_path = ensure_db(resolved)
     conn = sqlite3.connect(str(db_path))
     _configure_connection(conn)
     conn.row_factory = sqlite3.Row

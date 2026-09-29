@@ -1530,6 +1530,57 @@ class RetentionConfig:
 
 
 @dataclass
+class HistoryBackendConfig:
+    """``history.backend``: which store ``history.db`` lives in (FEAT-3535).
+
+    ``provider: sqlite`` (the default) is the local file. ``provider: libsql`` targets a
+    remote libSQL endpoint; the endpoint and the auth token are read from the environment
+    variables *named* here, so this object never holds a token, and a literal token in the
+    config is ignored rather than stored.
+    """
+
+    provider: str = "sqlite"
+    url: str | None = None
+    url_env: str | None = None
+    auth_token_env: str = "LL_HISTORY_AUTH_TOKEN"
+    project_id: str | None = None
+    telemetry_timeout_ms: int = 1500
+
+    @classmethod
+    def from_dict(cls, data: Any) -> HistoryBackendConfig:
+        """Lenient: ignores unknown keys (including any literal token), never raises."""
+        if not isinstance(data, dict):
+            return cls()
+
+        def _str(key: str) -> str | None:
+            value = data.get(key)
+            return value if isinstance(value, str) and value else None
+
+        timeout = data.get("telemetry_timeout_ms")
+        return cls(
+            provider=_str("provider") or "sqlite",
+            url=_str("url"),
+            url_env=_str("url_env"),
+            auth_token_env=_str("auth_token_env") or "LL_HISTORY_AUTH_TOKEN",
+            project_id=_str("project_id"),
+            telemetry_timeout_ms=(
+                timeout if isinstance(timeout, int) and not isinstance(timeout, bool) else 1500
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serializable view: env-var *names*, never a token value."""
+        return {
+            "provider": self.provider,
+            "url": self.url,
+            "url_env": self.url_env,
+            "auth_token_env": self.auth_token_env,
+            "project_id": self.project_id,
+            "telemetry_timeout_ms": self.telemetry_timeout_ms,
+        }
+
+
+@dataclass
 class HistoryConfig:
     """History read/consume configuration (ENH-1913).
 
@@ -1542,6 +1593,7 @@ class HistoryConfig:
     max_age_days: int | None = None
     db_path: str | None = None
     workspace_manifest_path: str | None = None
+    backend: HistoryBackendConfig = field(default_factory=HistoryBackendConfig)
     planning_skills: list[str] = field(
         default_factory=lambda: ["create-sprint", "scope-epic", "manage-issue", "review-epic"]
     )
@@ -1561,6 +1613,7 @@ class HistoryConfig:
             max_age_days=data.get("max_age_days", None),
             db_path=data.get("db_path", None),
             workspace_manifest_path=data.get("workspace_manifest_path", None),
+            backend=HistoryBackendConfig.from_dict(data.get("backend", {})),
             planning_skills=data.get(
                 "planning_skills",
                 ["create-sprint", "scope-epic", "manage-issue", "review-epic"],

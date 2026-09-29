@@ -159,10 +159,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
         # never run. Isolated in its own try/except so a reconciliation failure
         # can't suppress the stale-ref sweep, and vice versa.
         try:
-            from little_loops.session_store import reconcile_stale_subagent_runs, resolve_history_db
+            from little_loops.session_store import reconcile_stale_subagent_runs
 
             reconcile_stale_subagent_runs(
-                resolve_history_db(cwd / ".ll" / "history.db"),
+                cwd / ".ll" / "history.db",
                 current_session_id=event.session_id,
             )
         except Exception:
@@ -227,10 +227,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
 def _record_sweep(cwd: Path, session_id: str | None, *, findings: int, fix_mode: str) -> None:
     """Best-effort ``stale_ref_sweep`` lifecycle row — never raises (ENH-2495)."""
     try:
-        from little_loops.session_store import record_session_lifecycle_event, resolve_history_db
+        from little_loops.session_store import record_session_lifecycle_event
 
         record_session_lifecycle_event(
-            resolve_history_db(cwd / ".ll" / "history.db"),
+            cwd / ".ll" / "history.db",
             session_id=session_id,
             event="stale_ref_sweep",
             detail={"findings": findings, "fix_mode": fix_mode, "trigger": "session_start"},

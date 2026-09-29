@@ -347,14 +347,12 @@ class TestHistoryTarget:
         assert (tmp_path / "p.db").exists() and (tmp_path / "t.db").exists()
 
     def test_schema_seam_rejects_remote_target_before_mutation(self, tmp_path, monkeypatch) -> None:
-        from little_loops.session_store.schema import connect, ensure_db
+        from little_loops.session_store.schema import ensure_db
 
         monkeypatch.chdir(tmp_path)
         remote = RemoteTarget(BackendConfig(provider="libsql", url="http://x"))
         with pytest.raises(HistoryUnsupported):
             ensure_db(remote)
-        with pytest.raises(HistoryUnsupported):
-            connect(remote)
         assert not (tmp_path / ".ll").exists()
 
     def test_schema_seam_accepts_local_target(self, tmp_path) -> None:

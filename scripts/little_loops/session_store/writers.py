@@ -33,8 +33,9 @@ from typing import TYPE_CHECKING, Any
 
 import little_loops.session_store as _pkg
 from little_loops.session_store.backend import HistoryError, translate_sqlite_errors
-from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_db
+from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_store
 from little_loops.session_store.schema import _LOOP_EVENT_TYPES
+from little_loops.session_store.targets import RemoteTarget
 
 if TYPE_CHECKING:
     from little_loops.subprocess_utils import ObservedAtBasis, TokenProvenance, TokenScopeKind
@@ -358,7 +359,7 @@ def _warn_on_dedup_collision(
 
 
 def record_issue_snapshot(
-    db_path: Path | str,
+    db_path: Path | str | RemoteTarget,
     issue_id: str,
     transition: str,
     file_path: str,
@@ -553,9 +554,9 @@ def cli_event_context(
             # Kill switch: skip resolution entirely — no filesystem access, no
             # cli_events row, LL_HISTORY_DB never consulted.
             gate_open = False
-            effective_path = Path(db_path)
+            effective_path: Path | RemoteTarget = Path(db_path)
         else:
-            effective_path = resolve_history_db(db_path)
+            effective_path = resolve_history_store(db_path)
             if config is not None:
                 from little_loops.config.features import (
                     AnalyticsCaptureConfig,
@@ -680,10 +681,10 @@ def skill_event_context(
     if _analytics_capture_disabled():
         # Kill switch: skip resolution entirely — no filesystem access, no
         # skill_events row, LL_HISTORY_DB never consulted.
-        effective_path = Path(db_path)
+        effective_path: Path | RemoteTarget = Path(db_path)
         gate_open = False
     else:
-        effective_path = resolve_history_db(db_path)
+        effective_path = resolve_history_store(db_path)
         if config is not None:
             from little_loops.config.features import (
                 AnalyticsCaptureConfig,
@@ -785,7 +786,7 @@ def record_hook_event(
     if stderr_preview is not None:
         stderr_preview = stderr_preview[:_STDERR_PREVIEW_MAX]
     ts = ts or _now()
-    effective_path = resolve_history_db(db_path)
+    effective_path = resolve_history_store(db_path)
     try:
         conn = _pkg.connect(effective_path)
     except sqlite3.Error:
@@ -2934,7 +2935,7 @@ class SQLiteTransport:
     """
 
     def __init__(self, db_path: Path | str = DEFAULT_DB_PATH) -> None:
-        self._path = resolve_history_db(db_path)
+        self._path = resolve_history_store(db_path)
         self._lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
         try:

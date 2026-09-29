@@ -1462,6 +1462,7 @@ _DATACLASS_SECTION_MAP: dict[str, str | None] = {
     # not wired through BRConfig/to_dict() — intentionally outside guard 1's walk.
     "RetentionConfig": None,
     "HistoryConfig": "history",
+    "HistoryBackendConfig": "history",
     "QueueConfig": "queue",
     "AutomationConfig": "automation",
     "EpicBranchesConfig": "parallel",

@@ -1020,6 +1020,7 @@ class BRConfig:
                 "effort_fields": list(self._history.effort_fields),
                 "max_age_days": self._history.max_age_days,
                 "planning_skills": list(self._history.planning_skills),
+                "backend": self._history.backend.to_dict(),
                 "session_digest": {
                     "enabled": self._history.session_digest.enabled,
                     "days": self._history.session_digest.days,

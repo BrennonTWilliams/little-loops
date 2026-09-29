@@ -32,10 +32,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
         # Kimi Code sends ``agent_name`` (the type label) and no ``agent_id``.
         agent_type = payload.get("agent_type") or payload.get("agent_name")
 
-        from little_loops.session_store import record_subagent_run_start, resolve_history_db
+        from little_loops.session_store import record_subagent_run_start
 
         record_subagent_run_start(
-            resolve_history_db(Path.cwd() / ".ll" / "history.db"),
+            Path.cwd() / ".ll" / "history.db",
             parent_session_id=event.session_id or payload.get("session_id"),
             agent_id=agent_id,
             agent_type=agent_type,

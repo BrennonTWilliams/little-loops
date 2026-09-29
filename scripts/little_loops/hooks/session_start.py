@@ -131,9 +131,15 @@ def handle(event: LLHookEvent) -> LLHookResult:
     _project_context_block = ""
     if config_path is not None:
         with contextlib.suppress(Exception):
-            from little_loops.session_store import ensure_db, resolve_history_db
+            from little_loops.session_store import ensure_db
+            from little_loops.session_store.db import resolve_history_store
+            from little_loops.session_store.targets import RemoteTarget
 
-            ensure_db(resolve_history_db(root / ".ll" / "history.db"))
+            _store = resolve_history_store(root / ".ll" / "history.db")
+            # A remote store is never migrated on open (FEAT-3535): only
+            # ``ll-session migrate`` changes its schema.
+            if not isinstance(_store, RemoteTarget):
+                ensure_db(_store)
 
         # ENH-1830 / BUG-1882: trigger incremental JSONL backfill in a detached
         # subprocess so it outlives the short-lived hook process. A daemon thread
