@@ -23,6 +23,14 @@ Under `history.backend.provider: libsql`, a dead or unreachable remote endpoint 
 - Verified 2026-09-29 against `HranaStub` after `remote.stop()`: `hook_event_context` raised `HranaUnavailable` after the body ran; `skill_event_context` raised `HranaUnavailable` before the body ran.
 - Why no test caught it: `test_remote_hooks.py::TestPostToolUse::test_a_dead_endpoint_never_fails_the_hook` (`:134`) calls `post_tool_use.handle()` directly, bypassing the dispatcher and `hook_event_context`.
 
+## Steps to Reproduce
+
+1. Configure `history.backend.provider: libsql` with a remote endpoint, and enable `analytics.enabled` and `analytics.capture.hooks`.
+2. Make the endpoint unreachable (stop the remote, or point it at a closed port). The test route is `HranaStub` followed by `remote.stop()`.
+3. Fire any hook through the dispatcher, for example `main_hooks` with a PreToolUse intent and stdin JSON. The handler runs, then the process exits with a `HranaUnavailable` traceback and its stdout decision JSON is never written.
+4. Fire a second hook within 60 s. It crashes the same way, with `HistorySuppressed` and no network call.
+5. Run `ll-action <skill>`. It exits with `HranaUnavailable` before the skill runs.
+
 ## Expected Behavior
 
 A dead, slow or suppressed remote history endpoint never changes a hook's exit code, stdout or feedback, and never stops `ll-action` from running the skill. The telemetry row is skipped: `HistorySuppressed` is logged at debug with no traceback, and other `HistoryError`s are logged once as a warning.
@@ -59,6 +67,24 @@ Hooks run on every tool call. During any remote outage, every libsql user with h
 
 ### Configuration
 - N/A
+
+## Program Design
+
+### Types
+
+- `_DEGRADE_ERRORS: tuple[type[Exception], ...]` — `(sqlite3.Error, HistoryError)`, module constant in `session_store/writers.py`
+
+### Signatures
+
+- `record_hook_event(...) -> None` — connect and insert handlers catch `_DEGRADE_ERRORS`; `HistorySuppressed` logs at debug, other errors at warning
+- `skill_event_context(...) -> Iterator[...]` — enter and exit-update handlers catch `_DEGRADE_ERRORS`, same logging split
+- `main_hooks() -> int` — a failure raised by the `hook_event_context` wrap itself is swallowed after `result` is bound; the handler's own exceptions still propagate
+
+### Call Path
+
+`main_hooks` -> `hook_event_context` -> `record_hook_event` -> `_connect_telemetry`
+
+`cmd_invoke` -> `skill_event_context` -> `_connect_telemetry`
 
 ## Implementation Steps
 
@@ -105,4 +131,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-29T15:34:43 - `6038439a-4a88-4017-a873-b730adce0fef.jsonl`
+- `/ll:format-issue` - 2026-09-29T15:33:38 - `9a90bf56-499f-485e-aa0b-df712bf8e9cd.jsonl`
 - `/ll:capture-issue` - 2026-09-29T06:52:01 - `5f8d5762-5341-43fe-88c8-0e9ad90d90b3.jsonl`
