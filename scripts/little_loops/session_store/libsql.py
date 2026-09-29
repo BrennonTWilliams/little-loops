@@ -11,8 +11,8 @@ Scope and deliberate differences from local SQLite:
   multi-row writes use ``executemany`` (one atomic ``batch``).
 - **No WAL / busy_timeout setup.** The remote server rejects those pragmas
   (``SQL_PARSE_ERROR``), so ``connect`` never sends them.
-- **Opens do not migrate.** Schema changes happen only through ``ll-session migrate``
-  (see :mod:`.remote_schema`).
+- **Opens do not migrate.** Schema changes happen only through ``ll-session migrate``;
+  the first statement per process applies the open-time policy in :mod:`.remote_schema`.
 - **No sqlite3 specifics.** ``supports()`` is ``False`` for every capability, so callers
   that need ``ATTACH``, ``VACUUM`` or ``create_function`` gate on it first.
 """
@@ -23,12 +23,14 @@ from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
+from little_loops.session_store import remote_schema
 from little_loops.session_store.backend import (
     HistoryTarget,
     HistoryUnsupported,
     RemoteTarget,
 )
 from little_loops.session_store.hrana import HranaClient, HranaResult
+from little_loops.session_store.targets import BackendConfig
 
 DEFAULT_TIMEOUT_S = 10.0
 
@@ -115,9 +117,12 @@ class LibsqlConnection:
 
     in_transaction = False
 
-    def __init__(self, client: HranaClient, *, read_only: bool = False) -> None:
+    def __init__(
+        self, client: HranaClient, *, read_only: bool = False, config: BackendConfig | None = None
+    ) -> None:
         self._client = client
         self._read_only = read_only
+        self._config = config
         # Legacy callers assign ``conn.row_factory = sqlite3.Row``; rows are always
         # name-and-index addressable here, so the assignment is accepted and ignored.
         self.row_factory: Any = None
@@ -126,19 +131,22 @@ class LibsqlConnection:
     def client(self) -> HranaClient:
         return self._client
 
-    def _guard_write(self, sql: str) -> None:
-        if self._read_only and not sql.lstrip().lower().startswith(_READ_ONLY_PREFIXES):
+    def _guard(self, sql: str) -> None:
+        is_write = not sql.lstrip().lower().startswith(_READ_ONLY_PREFIXES)
+        if is_write and self._read_only:
             raise HistoryUnsupported(
                 "this connection is read-only; refusing a write before any network call",
                 operation="write",
             )
+        if self._config is not None:
+            remote_schema.check_access(self._client, self._config, write=is_write)
 
     def execute(self, sql: str, parameters: Sequence[Any] = ()) -> LibsqlCursor:
-        self._guard_write(sql)
+        self._guard(sql)
         return LibsqlCursor(self._client.execute(sql, parameters))
 
     def executemany(self, sql: str, seq_of_parameters: Iterable[Sequence[Any]]) -> LibsqlCursor:
-        self._guard_write(sql)
+        self._guard(sql)
         return LibsqlCursor(rowcount=self._client.execute_many(sql, seq_of_parameters))
 
     def commit(self) -> None:
@@ -179,12 +187,20 @@ class LibsqlBackend:
         ``check_same_thread`` is accepted for protocol parity; the client is stateless and
         thread-safe, so it has no effect.
         """
-        return LibsqlConnection(self._client(_remote(target, "connect")))
+        remote = _remote(target, "connect")
+        return LibsqlConnection(self._client(remote), config=remote.config)
 
     def connect_readonly(self, target: Path | HistoryTarget) -> LibsqlConnection:
         """Read-only connection: writes are refused client-side before any network call."""
-        return LibsqlConnection(self._client(_remote(target, "connect_readonly")), read_only=True)
+        remote = _remote(target, "connect_readonly")
+        return LibsqlConnection(self._client(remote), read_only=True, config=remote.config)
 
     def ensure_schema(self, target: Path | HistoryTarget) -> None:
-        """Verify the remote schema is usable; never migrates (see ``ll-session migrate``)."""
-        _remote(target, "ensure_schema")
+        """Require a current, correctly-stamped remote schema; never migrates.
+
+        Raises:
+            HistoryUnsupported: the store is behind (names ``ll-session migrate``), ahead, or
+                belongs to another project.
+        """
+        remote = _remote(target, "ensure_schema")
+        remote_schema.check_access(self._client(remote), remote.config, write=True)

@@ -20,6 +20,7 @@ Subcommands:
     grep     regex search over message_events with covering summary node context
     expand   return message_events covered by a summary node
     describe metadata for a summary node
+    migrate  apply pending schema migrations; the only command that migrates a remote store
     prune    delete compacted raw_events rows older than configured max-age and VACUUM (ENH-1906)
     recompress rewrite legacy uncompressed raw_events payloads as zlib BLOBs and VACUUM
     export   dump selected tables as JSONL for visualization or external tooling
@@ -29,6 +30,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -376,6 +378,12 @@ Examples:
     )
     add_json_arg(recompress_parser)
 
+    subparsers.add_parser(
+        "migrate",
+        help="Bring the history store's schema to this install's version "
+        "(the only path that migrates a remote store)",
+    )
+
     record_hook_event_parser = subparsers.add_parser(
         "record-hook-event",
         help="Record one hook fire into hook_events (ENH-2506); invoked by the bash shim",
@@ -436,12 +444,59 @@ def _load_capture_config(cwd: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _main_migrate() -> int:
+    """``ll-session migrate``: run before ``cli_event_context`` so no telemetry row is written
+    into a store that may be mid-migration (or, for a remote store, not yet migratable)."""
+    from little_loops.session_store import remote_schema
+    from little_loops.session_store.backend import HistoryError, RemoteTarget
+    from little_loops.session_store.db import resolve_history_target
+    from little_loops.session_store.schema import (
+        SCHEMA_VERSION,
+        _current_version,
+        ensure_db,
+    )
+
+    _build_parser().parse_args()
+    configure_output()
+    logger = Logger(use_color=use_color_enabled())
+    try:
+        target = resolve_history_target(DEFAULT_DB_PATH)
+        if isinstance(target, RemoteTarget):
+            from little_loops.session_store.hrana import HranaClient
+
+            cfg = target.config
+            report = remote_schema.migrate_remote(
+                HranaClient(cfg.endpoint(), cfg.auth_token()), cfg.project_id
+            )
+            before, after, where = report.before, report.after, f"remote ({cfg.provider})"
+        else:
+            import sqlite3
+
+            path = target.path
+            before = 0
+            if path.exists():
+                with contextlib.closing(sqlite3.connect(str(path))) as probe:
+                    before = _current_version(probe)
+            ensure_db(path)
+            after, where = SCHEMA_VERSION, str(path)
+    except HistoryError as exc:
+        logger.error(f"migrate failed: {exc}")
+        return 1
+    if before == after:
+        logger.info(f"Schema already current at v{after} ({where})")
+    else:
+        logger.success(f"Migrated schema v{before} -> {after} ({where}): {before} -> {after}")
+    return 0
+
+
 def main_session() -> int:
     """Entry point for ll-session command.
 
     Returns:
         0 on success, 1 when no subcommand is given or on error.
     """
+    if sys.argv[1:2] == ["migrate"]:
+        return _main_migrate()
     # Loaded before the with-block: the context manager opens before argparse
     # runs, so parsed args cannot participate (see cli/history.py, ENH-3449).
     capture_config = _load_capture_config(Path.cwd())

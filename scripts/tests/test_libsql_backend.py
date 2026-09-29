@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from little_loops.session_store import db as db_mod
+from little_loops.session_store import remote_schema
 from little_loops.session_store.backend import (
     Backend,
     BackendConfig,
@@ -28,6 +29,7 @@ from little_loops.session_store.backend import (
     open_history_readonly,
     resolve_backend,
 )
+from little_loops.session_store.hrana import HranaClient
 from little_loops.session_store.libsql import LibsqlBackend
 from tests.hrana_stub import HranaStub
 
@@ -36,11 +38,19 @@ TOKEN = "sentinel-token-DO-NOT-LEAK"
 
 @pytest.fixture
 def stub() -> Iterator[HranaStub]:
+    """A stub whose schema is already migrated and stamped for ``acme-api``.
+
+    Opens never migrate (open-time policy), so backend behavior is tested against a
+    current store; migration and the behind/ahead policy have their own tests.
+    """
+    remote_schema.clear_verification_cache()
     s = HranaStub(token=TOKEN).start()
     try:
+        remote_schema.migrate_remote(HranaClient(s.url, TOKEN), "acme-api")
         yield s
     finally:
         s.stop()
+        remote_schema.clear_verification_cache()
 
 
 def _write_config(root: Path, backend: dict | None, local_md: str | None = None) -> None:
