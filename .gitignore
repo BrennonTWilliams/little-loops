@@ -183,3 +183,8 @@ PRD-Hermes-Integration-*.md
 prototypes/
 db-build/
 .claude/workflows/
+
+# Host-specific mirror builds (auto-generated)
+.gemini/
+.kimi-code/
+.qwen/
