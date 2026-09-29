@@ -1,19 +1,25 @@
 ---
-target: claude-code-hooks
-date: '2026-07-10'
+target: Claude Code hooks
+date: '2026-09-28'
 status: proven
 assertions:
-- claim: claude --version reports Claude Code (CLI installed)
+- claim: PreToolUse stdin JSON has hook_event_name == PreToolUse
   result: pass
-- claim: pre-tool-use.sh documents exit 0=allow and exit 2=block
+- claim: PreToolUse stdin JSON has tool_name == Bash and tool_input.command
   result: pass
-- claim: sibling hook parses tool_name and tool_input.file_path from stdin via jq
+- claim: PreToolUse stdin JSON includes session_id and cwd
   result: pass
-- claim: sibling hook returns the documented allow JSON response shape
+- claim: exit 2 blocks the tool call (command never runs)
   result: pass
-- claim: hooks.json registers check-duplicate-issue-id.sh under PreToolUse Write|Edit with timeout 5
+- claim: exit 2 stderr text is fed back to the model
   result: pass
-- claim: sibling hook early-exits (allow_response) when tool_name is neither Write nor Edit
+- claim: exit 0 with no output allows the tool call
+  result: pass
+- claim: exit 0 + permissionDecision deny blocks the tool call
+  result: pass
+- claim: permissionDecisionReason is fed back to the model
+  result: pass
+- claim: hook with non-matching matcher (Write) does not fire for Bash
   result: pass
 raw_output_path: .ll/learning-tests/raw/claude-code-hooks.txt
 ---
