@@ -20,20 +20,31 @@ def cmd_validate(
     """Validate a loop definition."""
     from little_loops.config import BRConfig
     from little_loops.fsm.validation import ValidationSeverity, load_and_validate
+    from little_loops.host_runner import HostNotConfigured, resolve_host
 
     as_json = getattr(args, "json", False)
-    orchestration_request_path = BRConfig(Path.cwd()).orchestration.request_path
 
-    # The try only wraps loading (path resolution + load_and_validate), never the
-    # success-path emissions below: those emissions can raise BrokenPipeError
+    # The try only wraps loading (config read + path resolution + load_and_validate),
+    # never the success-path emissions below: those emissions can raise BrokenPipeError
     # (an OSError subclass), and letting that reach these handlers would print a
     # second, contradictory "invalid" document over a pipe error. See BUG-3230.
+    # The config read sits inside so an invalid `orchestration.model_hints` (a
+    # ValueError from BRConfig) is a validate error, as it is for `ll-loop run` (ENH-3548).
     try:
+        orchestration = BRConfig(Path.cwd()).orchestration
+        # Same host `ll-loop run` resolves (env + PATH probe), so hint warnings predict
+        # `_preflight_model_hints`; no host found skips them (ENH-3548).
+        try:
+            host_cli: str | None = resolve_host().name
+        except HostNotConfigured:
+            host_cli = None
         path = resolve_loop_path(loop_name, loops_dir)
         fsm, violations_or_warnings = load_and_validate(
             path,
             raise_on_error=not as_json,
-            orchestration_request_path=orchestration_request_path,
+            orchestration_request_path=orchestration.request_path,
+            host_cli=host_cli,
+            model_hints=orchestration.model_hints,
         )
     except FileNotFoundError as e:
         # Must precede the OSError clause below: FileNotFoundError is an OSError

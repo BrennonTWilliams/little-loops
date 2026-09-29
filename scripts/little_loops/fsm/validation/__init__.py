@@ -29,12 +29,13 @@ Package layout (ENH-2774 split from the former flat ``validation.py``):
                           rules (evaluator/parameter/binding/routing/cost-ceiling
                           checks, zero-retry-counter, input-key guard,
                           on-max-steps/iterations, circuit, host-guard,
-                          prompt-size-guard)
+                          prompt-size-guard, model_hint resolution warnings)
 
 Public API:
     ValidationError:              structured validation error/warning
     ValidationSeverity:           ERROR | WARNING
-    validate_fsm(fsm, ...):       structural + lint-rule dispatcher
+    validate_fsm(fsm, ...):       structural + lint-rule dispatcher; ``host_cli`` /
+                                  ``model_hints`` enable model_hint resolution warnings
     load_and_validate(path, ...): load a loop YAML and validate it
     is_runnable_loop(path):       cheap runnable-loop check for a YAML file
 """
@@ -146,6 +147,7 @@ from little_loops.fsm.validation.structural_rules import (
     _validate_host_guard,
     _validate_input_key_without_guard,
     _validate_missing_scope,
+    _validate_model_hint_resolution,
     _validate_on_max_iterations,
     _validate_on_max_steps,
     _validate_parameters,
@@ -251,6 +253,7 @@ __all__ = [
     "_validate_loop_references",
     "_validate_meta_loop_evaluation",
     "_validate_missing_scope",
+    "_validate_model_hint_resolution",
     "_validate_on_max_iterations",
     "_validate_on_max_steps",
     "_validate_overescaped_shell",

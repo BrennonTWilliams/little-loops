@@ -105,6 +105,61 @@ class TestHaikuPinnedGenerator:
         errors = _validate_haiku_pinned_generator(fsm)
         assert errors == []
 
+    def test_fires_for_burst_hint_generator_state(self) -> None:
+        """ENH-3548: a hint-only ``burst`` generator is flagged (burst aliases to haiku)."""
+        fsm = self._fsm(
+            make_state(
+                action="/ll:write-summary",
+                action_type="prompt",
+                model_hint="burst",
+                evaluate=EvaluateConfig(type="exit_code"),
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        errors = _validate_haiku_pinned_generator(fsm)
+        assert len(errors) == 1
+        assert errors[0].severity == ValidationSeverity.WARNING
+        assert errors[0].path == "states.work.model_hint"
+
+    def test_burst_hint_verdict_state_and_other_hints_not_flagged(self) -> None:
+        verdict = self._fsm(
+            make_state(
+                action="run.sh",
+                action_type="shell",
+                model_hint="burst",
+                evaluate=EvaluateConfig(type="llm_structured"),
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        assert _validate_haiku_pinned_generator(verdict) == []
+        coding = self._fsm(
+            make_state(
+                action="/ll:write-summary",
+                action_type="prompt",
+                model_hint="coding",
+                evaluate=EvaluateConfig(type="exit_code"),
+                on_yes="done",
+                on_no="work",
+            )
+        )
+        assert _validate_haiku_pinned_generator(coding) == []
+
+    def test_burst_hint_suppressed_by_haiku_generator_ok(self) -> None:
+        fsm = self._fsm(
+            make_state(
+                action="/ll:write-summary",
+                action_type="prompt",
+                model_hint="burst",
+                evaluate=EvaluateConfig(type="exit_code"),
+                on_yes="done",
+                on_no="work",
+            ),
+            haiku_generator_ok=True,
+        )
+        assert _validate_haiku_pinned_generator(fsm) == []
+
     def test_suppressed_by_haiku_generator_ok(self) -> None:
         """haiku_generator_ok: true suppresses the rule."""
         fsm = self._fsm(

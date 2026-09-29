@@ -6681,10 +6681,22 @@ class ValidationError:
 #### validate_fsm
 
 ```python
-def validate_fsm(fsm: FSMLoop, orchestration_request_path: str | None = None) -> list[ValidationError]
+def validate_fsm(
+    fsm: FSMLoop,
+    orchestration_request_path: str | None = None,
+    *,
+    host_cli: str | None = None,
+    model_hints: dict[str, dict[str, str | Literal[False]]] | None = None,
+) -> list[ValidationError]
 ```
 
 Validate FSM structure and return list of errors.
+
+**Parameters:**
+- `fsm` - The loop to validate
+- `orchestration_request_path` - Optional `orchestration.request_path` config default, consulted by request-path-sensitive rules (e.g. MR-12 Check 3)
+- `host_cli` - Active host CLI name (`resolve_host().name`), used to check that `model_hint` declarations resolve. `None` (the default) skips the model hint resolution warnings; the vocabulary and exclusivity errors still apply
+- `model_hints` - Parsed `orchestration.model_hints` overrides; `None` means built-in mappings only
 
 **Checks performed:**
 - Initial state exists in states dict
@@ -6706,6 +6718,8 @@ Validate FSM structure and return list of errors.
 - **MR-9 (ERROR)**: a shell action string contains `$$(` or `$$VAR` — over-escaped bash; the FSM interpolator only rewrites the brace form `$${...}` → `${...}`, so bare `$(...)` / `$VAR` doubled with `$$` expand to the runner's PID at runtime, silently corrupting every downstream `${captured.*}` reference; use single `$` for command substitution and variables, reserve `$$` exclusively for the `$${VAR}` brace escape that collides with `${ns.path}` interpolation; set `shell_pid_ok: true` to suppress (BUG-2368)
 - **MR-10 (WARNING)**: a `shell`-type state's inline Python calls `json.loads`/`json.load`, catches `JSONDecodeError`/`ValueError`/bare `Exception`, and explicitly exits 0 — without an `on_error:` route — silently discarding parse failures as an empty success; add `on_error:` to route parse failures explicitly, or set `parse_swallow_ok: true` to suppress when an empty result is intentional (BUG-2383)
 - **MR-11 (WARNING)**: a `shell`-type state pastes an untrusted `${context.*}`/`${captured.*}`/`${prev.output|stderr}` value raw into the action body outside a safe position — a bash token position (not single-quoted, no `:shell`), or inside a Python literal embedded in the body (a quoted heredoc that is a Python body, or a `python3 -c "…"` body) — `interpolate()` substitutes with a bare `str(value)` and no shell escaping, so a value containing `"`, `$`, `` ` ``, `\`, or `!` breaks bash tokenizing/injects commands at a bash position, or breaks the Python parser inside a Python body. Untrusted-ness comes from `classify_site()` (ENH-3338), not a fixed key list. Wrap the placeholder in single quotes / a quoted heredoc / `:shell` at a bash token position; inside a Python body, hoist it to an `LL_ARG_X=...` env binding or a file instead. Set `unsafe_context_interpolation_ok: true` to suppress loop-wide, or a well-formed `# ll-lint: mr11-ok(<namespace>.<key>) <reason>` marker to suppress one site (BUG-2622, ENH-3342)
+- **Model hint resolution (WARNING)**: a `model_hint` on a state or under `llm:` that will not resolve on the backend its state runs on (the host CLI, or `anthropic-api` for `sdk`/`batch` prompt actions); only checked when `host_cli` is given; no suppression flag, because the outcome depends on the machine's host and `orchestration.model_hints`; the message names the fix (`set orchestration.model_hints.<backend>.<hint> in .ll/ll-config.json`) (ENH-3548). See [Loop `model_hint` support matrix](HOST_COMPATIBILITY.md#loop-model_hint-support-matrix)
+- **haiku-gen (WARNING)**: a generator state (not an evaluator/verdict state) whose `model:` names a haiku variant, or whose `model_hint` is `burst`; set `haiku_generator_ok: true` to suppress (ENH-2713, ENH-3548)
 - **terminal-action-ok (WARNING)**: a non-empty `action` on a `terminal: true` state — the executor finishes the run the instant a terminal is entered, before its `action` would run, so it's dead code; move the action into a new penultimate non-terminal state with `next: <terminal>` and an `on_error:` route, leaving the terminal bare (the `rn-implement::report` shape); exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler (BUG-158); set `terminal_action_ok: true` to suppress (BUG-2813)
 - **MR-13 (WARNING)**: a loop has an abandonment mechanism (checkbox rewrite to `[!]`, or `[x]`+"abandoned" annotation, or a `max_step_attempts`-style attempt cap) but no state's action emits an `"abandoned"` key into a summary JSON printf/write; or a shell action hardcodes a literal `"verdict":"success"`/`verdict=success` with no conditional branch on an abandonment/failure counter and no `"abandoned"` key emitted in that same state — abandoned work is silently laundered into a clean success verdict (the pre-ENH-2857 `general-task.yaml` defect); set `abandonment_verdict_ok: true` to suppress (ENH-2860)
 - **MR-14 (WARNING)**: a state's raw `evaluate:` mapping has a key outside `EvaluateConfig`'s dataclass fields — `EvaluateConfig.from_dict` silently drops unrecognized keys with no diagnostic, the root cause that let BUG-2893/BUG-2894 ship; the rule derives its known-field set from `dataclasses.fields(EvaluateConfig)` and suggests the nearest known field via `difflib.get_close_matches`; WARN-now/ERROR-later relative to `fsm-loop-schema.json`'s `additionalProperties: false` stance on `evaluateConfig`; set `evaluate_unknown_keys_ok: true` to suppress (ENH-2896)
@@ -6734,7 +6748,10 @@ print(f"Found {len(error_list)} errors")
 def load_and_validate(
     path: Path,
     raise_on_error: bool = True,
-    orchestration_request_path: Path | None = None,
+    orchestration_request_path: str | None = None,
+    *,
+    host_cli: str | None = None,
+    model_hints: dict[str, dict[str, str | Literal[False]]] | None = None,
 ) -> tuple[FSMLoop, list[ValidationError]]
 ```
 
@@ -6749,8 +6766,10 @@ Load YAML file and validate FSM structure.
   handle (used by `--json` output paths and by recursive child-loop loads, e.g.
   `_validate_with_bindings`, so a child's warnings don't leak to stderr through a parent's
   validation — see BUG-3239).
-- `orchestration_request_path` - Optional path passed through to request-path-sensitive
-  validation rules (e.g. MR-12 Check 3)
+- `orchestration_request_path` - Optional `orchestration.request_path` value (`"cli"`, `"sdk"` or
+  `"batch"`) passed through to request-path-sensitive validation rules (e.g. MR-12 Check 3)
+- `host_cli` / `model_hints` - Forwarded to `validate_fsm` for the model hint resolution
+  warnings; `host_cli=None` (default) skips them
 
 **Returns:** `(fsm, violations)` — the parsed `FSMLoop` and a list of `ValidationError`. When
 `raise_on_error=True`, ERROR-severity findings raise `ValueError` instead of being returned, so

@@ -404,6 +404,10 @@ config:
 # LLM Evaluation Settings
 llm:
   model: string                 # Model for LLM evaluation (default: DEFAULT_LLM_MODEL from schema.py)
+  model_hint: string            # coding | reasoning | burst — portable alternative to model; wins over it.
+                                # Resolved per host (orchestration.model_hints in ll-config.json overrides
+                                # the built-in mappings). `ll-loop validate` warns when it will not resolve.
+                                # See docs/reference/HOST_COMPATIBILITY.md (Loop model_hint support matrix).
   max_tokens: integer           # Max tokens for evaluation (default: 256)
   timeout: number               # Timeout for LLM calls in seconds (default: 1800)
 ```

@@ -39,7 +39,13 @@ class TestNoRealPathAvailableAtCallSites:
         """
         sig = inspect.signature(validate_fsm)
         param_names = set(sig.parameters)
-        assert param_names == {"fsm", "orchestration_request_path"}, (
+        # ENH-3548 added host_cli/model_hints (model-hint resolution); neither is a path.
+        assert param_names == {
+            "fsm",
+            "orchestration_request_path",
+            "host_cli",
+            "model_hints",
+        }, (
             "validate_fsm() gained/lost a parameter; re-check whether a real "
             "file path is now threaded through before trusting this spike."
         )

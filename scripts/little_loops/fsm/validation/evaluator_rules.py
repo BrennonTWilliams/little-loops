@@ -527,27 +527,35 @@ def _validate_haiku_pinned_generator(fsm: FSMLoop) -> list[ValidationError]:
     variant but is NOT LLM-judged (i.e. it generates/writes artifacts rather
     than producing a verdict) has no equivalent quality backstop.
 
+    ``model_hint: burst`` is flagged the same way (ENH-3548): ``burst`` is the
+    "cheap/fast" intent and aliases to haiku on ``anthropic-api``/``claude-code``.
+    This check is host-independent, so it does not need a resolved backend.
+
     Suppressed by ``haiku_generator_ok: true`` at the loop top-level.
     """
     if fsm.haiku_generator_ok:
         return []
     errors: list[ValidationError] = []
     for state_name, state in fsm.states.items():
-        if state.model is None or "haiku" not in state.model.lower():
+        if state.model is not None and "haiku" in state.model.lower():
+            pin, field = f"model: '{state.model}' pins a haiku variant", "model"
+        elif state.model_hint == "burst":
+            pin, field = "model_hint: burst selects the cheap/fast (haiku-class) tier", "model_hint"
+        else:
             continue
         if _is_llm_judged(state):
             continue
         errors.append(
             ValidationError(
                 message=(
-                    f"[state: {state_name}] model: '{state.model}' pins a haiku variant "
+                    f"[state: {state_name}] {pin} "
                     "on a generator state (not an evaluator/verdict state). Haiku pinning "
                     "is intended for cheap check_semantic/llm_structured verdicts, which "
                     "MR-1 already gates with a non-LLM evaluator — generator output has no "
                     "equivalent quality backstop. Set `haiku_generator_ok: true` to suppress. "
                     "(ENH-2713)"
                 ),
-                path=f"states.{state_name}.model",
+                path=f"states.{state_name}.{field}",
                 severity=ValidationSeverity.WARNING,
             )
         )

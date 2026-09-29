@@ -12,7 +12,7 @@ import difflib
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -26,6 +26,7 @@ from little_loops.fsm.schema import (
     evaluate_config_known_fields,
 )
 from little_loops.fsm.validation._base import (
+    _SKILL_INVOKE_RE,
     EVALUATOR_REQUIRED_FIELDS,
     KNOWN_TOP_LEVEL_KEYS,
     STALL_SPECIAL_TOKENS,
@@ -71,7 +72,15 @@ from little_loops.fsm.validation.shell_safety import (
     _validate_overescaped_shell,
     _validate_unsafe_context_interpolation,
 )
-from little_loops.host_runner import CREDENTIAL_SCOPES, MODEL_HINTS
+from little_loops.host_runner import (
+    _HINT_UNSUPPORTED_BACKENDS,
+    ANTHROPIC_API_BACKEND,
+    CREDENTIAL_SCOPES,
+    MODEL_HINTS,
+    ModelHintError,
+    ModelHintUnmappedError,
+    resolve_model_hint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -435,6 +444,18 @@ def _is_shell_state(state: StateConfig) -> bool:
     return not (state.action is not None and state.action.startswith("/"))
 
 
+def _is_prompt_action(state: StateConfig) -> bool:
+    """Return True if the state's action dispatches in prompt mode (ENH-3548).
+
+    Mirrors ``FSMExecutor._action_mode() == "prompt"`` for the static cases:
+    ``action_type`` ``prompt``/``slash_command``, or ``action_type`` unset and the
+    action starting with ``/``.
+    """
+    if state.action_type in ("prompt", "slash_command"):
+        return True
+    return state.action_type is None and state.action is not None and state.action.startswith("/")
+
+
 def _consumes_model_hint(state: StateConfig) -> bool:
     """Return True if a state actually consumes a model at runtime (ENH-3527).
 
@@ -442,11 +463,138 @@ def _consumes_model_hint(state: StateConfig) -> bool:
     ``executor._action_mode``) or an explicit ``llm_structured`` evaluator.
     ``contract``/``advisor_consult``/``check_semantic`` never receive the state model.
     """
-    if state.action_type in ("prompt", "slash_command"):
-        return True
-    if state.action_type is None and state.action is not None and state.action.startswith("/"):
+    if _is_prompt_action(state):
         return True
     return state.evaluate is not None and state.evaluate.type == "llm_structured"
+
+
+_HintPath = Literal["cli", "sdk", "evaluator"]
+
+
+def _static_model_paths(
+    fsm: FSMLoop, state: StateConfig, orchestration_request_path: str | None
+) -> list[tuple[_HintPath, bool]]:
+    """Model-consuming dispatch paths a state can take, as ``(path, is_fallback)``.
+
+    Mirrors ``FSMExecutor._model_consumer_paths`` for the *static* downgrade causes
+    only (``/ll:`` skill action, ``tools:``): the environmental ones (``anthropic``
+    not importable, no credentials) are unknowable at validate time, so an
+    ``sdk``/``batch`` state also yields a ``("cli", True)`` fallback entry (ENH-3548).
+    Duplicated from the executor on purpose — validation does not import it.
+    """
+    if state.terminal or state.loop is not None or state.action_type == "human_approval":
+        return []
+    configured = state.request_path or orchestration_request_path or "cli"
+    paths: list[tuple[_HintPath, bool]] = []
+
+    def action_paths(remedy_action: str | None) -> list[tuple[_HintPath, bool]]:
+        if configured not in ("sdk", "batch"):
+            return [("cli", False)]
+        if (remedy_action and _SKILL_INVOKE_RE.search(remedy_action)) or state.tools:
+            return [("cli", False)]
+        return [("sdk", False), ("cli", True)]
+
+    if state.type == "learning" and state.learning is not None:
+        return action_paths(state.action)
+    is_prompt = state.action is not None and _is_prompt_action(state)
+    if is_prompt:
+        paths.extend(action_paths(state.action))
+    if state.next or not fsm.llm.enabled:
+        return paths
+    if state.evaluate is None:
+        if is_prompt:
+            paths.append(("evaluator", False))
+    elif state.evaluate.type == "llm_structured":
+        paths.append(("evaluator", False))
+    return paths
+
+
+def _validate_model_hint_resolution(
+    fsm: FSMLoop,
+    *,
+    orchestration_request_path: str | None,
+    host_cli: str | None,
+    model_hints: dict[str, dict[str, str | Literal[False]]] | None,
+) -> list[ValidationError]:
+    """Warn about ``model_hint`` declarations that will not resolve (ENH-3548).
+
+    Mirrors ``FSMExecutor._preflight_model_hints`` per state and dispatch path,
+    selecting the declaration ``_resolve_model`` would (``--model`` is unknowable
+    here and treated as absent). A hint that fails to resolve is only a WARNING
+    (host and config vary by machine); at run start it ends the run. Skipped when
+    ``host_cli`` is ``None``. Out-of-vocabulary hints are left to the vocabulary
+    ERROR. No ``*_ok`` suppression flag: the fix is in ``orchestration.model_hints``.
+    """
+    if host_cli is None:
+        return []
+    if fsm.llm.model_hint is None and not any(
+        st.model_hint is not None for st in fsm.states.values()
+    ):
+        return []
+
+    errors: list[ValidationError] = []
+    llm_seen: set[tuple[str, str]] = set()
+
+    def check(hint: str, backend: str) -> str | None:
+        try:
+            resolve_model_hint(hint, backend=backend, overrides=model_hints)
+        except ModelHintError as exc:
+            if isinstance(exc, ModelHintUnmappedError) or backend not in _HINT_UNSUPPORTED_BACKENDS:
+                return str(exc)
+            return f"{exc}; run on a supported host CLI"
+        return None
+
+    for state_name, state in fsm.states.items():
+        # (declaring scope, hint, backend) -> is_fallback, deduped; a non-fallback wins.
+        targets: dict[tuple[str, str, str], bool] = {}
+        for path, is_fallback in _static_model_paths(fsm, state, orchestration_request_path):
+            if state.model:
+                continue  # a literal `model:` wins on every path, never resolves a hint
+            backend = ANTHROPIC_API_BACKEND if path == "sdk" else host_cli
+            if state.model_hint is not None:
+                scope, hint = "state", state.model_hint
+            elif path == "cli":
+                continue  # llm.model_hint is never a CLI-action default
+            elif fsm.llm.model_hint is not None:
+                scope, hint = "llm", fsm.llm.model_hint
+            else:
+                continue
+            if hint not in MODEL_HINTS:
+                continue
+            key = (scope, hint, backend)
+            targets[key] = targets.get(key, True) and is_fallback
+        for (scope, hint, backend), is_fallback in targets.items():
+            problem = check(hint, backend)
+            if problem is None:
+                continue
+            if scope == "llm":
+                if (hint, backend) in llm_seen:
+                    continue
+                llm_seen.add((hint, backend))
+                errors.append(
+                    ValidationError(
+                        message=(
+                            f"llm.model_hint {hint!r} will not resolve on backend "
+                            f"{backend!r} (first reached by state '{state_name}'): "
+                            f"{problem} (ENH-3548)"
+                        ),
+                        path="llm.model_hint",
+                        severity=ValidationSeverity.WARNING,
+                    )
+                )
+                continue
+            fallback_note = " if the sdk path downgrades to cli" if is_fallback else ""
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"[state: {state_name}] model_hint {hint!r} will not resolve on "
+                        f"backend {backend!r}{fallback_note}: {problem} (ENH-3548)"
+                    ),
+                    path=f"states.{state_name}.model_hint",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
+    return errors
 
 
 def _validate_model_hint_decl(state_name: str, state: StateConfig) -> list[ValidationError]:
@@ -1167,7 +1315,11 @@ def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
 
 
 def validate_fsm(
-    fsm: FSMLoop, orchestration_request_path: str | None = None
+    fsm: FSMLoop,
+    orchestration_request_path: str | None = None,
+    *,
+    host_cli: str | None = None,
+    model_hints: dict[str, dict[str, str | Literal[False]]] | None = None,
 ) -> list[ValidationError]:
     """Validate FSM structure and return list of errors.
 
@@ -1184,6 +1336,10 @@ def validate_fsm(
         orchestration_request_path: Optional project-level ``orchestration.request_path``
             config default (ENH-2810), consulted by MR-12 Check 3's exemption when a
             state has no explicit ``request_path`` of its own.
+        host_cli: Active host CLI name (``resolve_host().name``) used to check that
+            ``model_hint`` declarations resolve (ENH-3548). ``None`` skips those warnings.
+        model_hints: Parsed ``orchestration.model_hints`` overrides; ``None`` means
+            built-in mappings only.
 
     Returns:
         List of validation errors (empty if valid)
@@ -1325,6 +1481,15 @@ def validate_fsm(
                     severity=ValidationSeverity.WARNING,
                 )
             )
+
+    errors.extend(
+        _validate_model_hint_resolution(
+            fsm,
+            orchestration_request_path=orchestration_request_path,
+            host_cli=host_cli,
+            model_hints=model_hints,
+        )
+    )
 
     # Check for unreachable states (warning only)
     reachable = _find_reachable_states(fsm)
@@ -1945,6 +2110,9 @@ def load_and_validate(
     path: Path,
     raise_on_error: bool = True,
     orchestration_request_path: str | None = None,
+    *,
+    host_cli: str | None = None,
+    model_hints: dict[str, dict[str, str | Literal[False]]] | None = None,
 ) -> tuple[FSMLoop, list[ValidationError]]:
     """Load YAML file and validate FSM structure.
 
@@ -1955,6 +2123,9 @@ def load_and_validate(
         orchestration_request_path: Optional project-level ``orchestration.request_path``
             config default (ENH-2810), threaded into ``validate_fsm`` for MR-12 Check 3's
             config-level exemption.
+        host_cli: Active host CLI name, forwarded to ``validate_fsm`` for the
+            ``model_hint`` resolution warnings (ENH-3548). ``None`` skips them.
+        model_hints: Parsed ``orchestration.model_hints`` overrides, forwarded likewise.
 
     Returns:
         When raise_on_error=True: (FSMLoop, list of WARNING-severity ValidationErrors)
@@ -2032,7 +2203,9 @@ def load_and_validate(
     unknown_key_warnings.extend(_validate_evaluate_unknown_keys(fsm, data))
 
     # Validate
-    errors = validate_fsm(fsm, orchestration_request_path)
+    errors = validate_fsm(
+        fsm, orchestration_request_path, host_cli=host_cli, model_hints=model_hints
+    )
 
     # Validate with: bindings against child loop parameters (requires file-system access)
     errors.extend(_validate_with_bindings(fsm, path.parent))

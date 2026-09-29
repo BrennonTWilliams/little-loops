@@ -51,6 +51,8 @@ These are surfaced by running `ll-loop validate <name>`. The review skill presen
 | V-18 | State's `loop:` reference does not resolve to any file (typo, renamed loop, missing sibling) — fails at runtime after expensive setup; caught at definition time (BUG-2305) | Warning |
 | terminal-action-ok | `terminal: true` state has a non-empty `action` — the executor finishes the run before that action would run, so it's dead code; move it to a new penultimate non-terminal state with `next: <terminal>` and `on_error:` routing (the `rn-implement::report` shape). Exempts a terminal doubling as the loop's `on_max_steps`/`on_max_iterations` handler; suppress with `terminal_action_ok: true` (BUG-2813) | Warning |
 | MR-14 | State's raw `evaluate:` mapping has a key outside `EvaluateConfig`'s dataclass fields — silently dropped by `EvaluateConfig.from_dict` with no diagnostic (root cause of BUG-2893/BUG-2894); suggests the nearest known field via `difflib.get_close_matches`; suppress with `evaluate_unknown_keys_ok: true` (ENH-2896) | Warning |
+| haiku-gen | Generator state (not an evaluator/verdict state) whose `model:` names a haiku variant or whose `model_hint` is `burst`; haiku pinning belongs on cheap verdict states that MR-1 already gates. Suppress with `haiku_generator_ok: true` (ENH-2713, ENH-3548) | Warning |
+| model-hint-resolution | A `model_hint` (state or `llm:`) has no mapping on the backend its state runs on — the host CLI, or `anthropic-api` for `sdk`/`batch` prompt actions. Set `orchestration.model_hints.<backend>.<hint>` in `.ll/ll-config.json`. No suppression flag: the result depends on the machine's host and config, not the loop file (ENH-3548) | Warning |
 
 ---
 

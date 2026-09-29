@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from datetime import time as dt_time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from little_loops.analytics.association import compute_lift, compute_pmi
 from little_loops.cli.loop.info import (  # private symbol: cross-module coupling; verify signature on upgrade
@@ -2324,12 +2324,17 @@ def _cmd_loop_fleet(args: argparse.Namespace, logger: Logger) -> int:
 
 
 def _validate_builtin_loop(
-    name: str, *, orchestration_request_path: str | None
+    name: str,
+    *,
+    orchestration_request_path: str | None,
+    host_cli: str | None = None,
+    model_hints: dict[str, dict[str, str | Literal[False]]] | None = None,
 ) -> tuple[bool, list[ValidationError]]:
     """Validate a built-in loop by name via ``load_and_validate()`` (Decisions #8).
 
     Thin wrapper over ``_builtin_loop_paths()[name]`` +
-    ``load_and_validate(path, raise_on_error=False, orchestration_request_path=...)``.
+    ``load_and_validate(path, raise_on_error=False, orchestration_request_path=...,
+    host_cli=..., model_hints=...)``.
     Does NOT use ``resolve_loop_path`` (top-level only; misses nested
     ``oracles/*`` built-ins) or ``cmd_validate`` (prints instead of
     returning). An unknown name, ``ValueError``, ``yaml.YAMLError``, or
@@ -2357,6 +2362,8 @@ def _validate_builtin_loop(
             path,
             raise_on_error=False,
             orchestration_request_path=orchestration_request_path,
+            host_cli=host_cli,
+            model_hints=model_hints,
         )
     except (ValueError, yaml.YAMLError, OSError) as e:
         violations = [
@@ -2758,11 +2765,20 @@ def _cmd_fleet_review(args: argparse.Namespace, logger: Logger) -> int:
 
     flagged = _flag_loops(aggs, threshold=args.threshold, min_runs=args.min_runs)
 
-    orchestration_request_path = BRConfig(Path.cwd()).orchestration.request_path
+    from little_loops.host_runner import HostNotConfigured, resolve_host
+
+    orchestration = BRConfig(Path.cwd()).orchestration
+    try:
+        host_cli: str | None = resolve_host().name
+    except HostNotConfigured:
+        host_cli = None
     validations: dict[str, tuple[bool, list[ValidationError]]] = {}
     for a in flagged:
         validations[a.loop_name] = _validate_builtin_loop(
-            a.loop_name, orchestration_request_path=orchestration_request_path
+            a.loop_name,
+            orchestration_request_path=orchestration.request_path,
+            host_cli=host_cli,
+            model_hints=orchestration.model_hints,
         )
 
     clusters: list[_FailureCluster] | None = None

@@ -6094,9 +6094,15 @@ class TestFleetReview:
         name = "rn-build"
         path = _builtin_loop_paths()[name]
         _fsm, expected_violations = load_and_validate(
-            path, raise_on_error=False, orchestration_request_path=None
+            path,
+            raise_on_error=False,
+            orchestration_request_path=None,
+            host_cli="claude-code",
+            model_hints={},
         )
-        valid, violations = _validate_builtin_loop(name, orchestration_request_path=None)
+        valid, violations = _validate_builtin_loop(
+            name, orchestration_request_path=None, host_cli="claude-code", model_hints={}
+        )
         expected_valid = not any(
             v.severity is ValidationSeverity.ERROR for v in expected_violations
         )

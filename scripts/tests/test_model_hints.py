@@ -1089,3 +1089,270 @@ states:
         assert result.terminated_by == "terminal" and runner.calls == []
         sent = [c.kwargs["model"] for c in client.messages.create.call_args_list]
         assert sent == [MODEL_ALIASES["sonnet"], MODEL_ALIASES["haiku"]]
+
+
+def _res_warnings(
+    fsm: FSMLoop,
+    host_cli: str | None,
+    model_hints: dict[str, Any] | None = None,
+    request_path: str | None = None,
+) -> list[Any]:
+    """WARNING violations produced by the ENH-3548 hint-resolution rule."""
+    found = validate_fsm(fsm, request_path, host_cli=host_cli, model_hints=model_hints)
+    return [
+        e for e in found if e.severity == ValidationSeverity.WARNING and "ENH-3548" in e.message
+    ]
+
+
+class TestValidateResolution:
+    """ENH-3548: validate-time WARNINGs for hints that will not resolve."""
+
+    def test_unmapped_cli_hint_warns_with_fix(self) -> None:
+        fsm = _fsm(_prompt(model_hint="coding"))
+        (w,) = _res_warnings(fsm, "codex")
+        assert w.path == "states.s.model_hint"
+        assert "[state: s]" in w.message and "codex" in w.message
+        assert "orchestration.model_hints.codex.coding" in w.message
+
+    def test_resolved_hint_is_silent(self) -> None:
+        fsm = _fsm(_prompt(model_hint="coding"))
+        assert _res_warnings(fsm, "claude-code") == []
+        assert _res_warnings(fsm, "codex", {"codex": {"coding": "gpt-x"}}) == []
+
+    def test_disabled_and_unsupported_warn(self) -> None:
+        fsm = _fsm(_prompt(model_hint="burst"))
+        assert len(_res_warnings(fsm, "claude-code", {"claude-code": {"burst": False}})) == 1
+        assert len(_res_warnings(fsm, "opencode", {"opencode": {"burst": "m"}})) == 1
+
+    def test_host_none_skips_resolution_but_keeps_vocab_error(self) -> None:
+        fsm = _fsm(_prompt(model_hint="coding"))
+        assert _res_warnings(fsm, None) == []
+        bad = _fsm(_prompt(model_hint="fast"))
+        assert _res_warnings(bad, None) == []
+        assert any("must be one of" in m for m in _errors(bad))
+
+    def test_out_of_vocabulary_hint_gets_no_resolution_warning(self) -> None:
+        fsm = _fsm(_prompt(model_hint="fast"))
+        assert _res_warnings(fsm, "codex") == []
+        assert any("must be one of" in m for m in _errors(fsm))
+
+    def test_sdk_state_checks_anthropic_api_and_cli_fallback(self) -> None:
+        fsm = _fsm(_prompt(model_hint="coding"))
+        (w,) = _res_warnings(fsm, "codex", request_path="sdk")
+        assert "codex" in w.message and "downgrades to cli" in w.message
+        ov = {"anthropic-api": {"coding": False}, "codex": {"coding": "gpt-x"}}
+        (w,) = _res_warnings(fsm, "codex", ov, request_path="sdk")
+        assert "anthropic-api" in w.message
+
+    def test_state_request_path_overrides_config(self) -> None:
+        fsm = _fsm(_prompt(model_hint="coding", request_path="cli"))
+        (w,) = _res_warnings(fsm, "codex", request_path="sdk")
+        assert "downgrades to cli" not in w.message
+
+    @pytest.mark.parametrize("kw", [{"action": "/ll:do-it"}, {"tools": ["Bash"]}])
+    def test_static_downgrade_is_cli_only(self, kw: dict[str, Any]) -> None:
+        fsm = _fsm(_prompt(model_hint="coding", **kw))
+        ov = {"anthropic-api": {"coding": False}, "codex": {"coding": "gpt-x"}}
+        assert _res_warnings(fsm, "codex", ov, request_path="sdk") == []
+
+    def test_evaluator_only_hint_never_checks_anthropic_api(self) -> None:
+        st = StateConfig(
+            action="echo hi",
+            action_type="shell",
+            model_hint="coding",
+            request_path="sdk",
+            evaluate=EvaluateConfig(type="llm_structured", prompt="ok?"),
+            on_yes="done",
+            on_no="done",
+        )
+        ov = {"anthropic-api": {"coding": False}, "codex": {"coding": "gpt-x"}}
+        assert _res_warnings(_fsm(st), "codex", ov) == []
+        (w,) = _res_warnings(_fsm(st), "codex")
+        assert "codex" in w.message
+
+    def test_no_evaluator_path_when_next_or_llm_disabled(self) -> None:
+        implicit = StateConfig(
+            action="do it", action_type="prompt", model_hint="coding", next="done"
+        )
+        assert len(_res_warnings(_fsm(implicit), "codex")) == 1  # cli path only
+        fsm = _fsm(
+            StateConfig(action="do it", action_type="prompt", on_yes="done", on_no="done"),
+            llm=LLMConfig(model_hint="coding", enabled=False),
+        )
+        assert _res_warnings(fsm, "codex") == []
+
+    def test_llm_hint_warns_once_per_backend_at_llm_path(self) -> None:
+        fsm = FSMLoop(
+            name="t",
+            initial="a",
+            states={
+                "a": StateConfig(action="x", action_type="prompt", next="b"),
+                "b": StateConfig(
+                    action="y",
+                    action_type="prompt",
+                    evaluate=EvaluateConfig(type="llm_structured", prompt="ok?"),
+                    on_yes="c",
+                    on_no="c",
+                ),
+                "c": StateConfig(
+                    action="z",
+                    action_type="prompt",
+                    evaluate=EvaluateConfig(type="llm_structured", prompt="ok?"),
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+            llm=LLMConfig(model_hint="coding"),
+        )
+        found = _res_warnings(fsm, "codex")
+        assert [w.path for w in found] == ["llm.model_hint"]
+
+    def test_llm_hint_not_checked_on_cli_fallback_or_literal_model(self) -> None:
+        cli_only = _fsm(
+            StateConfig(action="x", action_type="prompt", next="done"),
+            llm=LLMConfig(model_hint="coding"),
+        )
+        assert _res_warnings(cli_only, "codex") == []
+        literal = _fsm(
+            StateConfig(
+                action="x",
+                action_type="prompt",
+                model="opus",
+                evaluate=EvaluateConfig(type="llm_structured", prompt="ok?"),
+                on_yes="done",
+                on_no="done",
+            ),
+            llm=LLMConfig(model_hint="coding"),
+        )
+        assert _res_warnings(literal, "codex") == []
+
+    def test_llm_hint_on_sdk_state_checks_anthropic_api_only(self) -> None:
+        fsm = _fsm(
+            StateConfig(action="x", action_type="prompt", next="done"),
+            llm=LLMConfig(model_hint="coding"),
+        )
+        ov = {"anthropic-api": {"coding": False}}
+        (w,) = _res_warnings(fsm, "claude-code", ov, request_path="sdk")
+        assert w.path == "llm.model_hint" and "anthropic-api" in w.message
+        assert _res_warnings(fsm, "codex", request_path="sdk") == []
+
+    def test_non_consumers_never_checked(self) -> None:
+        states = {
+            "sub": StateConfig(loop="other", on_yes="done", on_no="done"),
+            "done": StateConfig(terminal=True),
+        }
+        fsm = FSMLoop(name="t", initial="sub", states=states, llm=LLMConfig(model_hint="coding"))
+        assert _res_warnings(fsm, "codex") == []
+
+    def test_learning_state_has_no_evaluator_path_and_no_skill_downgrade(self) -> None:
+        st = StateConfig(
+            type="learning",
+            learning=LearningConfig(targets=["x"], max_retries=1),
+            model_hint="coding",
+            on_yes="done",
+            on_no="done",
+        )
+        ov = {"anthropic-api": {"coding": False}, "codex": {"coding": "gpt-x"}}
+        (w,) = _res_warnings(_fsm(st), "codex", ov, request_path="sdk")
+        assert "anthropic-api" in w.message
+        assert len(_res_warnings(_fsm(st), "codex")) == 1
+
+    def test_load_and_validate_forwards_kwargs(self, tmp_path: Path) -> None:
+        path = tmp_path / "l.yaml"
+        path.write_text(TestPortabilityProof.LOOP)
+        _, plain = load_and_validate(path, raise_on_error=False)
+        assert not [v for v in plain if "ENH-3548" in v.message]
+        _, found = load_and_validate(path, raise_on_error=False, host_cli="codex", model_hints={})
+        assert len([v for v in found if "ENH-3548" in v.message]) == 2
+
+    def test_portable_loop_silent_on_builtin_hosts(self, tmp_path: Path) -> None:
+        path = tmp_path / "l.yaml"
+        path.write_text(TestPortabilityProof.LOOP)
+        _, found = load_and_validate(path, raise_on_error=False, host_cli="claude-code")
+        assert not [v for v in found if "ENH-3548" in v.message]
+
+
+class TestValidateAgreesWithPreflight:
+    """ENH-3548: validate mirrors ``FSMExecutor._preflight_model_hints``."""
+
+    @staticmethod
+    def _cases() -> dict[str, tuple[FSMLoop, str | None]]:
+        def eval_state(**kw: Any) -> StateConfig:
+            return StateConfig(
+                action=kw.pop("action", "do it"),
+                action_type=kw.pop("action_type", "prompt"),
+                evaluate=EvaluateConfig(type="llm_structured", prompt="ok?"),
+                on_yes="done",
+                on_no="done",
+                **kw,
+            )
+
+        learn = StateConfig(
+            type="learning",
+            learning=LearningConfig(targets=["x"], max_retries=1),
+            model_hint="coding",
+            on_yes="done",
+            on_no="done",
+        )
+        return {
+            "cli": (_fsm(_prompt(model_hint="coding")), None),
+            "sdk": (_fsm(_prompt(model_hint="coding")), "sdk"),
+            "skill": (_fsm(_prompt(model_hint="coding", action="/ll:x")), "sdk"),
+            "tools": (_fsm(_prompt(model_hint="coding", tools=["Bash"])), "sdk"),
+            "evaluator": (_fsm(eval_state(model_hint="coding")), None),
+            "shell-eval": (
+                _fsm(eval_state(action="echo", action_type="shell", model_hint="coding")),
+                "sdk",
+            ),
+            "llm-eval": (_fsm(eval_state(), llm=LLMConfig(model_hint="coding")), None),
+            "literal-eval": (
+                _fsm(eval_state(model="opus"), llm=LLMConfig(model_hint="coding")),
+                None,
+            ),
+            "llm-cli-only": (
+                _fsm(_prompt(), llm=LLMConfig(model_hint="coding")),
+                None,
+            ),
+            "learning": (_fsm(learn), "sdk"),
+            "no-hint": (_fsm(_prompt()), None),
+        }
+
+    @pytest.mark.parametrize("host", ["codex", "claude-code"])
+    @pytest.mark.parametrize("overrides", [{}, {"anthropic-api": {"coding": False}}])
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "cli",
+            "sdk",
+            "skill",
+            "tools",
+            "evaluator",
+            "shell-eval",
+            "llm-eval",
+            "literal-eval",
+            "llm-cli-only",
+            "learning",
+            "no-hint",
+        ],
+    )
+    def test_agreement(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        case: str,
+        overrides: dict[str, Any],
+        host: str,
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", host)
+        monkeypatch.setattr(FSMExecutor, "_sdk_credentials_available", staticmethod(lambda: True))
+        pytest.importorskip("anthropic")
+        fsm, request_path = self._cases()[case]
+        orch = OrchestrationConfig(request_path=request_path or "cli", model_hints=overrides)
+        ex = FSMExecutor(fsm, action_runner=ModelRunner(), orchestration_config=orch)
+        preflight = ex._preflight_model_hints()
+        found = _res_warnings(fsm, host, overrides, request_path)
+        if preflight is not None:
+            assert found, f"preflight failed ({preflight}) but validate was silent"
+        elif case not in ("sdk", "learning"):
+            # validate also checks the CLI fallback of sdk states, so it may say more there
+            assert not found, [w.message for w in found]

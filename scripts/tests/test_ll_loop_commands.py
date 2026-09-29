@@ -404,6 +404,114 @@ states:
         data = json.loads(capsys.readouterr().out)
         assert any("ENH-2805" in v["message"] for v in data["violations"])
 
+    _HINT_LOOP = (
+        "name: hint-loop\n"
+        "description: Test\n"
+        "initial: work\n"
+        "states:\n"
+        "  work:\n"
+        '    action: "do the thing"\n'
+        "    action_type: prompt\n"
+        "    model_hint: coding\n"
+        "    next: done\n"
+        "  done:\n"
+        "    terminal: true\n"
+    )
+
+    def _hint_project(self, tmp_path: Path, config: dict[str, Any] | str) -> Path:
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir()
+        (ll_dir / "ll-config.json").write_text(
+            config if isinstance(config, str) else json.dumps(config)
+        )
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "hint-loop.yaml").write_text(self._HINT_LOOP)
+        return loops_dir
+
+    def test_validate_no_json_warns_unresolvable_model_hint(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ENH-3548: host comes from resolve_host() (LL_HOST_CLI), non-JSON branch."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._hint_project(tmp_path, {})
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        with caplog.at_level("WARNING"):
+            result = cmd_validate("hint-loop", argparse.Namespace(), loops_dir, Logger(False))
+        assert result == 0
+        assert "ENH-3548" in caplog.text and "orchestration.model_hints.codex.coding" in caplog.text
+
+    def test_validate_json_model_hint_warning_and_config_mapping(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ENH-3548: --json branch warns; a configured mapping silences it."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._hint_project(
+            tmp_path, {"orchestration": {"model_hints": {"codex": {"coding": "gpt-x"}}}}
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        args = argparse.Namespace(json=True)
+        cmd_validate("hint-loop", args, loops_dir, Logger(False))
+        assert not [
+            v
+            for v in json.loads(capsys.readouterr().out)["violations"]
+            if "ENH-3548" in v["message"]
+        ]
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}")
+        cmd_validate("hint-loop", args, loops_dir, Logger(False))
+        data = json.loads(capsys.readouterr().out)
+        assert any("ENH-3548" in v["message"] for v in data["violations"])
+        assert data["valid"] is True
+
+    def test_validate_no_host_found_emits_no_resolution_warning(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._hint_project(tmp_path, {})
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_HOST_CLI", raising=False)
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.setattr("little_loops.host_runner.shutil.which", lambda _b: None)
+        result = cmd_validate("hint-loop", argparse.Namespace(json=True), loops_dir, Logger(False))
+        data = json.loads(capsys.readouterr().out)
+        assert result == 0 and not [v for v in data["violations"] if "ENH-3548" in v["message"]]
+
+    def test_validate_invalid_model_hints_config_exits_1(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """ENH-3548: an invalid orchestration.model_hints is a validate error, not a traceback."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = self._hint_project(
+            tmp_path, {"orchestration": {"model_hints": {"nope-backend": {"coding": "m"}}}}
+        )
+        monkeypatch.chdir(tmp_path)
+        result = cmd_validate("hint-loop", argparse.Namespace(json=True), loops_dir, Logger(False))
+        data = json.loads(capsys.readouterr().out)
+        assert result == 1 and data["valid"] is False
+        assert "model_hints" in data["violations"][0]["message"]
+
     def test_validate_no_json_warns_mr13_hardcoded_success_verdict(
         self,
         tmp_path: Path,

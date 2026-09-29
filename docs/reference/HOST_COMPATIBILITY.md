@@ -527,6 +527,51 @@ are never enumerated in this matrix.
     (`LL_HOST_CLI=pi` resolves, every `build_*` raises) but is no longer
     tracked in this matrix.
 
+### Loop `model_hint` support matrix
+
+A loop state (or the loop-level `llm:` block) may declare `model_hint:
+<coding|reasoning|burst>` instead of a host-specific `model:`. `coding` is the
+default tier for writing code, `reasoning` the strongest tier for hard judgment
+calls, and `burst` the cheap/fast tier. A state cannot set both `model` and
+`model_hint`. A hint is resolved against the backend the state actually runs on:
+the same host `ll-loop run` uses (see
+[`little_loops.host_runner.resolve_host`](API.md#little_loopshost_runner)), or
+`anthropic-api` for prompt actions on the `sdk`/`batch` request path.
+
+| Backend | Built-in mapping | `orchestration.model_hints` |
+| ------- | ---------------- | --------------------------- |
+| `claude-code` | `coding` → `sonnet`, `reasoning` → `opus`, `burst` → `haiku` | optional override |
+| `anthropic-api` | the same aliases, resolved to concrete model IDs | optional override |
+| `codex`, `gemini`, `omp`, `kimi-code`, `qwen` | none | **required** — an entry per hint you use |
+| `opencode`, `pi` | none | not supported — a hint always fails to resolve |
+
+**Precedence** (highest first). The state's `model` or `model_hint` always wins;
+`--model` overrides state and `llm` hints on the CLI-action and SDK paths.
+
+- CLI action: state `model`/`model_hint` → `--model` → host default. `llm.model_hint` is never a CLI-action default.
+- SDK/batch action: state `model`/`model_hint` → `--model` → `llm.model_hint`/`llm.model`.
+- Evaluator (`llm_structured`, or the implicit verdict on a prompt state): state `model`/`model_hint` → `llm.model_hint`/`llm.model`. Evaluators always use the host CLI, never `anthropic-api`.
+
+A hint with no mapping on its backend stops `ll-loop run` before any state runs.
+`ll-loop validate` reports the same problem as a **WARNING** (not an error),
+because the host and `orchestration.model_hints` differ per machine: it names the
+fix (`set orchestration.model_hints.<backend>.<hint> in .ll/ll-config.json`). An
+`sdk`/`batch` state is checked against both `anthropic-api` and the host CLI,
+since a missing `anthropic` package or credential downgrades it to the CLI at
+run time; a state that invokes a `/ll:` skill or declares `tools:` always runs
+on the CLI. With no host CLI found, `validate` skips these warnings.
+`ll-loop validate` also flags a generator state with `model_hint: burst` under
+`haiku-gen`, the same as a `model:` naming haiku.
+
+**Known limitations of the validate-time check:**
+
+- A run-time `--model` overrides state and `llm` hints; `validate` cannot see it, so it may warn about a hint the actual run never resolves.
+- A plugin-contributed evaluator named `llm_structured` and plugin-contributed action types are invisible to `validate`; it classifies them by the built-in rules.
+- `haiku-gen` does not cover `llm.model_hint: burst` reaching `sdk` generator states, or `llm.model` naming haiku.
+
+Skills and agents use a separate, frontmatter form of the hint; see
+[Frontmatter `model_hint`](#frontmatter-model_hint-skills-and-agents).
+
 ## Config probe path
 
 Resolved by `resolve_config_path()` in

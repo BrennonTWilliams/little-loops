@@ -612,6 +612,7 @@ These fields apply to `action_type: prompt` states only:
 | `agent:` | Passes `--agent <name>` to the Claude subprocess — loads `.claude/agents/<name>.md` with its system prompt and tool set. |
 | `tools:` | Passes `--tools <csv>` — scopes available tools without a full agent file (e.g. `["Read", "Bash"]`). |
 | `model:` | Passes `--model <id>` for this state only — use a cheap model for routing states, an expensive one for evaluation states. |
+| `model_hint:` | A portable alternative to `model:` — one of `coding`, `reasoning` or `burst` — resolved to a concrete model for whichever host runs the state. Mutually exclusive with `model:`. See [Portable model hints](#portable-model-hints-model_hint). |
 | `effort:` | Reasoning-effort level for this state only (`low`/`medium`/`high`/`xhigh`/`max`), resolved via `state.effort` or the run-level `--effort` flag or the loop-level `llm.effort` default. When set, shown appended (bracketed, upper-cased) to the `model:` value in the `ll-loop run` header (ENH-2869). |
 
 **Pinning haiku on verdict states**: `model:` is most valuable on `check_semantic`/`llm_structured` verdict states — they emit a small, structured judgment (pass/fail, a routing label) rather than open-ended generation, so a cheaper model rarely changes the outcome but does cut cost:
@@ -627,6 +628,33 @@ states:
 ```
 
 Don't pin haiku on *generator* states (states that produce the actual content — code, prose, a plan) — the MR-lint `haiku-gen` rule (see [Loop Authoring](../../.claude/CLAUDE.md#loop-authoring)) warns when a `model:` names a haiku variant on a non-evaluator state, since generator output has no MR-1 non-LLM-evaluator backstop to catch quality regressions from the cheaper model.
+
+#### Portable model hints (`model_hint:`)
+
+`model:` names a model that only one host understands. `model_hint:` names a capability tier instead, so the same loop runs unedited on every host:
+
+| Hint | Intent |
+|------|--------|
+| `coding` | Default tier for writing and editing code |
+| `reasoning` | Strongest tier, for hard judgment calls |
+| `burst` | Cheap and fast tier, for rigidly templated work |
+
+Declare it on a state, or loop-wide under `llm:` (for the LLM evaluators and `sdk`/`batch` actions):
+
+```yaml
+llm:
+  model_hint: reasoning
+states:
+  write:
+    action: "Implement the change described above."
+    action_type: prompt
+    model_hint: coding
+    next: check
+```
+
+A state's own `model_hint` (or `model`) wins over `llm.model_hint`. On the host CLI, `claude-code` maps the hints to `sonnet`, `opus` and `haiku` out of the box; `codex`, `gemini`, `omp`, `kimi-code` and `qwen` need an entry per hint under `orchestration.model_hints` in `.ll/ll-config.json`, and `opencode` does not support hints. A hint with no mapping on its host stops `ll-loop run` before any state runs, and `ll-loop validate` warns about it up front (naming the `orchestration.model_hints` key to set). The full support matrix, precedence rules and the limits of the validate-time check are in [Loop `model_hint` support matrix](../reference/HOST_COMPATIBILITY.md#loop-model_hint-support-matrix). Skills and agents take a separate frontmatter `model_hint`, resolved by `ll-adapt`; see [Frontmatter `model_hint`](../reference/HOST_COMPATIBILITY.md#frontmatter-model_hint-skills-and-agents).
+
+`burst` maps to haiku, so the `haiku-gen` lint applies to `model_hint: burst` on a generator state just as it does to `model:` naming haiku.
 
 **Credential scoping on shell states (`scopes:`, ENH-3235/ENH-3205)**: unlike the fields above, `scopes:` applies to shell (`bash -c`) states, not `action_type: prompt` states. Declaring `scopes: [github]` (or any other registered credential scope) switches the spawned child from full env inheritance to a deny-by-default allow-set (ENH-3395) built from the declared scope's env-var names plus a fixed non-credential baseline. For the `github` scope specifically, declaring it (even as `scopes: []` — declared but not `github`) also redirects `GH_CONFIG_DIR` to a per-spawn temp directory so the ambient `~/.config/gh` login is hidden from `gh auth status`/`gh api`, and injects a non-empty `GH_SCOPED_NO_TOKEN` sentinel as `GH_TOKEN` (BUG-3402) so `gh auth token` can't re-mint the operator's token from the Keychain either; `scopes: [github]` instead injects a real `GH_TOKEN` sourced from the operator's own ambient session (`GH_TOKEN`/`GITHUB_TOKEN` env, else a `gh auth token` probe — an inherited sentinel from either source is treated as no token).
 

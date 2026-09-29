@@ -3,16 +3,19 @@ id: ENH-3548
 type: ENH
 title: Validate-time model hint warnings and hint documentation
 priority: P3
-status: open
+status: done
 parent: EPIC-3563
 epic: EPIC-3563
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T17:40:15Z'
+completed_at: '2026-09-29T00:05:10Z'
 verify_verdict: VALID
 labels:
 - multi-host
 - loops
+blocked_by:
+- BUG-3646
 confidence_score: 90
 outcome_confidence: 67
 score_complexity: 14
@@ -45,7 +48,7 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 - An `sdk`/`batch` state is checked against both `anthropic-api` and (for a state-level hint) the CLI host, because the environmental downgrades (`anthropic` not importable, no credentials) are unknowable at validate time. The CLI-fallback warning text says so ("if the sdk path downgrades to cli").
 - States that always downgrade to CLI (a `/ll:` skill action per `_SKILL_INVOKE_RE`, or `tools:` per BUG-2831) are checked for CLI only.
 - Terminal, sub-loop (`loop:`) and `human_approval` states consume no model and are never checked.
-- A `type: learning` state (with `learning:` set) has exactly one path and **no evaluator path** (`_model_consumer_paths` returns early). It has no `action:` of its own — the executor dispatches the `/ll:explore-api` remedy on a `_dc_replace(state, action_type="slash_command")` copy whose `action` is `None` — so `_SKILL_INVOKE_RE` never matches and the `/ll:` skill downgrade does **not** apply. Mirror the preflight: the path is the configured request path (state `request_path`, else `orchestration.request_path`), downgraded only by `tools:`; `sdk`/`batch` → `anthropic-api` (plus the CLI host for the environmental fallback, as for other `sdk` states), otherwise the CLI host. Do not treat it as a CLI-only `/ll:` state. (That the remedy then runs on the bare SDK path is a separate executor bug — BUG-3646; when it lands, learning states become CLI-only in both the executor and this mirror.)
+- A `type: learning` state (with `learning:` set) has exactly one path, the **CLI host**, and **no evaluator path** (`_model_consumer_paths` returns early). Its implicit `/ll:explore-api` remedy is a `/ll:` skill, so it always downgrades to CLI regardless of `request_path` — treat it like any other CLI-only `/ll:` state and never check it against `anthropic-api`. This matches the executor only once BUG-3646 lands (it builds the remedy copy with `action` set, via `_learning_remedy_state`, so `_SKILL_INVOKE_RE` matches); this issue is `blocked_by` BUG-3646 so the mirror is written once, against the fixed behavior.
 - Warning messages name the fix, e.g. `set orchestration.model_hints.<backend>.<hint> in .ll/ll-config.json`.
 - An unresolvable `llm.model_hint` warns **once per (hint, backend)** at `path=llm.model_hint`, not once per consuming state. State-level warnings use `path=states.<name>.model_hint` with the `[state: <name>]` prefix and an `(ENH-3548)` tag.
 - When `host_cli` is `None` (the in-process callers below, or no host found), resolution warnings are skipped. Vocabulary and exclusivity errors from ENH-3527 still fire. `model_hints=None` means built-in mappings only; it does not by itself skip warnings.
@@ -96,7 +99,7 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 - **Host source (decided — see Decisions).** `resolve_host()` reads only `LL_HOST_CLI`, `LL_HOOK_HOST` and the `_PROBE_ORDER` PATH probe; it does **not** read `orchestration.host_cli` today (BUG-3644, whose selected fix folds the config key into `resolve_host()`). The runtime preflight (`FSMExecutor._preflight_model_hints` → `_resolve_model`) uses `resolve_host()`, so validate calls it too and follows BUG-3644 automatically. Do not read `cfg.orchestration.host_cli` directly the way `doctor.py` (~815) does.
-- **Reachable-path rules already exist at runtime and are side-effect free**: `FSMExecutor._configured_request_path`, `_compute_request_path` (static downgrade causes: `_SKILL_INVOKE_RE` match on the action, truthy `tools`; environmental causes: `anthropic` not importable, no credentials), `_model_consumer_paths` (returns `[]` for terminal, sub-loop and `human_approval` states; a `type: learning` state is treated as a slash-command prompt; evaluator path only when `next` is unset and `llm.enabled`, for an implicit prompt-state verdict or explicit `llm_structured`; shell + `llm_structured` → evaluator only). `fsm/validation` deliberately mirrors executor predicates instead of importing executor (comments at `structural_rules.py` ~425/~440) but does import `_SKILL_INVOKE_RE` from `_base.py`. Validation can decide only the static causes; environmental downgrades are unknowable at validate time.
+- **Reachable-path rules already exist at runtime and are side-effect free**: `FSMExecutor._configured_request_path`, `_compute_request_path` (static downgrade causes: `_SKILL_INVOKE_RE` match on the action, truthy `tools`; environmental causes: `anthropic` not importable, no credentials), `_model_consumer_paths` (returns `[]` for terminal, sub-loop and `human_approval` states; a `type: learning` state is treated as a slash-command prompt — CLI-only after BUG-3646; evaluator path only when `next` is unset and `llm.enabled`, for an implicit prompt-state verdict or explicit `llm_structured`; shell + `llm_structured` → evaluator only). `fsm/validation` deliberately mirrors executor predicates instead of importing executor (comments at `structural_rules.py` ~425/~440) but does import `_SKILL_INVOKE_RE` from `_base.py`. Validation can decide only the static causes; environmental downgrades are unknowable at validate time.
 - **Existing ENH-3527 structural hint checks**: `_validate_model_hint_decl(state_name, state)` (called from `_validate_state_action`) emits ERRORs for vocabulary, `model`/`model_hint` exclusivity and inapplicable states via `_consumes_model_hint`; loop-level `llm.model_hint` checks are inline in `validate_fsm` (ERROR for vocabulary, WARNING when no state consumes a model). None has a `*_ok` suppression flag.
 - **WARNING conventions**: rules are `_validate_*` functions returning `list[ValidationError]`, extended into `validate_fsm`; WARNINGs set `severity=ValidationSeverity.WARNING` explicitly (default is ERROR); paths are `states.<name>.<field>` or `llm.model_hint`; messages carry a `[state: <name>]` prefix and an issue-ID tag; `KNOWN_TOP_LEVEL_KEYS` in `_base.py` registers any `*_ok` flag. `resolve_model_hint` raises `ModelHintError` (a `ValueError`) for unknown hint, unknown backend, unsupported backend (`opencode`, `pi`), config-disabled (`False`) and missing mapping; `hint_backend_keys()` lists valid backends.
 - **Severity asymmetry**: an unmapped hint on a reachable path is a run-ending ERROR at run start (`_preflight_model_hints`, `model_hint_error=True`) but only a WARNING at validate time here — intentional per the issue, since host and config vary by machine.
@@ -194,7 +197,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
   - pin the environmental downgrades: monkeypatch `FSMExecutor._sdk_credentials_available` to True and make sure `anthropic` imports (or skip the sdk cases when it does not);
   - build the executor with an `OrchestrationConfig` carrying the same `request_path` and `model_hints` that validate receives, and no `run_model`.
   - Assertions (not literal equality — the preflight returns only the **first** error string, and validate deliberately checks more for `sdk`/`batch` states): (a) whenever `_preflight_model_hints` returns an error for state `S`, validate emits a hint-resolution WARNING for `S` (or at `llm.model_hint` when that is the failing declaration); (b) for fixtures whose states take only CLI/evaluator paths, preflight returns `None` ⇔ validate emits no resolution warning.
-  - Matrix: `cli`/`sdk`/`evaluator` paths, `/ll:` skill and `tools:` downgrades, a literal-`model:` state with an evaluator path under `llm.model_hint`, and a `type: learning` state under `request_path: sdk`.
+  - Matrix: `cli`/`sdk`/`evaluator` paths, `/ll:` skill and `tools:` downgrades, a literal-`model:` state with an evaluator path under `llm.model_hint`, and a `type: learning` state under `request_path: sdk` (both sides resolve it against the CLI host only).
 - Update `scripts/little_loops/fsm/validation/structural_rules.py` `load_and_validate()` (`:2035`) — add `host_cli`/`model_hints` keyword params and forward them to `validate_fsm`
 - Update `scripts/little_loops/cli/logs.py` `_validate_builtin_loop()` (`:2326`) and `_cmd_fleet_review()` (`:2761`) — new kwargs with defaults; read both values where `orchestration.request_path` is read
 - Update `scripts/little_loops/cli/loop/config_cmds.py` `cmd_validate()` — read `model_hints`, derive `host_cli` via `resolve_host().name` (catch `HostNotConfigured` → `None`; see Decisions); move the `BRConfig` read inside error handling so an invalid `orchestration.model_hints` exits 1 with a validate error (see Decisions)
@@ -215,21 +218,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Warnings fire for an unmapped hint on a reachable request path and not when every path resolves; downgrade-only states produce no SDK warning.
-- [ ] An evaluator-only hint on a `request_path: sdk` state is checked against the CLI host only (no `anthropic-api` warning).
-- [ ] `llm.model_hint` is checked on the evaluator path (CLI host) and on `sdk`/`batch` states with no state-level declaration (`anthropic-api`), never on the CLI fallback; an unresolvable `llm.model_hint` produces exactly one WARNING per (hint, backend) at `path=llm.model_hint`.
-- [ ] `cmd_validate` derives `host_cli` from `resolve_host()` (not `orchestration.host_cli` directly); with no host found it emits no resolution warnings and does not error. A test pins the host via `LL_HOST_CLI` and asserts validate and `_preflight_model_hints` agree on the same loop.
-- [ ] `validate_fsm`/`load_and_validate` accept `host_cli`/`model_hints`; with `host_cli=None`, no resolution warnings fire and existing callers' output is unchanged.
-- [ ] An out-of-vocabulary hint produces only ENH-3527's vocabulary ERROR, no resolution WARNING.
-- [ ] A literal-`model:` state on the evaluator path does not warn about an unresolvable `llm.model_hint`; a `type: learning` state gets no evaluator-path check and, under `request_path: sdk`, is checked against `anthropic-api` (matching the preflight until BUG-3646 lands).
-- [ ] `ll-loop validate` with an invalid `orchestration.model_hints` exits 1 with a validate error instead of an uncaught `ValueError`.
-- [ ] `haiku-gen` fires for a generator state with `model_hint: burst`, not for a `burst` verdict state (`_is_llm_judged`), is suppressed by `haiku_generator_ok`, and still emits exactly one WARNING for a `model:`-only haiku state.
-- [ ] `ll-loop validate` surfaces the resolution WARNING in both the plain (`caplog`) and `--json` (`violations[].message`) output branches.
-- [ ] Vocabulary semantics, support matrix, precedence, the Known limitations above and the deferred skill/agent scope (ENH-3533) are documented in `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/reference/{API,CLI,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and `skills/review-loop/reference.md`.
+- [x] Warnings fire for an unmapped hint on a reachable request path and not when every path resolves; downgrade-only states produce no SDK warning.
+- [x] An evaluator-only hint on a `request_path: sdk` state is checked against the CLI host only (no `anthropic-api` warning).
+- [x] `llm.model_hint` is checked on the evaluator path (CLI host) and on `sdk`/`batch` states with no state-level declaration (`anthropic-api`), never on the CLI fallback; an unresolvable `llm.model_hint` produces exactly one WARNING per (hint, backend) at `path=llm.model_hint`.
+- [x] `cmd_validate` derives `host_cli` from `resolve_host()` (not `orchestration.host_cli` directly); with no host found it emits no resolution warnings and does not error. A test pins the host via `LL_HOST_CLI` and asserts validate and `_preflight_model_hints` agree on the same loop.
+- [x] `validate_fsm`/`load_and_validate` accept `host_cli`/`model_hints`; with `host_cli=None`, no resolution warnings fire and existing callers' output is unchanged.
+- [x] An out-of-vocabulary hint produces only ENH-3527's vocabulary ERROR, no resolution WARNING.
+- [x] A literal-`model:` state on the evaluator path does not warn about an unresolvable `llm.model_hint`; a `type: learning` state gets no evaluator-path check and is checked against the CLI host only, under any `request_path` (never `anthropic-api`).
+- [x] `ll-loop validate` with an invalid `orchestration.model_hints` exits 1 with a validate error instead of an uncaught `ValueError`.
+- [x] `haiku-gen` fires for a generator state with `model_hint: burst`, not for a `burst` verdict state (`_is_llm_judged`), is suppressed by `haiku_generator_ok`, and still emits exactly one WARNING for a `model:`-only haiku state.
+- [x] `ll-loop validate` surfaces the resolution WARNING in both the plain (`caplog`) and `--json` (`violations[].message`) output branches.
+- [x] Vocabulary semantics, support matrix, precedence, the Known limitations above and the skill/agent frontmatter hint scope (ENH-3533, done) are documented in `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/reference/{API,CLI,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` and `skills/review-loop/reference.md`.
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Done** | Created: 2026-09-24 | Priority: P3
 
 ---
 
@@ -237,6 +240,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue covers validate-time WARNINGs, `haiku-gen` guidance, and documentation only. Resolver/config is ENH-3527 (done) and dispatch wiring is ENH-3547 (done). ENH-3527 dropped the `operation` parameter (2026-09-24). ENH-3547 proved the support matrix with tests that this issue's docs describe; both prerequisites have since landed, so this issue is no longer blocked.
 
+
+## Resolution
+
+**Completed** 2026-09-29.
+
+- `structural_rules.py`: new `_is_prompt_action`, `_static_model_paths` and `_validate_model_hint_resolution` (mirrors `FSMExecutor._preflight_model_hints` per state/path, static downgrade causes only); `validate_fsm` and `load_and_validate` gained keyword-only `host_cli` / `model_hints` (`host_cli=None` skips resolution warnings, so other callers are unchanged).
+- `evaluator_rules.py`: `haiku-gen` also flags a generator state with `model_hint: burst`.
+- `cmd_validate` derives `host_cli` from `resolve_host()` (`HostNotConfigured` → `None`), reads `orchestration.model_hints`, and reports an invalid config as a validate error (exit 1). `_validate_builtin_loop` / `_cmd_fleet_review` in `cli/logs.py` forward the same values.
+- Tests: resolution matrix and a validate-vs-preflight agreement test in `test_model_hints.py`; `haiku-gen` cases; `cmd_validate` CLI tests (plain and `--json`, no-host, invalid config); pinned-signature spike and `test_ll_logs.py` updated; doc-presence registry entries. Full suite: 27095 passed, 292 skipped.
+- Docs: new `Loop model_hint support matrix` in `HOST_COMPATIBILITY.md`; `API.md`, `CLI.md`, `CONFIGURATION.md`, `LOOPS_GUIDE.md`, `generalized-fsm-loop.md`, `HARNESS_OPTIMIZATION_GUIDE.md`, `skills/review-loop/reference.md`. `API.md`'s `Path | None` corrected to `str | None`.
+- Deviation from the plan: no separate plan file was written (the issue's Program Design served as the plan); `ll-adapt --apply` for gemini/kimi-code/qwen adapted 0 files.
 
 ## Confidence Check Notes
 
@@ -260,7 +274,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 
 - **Corrected**: the Confidence Check Notes concern claimed line anchors had drifted (`load_and_validate` `:2035`→`:1944`, `cmd_validate` `:25`→`:14`). Those figures are the definition lines; the issue's anchors point at body lines (`:2035` forwarding call, `:25` `BRConfig` read) that still hold. Concern rewritten in place.
 - **Verified accurate**: `_model_consumer_paths` / `_resolve_model` / `_preflight_model_hints` behavior matches the per-path declaration-selection rules; `resolve_host()` ignores `orchestration.host_cli` (only `cli/doctor.py:815,1438` use it); all `load_and_validate` caller anchors (`doctor.py:688`, `run.py:147`, `info.py:1472`, `edit_routes.py:51`, `loop_paths.py:104,128`, `executor.py:1163`, `structural_rules.py:297`, `policy_revision.py:95`); `logs.py:2326/2761`; `evaluator_rules.py:520`; test anchors (`test_ll_logs.py:6085-6108`, `test_model_hints.py` classes, `TestHaikuPinnedGenerator`, spike test pinning `{"fsm", "orchestration_request_path"}`); docs anchors (`API.md:6684/6737` `Path | None` mismatch, `HOST_COMPATIBILITY.md` section order, `HARNESS_OPTIMIZATION_GUIDE.md:113/486`, `config-schema.json:1806/1811`, `review-loop/reference.md:53`); no hint docs in `LOOPS_GUIDE.md`, `generalized-fsm-loop.md`, `API.md`, `HOST_COMPATIBILITY.md`.
-- **Dependencies**: ENH-3527, ENH-3547 done; EPIC-3563, ENH-3533, BUG-3644 open (references only, none is a `blocked_by` edge). No broken refs.
+- **Dependencies**: ENH-3527, ENH-3547, ENH-3533 done; EPIC-3563, BUG-3644 open (references only). BUG-3646 added as a `blocked_by` edge on 2026-09-28 (manual review) so the learning-state mirror is written against the fixed executor. No broken refs.
 - **Checks with no findings**: `ll-verify-evidence` clean; `ll-issues format-check` clean; no active required decision rules; ARCH-121 exemption entry `514b7ae3-…` present; Proposed-Solution consequence check (B6) found no exception-handler, fixture or AC-coverage gap. Graph-assisted checks not needed (no negative claims); provider `codegraph`, freshness `fresh`.
 
 ## Resolved Concerns
@@ -269,6 +283,9 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - [resolved 2026-09-28 by manual review] ARCH-121 requires a `*_ok` suppression flag for every new validate rule — decided: exemption for host-dependent hint-resolution warnings, recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-29T00:04:57 - `9f6d1486-da8d-460c-9ae8-dad3ff47feac.jsonl`
+- `manual review` - 2026-09-28 - added `blocked_by: [BUG-3646]`; learning states are now CLI-only in Expected Behavior, the agreement-test matrix and the ACs (no interim `anthropic-api` mirror)
+- `/ll:ready-issue` - 2026-09-28T23:51:11 - `1e35f0ba-f9a3-4b2b-9bb2-0165c66c87c5.jsonl`
 - `/ll:confidence-check` - 2026-09-28T22:54:42 - `30920171-b2d1-4a65-8976-6add0126d6fe.jsonl`
 - `manual review` - 2026-09-28 - corrected evaluator-path `model` precedence and learning-state path rules (filed BUG-3646); added prompt-mode gate, out-of-vocab skip, contributed-action limitation, remediation text in messages; made agreement test deterministic; decided invalid-config and warning-budget handling; removed BUG-3644-owned doc/schema edits
 - `/ll:confidence-check` - 2026-09-28T22:43:47 - `9b0a9144-bbd1-46a6-aca5-08f4cec9c484.jsonl`

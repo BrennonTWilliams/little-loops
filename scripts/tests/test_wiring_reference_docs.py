@@ -20,6 +20,21 @@ import pytest
 DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     # (doc_path, expected_string, issue_id)
     ("docs/reference/API.md", "update_frontmatter", "FEAT-1172"),
+    ("docs/reference/API.md", "Model hint resolution (WARNING)", "ENH-3548"),
+    ("docs/reference/API.md", "host_cli", "ENH-3548"),
+    ("docs/reference/CLI.md", "Model hint resolution (WARNING)", "ENH-3548"),
+    ("docs/reference/CLI.md", "orchestration.model_hints", "ENH-3548"),
+    ("docs/reference/CONFIGURATION.md", "loop-model_hint-support-matrix", "ENH-3548"),
+    ("docs/reference/HOST_COMPATIBILITY.md", "### Loop `model_hint` support matrix", "ENH-3548"),
+    (
+        "docs/reference/HOST_COMPATIBILITY.md",
+        "Known limitations of the validate-time check",
+        "ENH-3548",
+    ),
+    ("docs/guides/LOOPS_GUIDE.md", "Portable model hints", "ENH-3548"),
+    ("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "`model_hint` is `burst`", "ENH-3548"),
+    ("docs/generalized-fsm-loop.md", "model_hint: string", "ENH-3548"),
+    ("skills/review-loop/reference.md", "model-hint-resolution", "ENH-3548"),
     ("docs/reference/API.md", "little_loops.advisor", "FEAT-3120"),
     ("docs/reference/API.md", "## little_loops.workspace", "FEAT-3409"),
     ("docs/reference/CONFIGURATION.md", "workspace_manifest_path", "FEAT-3409"),
