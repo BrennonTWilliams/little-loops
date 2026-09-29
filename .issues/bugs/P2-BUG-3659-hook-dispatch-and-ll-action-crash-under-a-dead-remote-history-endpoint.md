@@ -7,7 +7,13 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T06:51:55Z'
-verify_verdict: NON_VALID
+verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3659: Hook dispatch and ll-action crash under a dead remote history endpoint
@@ -182,6 +188,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T15:46:03 - `b9f63681-22db-44ce-ad41-11a9e55eecc2.jsonl`
+- `/ll:verify-issues` - 2026-09-29T15:44:48 - `940ad7ce-416b-4a9d-93ee-b729c7bab54f.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-29T15:43:04 - `b286ef2e-43a0-42ba-b50e-dd67b7f3b73e.jsonl`
 - `/ll:verify-issues` - 2026-09-29T15:42:12 - `0e078dec-faf0-4ff3-87ed-dcbdd276697c.jsonl`
 - `/ll:wire-issue` - 2026-09-29T15:40:24 - `f3f502cb-ad8a-484f-9e72-65b0f5fb4d73.jsonl`
