@@ -1309,7 +1309,7 @@ class TestBRConfig:
         assert result["advisor"]["host"] is None
         assert result["advisor"]["model"] == "opus"
         assert result["advisor"]["min_tier"] is None
-        assert result["advisor"]["timeout_seconds"] == 180
+        assert result["advisor"]["timeout_seconds"] == 300
         assert result["advisor"]["triggers"] == []
         assert result["advisor"]["max_consults_per_task"] == 3
 
@@ -4066,7 +4066,7 @@ class TestAdvisorConfig:
         assert config.host is None
         assert config.model == "opus"
         assert config.min_tier is None
-        assert config.timeout_seconds == 180
+        assert config.timeout_seconds == 300
         assert config.triggers == []
         assert config.max_consults_per_task == 3
         assert config.store_verdict_body is False
@@ -4099,7 +4099,7 @@ class TestAdvisorConfig:
         assert config.host is None
         assert config.model == "opus"
         assert config.min_tier is None
-        assert config.timeout_seconds == 180
+        assert config.timeout_seconds == 300
         assert config.triggers == []
 
 
@@ -4214,7 +4214,7 @@ class TestBRConfigHitl:
         config = BRConfig(temp_project_dir)
         assert config.advisor.enabled is False
         assert config.advisor.host is None
-        assert config.advisor.timeout_seconds == 180
+        assert config.advisor.timeout_seconds == 300
 
 
 class TestBRConfigAnalyticsCaptureIntegration:

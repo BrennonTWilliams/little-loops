@@ -953,7 +953,7 @@ states:
     # issue's ## Advisor Veto note, and preflights advisor.host without
     # spending budget -- the native advisor_consult evaluator does none of
     # these. Explicit timeout: the consult blocks up to
-    # advisor.timeout_seconds (default 180s) plus host startup; a timeout
+    # advisor.timeout_seconds (default 300s) plus host startup; a timeout
     # must land on write_done_record, never diagnose/failed.
     action: >-
       ll-issues advise-consult ${captured.issue_id.output:shell}
