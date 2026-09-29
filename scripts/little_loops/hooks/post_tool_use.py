@@ -171,6 +171,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _now,
                 _parse_mcp_tool_name,
                 connect,
+                remote_telemetry,
             )
 
             agent_type = (
@@ -191,7 +192,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
             if isinstance(started, (int, float)) and isinstance(completed, (int, float)):
                 latency_ms = int(max(0, completed - started))
             ts = _now()
-            conn = connect(cwd / ".ll" / "history.db")
+            # Best-effort telemetry: a remote store gets the telemetry latency budget so this
+            # synchronous write cannot outlast the hook timeout (FEAT-3535).
+            with remote_telemetry.telemetry_scope():
+                conn = connect(cwd / ".ll" / "history.db")
             try:
                 cursor = conn.execute(
                     "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "

@@ -18,7 +18,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.hrana_stub import HranaStub
 
 from little_loops.session_store import db as db_mod
 from little_loops.session_store import lifecycle, remote_schema, remote_telemetry
@@ -32,6 +31,7 @@ from little_loops.session_store.hrana import HranaClient
 from little_loops.session_store.libsql import machine_id
 from little_loops.session_store.schema import connect
 from little_loops.session_store.sessions import handles_from_paths
+from tests.hrana_stub import HranaStub
 
 TOKEN = "sentinel-token-DO-NOT-LEAK"
 

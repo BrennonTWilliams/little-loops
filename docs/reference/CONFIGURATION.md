@@ -617,6 +617,12 @@ enabled; these keys control how skills and CLI tools *read* that data.
 |-----|------|---------|-------------|
 | `history.db_path` | `string\|null` | `null` | Override the default `.ll/history.db` location; relative paths resolve against the project root. The `LL_HISTORY_DB` env var takes precedence over this (ENH-2623). Independent kill switch: `LL_ANALYTICS_CAPTURE=0` suppresses `ll-*` analytics capture entirely — the db is never resolved (so neither this key nor `LL_HISTORY_DB` is consulted) and no file is created (ENH-3449). |
 | `history.workspace_manifest_path` | `string\|null` | `null` | Path to an `ll-workspace.yaml` manifest declaring workspace membership for cross-repo `.ll/history.db` aggregation (FEAT-3409). Relative paths resolve against the project root; `~` is expanded (a deliberate divergence from `history.db_path`, which does not expand `~`). Overrides the nearest-ancestor-walk default `discover_workspace_members()` otherwise uses. A declared-but-missing manifest — this key set to a nonexistent path — raises `FileNotFoundError` rather than degrading to an empty member list; only an *undeclared* (ancestor-walk) miss degrades. A member repo's own `history.db_path` is not consulted by workspace discovery — a member with a custom one must repeat it in the manifest. |
+| `history.backend.provider` | `"sqlite"\|"libsql"` | `"sqlite"` | Where `history.db` lives (FEAT-3535). `sqlite` (or unset) is the local file and behaves exactly as before. `libsql` targets a remote libSQL endpoint (self-hosted `sqld` or Turso Cloud) over Hrana-over-HTTP so several machines share one store. See [Remote history backend](#remote-history-backend). |
+| `history.backend.url` | `string\|null` | `null` | Non-secret literal endpoint (`libsql://…`, `https://…` or `http://…`). Give exactly one of `url` or `url_env`. |
+| `history.backend.url_env` | `string\|null` | `null` | Name of the environment variable holding the endpoint (`LL_HISTORY_URL` when neither `url` nor `url_env` is set). |
+| `history.backend.auth_token_env` | `string` | `"LL_HISTORY_AUTH_TOKEN"` | Name of the environment variable holding the auth token. A literal token is never accepted in config, printed by `ll-doctor`, or written to logs. |
+| `history.backend.project_id` | `string\|null` | `null` | Required with `provider: libsql`. `ll-session migrate` stamps it into an empty remote store and every remote open compares it, so unrelated projects cannot share one store. |
+| `history.backend.telemetry_timeout_ms` | `integer` | `1500` | Total time budget for one best-effort telemetry write (hooks, CLI event recording) to the remote store. Explicit reads use a longer bound (10s). |
 | `history.velocity_window` | `integer` | `10` | Number of recent issues to use when computing velocity (ENH-1905). |
 | `history.effort_fields` | `list[str]` | `["session_count", "cycle_time_days"]` | Fields extracted from history.db for effort reporting (ENH-1905). |
 | `history.max_age_days` | `integer\|null` | `null` | Maximum age in days for history entries; `null` = no limit (ENH-1905). |
@@ -713,6 +719,24 @@ Each summary is stored as a node in `summary_nodes`. Condensed nodes receive `pa
   }
 }
 ```
+
+#### Remote history backend
+
+`history.backend.provider: libsql` moves `.ll/history.db` to a remote libSQL endpoint so teams running little-loops on several machines or CI runners share one history and analytics store. It is opt-in and adds no third-party dependency (the client is standard-library `http.client`).
+
+```json
+{"history": {"backend": {"provider": "libsql", "url_env": "LL_HISTORY_URL",
+  "auth_token_env": "LL_HISTORY_AUTH_TOKEN", "project_id": "acme-api"}}}
+```
+
+Set the endpoint in `.ll/ll.local.md` (its frontmatter is deep-merged over `ll-config.json`) so a clone of the repository does not silently join a shared store, and keep the token in the environment only.
+
+- **Setup.** Export the two environment variables, then run `ll-session migrate` once. Opens never migrate: a store that is behind refuses writes with "run `ll-session migrate`", and one that is ahead refuses writes with "upgrade little-loops"; strict reads keep working.
+- **Precedence.** Default-shaped locations (`.ll/history.db`, or none) select the remote store. An explicit non-default path, or `LL_HISTORY_DB` being set, stays a local SQLite target, and `history.db_path` is ignored. `ll-doctor` reports these conflicts.
+- **Not supported remotely.** `rebuild`, a full `backfill`, `prune`, `compact`, `recompress`, `VACUUM`, `ATTACH` and snapshot export raise an error naming the operation before any change. With `prune`, `compact` and `recompress` unavailable a remote store has no retention path; `ll-doctor` reports the row counts of the largest tables. A new remote store starts empty apart from each machine's own transcript backfill (there is no seeding from a local `history.db`).
+- **Ingestion.** `backfill --since` and the SessionStart worker keep one watermark per machine (`meta.last_raw_event_ts:<machine>`, machine id in `~/.ll/machine-id`); a transcript copied to another path is not ingested twice.
+- **Never stalls a hook.** Telemetry writes are bounded by `telemetry_timeout_ms`. After a connect failure or timeout a short-lived marker (`.ll/libsql-<hash>.unreachable.lock`, 60s) makes later telemetry writes skip with no network attempt; a verification cache (`.ll/libsql-<hash>.verified.lock`, 300s) avoids re-checking the schema on every hook. Both match the existing `.ll/*.lock` gitignore entry and never contain the token. Dropped telemetry is not buffered or replayed.
+- **Diagnostics.** `ll-doctor` reports the backend, reachability, recorded vs installed schema version, the project stamp and config conflicts, and never prints the token.
 
 ### `queue`
 

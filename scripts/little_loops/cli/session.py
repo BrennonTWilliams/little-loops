@@ -444,6 +444,17 @@ def _load_capture_config(cwd: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _is_foreign_path(path_text: str | None) -> bool:
+    """True when *path_text* is a transcript path that does not exist on this machine and the
+    history store is a shared remote one (so the row was most likely recorded elsewhere)."""
+    if not path_text or Path(path_text).exists():
+        return False
+    from little_loops.session_store.db import resolve_history_target
+    from little_loops.session_store.targets import RemoteTarget
+
+    return isinstance(resolve_history_target(DEFAULT_DB_PATH), RemoteTarget)
+
+
 def _main_migrate() -> int:
     """``ll-session migrate``: run before ``cli_event_context`` so no telemetry row is written
     into a store that may be mid-migration (or, for a remote store, not yet migratable)."""
@@ -524,7 +535,13 @@ def main_session() -> int:
             if row is None:
                 print(f"Session {args.session_id} not found.")
                 return 1
-            print(row["jsonl_path"])
+            path_text = row["jsonl_path"]
+            if _is_foreign_path(path_text):
+                # A shared remote store holds rows recorded on other machines; their
+                # transcript paths do not exist here and are not an error (FEAT-3535).
+                print(f"{path_text}  (recorded on another machine)")
+            else:
+                print(path_text)
             return 0
 
         if args.command == "search":

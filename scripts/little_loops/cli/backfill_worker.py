@@ -76,8 +76,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     from little_loops.session_store import backfill_incremental
+    from little_loops.session_store.backend import HistoryUnsupported
 
-    backfill_incremental(db_path, jsonl_files=jsonl_files, also_rebuild=rebuild, host=host)
+    try:
+        backfill_incremental(db_path, jsonl_files=jsonl_files, also_rebuild=rebuild, host=host)
+    except HistoryUnsupported as exc:  # e.g. --rebuild against a remote store (FEAT-3535)
+        print(f"backfill_worker: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 

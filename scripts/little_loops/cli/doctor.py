@@ -6,6 +6,7 @@ import argparse
 import importlib
 import importlib.metadata as importlib_metadata
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -459,8 +460,50 @@ def _is_sqlite_file(db_path: Path) -> bool:
     return header == _SQLITE_HEADER_MAGIC
 
 
+_REMOTE_PROBE_TIMEOUT_S = 3.0
+_REMOTE_COUNT_TABLES = ("raw_events", "message_events", "tool_events", "cli_events", "usage_events")
+
+
+def _remote_target():  # type: ignore[no-untyped-def]
+    """The remote store the default history location resolves to, or ``None`` (FEAT-3535)."""
+    from little_loops.session_store.db import resolve_history_target
+    from little_loops.session_store.targets import RemoteTarget
+
+    target = resolve_history_target(DEFAULT_DB_PATH)
+    return target if isinstance(target, RemoteTarget) else None
+
+
+def _remote_client(cfg):  # type: ignore[no-untyped-def]
+    from little_loops.session_store.hrana import HranaClient
+
+    return HranaClient(cfg.endpoint(), cfg.auth_token(), timeout=_REMOTE_PROBE_TIMEOUT_S)
+
+
+def _remote_history_db_data(target) -> dict:  # type: ignore[no-untyped-def]
+    """Reachability probe for a remote history store. Ignores the telemetry unreachable
+    marker and verification cache; never echoes the endpoint's credentials."""
+    from urllib.parse import urlsplit
+
+    from little_loops.session_store.backend import HistoryError
+
+    try:
+        client = _remote_client(target.config)
+        client.execute("SELECT 1")
+    except HistoryError as exc:
+        return {"status": "unsupported", "severity": "error", "note": f"unreachable: {exc}"}
+    host = urlsplit(client.base_url).netloc
+    return {
+        "status": "full",
+        "severity": "error",
+        "note": f"remote {target.provider} store at {host}",
+    }
+
+
 def _history_db_data() -> dict:
     """Presence/readability probe for `.ll/history.db`.
+
+    Under a remote ``history.backend`` there is no file to stat: the probe is a reachability
+    check against the endpoint (FEAT-3535).
 
     Must not create the DB: `session_store.connect()`/`ensure_db()` both
     create-on-demand, so a genuinely absent DB is probed via `Path.exists()`
@@ -470,6 +513,9 @@ def _history_db_data() -> dict:
     read-only connect + statement probe retained as the secondary check for a
     valid-header-but-damaged file.
     """
+    remote = _remote_target()
+    if remote is not None:
+        return _remote_history_db_data(remote)
     db_path = Path.cwd() / DEFAULT_DB_PATH
     if not db_path.exists():
         return {"status": "unsupported", "severity": "informational", "note": "not yet created"}
@@ -516,6 +562,118 @@ def _history_db_check() -> list[CheckResult]:
     ]
 
 
+def _history_backend_data() -> dict:
+    """Diagnostic for ``history.backend`` (FEAT-3535): provider, reachability, recorded vs
+    installed schema version, the ``project_id`` stamp, config conflicts and the row counts
+    of the largest tables. Reads the remote store directly, ignoring the telemetry state
+    files. The auth token is never read into the result: only whether its variable is set."""
+    from little_loops.session_store import remote_schema
+    from little_loops.session_store.backend import HistoryError
+    from little_loops.session_store.db import _config_db_path, load_backend_config
+    from little_loops.session_store.hrana import BatchStep
+
+    cfg = load_backend_config()
+    if cfg is None:
+        return {
+            "provider": "sqlite",
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "local sqlite store (history.backend not configured)",
+            "conflicts": [],
+        }
+    installed = len(remote_schema._migrations())
+    conflicts: list[str] = []
+    if os.environ.get("LL_HISTORY_DB"):
+        conflicts.append(
+            "LL_HISTORY_DB is set: it overrides history.backend with an explicit local store"
+        )
+    if _config_db_path() is not None:
+        conflicts.append(f"history.db_path is ignored under provider {cfg.provider!r}")
+    data: dict = {
+        "provider": cfg.provider,
+        "project_id": cfg.project_id,
+        "auth_token_env": cfg.auth_token_env,
+        "auth_token_set": cfg.auth_token() is not None,
+        "installed_version": installed,
+        "conflicts": conflicts,
+        "recorded_version": None,
+        "stamped_project_id": None,
+        "row_counts": {},
+    }
+
+    def _fail(note: str, severity: str = "error") -> dict:
+        return {**data, "status": "unsupported", "severity": severity, "note": note}
+
+    if not cfg.project_id:
+        return _fail("history.backend.project_id is required when provider is 'libsql'")
+    try:
+        client = _remote_client(cfg)
+        state = remote_schema.read_state(client)
+        counts = client.batch(
+            [BatchStep(f"SELECT count(*) FROM {t}") for t in _REMOTE_COUNT_TABLES]
+        )
+    except HistoryError as exc:
+        return _fail(f"unreachable: {exc}")
+    data["recorded_version"] = state.version
+    data["stamped_project_id"] = state.project_id
+    data["row_counts"] = {
+        t: (r.rows[0][0] if r is not None and r.rows else None)
+        for t, r in zip(_REMOTE_COUNT_TABLES, counts.step_results, strict=True)
+    }
+    if state.project_id is not None and state.project_id != cfg.project_id:
+        return _fail(
+            f"project_id mismatch: the store belongs to {state.project_id!r}, "
+            f"config says {cfg.project_id!r}"
+        )
+    if state.version < installed:
+        return _fail(
+            f"remote schema is v{state.version}, behind this install's v{installed}; "
+            "run `ll-session migrate`"
+        )
+    if state.version > installed:
+        return _fail(
+            f"remote schema is v{state.version}, ahead of this install's v{installed}; "
+            "upgrade little-loops"
+        )
+    if state.project_id is None:
+        return _fail("the store has no project_id stamp; run `ll-session migrate`")
+    return {
+        **data,
+        "status": "full",
+        "severity": "error",
+        "note": f"{cfg.provider} store at schema v{state.version}, project {cfg.project_id!r}",
+    }
+
+
+def _print_history_backend_section() -> None:
+    """Print the History backend section."""
+    data = _history_backend_data()
+    print()
+    print("History backend")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+    for conflict in data["conflicts"]:
+        print(f"     ! {conflict}")
+    counts = data.get("row_counts") or {}
+    if counts:
+        print("     rows: " + ", ".join(f"{t}={n}" for t, n in counts.items()))
+
+
+@register_check
+def _history_backend_check() -> list[CheckResult]:
+    """Registered check for ``history.backend`` (informational for the local store)."""
+    data = _history_backend_data()
+    return [
+        CheckResult(
+            name="history_backend",
+            status=data["status"],
+            note=data["note"],
+            severity=data["severity"],
+        )
+    ]
+
+
 def _schema_drift_data() -> dict:
     """Report-only structural drift check for `.ll/history.db` (ENH-3242).
 
@@ -549,6 +707,12 @@ def _schema_drift_data() -> dict:
         _schema_manifest,
     )
 
+    if _remote_target() is not None:
+        return {
+            "status": "unsupported",
+            "severity": "informational",
+            "note": "not applicable to a remote store (see the history backend section)",
+        }
     db_path = resolve_history_db()
     if not db_path.exists():
         return {"status": "unsupported", "severity": "informational", "note": "not yet created"}
@@ -1573,6 +1737,7 @@ def _print_report(
             "skills_commands": _skills_commands_data(),
             "decisions_store": _decisions_store_data(),
             "history_db": _history_db_data(),
+            "history_backend": _history_backend_data(),
             "schema_drift": _schema_drift_data(),
             "loop_validity": _loop_validity_data(),
             "advisor": _advisor_data(),
@@ -1690,6 +1855,7 @@ not a broken install.
             _print_skills_commands_section()
             _print_decisions_store_section()
             _print_history_db_section()
+            _print_history_backend_section()
             _print_schema_drift_section()
             _print_loop_validity_section()
             _print_advisor_section()

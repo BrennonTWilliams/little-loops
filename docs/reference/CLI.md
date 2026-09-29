@@ -4345,7 +4345,7 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 
 | Flag | Description |
 |------|-------------|
-| `--db PATH` | Path to the session database (default: `.ll/history.db`) |
+| `--db PATH` | Path to the session database (default: `.ll/history.db`; under `history.backend.provider: libsql` the default is the remote store) |
 
 **Subcommands:**
 
@@ -4367,6 +4367,18 @@ Query the unified session store (SQLite + FTS5) — the per-project `.ll/history
 | `compact` | Sweep `raw_events` past the retention max-age into per-session `retention` summary nodes; `--and-prune` also deletes and VACUUMs (ENH-2581) |
 | `recompress` | Rewrite legacy uncompressed `raw_events` payloads (`raw_line`/`parsed_json`) as zlib BLOBs and VACUUM; idempotent, off-hot-path maintenance (ENH-2624) |
 | `prune` | Delete raw event rows older than configured `analytics.retention` max-age and VACUUM the DB |
+| `migrate` | Apply pending schema migrations and report the version before and after (`v0 -> N`, or "already current"). The only command that migrates a remote store: opens never migrate one (FEAT-3535) |
+
+**`migrate`:**
+
+```bash
+ll-session migrate      # local store: same as any open, plus a version report
+ll-session migrate      # history.backend.provider: libsql — migrates the remote store
+```
+
+With the default local store this is a no-op when the schema is current. With `history.backend.provider: libsql` (see [`history.backend`](CONFIGURATION.md#history)) it sends each pending migration to the remote endpoint as one atomic batch, stamps `meta.project_id` from `history.backend.project_id` on an empty store, and refuses (exit 1) a store stamped for a different project or one that is *ahead* of the installed version. Concurrent runs on several machines are safe: the first commits, the rest re-read the version and carry on. It writes no telemetry row.
+
+**Under a remote history backend** these subcommands are refused with an error that names the operation, before any network call, because they would delete or rewrite rows other machines use: `rebuild`, a full `backfill` (use `backfill --since` for the incremental path), `compact` (and `--and-prune`), `prune`, `recompress`, and the history-dashboard snapshot export used by `ll-artifact`. Reads, search, `grep`, `recent` and the rest work as usual. `path` labels a transcript recorded on another machine instead of failing.
 
 **`grep` flags:**
 

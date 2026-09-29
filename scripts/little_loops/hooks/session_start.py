@@ -153,6 +153,15 @@ def handle(event: LLHookEvent) -> LLHookResult:
             if _os.environ.get("LL_HISTORY_DB")
             else root / ".ll" / "history.db"
         )
+        # FEAT-3535: a remote store is never migrated or rebuilt from a hook (the shared
+        # derived tables belong to every machine), and reading it here could outlast the
+        # hook's 5s timeout, so the rebuild decision and the project digest are local-only.
+        _remote_store = False
+        with contextlib.suppress(Exception):
+            from little_loops.session_store.db import resolve_history_store
+            from little_loops.session_store.targets import RemoteTarget
+
+            _remote_store = isinstance(resolve_history_store(_db_path), RemoteTarget)
 
         with contextlib.suppress(Exception):
             from little_loops.user_messages import _resolve_host, get_project_folder
@@ -189,6 +198,8 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 ]
                 _worker_argv.extend(["--host", _backfill_host])
                 with contextlib.suppress(Exception):
+                    if _remote_store:
+                        raise RuntimeError("remote store: never rebuild from a hook")
                     from little_loops.session_store import SCHEMA_VERSION, connect
 
                     _rebuild_conn = connect(_db_path)
@@ -221,7 +232,7 @@ def handle(event: LLHookEvent) -> LLHookResult:
 
             _hist = HistoryConfig.from_dict(merged_config.get("history", {}))
             _sd = _hist.session_digest
-            if _sd.enabled:
+            if _sd.enabled and not _remote_store:
                 from little_loops.history_reader import project_digest, render_project_context
 
                 # An empty sections list (the config default) renders all providers;
