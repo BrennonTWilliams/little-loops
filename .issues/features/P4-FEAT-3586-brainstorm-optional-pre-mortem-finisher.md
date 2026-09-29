@@ -16,6 +16,12 @@ blocked_by:
 - FEAT-3582
 - FEAT-3583
 reconcile_attempted: true
+confidence_score: 75
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-3586: Brainstorm optional pre-mortem finisher
@@ -167,7 +173,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-25 | Priority: P4
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate-only design)_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (dependency hard override)
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- Unresolved dependencies (hard override): `blocked_by` FEAT-3582 and FEAT-3583 are both `Open`. Implement them first, or drop the dependency if it no longer applies. The rest of the issue is otherwise ready.
+
+### Concerns
+- The state that renders `brainstorm.md` is not named. Steps say "extend report rendering" and `render_risks` returns a section string, but the caller is left open. Pin which FEAT-3582 state (`portfolio` or `finalize_done`) calls it.
+- "A defender risk list whose failure modes do not match the critic's" has no stated match rule (exact string, normalized, or by index). Pin it so the fail-open test is deterministic.
+- `annotate` needs `portfolio.json`, `ideas.jsonl`, and the engine module, none of which exist yet. Signatures are pinned only against FEAT-3582's spec, so recheck them once FEAT-3582 lands.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T06:02:10 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:00:48 - `c90c2478-f308-49d4-930c-8be0a9590776.jsonl`
 - `/ll:confidence-check` - 2026-09-25T17:21:40 - `823eec8e-b4aa-4134-9728-fb6281ade224.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T17:15:35 - `fa11583b-aa00-4da8-b0f0-fc89c6cf8f64.jsonl`
