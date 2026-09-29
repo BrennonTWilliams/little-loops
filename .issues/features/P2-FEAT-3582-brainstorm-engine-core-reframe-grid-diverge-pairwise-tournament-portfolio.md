@@ -383,13 +383,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-28 (re-run after review-fold)_
+_Added by `/ll:confidence-check` on 2026-09-29 (re-scored against the round-robin rewrite, Review Decisions 15–22)_
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 70/100 → MODERATE
 
 ### Concerns
-- **Stale:** scores predate the 2026-09-28 round-robin rewrite (Review Decisions 15–22); re-run `/ll:confidence-check`.
+- Scores re-verified against the round-robin rewrite; unchanged from the prior pass.
 - Prior concerns resolved: child loop named (`brainstorm-tournament.yaml`, § Tournament Specification → Child loop) and `eligible` vs premortem concession pinned (§ Data Contract).
 - Program Design, dependency, claim, and learning-test gates are all clean.
 
@@ -400,6 +400,7 @@ _Added by `/ll:confidence-check` on 2026-09-28 (re-run after review-fold)_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-29T02:38:55 - `6ac2993c-0f5a-489a-b5b9-4d778beaf475.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:07:51 - `a043a653-a6de-455c-af91-864f254d2405.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:00:46 - `c90c2478-f308-49d4-930c-8be0a9590776.jsonl`
 - `/ll:confidence-check` - 2026-09-25T17:21:38 - `823eec8e-b4aa-4134-9728-fb6281ade224.jsonl`

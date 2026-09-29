@@ -42,8 +42,10 @@ remote transport exists.
 - An unset `history.backend`, or `provider: sqlite`, behaves exactly as today.
 - `provider: libsql` routes history reads and writes to the remote store through a
   `LibsqlBackend` built on the stdlib Hrana client.
-- Unsupported operations report a clear capability limitation. These include FTS5 and
-  maintenance operations, `ATTACH`, `create_function`, and snapshot export.
+- Unsupported operations report a clear capability limitation naming the operation. These
+  are the maintenance operations (`rebuild`, `prune`, `compact`, `recompress`, `VACUUM`),
+  `ATTACH`, `create_function`, the WAL pragmas, and snapshot export. FTS5 search is
+  supported remotely (probed 2026-09-28).
 - Best-effort telemetry never aborts the operation it observes.
 - Every network wait is time-limited.
 
@@ -90,20 +92,97 @@ or CI runners have no shared history/analytics store.
    - `little_loops/mcp_call.py:75`: a JSON-RPC client written in-house, with a monotonic
      deadline.
 3. Build `LibsqlBackend` on that client and register it in `resolve_backend()`.
-4. Reuse FEAT-3524's Proposed Design, which was already reviewed and settled:
-   - `history.backend` config and its precedence rules (§1);
-   - `HistoryTarget` target-type refactor (§1a);
-   - `LL_HISTORY_DB` env relay (§1b);
-   - shared-store operation matrix (§7);
-   - per-machine ingestion watermark and incremental materialization (§7a);
-   - telemetry latency budget (§8);
-   <!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
-   - `ll-session migrate` and no migrate-on-open (§9);
-   - project-identity stamp (§10);
-   - the `ll-doctor` backend diagnostic.
+4. Apply the settled design restated under Proposed Design below (configuration and
+   precedence, `HistoryTarget`, env relay, errors and capabilities, operation matrix,
+   remote ingestion, telemetry budget, migration policy and project identity, plus the
+   `ll-doctor` backend diagnostic). It was reviewed under FEAT-3524, which is cancelled; the
+   Hrana client replaces the `libsql` binding assumptions (no isolation-level workaround, no
+   `executescript`, no extras dependency).
 
-   Where those sections assumed the `libsql` binding (e.g. the isolation-level workaround,
-   `executescript` avoidance), re-derive them against the Hrana client.
+## Proposed Design
+
+Restated from cancelled FEAT-3524 (§1-§10, reviewed 2026-09-22/23) and adapted to the Hrana client. This section is authoritative; the predecessor need not be read.
+
+### 1. Configuration and precedence
+
+```json
+{"history": {"backend": {"provider": "libsql", "url_env": "LL_HISTORY_URL",
+  "auth_token_env": "LL_HISTORY_AUTH_TOKEN", "project_id": "acme-api",
+  "telemetry_timeout_ms": 1500}}}
+```
+
+- `provider` is the selector (`"enum": ["sqlite", "libsql"]`, default `"sqlite"`), matching `sync.provider` and `code_query.provider`. libSQL takes exactly one endpoint source: a non-secret literal `url` or `url_env`. `project_id` is required when `provider: libsql`. `auth_token_env` names an environment variable; a literal token is never accepted in config.
+- Tokens are never committed, echoed by `ll-doctor`, emitted by `HistoryConfig.to_dict`, or written to logs or error text. There is no silent fallback to a local store after a remote failure.
+- Unset backend or `provider: sqlite` is unchanged: `explicit path > LL_HISTORY_DB > history.db_path > DEFAULT_DB_PATH`.
+- Under `provider: libsql`, default-shaped arguments (`DEFAULT_DB_PATH`, `None`) to `open_history`, `open_history_readonly` and `cli_event_context` select the remote store. An explicit non-default path, or `LL_HISTORY_DB` set, stays an explicit local SQLite target. `history.db_path` is ignored under `libsql`, and `ll-doctor` reports when both are set.
+- `resolve_history_db()` and `ensure_db()` keep SQLite behavior for local targets and raise a typed `HistoryBackendNotLocal` for the remote target; no fabricated path is ever returned.
+- The reader must apply the `ll.local.md` frontmatter deep merge (`config/core.py` `parse_local_override_frontmatter` and `deep_merge`); `db.py::_config_db_path` reads raw JSON and would ignore a local endpoint, so it is not copied. It never raises on the hook hot path (malformed config means `provider: sqlite` plus a one-time warning, never a silent remote-to-local switch after a remote provider was readable) and caches per process. User docs recommend setting the endpoint in `.ll/ll.local.md` so a clone does not silently join a shared store.
+
+### 2. Target type (SQLite-only refactor, lands first, no behavior change)
+
+- `HistoryTarget = LocalTarget(path: Path) | RemoteTarget(config: BackendConfig)` (frozen dataclasses). `_resolve_once(target)` returns it.
+- `Backend.connect`, `connect_readonly` and `ensure_schema` take a `HistoryTarget`. `SqliteBackend` accepts only `LocalTarget`, `LibsqlBackend` only `RemoteTarget`; a mismatch raises `HistoryUnsupported`. The backend is chosen from the target: entry points call `resolve_backend(target.provider)`.
+- The three entry points' return annotation narrows to `HistoryConnection`. Callers needing `sqlite3` specifics (`create_function`, `ATTACH`, `row_factory`) keep `sqlite3.Connection` and gate on `supports()` first.
+- **Fail-closed scope of remote support.** The lower-level `schema.connect` and `ensure_db` seam is made target-aware once, rather than editing every call site. Under a `RemoteTarget`, every site that reaches it either performs an operation the matrix in section 5 marks supported, or raises `HistoryUnsupported` before any mutation. Sites holding a `LocalTarget` keep SQLite behavior. This bounds "history reads and writes route to the remote store" without migrating the roughly 50 bypassing sites one by one.
+
+### 3. Env relay
+
+`worktree_utils.py` exports `LL_HISTORY_DB=str(resolve_history_db())` before worktree creation. When the resolved target is a `RemoteTarget` the relay exports nothing and does not raise, so descendants resolve the same config and reach the same store. If `LL_HISTORY_DB` is already set while `provider: libsql` is configured, the relay leaves it (a deliberate local override) and `ll-doctor` reports the conflict. The same rule covers `pytest_history_plugin.py`; `hooks/session_start.py` is handled as an ingestion writer (section 6).
+
+### 4. Errors, capabilities and timeouts
+
+- Error mapping is the Error Code Mapping table under Program Design. Stream-lost errors are retryable once for idempotent reads; never inside a write transaction; telemetry drops instead of retrying. An ambiguous commit (connection lost during a `batch`) is resolved by re-reading an idempotent marker, such as the schema-version row for migrations.
+- `HistoryUnsupported` gains an optional keyword-only `operation` attribute (backward compatible), so the raised error names the operation.
+- Capability names are a closed set defined once in `backend.py`: existing `attach`, `vacuum`, `create_function`, plus new `wal` (the `journal_mode` and `busy_timeout` pragmas) and `snapshot_export`. `LibsqlBackend.supports()` is False for all five; the maintenance operations in section 5 are rejected by name rather than by capability.
+- **FTS5 is supported remotely.** A probe on 2026-09-28 (Turso, `CREATE VIRTUAL TABLE ... USING fts5`, `MATCH`, `bm25`, `PRAGMA table_info`) succeeded, matching the `libsql-remote` record. `PRAGMA journal_mode`, `busy_timeout`, `ATTACH` and `VACUUM` return `SQL_PARSE_ERROR` with "SQL not allowed statement", so `LibsqlBackend` skips the WAL setup instead of relying on error mapping.
+- `create_function` is unavailable remotely; `history_reader/formatting.py::ll_grep` under `libsql` prefilters with a bounded plain SQL predicate and applies the regex in Python.
+- Every network wait uses a socket timeout with a monotonic total deadline (`mcp_call.py::_send_jsonrpc` pattern). Explicit reads and maintenance default to 10s; telemetry paths use `telemetry_timeout_ms`.
+- Rows are adapted to the `HistoryRow` and `HistoryCursor` protocols (name and index access, `keys()`, `dict(row)`, `lastrowid`, `rowcount`, `executemany`); nothing assumes `sqlite3.Row`.
+
+### 5. Shared-store operation matrix (hard gate)
+
+A rejected operation raises `HistoryUnsupported` (naming the operation) before any mutation.
+
+| Operation | Under `libsql` |
+|---|---|
+| `rebuild()` (also the backfill worker's rebuild flag) | rejected: global `DELETE` on derived tables with no concurrency guarantee |
+| full `backfill` (`ll-session backfill`) | rejected: overwrites other machines' rows |
+| `backfill_incremental` and `backfill_raw_events` (SessionStart worker) | supported, with the per-machine watermark (section 6) |
+| `prune()`, `ll-session compact`, `compact --and-prune`, `recompress` | rejected: rewrite or delete `raw_events` other machines use |
+| `VACUUM`, `sweep_stale_refs` | rejected: local-file operations |
+| reads, event writes, search, `ll-history`, `ll-logs`, digests, context compaction (`little_loops.compaction`) | supported |
+| snapshot export | rejected (`ATTACH` to a local destination is unavailable) |
+
+"Compaction" names two things: context compaction (additive, supported) and the `ll-session compact` raw-event rewrite (destructive, rejected); docs, errors and tests use the full names. With prune, compact and recompress rejected, a remote store has no retention path in the first release; user docs say so and `ll-doctor` reports row counts for the largest tables. Prune stays manual-only. Identity: a stable random machine ID lives in a gitignored machine-local file (`~/.ll/machine-id`) and is used only for the watermark; foreign `jsonl_path` values are skipped and labelled "recorded on another machine", never treated as errors; no provenance column is added unless the copied-session test below proves it necessary.
+
+### 6. Remote ingestion
+
+- `backfill_raw_events()` reads and writes `meta.last_raw_event_ts:<machine_id>` instead of the global key (a global key lets one machine's progress silently skip another's older transcripts). SQLite keeps the global key.
+- After ingest, derived `_REBUILD_TABLES` rows are materialized for only the newly inserted `raw_events` rows, additively and idempotently (`INSERT OR IGNORE` or upsert; no `DELETE`). First confirm which derived tables live hooks already write (`writers.py`, `hooks/post_tool_use.py`, `fsm/continuity.py`) so nothing is double-written; any derived table with no natural dedup key gets one by migration before it is materialized remotely.
+- `hooks/session_start.py` resolves a `HistoryTarget`, passes it to `cli/backfill_worker.py`, never passes a rebuild flag, and never migrates on open; the worker refuses a rebuild under `libsql`. A copied session JSONL at a different path is tested; if it double-ingests, remote ingestion dedups on `(session_id, line_no)`.
+- Schema bumps that would trigger a local rebuild are out of scope; the migrate command reports that derived tables for pre-bump rows are not re-materialized.
+
+### 7. Telemetry latency budget
+
+Hooks have a 5s timeout (`hooks/hooks.json`) and every `ll-*` CLI is wrapped by `cli_event_context`, so a slow endpoint must not cost every invocation the full wait.
+
+- Telemetry and best-effort paths (hooks, `cli_event_context`, `SQLiteTransport`) use `telemetry_timeout_ms` (default 1500 total per write). Explicit reads and maintenance use the longer bound.
+- The Hrana client needs one HTTP round trip per execute and no separate ensure connection. `LibsqlBackend` caches "schema verified at version N" per process. Because hooks are one process per event, a file-backed verification cache (endpoint hash, verified version, `project_id`, TTL 300s) sits next to the unreachable marker; a schema or constraint failure invalidates it. Explicit reads, the migrate command and `ll-doctor` ignore it.
+- On a connect failure or timeout in a telemetry path, write an unreachable marker under `.ll/` (TTL 60s, keyed by endpoint hash, never the token); later telemetry writes within the TTL skip immediately with no network attempt and no repeated warning. Explicit reads and `ll-doctor` ignore it.
+- Both files are gitignored in this repository and in consuming projects (`init/writers.py::_GITIGNORE_ENTRIES`), by explicit entries or an existing ignored glob such as `.ll/*.lock`. Dropped telemetry is not buffered or replayed.
+- Success-path budget: a hook-path telemetry write on a healthy endpoint with a warm cache stays well under the hook timeout. Measured on 2026-09-28, one `select 1` took a median 180ms on Turso Cloud (fresh connection) and 1ms on a local `sqld`.
+
+### 8. Migration policy and project identity
+
+
+<!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
+- Opens never migrate under `libsql`. Schema changes happen only through the new `ll-session migrate` command (valid for both providers, a no-op when current), which reports the before and after version and sends each migration as one atomic `batch`.
+- Store behind client (`recorded < len(_MIGRATIONS)`): writes and `ensure=True` reads raise `HistoryUnsupported` naming the migrate command; telemetry paths warn once and skip; strict reads proceed. Store ahead of client: reads proceed, writes are refused with an "upgrade little-loops" message, and the BUG-3255 stamp self-heal never runs against a remote store. `ll-doctor` reports recorded and installed versions.
+- The migrate command on an empty remote store stamps `meta.project_id` from `history.backend.project_id`. Every remote open compares the two once per process and raises `HistoryUnsupported` on mismatch; `ll-doctor` reports a mismatch. Sharing one store across unrelated projects is prevented, not merely unsupported.
+
+### 9. Out of scope
+
+Postgres, MySQL or a general SQL dialect layer; other Turso engines or drivers; embedded replicas and offline sync; migrating `queue.db` or codegraph databases; workspace-manifest aggregation over remote backends (`history.workspace_manifest_path` stays local); multi-project tenancy and machine-filtered analytics; a remote retention or prune path; buffering or replaying dropped telemetry; seeding a remote store from an existing local `history.db` (a new store starts empty apart from each machine's own transcript backfill; user docs say so); snapshot export under `libsql`; re-materializing derived tables after a schema bump.
 
 ## Integration Map
 
@@ -226,7 +305,12 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - [ ] `resolve_backend("libsql")` returns a `LibsqlBackend`; with `history.backend.provider: libsql`, the chokepoint entry points (`open_history`, `open_history_readonly`, `connect_readonly`) and the hook paths (`main_hooks`, `post_tool_use`) select it without callers passing a provider, and history reads and writes round-trip against a `sqld` endpoint.
 - [ ] Every network wait uses a socket-level timeout; a connect to a blackholed host fails within the configured limit and raises a `HistoryError` subclass.
 - [ ] Hrana error codes map to `HistoryError` classes without message matching, per the Error Code Mapping table under Program Design: `SQLITE_CONSTRAINT` to `HistoryIntegrityError`; `STREAM_EXPIRED` (sqld) and `SQLITE_BUSY` (Turso idle-transaction rollback) to one retryable stream-lost class; HTTP 400/401/403 and `BLOCKED` to `HistoryUnavailable`; `SQL_PARSE_ERROR` and `SQLITE_UNKNOWN` to `HistoryOperationError`.
-- [ ] Unsupported operations (FTS5, maintenance, `ATTACH`, `create_function`, snapshot export) raise a capability-limitation error naming the operation.
+- [ ] Unsupported operations (`rebuild`, `prune`, `compact`, `recompress`, `VACUUM`, `ATTACH`, `create_function`, snapshot export) raise `HistoryUnsupported` with an `operation` attribute naming the operation, before any mutation, per the operation matrix under Proposed Design; FTS5 search round-trips against a remote endpoint.
+<!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
+- [ ] Under `provider: libsql`, opens never migrate; `ll-session migrate` is the only path that changes the remote schema, and a store behind or ahead of the client raises `HistoryUnsupported` for writes.
+- [ ] `backfill_raw_events` under `libsql` reads and writes `meta.last_raw_event_ts:<machine_id>`; the SQLite path keeps the global key.
+- [ ] `meta.project_id` is stamped by the migrate command and compared on every remote open; a mismatch raises `HistoryUnsupported`.
+- [ ] The auth token never appears in `ll-doctor` output, `HistoryConfig.to_dict`, log lines or `HistoryError` text (asserted by a test that plants a sentinel token).
 - [ ] Two concurrent remote migrations, each sent as one atomic `batch` (never an interactive transaction), both complete or one fails with a structured error, leaving exactly one schema-version row.
 - [ ] A write that contends with another open transaction is bounded by the client read timeout and raises a `HistoryError` subclass; the client never relies on receiving `SQLITE_BUSY` (both endpoints block until the server reaps the idle holder, sqld ~5s, Turso ~10s).
 - [ ] A failing best-effort telemetry write never aborts the observed operation and stays within the telemetry latency budget.
@@ -239,7 +323,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 - `HranaClient`: stdlib `http.client` client for `/v3/pipeline` holding base URL, auth token, connect/read timeouts, and the current baton
 - `HranaError(HistoryError)`: carries the structured Hrana error `code` and message; a retryable stream-lost subclass covers `STREAM_EXPIRED` and idle-transaction `SQLITE_BUSY`
-- `LibsqlBackend`: `Backend` implementation built on `HranaClient`; `supports()` returns False for FTS5, maintenance, `ATTACH`, `create_function`, and snapshot export
+- `LibsqlBackend`: `Backend` implementation built on `HranaClient`; `supports()` returns False for `attach`, `vacuum`, `create_function`, `wal` and `snapshot_export`
 
 ### Error Code Mapping
 
@@ -295,8 +379,10 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
    The client parses both the per-result `error` and the top-level HTTP-error body, and maps
    codes per the Error Code Mapping table.
 4. Add `history.backend` config (schema, `HistoryConfig.from_dict`, `config/core.py`),
-   source the provider from config inside the chokepoint, define a capability string per
-   unsupported operation, and add `LibsqlBackend`.
+   source the provider from config inside the chokepoint, define the capability strings
+   (`wal`, `snapshot_export` plus the existing three) and the `HistoryUnsupported.operation`
+   attribute, make the `schema.connect`/`ensure_db` seam target-aware (fail-closed per the
+   operation matrix), and add `LibsqlBackend`.
 <!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
 5. Remote migrations via atomic `batch` (no interactive transaction), plus `ll-session migrate`.
 6. Operation matrix, per-machine ingestion, telemetry budget, and the doctor diagnostic
