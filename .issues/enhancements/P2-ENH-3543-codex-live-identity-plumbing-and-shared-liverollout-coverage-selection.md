@@ -1,7 +1,7 @@
 ---
 id: ENH-3543
 type: ENH
-title: Codex live identity plumbing and shared live/rollout coverage selection
+title: Shared live/rollout coverage selection for Codex usage
 priority: P2
 status: open
 parent: EPIC-3562
@@ -14,8 +14,10 @@ labels:
 - multi-host
 blocked_by:
 - ENH-3532
+- ENH-3647
 relates_to:
 - ENH-3528
+- ENH-3549
 confidence_score: 70
 outcome_confidence: 63
 score_complexity: 10
@@ -24,28 +26,32 @@ score_ambiguity: 18
 score_change_surface: 10
 ---
 
-# ENH-3543: Codex live identity plumbing and shared live/rollout coverage selection
+# ENH-3543: Shared live/rollout coverage selection for Codex usage
 
 ## Summary
 
-Carry Codex live session/invocation identity through to `usage_events`, and implement one shared coverage-selection policy that usage, cost, waste and export readers all use, so that live invocation totals and historical rollout requests covering the same work are counted once. Split out of ENH-3532, which keeps rollout ingestion itself.
+Implement one shared coverage-selection policy behind `select_usage_observations` that usage, cost, waste, quality and export readers all use, so that live invocation totals and historical rollout requests covering the same work are counted once. Split out of ENH-3532 (rollout ingestion); live identity plumbing was further split to ENH-3647 on 2026-09-28. This issue keeps correlation, selection and reader/export parity.
 
 ## Current Behavior
 
-- Live observations persisted by `FSMExecutor._finish` → `record_usage_event` have no host-observed session or invocation identity.
-- Readers sum every `usage_events` row regardless of channel, so live totals and rollout requests for the same work would be double-counted once ENH-3532 ingests rollouts.
+- `select_usage_observations` (`history_reader/usage.py`) yields every row (`ORDER BY id`) with only `since`/`require_run_id` filters — the unreconciled observation sum. It has no session filter.
+- Once ENH-3532 ingests rollouts and ENH-3647 stamps live Codex identity, live totals and rollout requests for the same work coexist and are double-counted by every aggregate.
+- `templates/dashboard.llat/template.html.j2` sums raw rows (`... FROM usage_events GROUP BY model ORDER BY cost_usd DESC`) and cannot run the Python selector.
+- `issue_history/quality_regressions.py` counts `usage_events` rows per session for model-composition weights; ENH-3647/ENH-3532 pin it to `channel = 'transcript'` as a holding measure.
 
 ## Expected Behavior
 
-### Identity (fixture-established)
+### Identity (delivered by ENH-3647)
 
-`codex exec --json` emits `thread.started.thread_id` first; it equals the rollout's `session_meta.payload.session_id` (`exec-json-turn.jsonl` / `rollout-exec-resume.jsonl`, both `01a0d1da-…`). Capture it as the host-observed session ID. Generate a separate local invocation correlation ID, marked as locally generated, never as host-observed.
+Live Codex rows carry `session_id = thread.started.thread_id` (equal to the rollout's `session_meta.payload.session_id`) and a locally generated `invocation_id`, with an identity-basis marker. Rollout rows carry `session_id` plus the span `turn_id` (ENH-3532).
 
 ### Coverage interval: accounting evidence and unresolved correlation
 
-One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its live total equals the sum of the rollout `last_token_usage` records between that invocation's `task_started` and `task_complete` (fixture: 19404 + 19541 = 38945 input, 112 + 5 = 117 output). `exec resume` restarts the total, so each invocation maps to its own `task_started`…`task_complete` span in the same rollout file. Match on session ID + span; equal token sums are a consistency check, not the identity.
+One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its live total equals the sum of the rollout `last_token_usage` records between that invocation's `task_started` and `task_complete` (fixture: 19404 + 19541 = 38945 input, 112 + 5 = 117 output). `exec resume` restarts the total, so each invocation maps to its own `task_started`…`task_complete` span in the same rollout file. Rollout spans have a native key: `task_started`/`task_complete` both carry `payload.turn_id` (e.g. `01a0d1da-dba9-…` and `01a0d1da-f7cb-…` in `rollout-exec-resume.jsonl`). Match on session ID + span; equal token sums are a consistency check, not the identity.
 
 The captures prove session identity and matching accounting totals, but not an automatic live-to-span join: live `turn.started` carries no turn ID, and `turn.completed` carries usage without a turn ID. A generated invocation UUID does not establish a rollout span. **Readiness gate:** specify and prove how each live invocation acquires an exact rollout span, including resume, concurrent/ambiguous activity, incomplete transcripts and compaction. No timestamp-nearness, matching-count or run-ID heuristic may certify the join. If producer evidence cannot establish it, keep coverage unresolved; do not declare the complete-match criterion satisfied by synthetic IDs alone.
+
+**Candidate join to evaluate first (spike before implementation):** per `session_id`, order live invocations by local capture order and rollout spans by native `ordinal` (ordinals are monotonic across `exec resume` within one file: the two spans in `rollout-exec-resume.jsonl` occupy ordinals 1–19 and 21–28). Accept the join only when (a) the session's live invocation count equals its completed-span count, (b) every span is closed by `task_complete`, and (c) each positional pair's sums match. Any failure — including interactive TUI turns in the same thread that add spans without live rows — leaves the whole session `overlap_unresolved`. This is an ordering join, not timestamp proximity; the spike must show whether (a)–(c) are sufficient or whether an ordering hazard (concurrent `exec resume` on one thread) defeats it. If the spike refutes it and no producer field exists, ship the selector with conservative unresolved behavior only and record the complete-match criteria as blocked on producer evidence.
 
 ### Selection policy
 
@@ -62,40 +68,46 @@ Reconcile complete candidate coverage before report filters such as `since`, mod
 
 ENH-3580 independently exports additive provenance columns. This issue owns how a shared snapshot retains selection and unresolved-coverage qualification without exposing private source identifiers. Specify a privacy-safe selected view/selection result plus audit metadata (or an equivalent representation) and version any additional allowlist change beyond ENH-3580's v2. Raw row listings may retain all observations, but built-in aggregate queries must use the canonical selection. Include `templates/dashboard.llat/template.html.j2`: its built-in cost query currently sums raw usage rows and cannot execute the Python selector inside the browser.
 
+### Session filter (shared with ENH-3549)
+
+ENH-3549 needs one session's selected observations for `ll-ctx-stats` cache rate. Add a `session_id` filter to `select_usage_observations` rather than having readers stream every row (the dashboard notes ~150k rows) and filter client-side. Apply it with the same rule as `since`: reconcile candidate coverage for that session first, then filter, so a session filter cannot make partial coverage look complete. Whichever of ENH-3543/ENH-3549 lands first adds the parameter; the other reuses it.
+
+### Quality regressions
+
+Decide whether `quality_regressions.py` model-composition weights should use selected observations (through the selector) or stay pinned to `channel = 'transcript'`. Either way, remove its chokepoint-gate exemption only if it moves behind the selector.
+
 ## Scope Boundaries
 
-- **In scope**: live Codex session/invocation identity through to `usage_events`; the shared coverage selector; routing usage, cost, waste and export aggregation through it.
-- **Out of scope**: rollout ingestion (ENH-3532); Claude live/transcript reconciliation; ENH-3528's rendering contract.
+- **In scope**: the live-to-span join (spike-gated); the shared coverage selector; routing usage, cost, waste, quality and export aggregation through it; the `session_id` selector filter.
+- **Out of scope**: live identity capture (ENH-3647); rollout ingestion (ENH-3532); Claude live/transcript reconciliation; ENH-3528's rendering contract.
 
 ## Program Design
 
 ### Types
 
-- Reuse `usage_events.session_id` for the host-observed session ID and the existing `invocation_id` for local correlation. Qualify identity by verified host and an explicit identity-basis marker. Coordinate new span/basis fields with ENH-3532 through an append-only migration; do not add `host_session_id` or a second `invocation_id`. Legacy unverified identities remain unverified.
+- Reuse `usage_events.session_id` for the host-observed session ID and the existing `invocation_id` for local correlation (populated by ENH-3647). Qualify identity by verified host and an explicit identity-basis marker. Coordinate span/basis fields with ENH-3532 and ENH-3647 through the epic's migration plan; do not add `host_session_id` or a second `invocation_id`. Legacy unverified identities remain unverified.
 - `CoverageSelection` (frozen dataclass): selected rows and basis, per-channel subtotals, unresolved rows with reasons.
 
 ### Signatures
 
-- `select_usage_observations(conn, *, since=None, require_run_id=False)` — retain the existing shared aggregation entry point. Delegate to an internal coverage policy, such as `select_usage_coverage(rows: Iterable[UsageRow]) -> CoverageSelection`; consumers must not choose between two public selection paths. Record how qualification/audit metadata is carried alongside selected observations before implementation.
-- `usage_from_event(event, *, default_model)` — unchanged signature; the runner captures `thread.started.thread_id` separately and stamps it on collected observations.
+- `select_usage_observations(conn, *, since=None, require_run_id=False, session_id=None)` — retain the existing shared aggregation entry point; `session_id` is additive (see § Session filter). Delegate to an internal coverage policy, such as `select_usage_coverage(rows: Iterable[UsageRow]) -> CoverageSelection`; consumers must not choose between two public selection paths. Record how qualification/audit metadata is carried alongside selected observations before implementation.
 
 ### Call Path
 
-- `thread.started` → runner identity capture → `usage_from_event` → `FSMExecutor._finish` → `record_usage_event`
-- `usage_events` rows → `select_usage_observations` (internal coverage selection) → `_aggregate_usage_events` / history readers / dashboard export
+- `usage_events` rows → `select_usage_observations` (internal coverage selection) → `_aggregate_usage_events` / history readers / quality regressions / dashboard export
 
 ## Integration Map
 
-- `scripts/little_loops/subprocess_utils.py`, `fsm/{runners,executor}.py`, `session_store/{writers,schema,queries}.py`, `session_store/schema_manifest.json`.
-- `cli/ctx_stats.py`, `history_reader/{models,usage}.py`, `token_provenance.py`, `cli/artifact/dashboard.py`, `templates/dashboard.llat/template.html.j2` (all under `scripts/little_loops/`).
-- Tests: `test_usage_selection_chokepoint_gate.py`, `test_history_reader_usage.py`, `test_cli_ctx_stats.py`, `test_feat3304_artifact_dashboard.py`, runner/executor and migration tests. Extend bypass coverage to built-in dashboard aggregation.
+- `scripts/little_loops/session_store/{schema,queries}.py`, `session_store/schema_manifest.json` (only if span/basis columns are not already added by ENH-3532/ENH-3647).
+- `cli/ctx_stats.py`, `history_reader/{models,usage}.py`, `token_provenance.py`, `issue_history/quality_regressions.py`, `cli/artifact/dashboard.py`, `templates/dashboard.llat/template.html.j2` (all under `scripts/little_loops/`).
+- Tests: `test_usage_selection_chokepoint_gate.py` (including `test_quality_regressions_query_is_not_flagged`), `test_history_reader_usage.py`, `test_cli_ctx_stats.py`, `test_feat3304_artifact_dashboard.py`, quality-regressions and migration tests. Extend bypass coverage to built-in dashboard aggregation.
 - Fixtures: `scripts/tests/fixtures/codex/exec-json-turn.jsonl`, `exec-json-resume.jsonl`, `rollout-exec-resume.jsonl`.
 
 ## Implementation Steps
 
-1. Close the producer-backed correlation gate and coordinate session/span/basis fields with ENH-3532; record attribution, filter and snapshot contracts before implementation.
-2. Carry live session and local invocation identity through runners/executor to the writer, using existing identity columns.
-3. Add coverage selection behind `select_usage_observations`, preserving verified attribution and qualification metadata.
+1. Spike the candidate ordering join against the fixtures (plus a synthetic concurrent-resume case); record PROVEN/REFUTED and the attribution, filter and snapshot contracts here.
+2. Add coverage selection and the `session_id` filter behind `select_usage_observations`, preserving verified attribution and qualification metadata.
+3. Route quality regressions per § Quality regressions.
 4. Integrate privacy-safe snapshot selection and built-in dashboard queries; add cross-reader/export regressions and run project checks.
 
 ## Impact
@@ -111,8 +123,9 @@ ENH-3580 independently exports additive provenance columns. This issue owns how 
 - [ ] Selected request rows preserve verified run/state/invocation attribution; conflicting attribution is qualified, and per-state cost/waste totals remain consistent.
 - [ ] Date-window boundaries, model filters and `require_run_id` cannot create false completeness; tests cover counterpart rows outside the reporting window and initially unattributed requests.
 - [ ] Built-in dashboard aggregation and exported-snapshot queries agree with source selection, totals, qualification and audit subtotals for matched, partial and unresolved cases, without leaking private source identifiers.
+- [ ] `select_usage_observations(..., session_id=...)` reconciles before filtering; a single-session read never reports partial coverage as complete.
+- [ ] `quality_regressions.py` either reads through the selector or stays channel-pinned, with a test asserting the chosen behavior for sessions holding live + rollout rows.
 
-- [ ] `thread_id` and a local invocation ID survive parser → runner → executor → `usage_events`; locally generated IDs are distinguishable from host-observed ones.
 - [ ] Matching uses session ID + turn span, never run ID, timestamp proximity or equal counts alone; a sum mismatch downgrades to unresolved.
 - [ ] Complete matched coverage counts once; partial coverage, unmatched legacy rows, and conflicting or ambiguous observations stay qualified with channel subtotals.
 - [ ] Usage, cost, waste and shareable-export tests assert the same selection/qualification, including ENH-3528's unreconciled-sum fallback.
@@ -125,7 +138,7 @@ ENH-3580 independently exports additive provenance columns. This issue owns how 
 
 ## Scope Boundary
 
-ENH-3532 owns rollout ingestion and persisted source/span identity. This issue owns live capture, verified correlation, attribution-preserving coverage selection, and source/export aggregation parity through the existing `select_usage_observations` entry point. ENH-3580 can land first; its raw-row metadata projection does not certify coverage. The shared schema uses existing `session_id` and `invocation_id` with explicit identity basis.
+ENH-3532 owns rollout ingestion and persisted source/span identity. ENH-3647 owns live identity capture. This issue owns verified correlation, attribution-preserving coverage selection, and source/export aggregation parity through the existing `select_usage_observations` entry point. ENH-3580 can land first; its raw-row metadata projection does not certify coverage. The shared schema uses existing `session_id` and `invocation_id` with explicit identity basis.
 
 ## Confidence Check Notes
 
@@ -139,7 +152,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Integration Map now names `scripts/little_loops/session_store/schema_manifest.json`.
 
 ### Gaps to Address
-- Unresolved `blocked_by`: ENH-3532 (open). Wait for it, or drop the edge if rollout ingestion is not truly a prerequisite for the live-identity half.
+- Unresolved `blocked_by`: ENH-3532 (open). Resolved 2026-09-28 by splitting the live-identity half into ENH-3647 (no ENH-3532 dependency); the remaining selector genuinely needs rollout rows. Re-run the confidence check after the join spike.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: cross-module identity plumbing (parser → runner → executor → writer) plus a coverage policy behind the existing selector and snapshot/dashboard parity.

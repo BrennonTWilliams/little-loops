@@ -16,6 +16,7 @@ relates_to:
 - BUG-3542
 - ENH-3528
 - ENH-3543
+- ENH-3647
 blocks:
 - ENH-3543
 reconcile_attempted: true
@@ -53,6 +54,8 @@ Codex rollout usage is persisted as normalized, provenance-labeled observations.
 - `scripts/little_loops/session_store/{codex,sessions,writers,lifecycle}.py` — rollout normalization, metadata-bearing replay, verified source host, stable source identity and idempotent `_backfill_usage_events`.
 - `scripts/little_loops/session_store/{schema,queries}.py`, `scripts/little_loops/session_store/schema_manifest.json` — append-only migration for observation identity/uniqueness and any required attribution/coverage metadata; identity fields consumed by ENH-3543; aggregate selection and export reconciliation belong to ENH-3543. Reuse ENH-3538's columns rather than adding them again.
 - `scripts/little_loops/cli/ctx_stats.py` — ENH-3549 owns switching cache reporting to stored observations with equivalent session selection; no second reader migration belongs here.
+- `scripts/little_loops/issue_history/quality_regressions.py` — counts `usage_events` rows `WHERE session_id IS NOT NULL` per session for model-composition weights; today that predicate means `channel = 'transcript'`. Rollout rows carrying a `session_id` would silently enter the weighting, so pin the query to `channel = 'transcript'` (no-op if ENH-3647 landed first). ENH-3543 decides whether it later reads through the selector.
+- Schema: this issue's migration is ordered in the epic's § Schema coordination with ENH-3647 and ENH-3546; ~20 tests pin `SCHEMA_VERSION`.
 - Tests: `test_session_store_writers.py`, `test_session_store_lifecycle.py`, schema/manifest tests, Codex parser tests, `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_executor.py`, `test_cli_ctx_stats.py`, `test_history_reader_usage.py`, `test_feat3304_artifact_dashboard.py`, and `scripts/tests/fixtures/codex/`.
 - Docs: `docs/codex/usage.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/HOST_COMPATIBILITY.md`.
 
@@ -127,11 +130,20 @@ Moved to ENH-3543. Until it lands, rollout rows and live rows for the same work 
 - **Session identity:** rollout `session_meta.payload.session_id` equals live `thread.started.thread_id` (`rollout-exec-resume.jsonl` / `exec-json-turn.jsonl`).
 - **Relocation:** archiving moves the rollout to `~/.codex/archived_sessions/` without changing its content (fixture README § Archive-behavior), so `source_path` is not identity, but content position within one session's file is stable across archive.
 
-**Still open; record decisions here before implementation:**
+**Fixture findings recorded 2026-09-28 (epic review; `codex-cli 0.152.1`):**
 
-1. **Request key.** Candidate source-event key: `(host, session_id, stream_namespace, native_ordinal)`; request identity is separately qualified. The fixtures show a top-level `ordinal` on each rollout line; persist it through replay (the stored inner payload lacks it), verify its namespace across resume/archive, and define a separately qualified fallback for sources without it. Physical `line_no` is not equivalent in the trimmed fixture. Duplicate `token_count` notifications for one request: check `rollout-interactive.jsonl` for a repeated `last_token_usage` with no intervening model request. If none exists in any fixture, record "no duplicate notifications observed in 0.152.1" and let the unique key handle exact re-ingestion only.
-2. **Reset namespace.** Mid-invocation compaction is uncaptured. Decide the conservative rule: since `last_token_usage` is per request, compaction does not affect per-request rows; only the span-sum consistency check in ENH-3543 is affected.
-3. **Ordering.** Normalization no longer needs cumulative state (item 1 above), so per-session mutable state reduces to the key/span bookkeeping. Confirm and simplify `CodexUsageState` accordingly.
+- Every line in all three rollout fixtures carries a top-level `ordinal` (34/34, 14/14, 13/13).
+- Within `rollout-exec-resume.jsonl` the ordinal is monotonic across `exec resume`: invocation 1's span occupies ordinals 1–19 and invocation 2's 21–28 in the same file. Resume does not start a new ordinal namespace.
+- In untrimmed captures `ordinal == physical line − 1` (`rollout-interactive.jsonl`: lines 16/24/28/33 ↔ ordinals 15/23/27/32); only the trimmed fixture separates them. That is why ordinal, not line, must be persisted.
+- No fixture contains a repeated `last_token_usage`: the four interactive observations (14002/107, 21854/135, 22068/82, 26079/237) are distinct and each follows a tool-call output. Recorded: **no duplicate notifications observed in 0.152.1.**
+- `task_started` and `task_complete` carry `payload.turn_id`, a native span key. It is the span identity ENH-3543 matches on; it is not a request key (the interactive turn holds four observations).
+- `session_meta.payload.context_window.window_id` exists on every session. It is an unverified lead for the compaction/reset namespace (gate 2).
+
+**Readiness gates:**
+
+1. **Request key — proposed, confirm at implementation start.** Source-event key: `(host, session_id, ordinal)`, where the namespace is the session's single rollout file (resume appends to it; archive moves it unchanged). Persist `ordinal` on **`raw_events`** (new nullable column; the stored inner payload lacks it, and rebuild replays from `raw_events`), then copy it into `usage_events` on replay. Rows without a native ordinal (legacy or non-Codex) get no key and stay excluded from verified-deduplicated claims — no line-number fallback. Unique index: partial `idx_usage_events_dedup ON usage_events(host, session_id, source_ordinal) WHERE channel = 'rollout' AND source_ordinal IS NOT NULL`, created repair-first per the migration convention. Conflicting content on a repeated key must surface (not `INSERT OR IGNORE`): compare on conflict and record/raise a diagnostic. Remaining check: a forked session (`codex fork`, if it exists in 0.152.1) must not reuse the parent's `session_id` with a restarted ordinal; if it does, `window_id` or the fork ID joins the key.
+2. **Reset namespace — decided (conservative).** `last_token_usage` is per request, so compaction does not affect per-request rows; only ENH-3543's span-sum consistency check is affected. Record `window_id` on the span if cheap, so ENH-3543 can detect a mid-span window change and downgrade to unresolved.
+3. **Ordering — closed.** No cumulative state is needed; `CodexUsageState` holds only the current span `turn_id` and the session ID.
 
 If a case lacks producer evidence, choose the conservative unresolved behavior rather than inventing a match.
 
@@ -147,7 +159,8 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 - [ ] The same fixture ingested directly and replayed from stored inner payloads produces equivalent observations, including session, event time, outer type, and source position. Existing `_iter_events` consumers remain compatible.
 - [ ] Source/request keys, fallback rules, reset namespace, host-attribution discriminator, and database uniqueness are documented and fixture-backed before implementation readiness. Tests cover archive/move, copied sources, repeated notifications, conflicting duplicate keys, equal-count distinct requests, and unknown identities.
 - [ ] Interleaved sessions, out-of-order ingestion, incomplete prefixes, malformed snapshots, and compaction/reset boundaries cannot share normalization state or produce fabricated deltas. Multiple request observations in one turn remain distinct.
-- [ ] Each rollout row persists the session ID and `task_started`/`task_complete` span that ENH-3543 matches on.
+- [ ] Each rollout row persists the session ID and the `task_started`/`task_complete` span `turn_id` that ENH-3543 matches on.
+- [ ] Rollout rows with a `session_id` do not change `quality_regressions` model-composition output (channel pin + regression test).
 - [ ] Rebuild and interrupted/retried replay preserve live-only rows and never leave partially replaced rollout accounting. Source relocation/copy does not change canonical totals for verified identities.
 - [ ] Partial/malformed and unproven rollout observations remain `unknown`; only producer-verified, consistent complete rows become `measured`. Empty and wrong-type usage containers obey BUG-3531's contract without raising or fabricating zero.
 
@@ -160,7 +173,7 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 
 ## Implementation Steps
 
-1. Close the three open readiness gates above against the fixtures and record the decisions here.
+1. Confirm readiness gate 1's proposed key (fork-session check) and record the final migration/index; gates 2–3 are closed.
 2. Add metadata-bearing adapters for direct files and database replay (persist the rollout `ordinal` if needed), reading BUG-3542's attribution.
 3. Add persisted observation identity/uniqueness; implement transactional, idempotent rollout replay with relocation/copy/interruption regressions.
 4. Verify ingestion/rebuild against malformed, partial, mixed-host and legacy fixtures; update schemas/docs and run focused tests plus required project checks.
@@ -217,7 +230,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 
 ### Concerns
 - Prerequisite prose refreshed by the epic review: BUG-3542 is done; identity/readiness decisions below remain outstanding.
-- Three readiness gates (request key, reset namespace, ordering) are still open and must be recorded in the issue before implementation; the issue itself makes this a precondition.
+- Three readiness gates (request key, reset namespace, ordering) were open at scoring time. 2026-09-28: gates 2 and 3 closed from fixtures; gate 1 has a proposed key and index pending a fork-session check. Re-score after confirming.
 - The session-identity column must be agreed with ENH-3543 before either migration lands (see Scope Boundary note).
 
 ### Outcome Risk Factors

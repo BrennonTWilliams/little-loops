@@ -29,6 +29,12 @@ Coordinate token usage ingestion, observation provenance, context-occupancy labe
 - **BUG-3542** — Raw-event backfill stamps the configured host instead of each handle's source host (done)
 - **ENH-3580** — Carry usage_events provenance columns through UsageEvent and shareable export (open)
 - **BUG-3587** — Invocation consumption is used as context occupancy (open)
+- **ENH-3647** — Carry Codex live session and invocation identity into usage_events (open)
+- **ENH-3648** — Survey token usage fields for OpenCode, Pi, Qwen, Gemini, OMP and Kimi Code (open)
+- **ENH-3649** — Session-reader isolation gate, no-session diagnostics and read-side fake-host coverage (open)
+
+
+
 
 ## Implementation Order and Readiness
 
