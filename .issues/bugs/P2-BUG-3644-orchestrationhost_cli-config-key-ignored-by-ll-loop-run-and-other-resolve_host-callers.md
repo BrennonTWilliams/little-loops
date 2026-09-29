@@ -12,6 +12,15 @@ labels:
 - multi-host
 - host-runner
 decision_needed: false
+reconcile_attempted: true
+verify_verdict: VALID
+confidence_score: 80
+outcome_confidence: 49
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 0
+size: Very Large
 ---
 
 # BUG-3644: orchestration.host_cli config key ignored by ll-loop run and other resolve_host() callers
@@ -86,14 +95,13 @@ Decided by `/ll:decide-issue` on 2026-09-28.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/host_runner.py` — owns `resolve_host()`, `resolve_host_named()`, `apply_host_cli_from_config()`; the choke-point candidate.
-- `scripts/little_loops/config/core.py` — `BRConfig.__init__` already runs `load_env_fallback(self.project_root)` before parsing, the only construction-time `os.environ` side effect (Option C site — not selected; see Decision Rationale).
-- `scripts/little_loops/cli/loop/__init__.py` (`main_loop`, `BRConfig(Path.cwd())` at ~56), `cli/auto.py` (`main_auto`, ~77), `cli/parallel.py` (`main_parallel`, ~196), `cli/sprint/__init__.py` (`main_sprint`, ~242) — per-CLI sites (Option A — not selected; no edits required under Option B).
+- `scripts/little_loops/host_runner.py` — owns `resolve_host()`, `resolve_host_named()`, `apply_host_cli_from_config()`; `resolve_host()` is the selected choke point (Option B).
+- `scripts/little_loops/config/core.py` — no edits to `BRConfig.__init__` (its `load_env_fallback` env write is why `BRConfig` is not constructed inside `resolve_host`); the module's `resolve_config_path`, `parse_local_override_frontmatter` and `deep_merge` are reused by the new lookup helper (or the helper is extracted here).
 - `scripts/little_loops/init/cli.py` — comment at ~266 claims `resolve_host()` honors the config key; must be true or corrected after the fix.
 - `scripts/little_loops/cli/doctor.py` — `main_doctor` (`apply_host_cli_from_config` at ~1438) and a hand-rolled `os.environ.get("LL_HOST_CLI") or cfg.orchestration.host_cli` at ~815; must stay consistent with whatever becomes canonical.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/host_runner.py` — `resolve_host()` `env is None` branch (~2656) is the insertion point for the config step (after the `explicit = env.get("LL_HOST_CLI") or env.get("LL_HOOK_HOST")` check at ~2659, before the `_PROBE_ORDER` loop at ~2669); its docstring precedence list (~2637-2642) needs a config step; `_remediation_hint()` already names `orchestration.host_cli` and must keep doing so (`test_raises_when_no_host` pins it). New code must stay inside `resolve_host`/a helper so `resolve_host_named` (`resolve_host({"LL_HOST_CLI": name})`, ~2692) never reaches it [Agent 1 finding]
+- `scripts/little_loops/host_runner.py` — `resolve_host()` `env is None` branch (~2661) is the insertion point for the config step (after the `explicit = env.get("LL_HOST_CLI") or env.get("LL_HOOK_HOST")` check at ~2664, before the `_PROBE_ORDER` loop at ~2674); its docstring precedence list (~2642-2647) needs a config step; `_remediation_hint()` already names `orchestration.host_cli` and must keep doing so (`test_raises_when_no_host` pins it). New code must stay inside `resolve_host`/a helper so `resolve_host_named` (`resolve_host({"LL_HOST_CLI": name})`, ~2689-2697) never reaches it [Agent 1 finding]
 - `scripts/little_loops/config/orchestration.py` — `OrchestrationConfig` docstring (~96-98) says `apply_host_cli_from_config` exports the key "before `resolve_host()`"; update to the shipped mechanism. It also holds the only existing lazy `config → host_runner` import (`_validate_model_hints`, ~64), so the new `host_runner → config` import must be function-local [Agent 1 finding]
 - `scripts/little_loops/init/cli.py` — `default_hosts()` (~144-149) already prefers `existing_config["orchestration"]["host_cli"]` and only falls back to `resolve_host()`; after the fix that fallback reads the **cwd** project's config, not `project_root`'s (`ll-init --root <other>`), and `ll-init` runs before the target has a config. Also `_persist_host_selection` (~555) writes `orchestration.host_cli = hosts[0]`, whose comment relies on `resolve_host()` agreeing [Agent 2 finding]
 - `scripts/little_loops/advisor.py` — `consult()` docstring (~237-239) says it is independent of ambient `orchestration.host_cli`/`LL_HOST_CLI` and "Never calls `apply_host_cli_from_config()`"; wording must stay true if `apply_host_cli_from_config` is removed or renamed. Line 286 (`main_host or resolve_host().name`) is an `env is None` caller and is deliberately left config-independent only via `resolve_host_named` at the `--host` seam [Agent 1/2 finding]
@@ -127,7 +135,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli_doctor.py` / `test_cli_doctor_full.py` — patch `apply_host_cli_from_config`; no end-to-end config → host test exists for any entry point (searched: no `host_cli` + `main_loop|main_auto|main_parallel|main_sprint` test).
 - `scripts/tests/test_model_hints.py` — dozens of `monkeypatch.setenv("LL_HOST_CLI", ...)`; `no_host` fixture; hint resolution tests must keep passing.
 - `scripts/tests/conftest.py` — autouse `_restore_cmd_run_env_vars` scrubs and restores `LL_HOST_CLI`/`LL_HOOK_HOST`, so an in-test env write is undone; `_install_no_live_host_cli` fails tests that spawn a real host CLI.
-- Entry-point enumeration precedent for the AC-4 regression test: `doc_counts.py::declared_entry_points` (tomllib over `scripts/pyproject.toml`) used by `test_wiring_cli_registry.py::test_cli_entry_point_coverage`. No existing gate asserts host-config behavior per entry point.
+- AC-4 regression test (Option B): a sole-opener gate modeled on `test_history_store_chokepoint_gate.py` (see the wiring block below); entry-point enumeration (`doc_counts.py::declared_entry_points` used by `test_wiring_cli_registry.py::test_cli_entry_point_coverage`) is not needed under the choke-point mechanism. No existing gate asserts host-config behavior per entry point.
 
 _Wiring pass added by `/ll:wire-issue`:_
 
@@ -151,7 +159,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Documentation
 - `docs/reference/HOST_COMPATIBILITY.md` (~730) — env-var row says `LL_HOST_CLI` "Takes precedence over binary probe and `orchestration.host_cli` config"; the config-vs-probe order is not stated there and must agree with env > config > probe.
-- `docs/ARCHITECTURE.md` (~919, ~924), `docs/reference/API.md` (`apply_host_cli_from_config`, `resolve_host`), `docs/reference/CLI.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (~486), `.claude/CLAUDE.md` § Host CLI Abstraction, `scripts/little_loops/config-schema.json` (`orchestration`, `orchestration.host_cli` descriptions) — all assert the precedence; update if the mechanism changes ("read by apply_host_cli_from_config() before resolve_host() runs").
+- `docs/ARCHITECTURE.md` (~919, ~924), `docs/reference/API.md` (`apply_host_cli_from_config`, `resolve_host`), `docs/reference/CLI.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (~486), `.claude/CLAUDE.md` § Host CLI Abstraction, `scripts/little_loops/config-schema.json` (`orchestration`, `orchestration.host_cli` descriptions) — all assert the precedence; reword the "read by apply_host_cli_from_config() before resolve_host() runs" claims to the selected mechanism (`resolve_host()` reads the config key itself on the ambient-env path, env > `LL_HOOK_HOST` > config > probe).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md` host-runner table — `resolve_host()` row ("honors `LL_HOST_CLI` / `orchestration.host_cli` overrides"), `apply_host_cli_from_config()` row ("exports it as `LL_HOST_CLI` before `resolve_host()` runs"), `HostNotConfigured` row [Agent 2 finding]
@@ -171,6 +179,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config-schema.json` — `orchestration` description (~1806, "read by apply_host_cli_from_config() before resolve_host() runs") and `orchestration.host_cli` (~1808-1811, "Mirrors the LL_HOST_CLI environment variable; env var takes precedence"): reword to env > `LL_HOOK_HOST` > config > probe. No test snapshots the description text, so this is not test-enforced [Agent 2/3 finding]
 - `.ll/ll-config.json:152` — this repo's own `"host_cli": "claude-code"` will be picked up by the fold-in for any `env is None` call run from the repo cwd (see Tests) [Agent 1 finding]
 - `.claude/CLAUDE.md` § Host CLI Abstraction — already states "(or `orchestration.host_cli`)"; becomes true after the fix, no edit needed unless `apply_host_cli_from_config` is removed [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
+
+- `ll-issues format-check` reports three `stale_file_ref` hits that are intentional, not drift: `scripts/tests/test_host_resolution_chokepoint_gate.py` is the not-yet-created AC-4 gate; `.codex/ll-config.json` and `tmp_path/.ll/ll-config.json` are illustrative host-dir / test-fixture paths, not repo files. All other referenced files and the `host_runner.py` anchors (`resolve_host` `:2637`, `explicit` check `:2664`, `_PROBE_ORDER` loop `:2674`, `apply_host_cli_from_config` `:2937`) and `cli/doctor.py` anchors (`:815`, `:1438`) resolve on disk today.
+- `missing_behavior_parity` flags `docs/reference/API.md`, but that file is reworded rather than rewritten, deleted, or delegated away, so no `### Behavior Parity` table applies. `behavior_parity_not_applicable: true` is a human decision; refine does not set it.
 
 ## Program Design
 
@@ -196,11 +211,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 - An unregistered config value raises `HostNotConfigured` in `resolve_host` (no fallback to probe), same as an unregistered `LL_HOST_CLI`.
 - `resolve_host_named` and `ll-advise`/`advisor.consult` stay config-independent.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
+
+- The Call Path above is the **existing (pre-fix) reach** of `resolve_host()`, not the edit surface. Under the selected Option B every listed path terminates at `resolve_host()` (`host_runner.py:2637`), which gains the config step on its `env is None` branch (after the `explicit = env.get("LL_HOST_CLI") or env.get("LL_HOOK_HOST")` check at `:2664`, before the `_PROBE_ORDER` loop at `:2674`). `main_loop`, `main_auto`, `main_parallel`, `cmd_run` and `BRConfig`/`load_env_fallback` are **not** modified; they appear only as the callers that reach the choke point and as the rejected Option A/C wiring points.
+- The `BRConfig.__init__` signature is listed as a constraint, not a target: constructing `BRConfig` inside `resolve_host()` is excluded because `load_env_fallback` writes `os.environ`.
+
 ## Implementation Steps
 
-1. `resolve_host()` reached from `ll-loop run`, `ll-auto`, `ll-parallel`, `ll-sprint` returns the configured host when `LL_HOST_CLI` is unset — verified by a test per entry point (or by a single test at the choke point plus the enumeration gate below).
-2. `FSMExecutor._preflight_model_hints`/`_resolve_model` and `initial_model_display` resolve against the configured host — verified in `scripts/tests/test_model_hints.py`.
-3. A gate test enumerates entry points (precedent: `declared_entry_points`) or the choke point's sole-opener property, with a reasoned allowlist plus drift check, so a new `main_*` cannot bypass the key.
+1. Fold the config lookup into `resolve_host()` (Option B, selected): on the `env is None` path only, after the `LL_HOST_CLI`/`LL_HOOK_HOST` check and before the `_PROBE_ORDER` probe, read `orchestration.host_cli` through a function-local-import helper that reuses `resolve_config_path` + `parse_local_override_frontmatter` + `deep_merge`, never raises, never writes `os.environ`, and treats empty string as unset. `resolve_host()` reached from `ll-loop run`, `ll-auto`, `ll-parallel`, `ll-sprint` then returns the configured host when `LL_HOST_CLI` is unset — verified by a single choke-point test in `test_host_runner.py::TestResolveHost` (no per-entry-point tests needed).
+2. `FSMExecutor._preflight_model_hints`/`_resolve_model` and `initial_model_display` resolve against the configured host — verified in `scripts/tests/test_model_hints.py` (with `no_host` given a config-less `chdir`).
+3. A gate test asserts the choke point's sole-opener property (no production `os.environ["LL_HOST_CLI"]` write outside `apply_host_cli_from_config`; reasoned allowlist plus drift check), so a new `main_*` cannot bypass the key.
 4. `ll-advise`/`resolve_host_named` remain config-independent (`test_advisor_host_env_independent_of_orchestration_host_cli` still passes) and `ll-loop run`'s cross-host child override (`summary.py:201`) still wins.
 5. Comments/docs listed under Integration Map → Documentation agree with the shipped mechanism; `python -m pytest scripts/tests/` exits 0.
 
@@ -230,21 +252,55 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] With `LL_HOST_CLI` unset and `orchestration.host_cli` set, `resolve_host()` as reached from `ll-loop run`, `ll-loop validate`, `ll-auto`, `ll-parallel`, `ll-sprint` and `ll-logs fleet-review` selects the configured host, not the probe winner.
-- [ ] `LL_HOST_CLI` still overrides the config key; with neither set, the probe order is unchanged.
+- [ ] With `LL_HOST_CLI` unset and `orchestration.host_cli` set, `resolve_host()` (ambient-env path) as reached from `ll-loop run`, `ll-auto`, `ll-parallel` and `ll-sprint` selects the configured host, not the probe winner. (`ll-loop validate` and `ll-logs fleet-review` do not call `resolve_host()` today; `validate` is covered only via ENH-3548's hint warnings.)
+- [ ] `LL_HOST_CLI` and `LL_HOOK_HOST` still override the config key; with none set, the probe order is unchanged; `resolve_host_named()` and `resolve_host(env={...})` stay config-independent and `os.environ` is never mutated.
 - [ ] `FSMExecutor._preflight_model_hints` and ENH-3548's validate-time hint warnings resolve against the configured host.
-- [ ] A regression test proves a new CLI entry point cannot bypass the config key (single choke point, or a test enumerating entry points).
+- [ ] A regression test proves a new CLI entry point cannot bypass the config key: the single choke point in `resolve_host()` plus a gate asserting no production `os.environ["LL_HOST_CLI"]` write outside `apply_host_cli_from_config`.
 
 ## Related
 
 - ENH-3548 uses `resolve_host()` for validate-time hint warnings so `validate` and `run` agree; it inherits this fix automatically.
+
+## Verification Notes
+
+Verdict at time of check: **CLAIMS_OUTDATED** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+_`--from-evidence` pass (2026-09-28): re-checked only the claims listed in `verify_evidence`._
+
+- `host_runner.py` anchors in Codebase Research Findings / Program Design shifted +5 lines (uncommitted ENH-3533 `ModelHintUnmappedError` edit): `resolve_host` `:2632` → `:2637`, `explicit` check `:2659` → `:2664`, `_PROBE_ORDER` loop `:2669` → `:2674`, `apply_host_cli_from_config` `:2932` → `:2937`.
+- Integration Map wiring pass: `env is None` branch `~2656` → `~2661`, docstring precedence list `~2637-2642` → `~2642-2647`, `resolve_host_named` `~2692` → `~2689-2697`.
 
 ## Status
 
 **Open** | Created: 2026-09-28 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-28_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 49/100 → LOW
+
+### Concerns
+- Criterion 4 capped at 10: `missing_behavior_parity` flags `docs/reference/API.md`. The issue already argues the file is reworded, not rewritten, so either set `behavior_parity_not_applicable: true` (human decision) or add a `### Behavior Parity` subsection.
+- cwd-vs-`project_root` semantics and lookup caching are recorded under Wiring Phase as "decide and record" but not yet decided (`mcp_server/tools.py:224`, `init/cli.py:149`, hot paths in `fsm/evaluators.py`, `subprocess_utils.py:741`, `worker_pool.py:854`). Decide before implementing the helper.
+- The repo's own `.ll/ll-config.json:152` sets `host_cli: claude-code`; every `env is None` test run from the repo cwd will resolve from config after the fix. The `no_host` fixture in `test_model_hints.py` and `TestDetectHosts` in `test_init_core.py` need `monkeypatch.chdir(tmp_path)`; other `env is None` callers in tests are not yet audited.
+- `unapplied_decision` fired: Program Design / Implementation Steps / Files to Modify still name `BRConfig`, `load_env_fallback`, `main_loop`/`main_auto`/`main_parallel`, `cmd_run`, `main_doctor` (Option A/C symbols). The issue's own notes say these are pre-fix reach / constraints rather than edit targets, but the wording should mark them so a reader does not implement the rejected options.
+
+### Outcome Risk Factors
+- Very wide blast radius: `resolve_host()` has ~45 callers across the codebase and a new `HostNotConfigured` raise path for unregistered config values reaches many callers that do not catch it.
+- Broad enumeration across ~10 source files, ~20 test files and ~25 docs; only the core helper is deep-ish (never-raise config merge with `ll.local.md`, import-cycle-safe lazy import, no `os.environ` write).
+- Behavior change for users who set the key and relied on the probe (baseline `conditions_fp` fingerprint in `cli/harness.py` also shifts).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T23:09:06 - `0cabf8b0-30fa-4125-87cd-02095d27dc98.jsonl`
+- `/ll:verify-issues` - 2026-09-28T23:07:11 - `60c95e8d-f486-4f2e-819a-f8c027578985.jsonl`
+- `/ll:verify-issues` - 2026-09-28T23:05:22 - `cd8153a1-e80f-45fa-b326-e98f2e9e2120.jsonl`
+- `/ll:verify-issues` - 2026-09-28T23:04:03 - `45e76fc6-39f5-4ed4-89bc-374b89f76543.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-09-28T23:01:54 - `25dca91f-acf1-4079-ba40-cbb10c6ed283.jsonl`
+- `/ll:verify-issues` - 2026-09-28T23:00:27 - `b022db67-3202-43f7-b48b-f6b56006bea6.jsonl`
+- `/ll:reconcile-issue` - 2026-09-28T22:58:37 - `bd0c73c7-9862-4c60-bd9e-9b392b7afaf8.jsonl`
 - `/ll:wire-issue` - 2026-09-28T22:55:33 - `937a6b3a-b00c-40f0-99a6-4ffdf6cec5e8.jsonl`
 - `/ll:decide-issue` - 2026-09-28T22:46:35 - `77c339e9-8806-4a53-a734-a18593a275bb.jsonl`
 - `/ll:refine-issue` - 2026-09-28T22:43:07 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`

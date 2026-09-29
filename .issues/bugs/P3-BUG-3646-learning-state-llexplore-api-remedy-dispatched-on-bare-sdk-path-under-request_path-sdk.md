@@ -8,9 +8,18 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T22:51:25Z'
+verify_verdict: VALID
 labels:
 - loops
 - multi-host
+blocks:
+- ENH-3548
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3646: Learning-state /ll:explore-api remedy dispatched on bare SDK path under request_path sdk
@@ -43,7 +52,17 @@ A learning state exists to prove unproven targets before work continues. On the 
 
 ## Proposed Solution
 
-Set the remedy text on the copy: `_dc_replace(state, action_type="slash_command", action=f"/ll:explore-api {target}")` at the dispatch site, and use an equivalent copy (e.g. `action="/ll:explore-api"`) in `_model_consumer_paths`'s learning branch, so `_SKILL_INVOKE_RE` matches in both places. Check that nothing else reads `state.action` from the copy in a way that changes (e.g. `action_start` payloads, interpolation).
+Build the remedy copy in one place so the dispatch site and the preflight cannot drift apart again (the preflight's copy was meant to mirror the dispatch and is how this bug went unnoticed). Add a small helper on `FSMExecutor`:
+
+```python
+@staticmethod
+def _learning_remedy_state(state: StateConfig, target: str = "") -> StateConfig:
+    """The prompt-mode state copy a learning state's remedy dispatches on."""
+    action = f"/ll:explore-api {target}".rstrip()
+    return _dc_replace(state, action_type="slash_command", action=action)
+```
+
+Use it at the dispatch site (`self._run_action(remedy.action, remedy, ctx)` with `remedy = self._learning_remedy_state(state, target)`) and in `_model_consumer_paths`'s learning branch (`self._learning_remedy_state(state)`). With `action` set, `_SKILL_INVOKE_RE` matches in both places. `StateConfig` has no `__post_init__`, so setting `action=` on the copy is safe. Nothing else reads `state.action` from the copy (see Side Effects to Expect).
 
 ## Program Design
 
@@ -53,8 +72,9 @@ Set the remedy text on the copy: `_dc_replace(state, action_type="slash_command"
 
 ### Signatures
 
-- `_model_consumer_paths(self, state: StateConfig) -> list[Literal["cli", "sdk", "evaluator"]]` — unchanged signature; the learning branch builds its `slash_command` copy with `action="/ll:explore-api"` so `_compute_request_path` downgrades it to `cli`.
-- `_run_action(self, action_template: str, state: StateConfig, ctx: InterpolationContext, on_usage: UsageCallback | None = None) -> ActionResult` — unchanged signature; the learning remedy caller passes a copy whose `action` is the remedy text.
+- `_learning_remedy_state(state: StateConfig, target: str = "") -> StateConfig` — new `FSMExecutor` staticmethod; returns `_dc_replace(state, action_type="slash_command", action="/ll:explore-api <target>")`. The single source of the remedy copy for both call sites.
+- `_model_consumer_paths(self, state: StateConfig) -> list[Literal["cli", "sdk", "evaluator"]]` — unchanged signature; the learning branch uses `_learning_remedy_state(state)` so `_compute_request_path` downgrades it to `cli`.
+- `_run_action(self, action_template: str, state: StateConfig, ctx: InterpolationContext, on_usage: UsageCallback | None = None) -> ActionResult` — unchanged signature; the learning remedy caller passes `_learning_remedy_state(state, target)`, whose `action` is the remedy text.
 
 ### Call Path
 
@@ -91,30 +111,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `action_complete` payload for the remedy changes: `_resolve_model(state, "cli")` replaces `_resolve_model(state, "sdk")`, so `model_backend` becomes the host CLI name (not `anthropic-api`) and `model_resolved` becomes the host mapping; `model_requested` is unchanged [Agent 2 finding]
 - Preflight can newly fail: `_preflight_model_hints` resolves a learning state's hint against `host_runner.resolve_host().name`, so an unmapped hint on a non-Claude host raises `ModelHintError` at run start where the `anthropic-api` resolution previously could not [Agent 2 finding]
 - `state.action` on the copy is read only by `_compute_request_path`; `action_start` payload, `fragment_key`, `_action_mode`, and `action_runner.run(..., is_slash_command=True)` are unaffected [Agent 2 finding]
+- The one-shot downgrade latch is consumed by the learning remedy: `_request_path_downgrade_warned` is per executor, so once a learning remedy emits `request_path_downgrade`, any later downgrade in the same run is silent, including a distinct environmental one (e.g. "no Anthropic credential resolvable") for an ordinary sdk state. This is the latch's existing design, not a regression, but a loop-wide `orchestration.request_path: sdk` with an early learning state now reliably spends the warning on the learning remedy [review 2026-09-28]
 
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md` — `orchestration.request_path` section lists the downgrade triggers (`/ll:` skill action, `tools:`); optionally note that a `type: learning` state's implicit `/ll:explore-api` remedy always runs on the host CLI [Agent 2 finding]
 - `docs/reference/EVENT-SCHEMA.md` — `### request_path_downgrade` (fires at most once per run) and `### learning_explore_invoked` sections; optional cross-note that a learning remedy under sdk/batch triggers the downgrade [Agent 1/2 finding]
-- `docs/reference/API.md` — `FSMExecutor._resolve_request_path()` bullet lists only importability/credential probes and omits the BUG-2831 skill check; update alongside this fix (note `API.md` has uncommitted edits in the working tree) [Agent 2 finding]
-- `.issues/enhancements/P3-ENH-3548-validate-time-model-hint-warnings-and-hint-documentation.md` — acceptance text says a learning state under sdk is "checked against `anthropic-api` (matching the preflight until BUG-3646 lands)" and plans an agreement-test `type: learning` matrix row; stale once this lands [Agent 2 finding]
+- `docs/reference/API.md` — `FSMExecutor._resolve_request_path()` bullet lists only importability/credential probes and omits the BUG-2831 skill check; update alongside this fix [Agent 2 finding]
+- `.issues/enhancements/P3-ENH-3548-validate-time-model-hint-warnings-and-hint-documentation.md` — updated 2026-09-28 to treat learning states as CLI-only and declare `blocked_by: [BUG-3646]`; no further edit needed when this lands
 - `.issues/enhancements/P2-ENH-3547-wire-model-hint-resolution-through-loop-dispatch-and-lifecycle.md` — records the learning-remedy path decision now being reversed [Agent 1 finding]
 
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_learning_state.py` — add `TestLearningStateRequestPathSdk` (skeleton: `TestLearningStateExploreApiDispatchMode::test_explore_api_dispatched_as_slash_command`, `_MockRunner`, `_learning_fsm`): `OrchestrationConfig(request_path="sdk")` + `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`, patch `little_loops.host_runner.dispatch_anthropic_request`; assert `not mock_dispatch.called`, `runner.calls == ["/ll:explore-api <target>"]`, one `request_path_downgrade` event across multiple targets/retries [Agent 3 finding]
+- `scripts/tests/test_learning_state.py` — add `TestLearningStateRequestPathSdk` (skeleton: `TestLearningStateExploreApiDispatchMode::test_explore_api_dispatched_as_slash_command`, `_MockRunner`, `_learning_fsm`): `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`, patch `little_loops.host_runner.dispatch_anthropic_request`; assert `not mock_dispatch.called`, `runner.calls == ["/ll:explore-api <target>"]`, one `request_path_downgrade` event across multiple targets/retries [Agent 3 finding]
+  - Parametrize over `request_path` `"sdk"` and `"batch"` — `_compute_request_path` treats them identically, and both must downgrade [review 2026-09-28]
+  - Parametrize over where the path is declared: `OrchestrationConfig(request_path=...)` (loop-wide) and `request_path:` on the learning state itself (per-state override, which `_resolve_request_path`'s docstring says the skill downgrade still overrides) [review 2026-09-28]
 - `scripts/tests/test_model_hints.py::TestLearningState` — add sdk variants using `_fsm(hint)`/`_execute`/`_of`: (a) `LL_HOST_CLI=claude-code`, hint resolves to `haiku` with `model_backend == "claude-code"`; (b) `LL_HOST_CLI=codex` + unmapped hint → `model_hint_error` at preflight, `runner.calls == []`, no downgrade event at preflight; (c) `fake` host modelled on `TestCliActionDispatch::test_downgrade_re_resolves_for_cli_host` [Agent 3 finding]
 - `scripts/tests/test_fsm_executor.py::TestRequestPathDispatchWiring` — optional learning-state sibling of `test_request_path_sdk_downgrades_for_skill_invoking_action` [Agent 3 finding]
 - Regression set to re-run (no updates expected): `test_learning_state.py` (incl. `TestLearningStateExploreApiDispatchMode`), `test_model_hints.py` (`TestLearningState`, `TestPreflight::test_preflight_emits_no_downgrade_event`, `TestCliActionDispatch`), `TestRequestPathDispatchWiring::test_request_path_sdk_unchanged_for_pure_evaluator_action` [Agent 3 finding]
-- Note: no test patches `_sdk_credentials_available` to `True` — use the `ANTHROPIC_API_KEY` env convention instead of the `True` patch named in step 1 [Agent 3 finding]
+- Note: no test patches `_sdk_credentials_available` to `True` — use the `ANTHROPIC_API_KEY` env convention [Agent 3 finding]
 
 ## Implementation Steps
 
-1. Write failing tests first: a learning state under `request_path: sdk` with `_sdk_credentials_available` patched True dispatches the remedy through the action runner (not `_dispatch_live`), and `_model_consumer_paths` returns `["cli"]`.
-2. Put the remedy text on the state copy at the dispatch site and in `_model_consumer_paths`'s learning branch.
-3. If ENH-3548 has landed, switch its learning-state mirror to CLI-only and re-run its agreement test.
+1. Write failing tests first (credentials via `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)`, not a `_sdk_credentials_available` patch; `dispatch_anthropic_request` patched):
+   - `test_learning_state.py::TestLearningStateRequestPathSdk` — parametrized over `sdk`/`batch` and loop-wide vs per-state declaration: the remedy goes through the action runner (`not mock_dispatch.called`, `runner.calls == ["/ll:explore-api <target>"]`) and exactly one `request_path_downgrade` event fires across several targets/retries.
+   - `test_model_hints.py::TestLearningState` sdk variants — the preflight half, tested end to end through `executor.run()` (no test calls `_model_consumer_paths` directly): the hint resolves against the CLI host (`model_backend` is the host name), and an unmapped hint on a non-Claude host fails at preflight with no runner calls.
+2. Add `_learning_remedy_state()` and use it at the dispatch site and in `_model_consumer_paths`'s learning branch.
+3. Update docs (API.md, CONFIGURATION.md; EVENT-SCHEMA.md optional).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -122,12 +147,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Add `TestLearningStateRequestPathSdk` to `scripts/tests/test_learning_state.py` and sdk-config cases to `scripts/tests/test_model_hints.py::TestLearningState` (env-key credentials, not a `_sdk_credentials_available` patch)
 - Update `docs/reference/API.md` (`FSMExecutor._resolve_request_path()` bullet) and `docs/reference/CONFIGURATION.md` (`orchestration.request_path` downgrade triggers) to cover the learning remedy
-- Update ENH-3548's learning-state acceptance text and agreement-test matrix row (and ENH-3547's path note) so they no longer describe the learning remedy as resolved on the configured path
+- ENH-3548 already updated (2026-09-28) to treat learning states as CLI-only; optionally add a one-line note to ENH-3547 (done) that its learning-remedy path decision was reversed here
 
 ## Impact
 
 - **Priority**: P3 - only affects learning states under a non-default `request_path`
-- **Effort**: Small - two `_dc_replace` call sites plus tests
+- **Effort**: Small - one helper replacing two `_dc_replace` call sites, plus tests
 - **Risk**: Low - changes only the request path for the learning remedy
 - **Breaking Change**: No
 
@@ -149,14 +174,17 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] With `request_path: sdk` and credentials available, a learning state's remedy is dispatched through the host CLI, not `_dispatch_live`.
-- [ ] `_model_consumer_paths` returns `["cli"]` for a learning state under any request path.
-- [ ] ENH-3548's validate-time mirror (if landed) treats learning states as CLI-only, and its validate-vs-preflight agreement test still passes.
+- [ ] With `request_path: sdk` or `batch` (loop-wide or on the learning state) and credentials available, a learning state's remedy is dispatched through the host CLI, not `_dispatch_live`.
+- [ ] Under sdk/batch, exactly one `request_path_downgrade` event (and stderr warning) is emitted for a learning state, across all its targets and retries; under `cli`, none is.
+- [ ] `_model_consumer_paths` returns `["cli"]` for a learning state under any request path, so the preflight resolves its hint against the CLI host (verified end to end through `executor.run()`).
+- [ ] The dispatch site and the preflight build the remedy copy through one shared helper.
+- [ ] Existing `TestLearningStateExploreApiDispatchMode` and `test_model_hints.py::TestLearningState` tests still pass.
 
 ## Related
 
-- ENH-3548 — its validate-time mirror currently has to copy this behavior (learning states resolved on the configured path) to agree with the preflight.
+- ENH-3548 — blocked by this issue; its validate-time mirror treats learning states as CLI-only, which matches the preflight only after this lands.
 - ENH-3547 — introduced `_compute_request_path` / `_model_consumer_paths`.
+- Follow-up candidate (not in scope): MR-12 (`_validate_pruning_profile`) skips learning states because it reads `state.action`. Once the remedy always runs on the CLI through `action_runner`, learning states arguably deserve the same pruning-profile guidance as other `/ll:` states.
 
 ## Related Key Documentation
 
@@ -168,5 +196,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `manual review` - 2026-09-28 - reconciled Step 1 with the env-key test convention; added downgrade-event AC, sdk/batch and per-state parametrization, shared `_learning_remedy_state` helper, latch side effect; set `blocks: [ENH-3548]` and updated ENH-3548 to CLI-only learning states; noted MR-12 follow-up
+- `/ll:confidence-check` - 2026-09-28T23:38:36 - `11482c9b-ffe7-4717-8544-400c53005e5c.jsonl`
+- `/ll:verify-issues` - 2026-09-28T23:37:23 - `32aeb86c-0b9a-4909-acf8-c825531b5ad2.jsonl`
 - `/ll:wire-issue` - 2026-09-28T23:35:40 - `be64666f-45f5-4318-9b0c-ddfe25860145.jsonl`
 - `/ll:refine-issue` - 2026-09-28T23:30:47 - `83ac1e49-6b2b-4760-949f-e5772941f97a.jsonl`
