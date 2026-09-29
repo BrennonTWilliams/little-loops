@@ -18,6 +18,7 @@ relates_to:
 - ENH-3543
 - ENH-3546
 - ENH-3647
+- ENH-3651
 blocks:
 - ENH-3543
 - ENH-3549
@@ -46,6 +47,7 @@ Ingest Codex historical rollout usage (`event_msg` / `token_count`) into `usage_
 - `parse_codex_rollout` yields a `SessionEvent` whose payload is the inner Codex object. `_backfill_raw_events` serializes that payload: stored usage records have `type='token_count'`, not the original `event_msg` envelope. Timestamp, session ID, outer event type, and line position are stored separately; native envelope ordinals are not preserved by this path.
 - The existing metadata iterator in `scripts/little_loops/session_store/writers.py` supplies line/source/host, but not the other replay metadata. The rebuild cursor in `scripts/little_loops/session_store/lifecycle.py` selects `raw_line, source_path, host, host_basis` ordered by database ID.
 - `_backfill_raw_events` previously stamped the ingesting/configured host instead of `SessionHandle.host`; BUG-3542 (completed) fixed this and added a verified-attribution discriminator, which this issue's replay consumes.
+- **Derivation is rebuild-only (2026-09-29).** `_backfill_usage_events` is called from `rebuild()` alone (`session_store/lifecycle.py`), a full delete-then-replay of the derived tables; the SessionStart worker's `backfill_incremental` is ingest-only (`raw_events`) and passes `--rebuild` only when `SCHEMA_VERSION` has advanced. Rollout `usage_events` rows will therefore not appear until a rebuild unless this issue adds a derive step or reuses ENH-3651's incremental derive; decide which before implementation so the acceptance criteria that read rollout rows (and ENH-3549's Codex path) are testable end to end.
 - Live observations carry no session/invocation identity (ENH-3543 owns adding it). The raw-ingest function in `scripts/little_loops/session_store/lifecycle.py` documents uniqueness as `(source_path, line_no)`, which does not deduplicate moved or copied rollouts.
 
 ## Expected Behavior
@@ -173,6 +175,7 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 - [ ] Historical rollout usage reaches `usage_events` (`channel='rollout'`) through `normalize_codex_input` and BUG-3531's rollout container rules; `rollout-exec-resume.jsonl` yields exactly three rows (12424 uncached input / 46080 cache-read / 0 cache-write / 122 output in total; native inclusive input is 58504); live capture continues to work.
 - [ ] Fixtures cover repeated notifications, per-request vs cumulative values, compaction resets, multiple sessions, malformed/partial records, rate-limit-only records, and observed-model absence. Valid distinct requests with equal counts remain distinct.
 - [ ] Repeated ingestion and rebuild leave canonical totals stable and preserve live-only rows (relies on BUG-3530).
+- [ ] The path that makes rollout rows appear (full rebuild only, or ENH-3651's incremental derive) is recorded, and the ingest → derive → read flow is tested end to end, not only `rebuild()` in isolation.
 - [ ] Rollout rows take their host from BUG-3542's verified attribution, never from the currently configured host; legacy-attributed rows carry an unknown host with a reason.
 - [ ] The same fixture ingested directly and replayed from stored inner payloads produces equivalent observations, including session, event time, outer type, and source position. Existing `_iter_events` consumers remain compatible.
 - [ ] Source/request keys, fallback rules, reset namespace, host-attribution discriminator, and database uniqueness are documented and fixture-backed before implementation readiness. Tests cover archive/move, copied sources, repeated notifications, conflicting duplicate keys, equal-count distinct requests, and unknown identities.

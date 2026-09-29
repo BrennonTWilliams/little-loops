@@ -14,6 +14,7 @@ labels:
 - multi-host
 blocked_by:
 - ENH-3532
+- ENH-3651
 relates_to:
 - ENH-3543
 - ENH-3546
@@ -33,7 +34,7 @@ Replace `ll-ctx-stats`'s transcript-parsing cache-rate helper with a read-only c
 
 - `ctx_stats._compute_cache_rate_from_jsonl(cwd, host)` takes the latest discovered handle; for Codex it calls `_codex_cache_usage` (reads the live rollout via `iter_events`), for every other host it opens `handle.path` directly and sums assistant `message.usage` with a local `seen_uuids` dedup. Non-Codex figures are labelled `provenance: "unknown"`.
 - `select_usage_observations` (`history_reader/usage.py`) streams every `usage_events` row; its only filters are `since` and `require_run_id`. There is no session filter.
-- `usage_events` transcript rows are written only by backfill, which runs from the SessionStart hook (`hooks/session_start.py`, daemon thread) or an explicit CLI backfill. The session the user is currently in is therefore not ingested until the next session starts.
+- `usage_events` transcript rows are derived only by `rebuild()` (`_backfill_usage_events`, called from `session_store/lifecycle.py` in that one place). The SessionStart hook spawns a detached `backfill_worker` (not a daemon thread) that runs `backfill_incremental`, which is ingest-only (`raw_events`); it passes `--rebuild` only when `SCHEMA_VERSION` has advanced past `last_rebuild_version`. Stored transcript usage is therefore stale until a schema bump or a manual rebuild, and the current session is never present (correction 2026-09-29; ENH-3651 owns the fix).
 
 ## Expected Behavior
 
@@ -51,11 +52,11 @@ For a discovered session without stored eligible usage, the result is unavailabl
 
 A raw-transcript fallback for the un-ingested session is excluded: it reintroduces the second token parser this issue removes.
 
-**Recommendation (2026-09-29 epic review): C now, B if cheap; option A becomes its own issue.** A hook-driven incremental ingest is a separate feature (hook latency, non-blocking design, another writer path) that benefits every stored-usage reader, not only this one. File it separately (`/ll:capture-issue`, `parent: EPIC-3562`) and keep this issue to the consumer plus B/C. Record the final choice here before implementation.
+**Revised 2026-09-29 (supersedes the earlier "C now, B if cheap" recommendation).** Code review showed stored transcript usage is derived only by a full `rebuild()` (see Current Behavior), so options B and C are not viable on their own: C would turn today's working figure into "unavailable" for every session since the last rebuild, and B's `--ingest` flag would need an incremental derive, not just raw ingest. The incremental ingest+derive is therefore split into **ENH-3651** and this issue is `blocked_by` it; the choice here reduces to how the hook is triggered (owned by ENH-3651) and whether `ll-ctx-stats --ingest` is also offered as a manual escape hatch. Record the final choice here before implementation.
 
 ### Staging: Claude first
 
-The `blocked_by: ENH-3532` edge is needed only for Codex (it retires `_codex_cache_usage`, which reads live rollouts). Claude transcript rows are already backfilled, so the Claude path (stored consumer, `session_id` filter, diagnostics) can ship first, after the session-id meaning is fixed below. Codex switches over when ENH-3532 lands.
+The `blocked_by: ENH-3532` edge is needed only for Codex (it retires `_codex_cache_usage`, which reads live rollouts). The Claude path (stored consumer, `session_id` filter, diagnostics) can ship first, after ENH-3651 makes stored transcript usage current and the session-id meaning is fixed below. Codex switches over when ENH-3532 lands.
 
 ### Which session id
 

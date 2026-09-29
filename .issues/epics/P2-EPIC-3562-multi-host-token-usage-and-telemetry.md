@@ -14,7 +14,7 @@ relates_to: []
 
 ## Summary
 
-Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 14 children: 4 done and 10 open after the 2026-09-28 review, which split ENH-3543, ENH-3534 and ENH-3549. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
+Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 15 children: 4 done and 11 open after the 2026-09-28 review, which split ENH-3543, ENH-3534 and ENH-3549, and the 2026-09-29 review, which split ENH-3651 out of ENH-3549. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
 
 ## Goal
 
@@ -28,7 +28,7 @@ Every token figure little-loops reports — for any production host — comes fr
 ## Impact
 
 - **Priority**: P2 — multi-host token figures are currently mostly `unknown` and will double-count once rollout ingestion lands without selection.
-- **Effort**: Large — 10 open children across session store, runners, readers and hooks.
+- **Effort**: Large — 11 open children across session store, runners, readers and hooks.
 - **Risk**: Medium — accounting errors are silent; mitigated by fixture-backed contracts and conservative unresolved defaults.
 
 ## Children
@@ -49,19 +49,21 @@ Every token figure little-loops reports — for any production host — comes fr
 - **ENH-3647** — Carry Codex live session and invocation identity into usage_events (split from ENH-3543)
 - **ENH-3648** — Survey token usage fields for OpenCode, Pi, Qwen, Gemini, OMP and Kimi Code (split from ENH-3534)
 - **ENH-3649** — Session-reader isolation gate, no-session diagnostics and read-side fake-host coverage (split from ENH-3549)
+- **ENH-3651** — Hook-driven incremental ingest and derive of the current session transcript into usage_events (split from ENH-3549; blocks it)
 
 **Open — blocked**
 
 - **ENH-3543** — Shared live/rollout coverage selection for Codex usage (blocked by ENH-3532, ENH-3647; join spike first)
-- **ENH-3549** — Consume stored usage for ll-ctx-stats cache rate (depends on ENH-3532; freshness gate)
+- **ENH-3549** — Consume stored usage for ll-ctx-stats cache rate (blocked by ENH-3532 for Codex, ENH-3651 for stored freshness)
 - **ENH-3534** — Token usage ingestion for Qwen, Gemini, OMP and remaining hosts (blocked by ENH-3532, ENH-3544, ENH-3648)
+
 
 ## Implementation Order and Readiness
 
 1. **Parallel, now:** ENH-3544 (capability matrix; Claude/Codex evidence only, others `unknown`), ENH-3545 (labels only), ENH-3546 (Claude fixture capture, then eligibility), ENH-3648 (six-host survey), ENH-3649 (isolation gate and diagnostics), **the ENH-3543 join spike** (fixtures only; must not gate ENH-3647), and **Codex fixture capture for ENH-3532** (fork, paginated thread, 0.154+ `token_usage_record`, re-emitted notification, non-advancing total).
 2. **Codex identity:** agree the identity-basis, span field names **and the meaning of `session_id` (thread vs root; recommended thread, ENH-3532 gate 1 rule c)** across ENH-3532 and ENH-3647 (see § Schema coordination), then land ENH-3532 (rollout ingestion) and ENH-3647 (live identity) in either order. Readers keep the unreconciled-sum contract in between.
 3. **Reconciliation:** ENH-3543 spikes the ordering join against the fixtures, then adds the selector, the `session_id` filter and reader/dashboard parity. If the spike refutes the join, the selector ships with conservative unresolved behavior only.
-4. **Consumers:** ENH-3549's Claude path can ship once the session-id meaning is fixed; its Codex path follows ENH-3532. Its freshness gate is decided as B/C, and the hook-driven ingest (option A) is split into a separate issue. It adds the `session_id` selector filter itself if ENH-3543 has not.
+4. **Consumers:** ENH-3651 (incremental ingest+derive of transcript usage; stored transcript usage is currently derived only by a full `rebuild()`) precedes ENH-3549. ENH-3549's Claude path then ships once the session-id meaning is fixed; its Codex path follows ENH-3532. It adds the `session_id` selector filter itself if ENH-3543 has not.
 5. **Remaining hosts:** ENH-3534 after ENH-3648's findings, ENH-3532's `UsageReplayRecord` contract and ENH-3544's vocabulary. Re-ingestion must address already-stripped payloads; unknown capability is not unsupported.
 
 ## Schema coordination
