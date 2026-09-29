@@ -37,7 +37,7 @@ Implement one shared coverage-selection policy behind `select_usage_observations
 - `select_usage_observations` (`history_reader/usage.py`) yields every row (`ORDER BY id`) with only `since`/`require_run_id` filters — the unreconciled observation sum. It has no session filter.
 - Once ENH-3532 ingests rollouts and ENH-3647 stamps live Codex identity, live totals and rollout requests for the same work coexist and are double-counted by every aggregate.
 - `templates/dashboard.llat/template.html.j2` sums raw rows (`... FROM usage_events GROUP BY model ORDER BY cost_usd DESC`) and cannot run the Python selector.
-- `issue_history/quality_regressions.py` counts `usage_events` rows per session for model-composition weights; ENH-3647/ENH-3532 pin it to `channel = 'transcript'` as a holding measure.
+- `issue_history/quality_regressions.py` (model-composition weights) and `issue_history/agent_quality.py::_usage_totals` (cost per issue) consume `usage_events` rows with a `session_id`; ENH-3647/ENH-3532 pin both to `channel = 'transcript'` as a holding measure.
 
 ## Expected Behavior
 
@@ -50,6 +50,8 @@ Live Codex rows carry `session_id = thread.started.thread_id` (equal to the roll
 One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its live total equals the sum of the rollout `last_token_usage` records between that invocation's `task_started` and `task_complete` (fixture: 19404 + 19541 = 38945 input, 112 + 5 = 117 output). `exec resume` restarts the total, so each invocation maps to its own `task_started`…`task_complete` span in the same rollout file. Rollout spans have a native key: `task_started`/`task_complete` both carry `payload.turn_id` (e.g. `01a0d1da-dba9-…` and `01a0d1da-f7cb-…` in `rollout-exec-resume.jsonl`). Match on session ID + span; equal token sums are a consistency check, not the identity.
 
 The captures prove session identity and matching accounting totals, but not an automatic live-to-span join: live `turn.started` carries no turn ID, and `turn.completed` carries usage without a turn ID. A generated invocation UUID does not establish a rollout span. **Readiness gate:** specify and prove how each live invocation acquires an exact rollout span, including resume, concurrent/ambiguous activity, incomplete transcripts and compaction. No timestamp-nearness, matching-count or run-ID heuristic may certify the join. If producer evidence cannot establish it, keep coverage unresolved; do not declare the complete-match criterion satisfied by synthetic IDs alone.
+
+**Run the spike now (2026-09-29).** It needs only the committed fixtures, so it does not wait for ENH-3532 or ENH-3647 (epic step 1) and must not gate ENH-3647. Scope spans **by thread** (`payload.id`, ENH-3532 gate 1 rule c), never by a `session_id` that forks share with their parent; cross-check each span against `turn_id`; and add a 0.155 `exec --json` capture, since fixture-only evidence is from 0.152.1 while current producers are 0.154+ (which also emit `token_usage_record` with `turn_id`/`response_id` — check whether that removes the need for an ordering join).
 
 **Candidate join to evaluate first (spike before implementation):** per `session_id`, order live invocations by local capture order and rollout spans by native `ordinal` (ordinals are monotonic across `exec resume` within one file: the two spans in `rollout-exec-resume.jsonl` occupy ordinals 1–19 and 21–28). Accept the join only when (a) the session's live invocation count equals its completed-span count, (b) every span is closed by `task_complete`, and (c) each positional pair's sums match. Any failure — including interactive TUI turns in the same thread that add spans without live rows — leaves the whole session `overlap_unresolved`. This is an ordering join, not timestamp proximity; the spike must show whether (a)–(c) are sufficient or whether an ordering hazard (concurrent `exec resume` on one thread) defeats it. If the spike refutes it and no producer field exists, ship the selector with conservative unresolved behavior only and record the complete-match criteria as blocked on producer evidence.
 
@@ -74,7 +76,7 @@ ENH-3549 needs one session's selected observations for `ll-ctx-stats` cache rate
 
 ### Quality regressions
 
-Decide whether `quality_regressions.py` model-composition weights should use selected observations (through the selector) or stay pinned to `channel = 'transcript'`. Either way, remove its chokepoint-gate exemption only if it moves behind the selector.
+Decide whether `quality_regressions.py` model-composition weights and `agent_quality._usage_totals` cost-per-issue should use selected observations (through the selector) or stay pinned to `channel = 'transcript'`. Either way, remove the chokepoint-gate exemption only if the reader moves behind the selector.
 
 ## Scope Boundaries
 
@@ -105,7 +107,7 @@ Decide whether `quality_regressions.py` model-composition weights should use sel
 
 ## Implementation Steps
 
-1. Spike the candidate ordering join against the fixtures (plus a synthetic concurrent-resume case); record PROVEN/REFUTED and the attribution, filter and snapshot contracts here.
+1. Spike the candidate ordering join against the fixtures, a captured fork/subagent thread and a 0.155 `exec --json` capture (plus a synthetic concurrent-resume case); record PROVEN/REFUTED and the attribution, filter and snapshot contracts here.
 2. Add coverage selection and the `session_id` filter behind `select_usage_observations`, preserving verified attribution and qualification metadata.
 3. Route quality regressions per § Quality regressions.
 4. Integrate privacy-safe snapshot selection and built-in dashboard queries; add cross-reader/export regressions and run project checks.
@@ -124,7 +126,7 @@ Decide whether `quality_regressions.py` model-composition weights should use sel
 - [ ] Date-window boundaries, model filters and `require_run_id` cannot create false completeness; tests cover counterpart rows outside the reporting window and initially unattributed requests.
 - [ ] Built-in dashboard aggregation and exported-snapshot queries agree with source selection, totals, qualification and audit subtotals for matched, partial and unresolved cases, without leaking private source identifiers.
 - [ ] `select_usage_observations(..., session_id=...)` reconciles before filtering; a single-session read never reports partial coverage as complete.
-- [ ] `quality_regressions.py` either reads through the selector or stays channel-pinned, with a test asserting the chosen behavior for sessions holding live + rollout rows.
+- [ ] `quality_regressions.py` and `agent_quality._usage_totals` either read through the selector or stay channel-pinned, with tests asserting the chosen behavior for sessions holding live + rollout rows.
 
 - [ ] Matching uses session ID + turn span, never run ID, timestamp proximity or equal counts alone; a sum mismatch downgrades to unresolved.
 - [ ] Complete matched coverage counts once; partial coverage, unmatched legacy rows, and conflicting or ambiguous observations stay qualified with channel subtotals.

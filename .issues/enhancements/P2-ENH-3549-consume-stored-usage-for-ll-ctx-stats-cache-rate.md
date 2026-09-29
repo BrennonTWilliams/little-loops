@@ -7,10 +7,12 @@ status: open
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_date: '2026-09-24'
+captured_at: '2026-09-24T17:40:15Z'
+discovered_by: ll-issues-create
 labels:
 - observability
 - multi-host
-depends_on:
+blocked_by:
 - ENH-3532
 relates_to:
 - ENH-3543
@@ -48,6 +50,16 @@ For a discovered session without stored eligible usage, the result is unavailabl
 - **C. Accept and document.** The current session is unavailable until the next SessionStart; the diagnostic names the cause and the backfill command.
 
 A raw-transcript fallback for the un-ingested session is excluded: it reintroduces the second token parser this issue removes.
+
+**Recommendation (2026-09-29 epic review): C now, B if cheap; option A becomes its own issue.** A hook-driven incremental ingest is a separate feature (hook latency, non-blocking design, another writer path) that benefits every stored-usage reader, not only this one. File it separately (`/ll:capture-issue`, `parent: EPIC-3562`) and keep this issue to the consumer plus B/C. Record the final choice here before implementation.
+
+### Staging: Claude first
+
+The `blocked_by: ENH-3532` edge is needed only for Codex (it retires `_codex_cache_usage`, which reads live rollouts). Claude transcript rows are already backfilled, so the Claude path (stored consumer, `session_id` filter, diagnostics) can ship first, after the session-id meaning is fixed below. Codex switches over when ENH-3532 lands.
+
+### Which session id
+
+`select_usage_observations(session_id=...)` must be called with the same id the stored rows carry. ENH-3532 gate 1 rule c recommends the **thread** id (`payload.id`), which is what `SessionHandle` and `raw_events.session_id` use, so the handle lookup and the filter agree; a subagent then reads its own rows, not its parent's. Do not hand the filter a root/`payload.session_id` value.
 
 ## Scope Boundaries
 

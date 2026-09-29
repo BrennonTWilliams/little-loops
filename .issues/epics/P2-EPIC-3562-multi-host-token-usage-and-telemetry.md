@@ -58,10 +58,10 @@ Every token figure little-loops reports — for any production host — comes fr
 
 ## Implementation Order and Readiness
 
-1. **Parallel, now:** ENH-3544 (capability matrix; Claude/Codex evidence only, others `unknown`), ENH-3545 (labels only), ENH-3546 (Claude fixture capture, then eligibility), ENH-3648 (six-host survey), ENH-3649 (isolation gate and diagnostics).
-2. **Codex identity:** agree the identity-basis and span field names across ENH-3532 and ENH-3647 (see § Schema coordination), then land ENH-3532 (rollout ingestion) and ENH-3647 (live identity) in either order. Readers keep the unreconciled-sum contract in between.
+1. **Parallel, now:** ENH-3544 (capability matrix; Claude/Codex evidence only, others `unknown`), ENH-3545 (labels only), ENH-3546 (Claude fixture capture, then eligibility), ENH-3648 (six-host survey), ENH-3649 (isolation gate and diagnostics), **the ENH-3543 join spike** (fixtures only; must not gate ENH-3647), and **Codex fixture capture for ENH-3532** (fork, paginated thread, 0.154+ `token_usage_record`, re-emitted notification, non-advancing total).
+2. **Codex identity:** agree the identity-basis, span field names **and the meaning of `session_id` (thread vs root; recommended thread, ENH-3532 gate 1 rule c)** across ENH-3532 and ENH-3647 (see § Schema coordination), then land ENH-3532 (rollout ingestion) and ENH-3647 (live identity) in either order. Readers keep the unreconciled-sum contract in between.
 3. **Reconciliation:** ENH-3543 spikes the ordering join against the fixtures, then adds the selector, the `session_id` filter and reader/dashboard parity. If the spike refutes the join, the selector ships with conservative unresolved behavior only.
-4. **Consumers:** ENH-3549 after ENH-3532 (and after its freshness gate is decided). It adds the `session_id` selector filter itself if ENH-3543 has not.
+4. **Consumers:** ENH-3549's Claude path can ship once the session-id meaning is fixed; its Codex path follows ENH-3532. Its freshness gate is decided as B/C, and the hook-driven ingest (option A) is split into a separate issue. It adds the `session_id` selector filter itself if ENH-3543 has not.
 5. **Remaining hosts:** ENH-3534 after ENH-3648's findings, ENH-3532's `UsageReplayRecord` contract and ENH-3544's vocabulary. Re-ingestion must address already-stripped payloads; unknown capability is not unsupported.
 
 ## Schema coordination
@@ -70,7 +70,7 @@ Every token figure little-loops reports — for any production host — comes fr
 
 | Issue | Tables | Content |
 |-------|--------|---------|
-| ENH-3532 | `raw_events`, `usage_events` | native `ordinal` on `raw_events` (copied on replay); source key + span `turn_id` on `usage_events`; partial `idx_usage_events_dedup` (repair-first) |
+| ENH-3532 | `raw_events`, `usage_events` | native `ordinal` on `raw_events` (copied on replay; legacy rows stay NULL unless re-read); stream discriminator; `response_id` + source key + span `turn_id` on `usage_events`; partial dedup indexes (repair-first). Key revised 2026-09-29: `(host, response_id)` where `token_usage_record` exists, else `(host, payload.id, stream discriminator, ordinal)` |
 | ENH-3647 | `usage_events` | identity-basis marker (host-observed vs local), if not added by ENH-3532 |
 | ENH-3546 | `raw_events`, `usage_events` | producer-eligibility discriminator on `raw_events` (copied on replay) |
 
@@ -78,7 +78,7 @@ Rules: migrations take the next version in landing order and are never renumbere
 
 ## Shared-consumer notes
 
-- `issue_history/quality_regressions.py` weights model composition by `COUNT(*) FROM usage_events WHERE session_id IS NOT NULL`, which today means `channel = 'transcript'`. ENH-3532 and ENH-3647 each pin it to `channel = 'transcript'` (whichever lands first); ENH-3543 decides whether it later reads through the selector.
+- `issue_history/quality_regressions.py` weights model composition by `COUNT(*) FROM usage_events WHERE session_id IS NOT NULL`, which today means `channel = 'transcript'`. `issue_history/agent_quality.py::_usage_totals` (cost per issue) likewise reads every row with a `session_id` through the selector and would double-count once live/rollout rows carry one. ENH-3532 and ENH-3647 each pin **both** to `channel = 'transcript'` (whichever lands first); ENH-3543 decides whether they later read through the selector.
 - `select_usage_observations` gains a `session_id` filter (ENH-3543 / ENH-3549, whichever first) that reconciles before filtering.
 
 ## Cross-Issue Acceptance Criteria
@@ -86,12 +86,15 @@ Rules: migrations take the next version in landing order and are never renumbere
 - [ ] Source usage/cost/waste/quality and built-in snapshot/dashboard aggregates agree on selection, qualification and audit subtotals for matched, partial and unresolved coverage (ENH-3543).
 - [ ] Canonical token components, event/request identity, run/state attribution, and report-window rules remain consistent through ingest, rebuild and export (ENH-3532/3543/3647).
 - [ ] Legacy/unverified producer evidence is never promoted by rebuild; missing originals/usage remain explicit rather than fabricated measurements (ENH-3534/3546).
-- [ ] Adding session identity to live or rollout rows never silently changes an existing aggregate (`quality_regressions` pin; ENH-3532/3647).
+- [ ] Adding session identity to live or rollout rows never silently changes an existing aggregate (`quality_regressions` and `agent_quality` pins; ENH-3532/3647).
+- [ ] A Codex observation is counted once across forks, resumes, paginated threads, re-emitted notifications and both `token_usage_record`/`token_count` event shapes; `session_id` means the same thing in ENH-3532, ENH-3647 and ENH-3549.
 - [ ] Context consumption and occupancy have separate semantics (done in BUG-3587); baseline freshness survives estimate updates and fallback output exposes it (ENH-3545).
 
 ## Review Notes
 
 Pre-implementation review 2026-09-24 applied to specifications only. Review 2026-09-28: refreshed stale child statuses (ENH-3580, BUG-3587 done); closed ENH-3532 gates 2–3 from fixtures and proposed a gate-1 key; split ENH-3543 → ENH-3647, ENH-3534 → ENH-3648, ENH-3549 → ENH-3649; added schema coordination, the `quality_regressions` consumer and ENH-3549's current-session freshness gate. Historical confidence scores do not certify the revised scopes. Child frontmatter is authoritative for status/progress.
+
+Review 2026-09-29 (corpus check of `~/.codex/sessions` plus an opus consult): ENH-3532's `(host, session_id, ordinal)` key collides on forks and paginated threads and cannot dedupe duplicate notifications; newer Codex writes `token_usage_record` alongside `token_count`; `agent_quality._usage_totals` needed the same channel pin as `quality_regressions`; the ENH-3543 spike moved to step 1; ENH-3549 staged Claude-first with the hook-driven ingest split out; added missing `blocks` backlinks on ENH-3532 and normalized ENH-3549 to `blocked_by`. Fixtures are `codex-cli 0.152.1` while local sessions come from 0.154–0.158 alphas, so every Codex contract needs a current-version fixture.
 
 ## Status
 
