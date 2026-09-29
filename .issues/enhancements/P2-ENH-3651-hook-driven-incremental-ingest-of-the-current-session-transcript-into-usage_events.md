@@ -26,7 +26,7 @@ Make the still-running session's token usage visible to stored-usage readers wit
 
 ## Current Behavior
 
-- The SessionStart hook (`little_loops.hooks.session_start`) spawns a **detached** `little_loops.cli.backfill_worker` subprocess (`start_new_session=True`; a daemon thread was killed when the short-lived hook exited, BUG-1882). It passes the payload's `transcript_path` when present, otherwise the host's project folder, and is skipped when `LL_NON_INTERACTIVE` is set. (ENH-3549's Current Behavior calls this a "daemon thread"; that is stale.)
+- The SessionStart hook (`little_loops.hooks.session_start`) spawns a **detached** `little_loops.cli.backfill_worker` subprocess (`start_new_session=True`; a daemon thread was killed when the short-lived hook exited, BUG-1882). It passes the payload's `transcript_path` when present, otherwise the host's project folder, and is skipped when `LL_NON_INTERACTIVE` is set.
 - The worker runs `backfill_incremental`, which is **ingest-only**: it writes `raw_events` for sources modified after the global `last_raw_event_ts` watermark and derives nothing.
 - Transcript `usage_events` rows are derived only by `rebuild()` (`_backfill_usage_events` is called from `lifecycle.py` in that one place). `rebuild()` is a full `DELETE`-then-replay of every derived table (`usage_events` scoped by `channel IS NOT 'live'`), and the worker runs it only with `--rebuild`, which SessionStart passes only when `SCHEMA_VERSION` has advanced past `last_rebuild_version`.
 - Net effect: transcript `usage_events` are stale until a schema bump or a manual `ll-session` rebuild, not merely until the next SessionStart. The current session is never present.
@@ -37,7 +37,7 @@ Make the still-running session's token usage visible to stored-usage readers wit
 A non-blocking hook step brings the current session's transcript usage into `usage_events` shortly after each turn (or compaction), so `ll-ctx-stats` and every other stored-usage reader see a fresh figure. Reads stay pure. The write path:
 
 - ingests only the appended lines of the current transcript (no whole-file rescan per turn once that is measured to matter),
-- derives `usage_events` for **only the newly ingested `raw_events`**, never via a full `rebuild()`,
+- derives `usage_events` for newly ingested `raw_events` after a one-time catch-up of previously ingested rows, without a full `rebuild()` on each turn,
 - is idempotent with the SessionStart path and with a later full `rebuild()` (same rows, same identity, no double counting), and
 - never delays the turn: detached like the SessionStart worker, with a throttle so it does not run on every tool call.
 
@@ -50,24 +50,30 @@ ENH-3549 turns `ll-ctx-stats`'s cache rate into a read-only consumer of stored o
 Investigate first; the design is open. Candidate shape:
 
 1. Choose the trigger. `Stop` fires after every assistant turn (as the advisor gate notes), `PreCompact` is rare but pre-compaction is when occupancy matters, `PostToolUse` is frequent and needs a throttle. Prefer `Stop` plus a throttle, reusing the detached-worker pattern rather than running in the hook process.
-2. Add an incremental derive: `_backfill_usage_events` over `raw_events` rows newer than a per-source high-water mark, writing through the same normalizer and identity contract as `rebuild()` (ENH-3532 key rules, ENH-3546 eligibility discriminator).
+2. Add an incremental derive: `_backfill_usage_events` over eligible `raw_events` rows newer than a committed derived-row checkpoint, writing through the same normalizer and identity contract as `rebuild()` (ENH-3532 key rules, ENH-3546 eligibility discriminator). A source-specific ingest cursor is separate from this derive checkpoint; the global `last_raw_event_ts` cannot decide whether the active file has unread appended lines.
 3. Make the incremental write and `rebuild()` provably equivalent (a test that ingests a transcript incrementally in N slices and compares against one full rebuild).
+
+### Catch-up, atomicity and host coverage
+
+On first enablement, already-ingested `raw_events` may have no corresponding `usage_events`, while others may already have derived rows from an earlier rebuild. Establish a one-time catch-up that safely replaces or deduplicates replayable usage rows, preserves live rows, and records the derived checkpoint in the **same transaction**; a full `rebuild()` must also advance or reset that checkpoint atomically with its replacement rows. Subsequent workers acquire a write transaction before reading the checkpoint, then commit derived rows and checkpoint together. A crash before commit retries the same rows; a crash after commit skips them. Define a stable source-row link or equivalent uniqueness rule for transcript rows so a retry cannot insert a second copy. Replay state that spans slices (including a Codex turn that opens before the slice boundary) must be persisted or reconstructed from its prefix, never inferred from a suffix alone.
+
+The derive mechanism covers every replayable usage channel produced by `_backfill_usage_events`, including `rollout` once ENH-3532 adds it; ENH-3532 owns Codex normalization and native deduplication, not a second derive engine. If a new normalizer lands **after** the checkpoint already passed its historical raw rows, its schema/derivation version must trigger a one-time replay of those rows and atomically establish the new checkpoint; merely deriving rows with larger IDs would lose the older observations. Test both ENH-3532/ENH-3651 landing orders. Prove the combined Codex ingest → incremental derive → selected read before ENH-3549 retires `_codex_cache_usage`. The hook trigger is initially Claude Code unless a verified adapter provides the same lifecycle event and transcript path for another host. Record the supported trigger hosts and make an unsupported host's current-session result explicitly unavailable until an ingest/derive trigger exists; do not claim an eight-host freshness guarantee from a Claude-only hook.
 
 ## Program Design
 
 ### Types
 
-- No new token-accounting type; the incremental path emits the same `TokenUsage`/`usage_events` rows as `rebuild()`. A per-source high-water mark (last derived `raw_events.id`) is kept in the `meta` table.
+- No new token-accounting type; the incremental path emits the same `TokenUsage`/`usage_events` rows as `rebuild()`. Keep source-specific ingest progress separate from the last committed derived `raw_events.id` (or an equivalent replay checkpoint). Choose the source-row uniqueness link, checkpoint schema and first-enable catch-up before writing the migration; document how `rebuild()` updates it.
 
 ### Signatures
 
-- `backfill_usage_incremental(db: Path | str, *, since_raw_event_id: int | None = None) -> int` — proposed: derive transcript `usage_events` for `raw_events` rows newer than the high-water mark and return the row count; delegates to `_backfill_usage_events`.
+- `backfill_usage_incremental(db: Path | str, *, since_raw_event_id: int | None = None) -> int` — proposed: derive replayable `usage_events` for `raw_events` rows newer than the committed checkpoint and return the row count; delegates to `_backfill_usage_events`.
 - `backfill_incremental(db, *, jsonl_files=None, handles=None, since_ts=None, config=None, also_rebuild=False, host=None) -> dict[str, int]` — existing (`session_store/lifecycle.py`); ingest-only, unchanged.
 
 ### Call Path
 
 - Stop/PreCompact hook → detached `backfill_worker` → `backfill_incremental` (`raw_events`) → `backfill_usage_incremental` (`usage_events`)
-- full `rebuild()` → `_backfill_usage_events` (unchanged; must yield the same rows)
+- full `rebuild()` → `_backfill_usage_events` plus an atomic checkpoint update (must yield the same rows)
 
 ## Integration Map
 
@@ -76,6 +82,7 @@ Investigate first; the design is open. Candidate shape:
 - `scripts/little_loops/hooks/` — a handler beside `session_start.py` / `pre_compact.py`; `scripts/little_loops/hooks/__init__.py` `_USAGE` banner if a new intent is added.
 - `scripts/little_loops/cli/backfill_worker.py` — an incremental-derive mode (it currently has no derive step and no argparse by design).
 - `scripts/little_loops/session_store/lifecycle.py`, `session_store/writers.py` — incremental derive entry point beside `backfill_incremental` and `_backfill_usage_events`.
+- `scripts/little_loops/session_store/schema.py`, `session_store/schema_manifest.json` — append-only checkpoint/source-row identity migration if the chosen design requires one; coordinate with EPIC-3562's landing-order rule.
 
 ### Dependent Files (Callers/Importers)
 - `ll-ctx-stats` and the usage/cost/waste readers via `select_usage_observations` (freshness only; no contract change).
@@ -86,7 +93,7 @@ Investigate first; the design is open. Candidate shape:
 - `pre_done` Stop handler: per-turn firing, diff-hash dedup, non-blocking (FEAT-3118).
 
 ### Tests
-- `test_session_store_lifecycle.py` (incremental-vs-rebuild equivalence), `test_hooks_integration.py`, hook-intent tests, a backfill-worker test.
+- `test_session_store_lifecycle.py` (first-enable catch-up, incremental-vs-rebuild equivalence, cross-slice state, interrupted/concurrent workers and Codex rollout after ENH-3532), `test_hooks_integration.py`, hook-intent tests, a backfill-worker test.
 
 ### Documentation
 - `docs/guides/BUILTIN_HOOKS_GUIDE.md`, `docs/reference/CLI.md` (freshness of stored usage), `docs/ARCHITECTURE.md` if the ingest/derive split is described there.
@@ -96,9 +103,9 @@ Investigate first; the design is open. Candidate shape:
 
 ## Implementation Steps
 
-1. Measure: cost of `backfill_incremental` on a large growing transcript (does it rescan the whole file?) and the watermark interaction (`last_raw_event_ts` is global, so a hook-driven run must not skip or double-advance other sources).
-2. Add the incremental derive and prove equivalence with `rebuild()` on sliced ingestion, including a live-only-row-preserving check.
-3. Add the hook entry and detached launch with a throttle; confirm it never blocks a turn (timeout, `LL_NON_INTERACTIVE`).
+1. Measure: cost of `backfill_incremental` on a large growing transcript (does it rescan the whole file?) and the watermark interaction (`last_raw_event_ts` is global, so a hook-driven run must not skip or double-advance other sources). Define rotation/truncation behavior for the source-specific cursor.
+2. Choose and record the source-row uniqueness link, initial/version-change catch-up, transaction/checkpoint and cross-slice replay-state design. Prove equivalence with `rebuild()` on sliced ingestion, including both ENH-3532/ENH-3651 landing orders, a live-only-row-preserving check and interrupted/concurrent workers.
+3. Add the hook entry and detached launch with a throttle; confirm it never blocks a turn (timeout, `LL_NON_INTERACTIVE`). Record which host adapters actually trigger it.
 4. Update docs; run `python -m pytest scripts/tests/`.
 
 ## Impact
@@ -118,25 +125,30 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Success Metrics
 
-- After a turn in the current session, `ll-ctx-stats` reads that session's usage from `usage_events` within one throttle interval, with no read-time parsing or backfill.
+- After a turn on a supported hook-trigger host, `ll-ctx-stats` reads that session's usage from `usage_events` within one throttle interval, with no read-time parsing or backfill.
 - No measurable added turn latency (the hook returns after spawning the detached worker).
 
 ## Acceptance Criteria
 
-- [ ] The current session's transcript usage reaches `usage_events` without a SessionStart, schema bump or manual rebuild; a stored-usage read sees it.
+- [ ] On each supported hook-trigger host, the current session's transcript usage reaches `usage_events` without a SessionStart, schema bump or manual rebuild; a stored-usage read sees it.
 - [ ] Slice-by-slice incremental ingest+derive of a transcript produces exactly the rows one full `rebuild()` produces (same counts, identity and provenance); running both, in either order, never double-counts.
+- [ ] First enablement catches up already-ingested but underived raw rows. The derive checkpoint and rows commit together; crash-before-commit, crash-after-commit, concurrent-worker and later-rebuild tests prove no loss or duplicate rows.
+- [ ] A newly added usage normalizer replays historical eligible raw rows that predate the checkpoint; ENH-3532 before ENH-3651 and ENH-3651 before ENH-3532 produce the same Codex rollout observations.
+- [ ] Source ingest progress does not depend on the global `last_raw_event_ts` alone; append, rotation/truncation and a turn span crossing slice boundaries have fixture-backed behavior.
+- [ ] Once ENH-3532 lands, Codex rollout ingestion reaches stored observations through this incremental derive without a per-turn full rebuild; an end-to-end test covers ENH-3549's Codex cutover.
 - [ ] Live-channel rows are untouched; the SessionStart worker and the hook path can run concurrently without corrupting the `last_raw_event_ts` watermark.
 - [ ] The hook never blocks the turn: it only spawns the detached worker, honors `LL_NON_INTERACTIVE`, and is throttled.
+- [ ] Supported hook-trigger hosts are listed and tested; hosts without a proven trigger report unavailable current-session usage rather than silently claiming freshness.
 - [ ] Legacy transcript rows keep their existing provenance (ENH-3546); new rows follow whatever eligibility discriminator that issue defines.
 
 ## Scope Boundaries
 
-- **In scope**: the hook trigger, the incremental derive for transcript `usage_events`, equivalence with `rebuild()`, throttle and docs.
-- **Out of scope**: the stored-usage cache-rate consumer and its diagnostics (ENH-3549); rollout/other-host normalization (ENH-3532/ENH-3534); changing `rebuild()` itself; producer eligibility (ENH-3546).
+- **In scope**: the hook trigger, initial catch-up, incremental derive for replayable `usage_events` channels, atomic checkpoint coordination with `rebuild()`, throttle and docs.
+- **Out of scope**: the stored-usage cache-rate consumer and its diagnostics (ENH-3549); rollout/other-host normalization (ENH-3532/ENH-3534); producer eligibility (ENH-3546).
 
 ## Backwards Compatibility
 
-No CLI or schema change is required beyond an optional throttle setting. A full `rebuild()` must keep producing the same rows as the incremental path.
+No new user-facing CLI command is required. A checkpoint or source-row identity migration may be needed; coordinate its append-only version with the epic's schema plan. A full `rebuild()` must keep producing the same rows as the incremental path.
 
 ## API/Interface
 

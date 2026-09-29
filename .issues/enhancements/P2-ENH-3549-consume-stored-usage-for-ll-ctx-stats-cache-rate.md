@@ -38,33 +38,27 @@ Replace `ll-ctx-stats`'s transcript-parsing cache-rate helper with a read-only c
 
 ## Expected Behavior
 
-Cache-rate accounting reads persisted observations for the selected session through `select_usage_observations(..., session_id=...)`, preserving the latest eligible session, host/workspace scope and agent exclusion. It never widens to all-session totals, infers zeros, parses transcripts, or backfills during a read. Stored provenance (ENH-3546 for Claude, ENH-3532 for Codex) and coverage qualification (ENH-3543, or the unreconciled-sum contract before it) pass through unchanged.
+Cache-rate accounting reads persisted observations for the selected session through `select_usage_observations(..., host=handle.host, session_id=handle.session_id)`, preserving the latest eligible session, host/workspace scope and agent exclusion. It never widens to all-session totals, infers zeros, parses transcripts, or backfills during a read. Stored provenance (ENH-3546 for Claude, ENH-3532 for Codex) and coverage qualification (ENH-3543, or the unreconciled-sum contract before it) pass through unchanged. Unverified/NULL host identity is not attributed to the selected host merely because its session ID matches.
 
 For a discovered session without stored eligible usage, the result is unavailable with a stderr diagnostic that distinguishes: no store, unreadable store, selected session not yet ingested, and session ingested but without usage. Missing fields are unknown; nothing is labelled estimated without an estimator.
 
-### Readiness gate: freshness of the current session
+### Freshness decision and cutover gate
 
-`ll-ctx-stats` usually reports on the latest session, which is usually the one still running and not yet ingested. A pure stored-usage consumer turns today's working figure into "unavailable" for the whole of the current session. Decide before implementation:
+ENH-3651 owns hook-driven ingest, initial catch-up of already-ingested raw rows and incremental derivation. This issue adds no `--ingest` flag: ordinary reads remain pure, and an unavailable result gives the existing manual backfill guidance. A raw-transcript fallback would reintroduce the second token parser this issue removes.
 
-- **A. Hook-driven incremental ingest (recommended).** Add a Stop/PreCompact (or throttled PostToolUse) incremental backfill of the current transcript, reusing the SessionStart backfill path and its `(source_path, line_no)` idempotency. Reads stay pure and every stored-usage reader benefits. Cost: hook latency; must be non-blocking like the SessionStart daemon thread.
-- **B. Explicit opt-in ingest flag.** `ll-ctx-stats --ingest` backfills the selected session before reading. Reads stay pure by default; the diagnostic tells the user to pass it.
-- **C. Accept and document.** The current session is unavailable until the next SessionStart; the diagnostic names the cause and the backfill command.
-
-A raw-transcript fallback for the un-ingested session is excluded: it reintroduces the second token parser this issue removes.
-
-**Revised 2026-09-29 (supersedes the earlier "C now, B if cheap" recommendation).** Code review showed stored transcript usage is derived only by a full `rebuild()` (see Current Behavior), so options B and C are not viable on their own: C would turn today's working figure into "unavailable" for every session since the last rebuild, and B's `--ingest` flag would need an incremental derive, not just raw ingest. The incremental ingest+derive is therefore split into **ENH-3651** and this issue is `blocked_by` it; the choice here reduces to how the hook is triggered (owned by ENH-3651) and whether `ll-ctx-stats --ingest` is also offered as a manual escape hatch. Record the final choice here before implementation.
+Before the Claude or Codex direct reader is retired, an end-to-end fixture must prove that host's selected current session is ingested, derived and readable with the required freshness. ENH-3651 initially targets a Claude Code hook; the remaining hosts without a proven stored producer/trigger are explicitly unavailable, with a diagnostic, until their producer path is wired under ENH-3534 or a linked host-specific issue. That limitation is part of this staged cutover and is not counted as completed eight-host coverage. The Codex path additionally requires ENH-3532's rollout normalizer and ENH-3651's rollout derive; a full-rebuild-only test does not satisfy its cutover gate.
 
 ### Staging: Claude first
 
-The `blocked_by: ENH-3532` edge is needed only for Codex (it retires `_codex_cache_usage`, which reads live rollouts). The Claude path (stored consumer, `session_id` filter, diagnostics) can ship first, after ENH-3651 makes stored transcript usage current and the session-id meaning is fixed below. Codex switches over when ENH-3532 lands.
+The `blocked_by: ENH-3532` edge is needed only for Codex (it retires `_codex_cache_usage`, which reads live rollouts). The Claude path (stored consumer, paired host/session filter, diagnostics) can ship first after ENH-3651 makes stored transcript usage current. Codex switches over only after ENH-3532 and ENH-3651 pass the combined ingest → incremental derive → read fixture; landing ENH-3532 alone is insufficient.
 
 ### Which session id
 
-`select_usage_observations(session_id=...)` must be called with the same id the stored rows carry. ENH-3532 gate 1 rule c recommends the **thread** id (`payload.id`), which is what `SessionHandle` and `raw_events.session_id` use, so the handle lookup and the filter agree; a subagent then reads its own rows, not its parent's. Do not hand the filter a root/`payload.session_id` value.
+`select_usage_observations(host=..., session_id=...)` must receive the handle's verified host and the same ID the stored rows carry. For Codex, that is the **thread** ID (`payload.id`), which is what `SessionHandle` and `raw_events.session_id` use; a subagent then reads its own rows, not its parent's. Do not hand the filter a root/`payload.session_id` value. A same-ID row from another host must not enter the selected session's totals.
 
 ## Scope Boundaries
 
-- **In scope**: the stored-usage cache-rate consumer; the `session_id` selector filter (shared with ENH-3543 — whichever lands first adds it); missing/unreadable/not-ingested diagnostics; the freshness decision and, for option A or B, its implementation.
+- **In scope**: the stored-usage cache-rate consumer; the paired host/session selector filter (shared with ENH-3543 — whichever lands first adds it); missing/unreadable/not-ingested diagnostics; per-host cutover tests.
 - **Out of scope**: reader isolation gate, empty-discovery diagnostics and fake-host coverage (ENH-3649); producer eligibility (ENH-3532/3534/3546); live/rollout reconciliation (ENH-3543); token normalization.
 
 ## Program Design
@@ -76,11 +70,11 @@ The `blocked_by: ENH-3532` edge is needed only for Codex (it retires `_codex_cac
 ### Signatures
 
 - `_compute_cache_rate_from_usage(cwd: Path, host: str | None, *, db: Path | str | None = None) -> dict | None` — stored-observation consumer. Preserve existing numeric keys and add qualification from stored observations. Retire `_compute_cache_rate_from_jsonl` and `_codex_cache_usage` and update their callers/tests; any temporary compatibility wrapper delegates to the stored consumer and never parses transcripts.
-- `select_usage_observations(conn, *, since=None, require_run_id=False, session_id=None)` — additive filter; reconciles before filtering (ENH-3543 § Session filter).
+- `select_usage_observations(conn, *, since=None, require_run_id=False, host=None, session_id=None)` — additive paired filter; a `session_id` requires `host`, and candidate coverage is reconciled before report filtering (ENH-3543 § Session filter).
 
 ### Call Path
 
-- `main_ctx_stats` → `detect_sessions` → latest `SessionHandle` → read-only history connection → `select_usage_observations(session_id=handle.session_id)` → cache components + provenance.
+- `main_ctx_stats` → `detect_sessions` → latest `SessionHandle` → read-only history connection → `select_usage_observations(host=handle.host, session_id=handle.session_id)` → cache components + provenance.
 - Missing/unreadable/not-ingested usage → distinct stderr diagnostic → unavailable cache result.
 
 ### Decision Rules
@@ -92,30 +86,29 @@ Preserve latest eligible session and host/workspace scope, and exclude agent rec
 - `scripts/little_loops/cli/ctx_stats.py` — replace the transcript helper; emit diagnostics outside the numeric helper.
 - `scripts/little_loops/history_reader/usage.py` — `session_id` filter on `select_usage_observations`.
 - `scripts/little_loops/token_provenance.py` — reuse `counted_entry`, `json_pointer`, `format_figure`, `footnotes`.
-- For freshness option A: `hooks/hooks.json`, a Stop/PreCompact handler under `scripts/little_loops/hooks/`, `session_store/lifecycle.py` backfill entry point.
+- Freshness implementation lives in ENH-3651 (`hooks/hooks.json`, a lifecycle handler and the session-store derive entry point); this issue tests the reader-side cutover.
 - Tests: `test_cli_ctx_stats.py`, `test_enh3528_token_provenance.py` (seed normalized usage via the store; do not weaken Qwen/Gemini expectations just because older parsers stripped usage), `test_history_reader_usage.py`, `test_usage_selection_chokepoint_gate.py`.
 - Docs: `docs/reference/CLI.md` (stored-usage selection, not-yet-ingested case, backfill guidance, stderr diagnostics), `docs/reference/API.md`, `docs/reference/HOST_COMPATIBILITY.md` (do not claim non-Codex hosts stay unknown after their producer contracts land).
 
 ## Implementation Steps
 
-1. Decide the freshness gate and record it here.
-2. Pin existing latest-session/host/agent selection and cache result semantics in store-backed tests.
-3. Add the `session_id` filter (if ENH-3543 has not) and the stored-observation consumer; retire the transcript helpers.
-4. Add the four distinguishable diagnostics; implement the chosen freshness option; update docs; run `python -m pytest scripts/tests/`.
+1. Pin existing latest-session/host/agent selection and cache result semantics in store-backed tests, including same-ID rows from two hosts.
+2. Add the paired host/session filter (if ENH-3543 has not) and the stored-observation consumer. Retire the Claude and Codex direct readers after their respective end-to-end current-session cutover tests pass; report other hosts' missing stored observations as unavailable until their producer paths land.
+3. Add the four distinguishable diagnostics; verify ENH-3651's freshness and Codex rollout derive path, update docs, and run `python -m pytest scripts/tests/`.
 
 ## Impact
 
 - **Priority**: P2 — closes the last raw token-accounting bypass.
-- **Effort**: Small to medium (medium with freshness option A).
+- **Effort**: Small to medium for the reader; ENH-3651 owns the larger freshness/derive work.
 - **Risk**: Medium — latest-session selection, freshness and missing-store behavior must stay consistent.
-- **Breaking Change**: No CLI change; un-ingested usage becomes explicitly unavailable (or ingested, per the freshness decision) instead of silently parsed from disk.
+- **Breaking Change**: No CLI option change; un-ingested usage becomes explicitly unavailable instead of silently parsed from disk. Claude and Codex current-session paths require a proven stored replacement before cutover; other hosts await ENH-3534 or a linked issue and may temporarily lose a direct-parsed cache figure.
 
 ## Acceptance Criteria
 
-- [ ] Cache-rate reporting uses stored normalized observations via `select_usage_observations(session_id=...)`, preserving producer provenance and coverage qualification; no host-wide unknown override or direct transcript accounting remains.
+- [ ] Cache-rate reporting uses stored normalized observations via `select_usage_observations(host=..., session_id=...)`, preserving producer provenance and coverage qualification; same-ID rows from another host are excluded, and no host-wide unknown override or direct transcript accounting remains.
 - [ ] Existing Codex/Claude latest-session, workspace and agent selection stays equivalent (store-backed tests).
 - [ ] No store, unreadable store, selected session not ingested, and ingested-without-usage produce distinct stderr diagnostics; `--json` stdout stays parseable; report reads do not mutate ingestion state (unless option B's explicit flag is passed).
-- [ ] The freshness decision is recorded and tested: the current, still-running session behaves as decided.
+- [ ] Current-session ingest → derive → read fixtures pass for Claude and Codex before their direct readers are retired; Codex includes rollout incremental derivation. Other hosts lacking a proven producer/trigger are explicitly unavailable and documented as such, with the ENH-3534 follow-up linked.
 - [ ] Missing/partial components stay unknown; nothing is labelled estimated without an estimator.
 
 ## Preserved Research Context

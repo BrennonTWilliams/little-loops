@@ -43,23 +43,23 @@ Implement one shared coverage-selection policy behind `select_usage_observations
 
 ### Identity (delivered by ENH-3647)
 
-Live Codex rows carry `session_id = thread.started.thread_id` (equal to the rollout's `session_meta.payload.session_id`) and a locally generated `invocation_id`, with an identity-basis marker. Rollout rows carry `session_id` plus the span `turn_id` (ENH-3532).
+Live Codex rows carry `session_id = thread.started.thread_id` and a locally generated `invocation_id`, with an identity-basis marker. Rollout rows carry that same **thread ID** from `session_meta.payload.id` plus the span `turn_id` (ENH-3532). The `payload.session_id` root/parent value equals the thread ID only in non-fork fixtures and is not the join key for forks. Every join is qualified by verified host.
 
 ### Coverage interval: accounting evidence and unresolved correlation
 
-One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its live total equals the sum of the rollout `last_token_usage` records between that invocation's `task_started` and `task_complete` (fixture: 19404 + 19541 = 38945 input, 112 + 5 = 117 output). `exec resume` restarts the total, so each invocation maps to its own `task_started`…`task_complete` span in the same rollout file. Rollout spans have a native key: `task_started`/`task_complete` both carry `payload.turn_id` (e.g. `01a0d1da-dba9-…` and `01a0d1da-f7cb-…` in `rollout-exec-resume.jsonl`). Match on session ID + span; equal token sums are a consistency check, not the identity.
+One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its live total equals the sum of the rollout `last_token_usage` records between that invocation's `task_started` and `task_complete` (fixture: 19404 + 19541 = 38945 input, 112 + 5 = 117 output). `exec resume` restarts the total, so each invocation maps to its own `task_started`…`task_complete` span in the same rollout file. Rollout spans have a native key: `task_started`/`task_complete` both carry `payload.turn_id` (e.g. `01a0d1da-dba9-…` and `01a0d1da-f7cb-…` in `rollout-exec-resume.jsonl`). Match on verified host + thread ID + span; equal token sums are a consistency check, not the identity.
 
 The captures prove session identity and matching accounting totals, but not an automatic live-to-span join: live `turn.started` carries no turn ID, and `turn.completed` carries usage without a turn ID. A generated invocation UUID does not establish a rollout span. **Readiness gate:** specify and prove how each live invocation acquires an exact rollout span, including resume, concurrent/ambiguous activity, incomplete transcripts and compaction. No timestamp-nearness, matching-count or run-ID heuristic may certify the join. If producer evidence cannot establish it, keep coverage unresolved; do not declare the complete-match criterion satisfied by synthetic IDs alone.
 
 **Run the spike now (2026-09-29).** It needs only the committed fixtures, so it does not wait for ENH-3532 or ENH-3647 (epic step 1) and must not gate ENH-3647. Scope spans **by thread** (`payload.id`, ENH-3532 gate 1 rule c), never by a `session_id` that forks share with their parent; cross-check each span against `turn_id`; and add a 0.155 `exec --json` capture, since fixture-only evidence is from 0.152.1 while current producers are 0.154+ (which also emit `token_usage_record` with `turn_id`/`response_id` — check whether that removes the need for an ordering join).
 
-**Candidate join to evaluate first (spike before implementation):** per `session_id`, order live invocations by local capture order and rollout spans by native `ordinal` (ordinals are monotonic across `exec resume` within one file: the two spans in `rollout-exec-resume.jsonl` occupy ordinals 1–19 and 21–28). Accept the join only when (a) the session's live invocation count equals its completed-span count, (b) every span is closed by `task_complete`, and (c) each positional pair's sums match. Any failure — including interactive TUI turns in the same thread that add spans without live rows — leaves the whole session `overlap_unresolved`. This is an ordering join, not timestamp proximity; the spike must show whether (a)–(c) are sufficient or whether an ordering hazard (concurrent `exec resume` on one thread) defeats it. If the spike refutes it and no producer field exists, ship the selector with conservative unresolved behavior only and record the complete-match criteria as blocked on producer evidence.
+**Candidate join to evaluate first (spike before implementation):** per verified `(host, thread_id)`, order live invocations by local capture order and rollout spans by native `ordinal` within each verified stream (ordinals are monotonic across `exec resume` within one file: the two spans in `rollout-exec-resume.jsonl` occupy ordinals 1–19 and 21–28). Accept the join only when (a) the thread's live invocation count equals its completed-span count, (b) every span is closed by `task_complete`, and (c) each positional pair's sums match. Any failure — including interactive TUI turns in the same thread that add spans without live rows — leaves the whole thread `overlap_unresolved`. This is an ordering join, not timestamp proximity; the spike must show whether (a)–(c) are sufficient or whether an ordering hazard (concurrent `exec resume` on one thread) defeats it. If the spike refutes it and no producer field exists, ship the selector with conservative unresolved behavior only and record the complete-match criteria as blocked on producer evidence.
 
 ### Selection policy
 
 1. Complete matched coverage: select the rollout request set and suppress the matching live total. Keep per-channel subtotals for audit.
 2. Only the live total covers the verified interval: select it.
-3. Partial rollout coverage, unmatched legacy live rows, conflicting sums, ambiguous spans, or mid-invocation compaction (never captured): `coverage='overlap_unresolved'` or `unknown`, with a reason. Do not drop a whole session's live rows because some rollout row exists.
+3. Partial rollout coverage, unmatched legacy live rows, conflicting sums, ambiguous spans, uncertain `token_usage_record`/`token_count` overlap inside a mixed rollout, or mid-invocation compaction (never captured): `coverage='overlap_unresolved'` or `unknown`, with a reason. Do not drop a whole session's live rows because some rollout row exists, or certify a rollout request set while its internal old/new-shape coverage is uncertain.
 4. Anything unresolved is an **unreconciled observation sum** with unknown aggregate provenance (ENH-3528's contract). Cost/waste/export may not bypass the selector with direct all-row sums.
 
 ### Attribution, filtering and export contract
@@ -72,7 +72,7 @@ ENH-3580 independently exports additive provenance columns. This issue owns how 
 
 ### Session filter (shared with ENH-3549)
 
-ENH-3549 needs one session's selected observations for `ll-ctx-stats` cache rate. Add a `session_id` filter to `select_usage_observations` rather than having readers stream every row (the dashboard notes ~150k rows) and filter client-side. Apply it with the same rule as `since`: reconcile candidate coverage for that session first, then filter, so a session filter cannot make partial coverage look complete. Whichever of ENH-3543/ENH-3549 lands first adds the parameter; the other reuses it.
+ENH-3549 needs one session's selected observations for `ll-ctx-stats` cache rate. Add a paired `host` + `session_id` filter to `select_usage_observations` rather than having readers stream every row (the dashboard notes ~150k rows) and filter client-side. Require `host` whenever `session_id` is supplied; an ID-only call is an error rather than a cross-host read. Candidate correlation is restricted to the verified host/thread pair; reconcile all coverage candidates for that pair before applying report-window and attribution filters. A row with unverified/NULL host identity cannot be silently assigned to the requested host. Whichever of ENH-3543/ENH-3549 lands first adds the paired filter; the other reuses it.
 
 ### Quality regressions
 
@@ -92,7 +92,7 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 
 ### Signatures
 
-- `select_usage_observations(conn, *, since=None, require_run_id=False, session_id=None)` — retain the existing shared aggregation entry point; `session_id` is additive (see § Session filter). Delegate to an internal coverage policy, such as `select_usage_coverage(rows: Iterable[UsageRow]) -> CoverageSelection`; consumers must not choose between two public selection paths. Record how qualification/audit metadata is carried alongside selected observations before implementation.
+- `select_usage_observations(conn, *, since=None, require_run_id=False, host=None, session_id=None)` — retain the existing shared aggregation entry point; the host/session pair is additive and `session_id` requires `host` (see § Session filter). Delegate to an internal coverage policy, such as `select_usage_coverage(rows: Iterable[UsageRow]) -> CoverageSelection`; consumers must not choose between two public selection paths. Record how qualification/audit metadata is carried alongside selected observations before implementation.
 
 ### Call Path
 
@@ -125,11 +125,12 @@ Decide whether `quality_regressions.py` model-composition weights and `agent_qua
 - [ ] Selected request rows preserve verified run/state/invocation attribution; conflicting attribution is qualified, and per-state cost/waste totals remain consistent.
 - [ ] Date-window boundaries, model filters and `require_run_id` cannot create false completeness; tests cover counterpart rows outside the reporting window and initially unattributed requests.
 - [ ] Built-in dashboard aggregation and exported-snapshot queries agree with source selection, totals, qualification and audit subtotals for matched, partial and unresolved cases, without leaking private source identifiers.
-- [ ] `select_usage_observations(..., session_id=...)` reconciles before filtering; a single-session read never reports partial coverage as complete.
+- [ ] `select_usage_observations(..., host=..., session_id=...)` limits candidates to the verified host/thread pair and reconciles before report filtering; a single-session read never reports partial coverage as complete, and a same-ID row from another host never enters its totals.
 - [ ] `quality_regressions.py` and `agent_quality._usage_totals` either read through the selector or stay channel-pinned, with tests asserting the chosen behavior for sessions holding live + rollout rows.
 
-- [ ] Matching uses session ID + turn span, never run ID, timestamp proximity or equal counts alone; a sum mismatch downgrades to unresolved.
+- [ ] Matching uses verified host + thread ID + turn span, never root/parent ID, run ID, timestamp proximity or equal counts alone; a sum mismatch downgrades to unresolved.
 - [ ] Complete matched coverage counts once; partial coverage, unmatched legacy rows, and conflicting or ambiguous observations stay qualified with channel subtotals.
+- [ ] A mixed rollout containing new-shape records and old-shape-only or ambiguous `token_count` events retains audit evidence; file-wide suppression cannot make incomplete request coverage appear complete.
 - [ ] Usage, cost, waste and shareable-export tests assert the same selection/qualification, including ENH-3528's unreconciled-sum fallback.
 
 ## Status
