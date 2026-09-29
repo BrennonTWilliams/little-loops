@@ -367,6 +367,13 @@ Verdict at time of check: **DEP_ISSUES** (no content edits were needed; the find
 - `ll-verify-evidence` and `ll-issues format-check` are clean; no active required decision rule conflicts (proposal-vs-code check found no exception-handler, fixture or AC-coverage gap beyond what the issue already lists).
 - Remaining: `blocked_by: BUG-3652` is unsatisfied (BUG-3652 is `open`), but BUG-3652 has no `## Blocks` section naming ENH-3657 (MISSING_BACKLINK; it mentions the split only in prose). Not auto-fixed because it edits an issue outside this run's scope.
 
+_Re-verified by `/ll:verify-issues --auto` on 2026-09-29 (graph: provider=`codegraph`, freshness=`fresh`; anchors confirmed by grep/Read, not graph results)_
+
+Verdict at time of check: **VALID** (no content edits needed; this section is a record, not an outstanding action item)
+
+- The `DEP_ISSUES` finding above is resolved: BUG-3652's `## Blocks` section now lists ENH-3657 and ENH-3658 (`efc7f735d`). `blocked_by: BUG-3652` stays an unsatisfied, legitimate blocker (BUG-3652 is `open`); its own `blocked_by: BUG-3659` is satisfied (done). No cycle.
+- Anchors re-confirmed: all eight `cli/history.py` sites (`:501`–`:797`), five `cli/harness.py` sites, `cli/logs.py:1718`/`:1962`, `cli/ctx_stats.py:1188`, `decisions.py:596`, `user_messages.py:1227`, `mcp_server/tools.py:172`, `"No history.db found"` at `logs.py:1556`, `logs.py` hand-built paths (`:997/1002`, `:1535/1539`), `_REMOTE_REFUSALS` keys (`session_store/backend.py:94`–`:101`), `sft-corpus.yaml` `--reader db` (`:54`), CT-0 SKILL.md at 344 lines. Older anchors in the first refinement bullets (e.g. `logs.py:1721/1965`) are superseded by the "Anchor drift" bullet. `ll-verify-evidence` and `ll-issues format-check` are clean; no active required decision rule.
+
 ## Confidence Check Notes
 
 > **Update 2026-09-29:** concerns 1–3 and 6 below (table contradiction, `refuse_on_remote(None, …)`, catch/prefix/channel, MCP `root=`) are resolved by the re-scope; the `blocked_by: BUG-3652` edge and cleared `verify_verdict` resolve 4–5. Re-run `/ll:verify-issues` and `/ll:confidence-check` before implementing.
@@ -394,6 +401,7 @@ _Re-scored 2026-09-29 after the refine/wire/gap-analysis passes; all determinist
 - Serve sites cannot distinguish an unreachable remote from an empty store (`_connect_readonly` maps `HistoryError` to `None`); the acceptance criteria do not cover it.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-29T22:05:34 - `b6e9a962-45bc-4981-a31d-f5f911dc70c3.jsonl`
 - `/ll:verify-issues` - 2026-09-29T21:59:39 - `f8adf1da-5f55-4437-ac1b-3cda2eb8384a.jsonl`
 - `/ll:confidence-check` - 2026-09-29T17:10:54 - `bd506705-1a67-435c-95c6-e7a6cced7523.jsonl`
 - `/ll:verify-issues` - 2026-09-29T16:04:55 - `d2886606-137b-4448-b1f0-22d8e796de6d.jsonl`

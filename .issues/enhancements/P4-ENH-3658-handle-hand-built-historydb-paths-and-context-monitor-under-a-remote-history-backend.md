@@ -12,7 +12,7 @@ discovered_date: '2026-09-29'
 captured_at: '2026-09-29T05:29:44Z'
 decision_needed: false
 reconcile_attempted: true
-verify_verdict: NON_VALID
+verify_verdict: VALID
 confidence_score: 85
 outcome_confidence: 68
 score_complexity: 14
@@ -307,6 +307,13 @@ Verdict at time of check: **DEP_ISSUES** (the one line-number drift below was co
 - Confirmed unchanged: `serve.py:92`/`:173`, `dashboard.py:438`, `doctor_trim.py:373`, `cli/loop/run.py:691`, `context-monitor.sh:56-58`/`:82-84` (pre-resolves), `exit 2` at `:582` after the `record_*` calls, `hooks.json:138` `timeout: 5`, `doctor.py:_remote_target()` at `:468` (uses at `:517`, `:711`). The writers' seam chain (`record_*` → `_connect_telemetry` → `schema.connect` → `_seam_target` with `reresolve_absolute=True`) holds, so Option A's premise stands. `ll-verify-evidence` and `ll-issues format-check` are clean.
 - Remaining: `blocked_by: BUG-3652` is unsatisfied (BUG-3652 is `open`), but BUG-3652 has no `## Blocks` section naming ENH-3658 (MISSING_BACKLINK; it mentions the split only in prose, and `ll-issues show BUG-3652` reports `blocks: None`). Not auto-fixed because it edits an issue outside this run's scope.
 
+_Re-verified by `/ll:verify-issues --auto` on 2026-09-29 (graph: provider=`codegraph`, freshness=`fresh`; anchors confirmed by grep/Read, not graph results)_
+
+Verdict at time of check: **VALID** (no content edits needed; this section is a record, not an outstanding action item)
+
+- The `DEP_ISSUES` finding above is resolved: BUG-3652's `## Blocks` section now lists ENH-3657 and ENH-3658 (`efc7f735d`). `blocked_by: BUG-3652` stays an unsatisfied, legitimate blocker (BUG-3652 is `open`); BUG-3652's own `blocked_by: BUG-3659` is satisfied (done). No cycle (BUG-3652 ← ENH-3657/ENH-3658; ENH-3668 ← ENH-3657).
+- Anchors re-confirmed: `serve.py:92`/`:173`, `dashboard.py:438`, `doctor_trim.py:373`, `cli/loop/run.py:691`, `workflow_sequence/io.py:44`, `doctor.py:1837`, `_remote_target()` at `:468` (uses `:517`, `:711`), `context-monitor.sh:56-58`/`:82-84`, `exit 2` at `:582`, `hooks.json:138` `timeout: 5`. `logs.py` hand-built paths (`:997/1002`, `:1535/1539`) still owned by ENH-3657. `ll-verify-evidence` and `ll-issues format-check` are clean; no active required decision rule.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-29_
@@ -320,6 +327,7 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 - Refusal/catcher conventions remain contested repo-wide; the per-site outcomes are now fixed in Decision Rules (`main_doctor` guard via `_remote_target()`, HTTP 501 JSON for `make_history_route`, refuse in `cmd_dashboard`), but the `_make_page_html_factory` / `run.py --serve` "skip the history panel" shape is still described only loosely.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-29T22:05:35 - `b6e9a962-45bc-4981-a31d-f5f911dc70c3.jsonl`
 - `/ll:verify-issues` - 2026-09-29T21:59:39 - `f8adf1da-5f55-4437-ac1b-3cda2eb8384a.jsonl`
 - `/ll:confidence-check` - 2026-09-29T15:35:24 - `4e126c30-e610-4bf7-836c-7acf607ff2dd.jsonl`
 - `/ll:advise` - 2026-09-29 - Opus consult (user_requested); amendments applied
