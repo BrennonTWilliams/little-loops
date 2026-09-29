@@ -1481,7 +1481,7 @@ and `triggers`, but is still budget-counted — see FEAT-3116).
 | `host` | `null` | Registry key for the host CLI the advisor consults: `"claude-code"`, `"codex"`, `"opencode"`, `"pi"`, `"gemini"`, `"omp"`, `"kimi-code"`, or `"qwen"` — the same enum as `orchestration.host_cli`, but may differ from it. |
 | `model` | `"opus"` | Model the advisor requests from the selected host. |
 | `min_tier` | `null` | Capability floor for the advisor's model; enforced within a host, warned across hosts. |
-| `timeout_seconds` | `180` | Per-consult timeout in seconds. Mandatory-with-a-default — a synchronous in-band consult with no timeout can hang a loop indefinitely. |
+| `timeout_seconds` | `300` | Per-consult timeout in seconds. Mandatory-with-a-default — a synchronous in-band consult with no timeout can hang a loop indefinitely. |
 | `triggers` | `[]` | Keywords identifying when the advisor is consulted, e.g. `confidence_gate`, `loop_stall`, `pre_done`. Ignored for manual (`ll-advise`) consults. |
 | `max_consults_per_task` | `3` | Per-task cap on advisor consults, enforced by `should_consult()`/`consult_for_trigger()`. A task is identified by `resolve_task_key()` (issue ID, loop run ID, or session ID) — applies to both auto and manual consults. |
 | `store_verdict_body` | `false` | Opt-in to persisting the consult verdict body in the `advisor_consults` telemetry row (FEAT-3300). Absent or `false` means the verdict body is never written to `.ll/history.db`, since it can quote private code. |

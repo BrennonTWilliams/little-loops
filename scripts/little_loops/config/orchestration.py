@@ -157,7 +157,7 @@ class AdvisorConfig:
     host: str | None = None
     model: str = "opus"
     min_tier: str | None = None
-    timeout_seconds: int = 180
+    timeout_seconds: int = 300
     triggers: list[str] = field(default_factory=list)
     max_consults_per_task: int = 3
     store_verdict_body: bool = False
@@ -170,7 +170,7 @@ class AdvisorConfig:
             host=data.get("host"),
             model=data.get("model", "opus"),
             min_tier=data.get("min_tier"),
-            timeout_seconds=data.get("timeout_seconds", 180),
+            timeout_seconds=data.get("timeout_seconds", 300),
             triggers=list(data.get("triggers", [])),
             max_consults_per_task=data.get("max_consults_per_task", 3),
             store_verdict_body=data.get("store_verdict_body", False),
