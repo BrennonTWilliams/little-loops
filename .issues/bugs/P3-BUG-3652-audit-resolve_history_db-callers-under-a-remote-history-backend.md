@@ -14,7 +14,7 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 10
-size: Large
+size: Medium
 ---
 
 # BUG-3652: Audit resolve_history_db callers under a remote history backend
@@ -27,9 +27,18 @@ Under `history.backend.provider: libsql` (FEAT-3535), `resolve_history_db()` rai
 
 `resolve_history_db()` raises `HistoryBackendNotLocal` (a `HistoryUnsupported` subclass) when `history.backend` selects a remote provider and the path is default-shaped with `LL_HISTORY_DB` unset. Callers that do not catch it propagate the error. Call sites by file (counts from `grep "resolve_history_db("` outside `session_store/`): `cli/history.py` (8), `cli/harness.py` (5), `parallel/orchestrator.py` (4), `fsm/executor.py` (4), `parallel/worker_pool.py` (3), `cli/sprint/run.py` (3), `parallel/merge_coordinator.py` (2), `cli/loop/run.py` (2), `cli/logs.py` (2), `cli/doctor.py` (2, already remote-aware), and one each in `workspace.py`, `work_verification.py`, `user_messages.py`, `transport.py`, `runner_spec.py`, `mcp_server/tools.py`, `fsm/continuity.py`, `decisions.py`, `cli/parallel.py`, `cli/issues/set_status.py`, `cli/issues/research_triage.py`, `cli/ctx_stats.py`, `issue_history/workspace_quality.py`, `history_reader/_base.py`.
 
+## Scope (narrowed after `/ll:advise` review, 2026-09-29)
+
+This issue covers the **startup and write path** only: `wire_transports`, `main_parallel`, the three `_cmd_sprint_run` sites, `apply_status_transition`, `research_triage`, the best-effort writers in `parallel/*`, `cli/loop/run.py`, `fsm/executor.py` and `runner_spec.py`, the loop mid-run sites (`_check_prepatch_check`, `work_verification`, `summarize_completed_state`), and the caller-classification meta-test. The remaining sites were split out:
+
+- **ENH-3657** — user-invoked reader CLIs (`cli/history.py`, `cli/harness.py`, `cli/logs.py`, `cli/ctx_stats.py`, `decisions.py:596`, `user_messages.py:1198`, MCP `history_search`), the `skills/improve-claude-md` CT-0 block, and the reader-facing docs.
+- **ENH-3658** — hand-built `.ll/history.db` paths (`cli/artifact/serve.py`, `dashboard.py`, `doctor_trim.py`, `workflow_sequence/io.py`) and `hooks/scripts/context-monitor.sh`.
+
+Land this issue first. Sections below that still name a moved site are annotated "→ ENH-3657/3658" and are not work for this issue.
+
 ## Expected Behavior
 
-Every caller either reaches the remote store correctly (a history read or write routed through `resolve_history_store` or the target-aware `schema.connect` seam), is guarded so a remote target degrades to "skip" for best-effort telemetry, or raises a clear `HistoryUnsupported` for an operation the remote store does not support. No `ll-*` startup path fails with an unhandled `HistoryBackendNotLocal`.
+Every in-scope caller either reaches the remote store correctly (routed through `resolve_history_store` or the target-aware `schema.connect` seam) or degrades to "skip" for best-effort telemetry on `HistoryError`. No `ll-*` startup path (`ll-parallel`, `ll-sprint run`, `ll-loop run`/`resume`) fails with an unhandled `HistoryBackendNotLocal`, and remote users' orchestration, issue-event and loop-event rows actually reach the remote store (a silently disabled sink is not a pass). Reader sites (ENH-3657) are not part of this expectation.
 
 ## Motivation
 
@@ -37,7 +46,17 @@ FEAT-3535 made `history.backend.provider: libsql` a supported configuration, but
 
 ## Proposed Solution
 
-Audit each call site and classify it: (a) history read or write, so convert to `resolve_history_store` or pass the default-shaped path through the seam; (b) best-effort telemetry, so guard and skip on a remote target; (c) a local-file operation, so raise `HistoryUnsupported` naming the operation via `refuse_on_remote`. Add a test that drives `ll-parallel`, `ll-sprint` and `ll-loop` startup under the Hrana stub backend.
+Audit each in-scope call site and classify it: (a) history read or write, so convert to `resolve_history_store` or pass the default-shaped path through the seam; (b) best-effort telemetry, so guard and skip on a remote target; (c) a local-file operation, so raise `HistoryUnsupported` naming the operation via `refuse_on_remote`. Add a test that drives `ll-parallel`, `ll-sprint` and `ll-loop` startup under the Hrana stub backend.
+
+**Fix mechanism (per `/ll:advise` review; verified against the code):**
+
+- **Transport sites** — `main_parallel` (`cli/parallel.py:327`) and `wire_transports` (`transport.py:2031`): replace `SQLiteTransport(resolve_history_db())` with `SQLiteTransport()`. `SQLiteTransport.__init__` already resolves through `resolve_history_store` and disables itself on `HistoryError`; the pre-resolve is what breaks it. `LL_HISTORY_DB` precedence and the BUG-3181 resolve-once behavior are unchanged. Reword the ENH-3525 comment in `wire_transports` (the intent — never derive the path from `log_dir` — is kept).
+- **Sprint** — `history_db = resolve_history_db()` at `cli/sprint/run.py:566` also feeds `record_orchestration_run` (`:701`, `:869`) and `process_issue_inplace` (`:737`, `:929`), so swapping only the transport calls is not enough. Compute `history_db = resolve_history_store()` once, reuse it at `:660`/`:807` via `SQLiteTransport(history_db)`, and widen the type hints on `SQLiteTransport`, `record_orchestration_run`, `record_issue_event` and `process_issue_inplace` to accept `RemoteTarget` (else mypy fails).
+- **Best-effort writers** (`parallel/orchestrator.py`, `parallel/worker_pool.py`, `parallel/merge_coordinator.py`, `cli/loop/run.py`, `fsm/executor.py`, `runner_spec.py`): they only *look* like they degrade because the pre-resolve raises inside `suppress(Exception)` / `try/except: pass`, so remote users currently lose every orchestration and base-SHA row. Convert them to `resolve_history_store` so the writes reach the remote store; keep the guards.
+- **`apply_status_transition`** (`cli/issues/set_status.py:183`): route the write through `resolve_history_store`; widen the `except` tuple to add `HistoryError` (not `Exception`, so `test_unrelated_exception_propagates` stays valid); keep the frontmatter write first; move the history write out of the `acquire_lock` block (after the cascade) so remote latency does not lengthen the issue lock hold under `ll-parallel`.
+- **Prepatch** (`fsm/executor.py:_check_prepatch_check`, `work_verification.py:_run_non_fsm_prepatch_check`): catch `HistoryError` and set `base_sha`/`base_dirty` to `None`; `resolve_base_ref` falls back to `base_branch`. Refusing here would end the loop `error`. Consequence to document: remote users always get the `base_branch` fallback (writes go remote, reads are local-only).
+- **Continuity** (`fsm/continuity.py:summarize_completed_state`): return `None` early on a `RemoteTarget`, before the backfill.
+- **`research_triage`** (`cli/issues/research_triage.py:122`): guard the resolve so `ll-issues research-triage` degrades instead of raising.
 
 ## Integration Map
 
@@ -45,11 +64,11 @@ Audit each call site and classify it: (a) history read or write, so convert to `
 - The call sites listed above.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `skills/improve-claude-md/SKILL.md` — inline `python3 -c` block calls `resolve_history_db()` then `detect_recurring_feedback(db, ...)`; a real class-(a) caller the table omits, raises under a remote backend in `Step CT-0: Get Evolution Trigger Candidates` [Agent 1 + 2 finding, confirmed at `:206-209`]. Editing a skill trips the mirror gates (`ll-adapt --host <gemini|kimi-code|qwen> --apply`)
+- **→ ENH-3657 (not this issue)** `skills/improve-claude-md/SKILL.md` — inline `python3 -c` block calls `resolve_history_db()` then `detect_recurring_feedback(db, ...)`; a real class-(a) caller the table omits, raises under a remote backend in `Step CT-0: Get Evolution Trigger Candidates` [Agent 1 + 2 finding, confirmed at `:206-209`]. Editing a skill trips the mirror gates (`ll-adapt --host <gemini|kimi-code|qwen> --apply`)
 - `scripts/little_loops/session_store/backend.py` — `_REMOTE_REFUSALS` needs one entry per new operation name passed to `refuse_on_remote(db, "<op>")` for class-(c) sites, else the message falls back to the generic "local-file operation" text, in `refuse_on_remote` [Agent 2 finding]
-- `scripts/little_loops/decisions.py:596` — `generate_from_completed()` resolves then branches on `db_path.exists()` to pick `scan_completed_issues_from_db` vs the issues-dir scan; under remote the natural degrade is the issues-dir scan (the reader layer cannot take a `RemoteTarget`), in `generate_from_completed()` [Agent 2 finding]
-- `scripts/little_loops/issue_history/parsing.py` — `issue_events_ever_recorded()` and `scan_completed_issues_from_db()` gate on `db_path.exists()` and coerce with `Path(db)`; only relevant if a class-(a) site is routed to the remote store rather than refused [Agent 2 finding]
-- `scripts/little_loops/issue_history/evolution.py:39` — `_open_db()` gates on `db_path.exists()`, backs `detect_recurring_feedback()` which the `improve-claude-md` skill calls with the resolved path, in `_open_db()` [Agent 2 finding]
+- **→ ENH-3657 (not this issue)** `scripts/little_loops/decisions.py:596` — `generate_from_completed()` resolves then branches on `db_path.exists()` to pick `scan_completed_issues_from_db` vs the issues-dir scan; under remote the natural degrade is the issues-dir scan (the reader layer cannot take a `RemoteTarget`), in `generate_from_completed()` [Agent 2 finding]
+- **→ ENH-3657 (not this issue)** `scripts/little_loops/issue_history/parsing.py` — `issue_events_ever_recorded()` and `scan_completed_issues_from_db()` gate on `db_path.exists()` and coerce with `Path(db)`; only relevant if a class-(a) site is routed to the remote store rather than refused [Agent 2 finding]
+- **→ ENH-3657 (not this issue)** `scripts/little_loops/issue_history/evolution.py:39` — `_open_db()` gates on `db_path.exists()`, backs `detect_recurring_feedback()` which the `improve-claude-md` skill calls with the resolved path, in `_open_db()` [Agent 2 finding]
 
 ### Dependent Files
 - `scripts/little_loops/session_store/db.py` (`resolve_history_db`, `resolve_history_store`, `resolve_history_target`)
@@ -59,11 +78,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/lifecycle.py:752` — `cmd_resume()` calls `wire_transports(executor.event_bus, config.events)`, reaching the same unguarded `"sqlite"` branch as `main_parallel`/`_cmd_sprint_run`/`cmd_run`. No edit at this site: fixing `wire_transports` in `transport.py` covers it; it is the fifth `wire_transports` caller and the resume path needs its own remote-stub assertion, in `cmd_resume()` [Agent 1 finding]
 - `scripts/little_loops/preparation_policy.py:1004` — `_set_status_checked()` calls `apply_status_transition(...)` in-process; inherits the `HistoryBackendNotLocal` raise (after the status file has been written). No edit here: fix inside `apply_status_transition` [Agent 2 finding]
 - `scripts/little_loops/mcp_server/tools.py:367` — `_tool_issue_set_status()` calls `apply_status_transition(...)`; same propagation, converted to `is_error` by `call_tool` only after the file changed. No edit here [Agent 2 finding]
-- `scripts/little_loops/cli/issues/decisions.py:390` — `cmd_decisions()` (the `generate` subcommand) is the only caller of `generate_from_completed()`; no edit here, but its exit-code/traceback behavior changes with the `decisions.py:596` fix [Agent 2 finding]
-- `scripts/little_loops/cli/messages.py:281` — `main_messages()` is the only caller of `user_messages.extract_conversation_turns()` (site `user_messages.py:1198`); inherits whatever that site does [Agent 2 finding]
-- `scripts/little_loops/cli/artifact/serve.py:92`, `scripts/little_loops/cli/artifact/dashboard.py:438`, `scripts/little_loops/cli/doctor_trim.py:373`, `scripts/little_loops/workflow_sequence/io.py:44` — not `resolve_history_db()` callers: they build `<root>/.ll/history.db` by hand and test `is_file()`/`.exists()`, so under a remote provider they silently act on a nonexistent local file (class (c)-shaped). Advisory; decide whether they are in scope for this audit or a follow-up [Agent 2 finding]
-- `scripts/little_loops/loops/lib/cli.yaml:66` (`ll-history summary`), `scripts/little_loops/loops/lib/cli.yaml:120` (`ll-parallel`), `scripts/little_loops/loops/sprint-build-and-validate.yaml:156` (`ll-sprint run`) — gate consumers with no `|| true`, whose exit code flips to failure under a remote backend until the startup and `summary` sites are fixed. `evaluation-quality.yaml:46` and `backlog-flow-optimizer.yaml:35` already degrade via `|| echo "(no history available)"` [Agent 2 finding]
-- `hooks/scripts/context-monitor.sh` — `record_handoff_needed()`/`record_context_pressure()` already swallow the raise with `>/dev/null 2>&1 || true` (silent drop, no exit-code change); no edit needed unless the rows should reach the remote store [Agent 2 finding]
+- **→ ENH-3657** `scripts/little_loops/cli/issues/decisions.py:390` — `cmd_decisions()` (the `generate` subcommand) is the only caller of `generate_from_completed()`; no edit here, but its exit-code/traceback behavior changes with the `decisions.py:596` fix [Agent 2 finding]
+- **→ ENH-3657** `scripts/little_loops/cli/messages.py:281` — `main_messages()` is the only caller of `user_messages.extract_conversation_turns()` (site `user_messages.py:1198`); inherits whatever that site does [Agent 2 finding]
+- **→ ENH-3658 (decided: out of scope here)** `scripts/little_loops/cli/artifact/serve.py:92`, `scripts/little_loops/cli/artifact/dashboard.py:438`, `scripts/little_loops/cli/doctor_trim.py:373`, `scripts/little_loops/workflow_sequence/io.py:44` — not `resolve_history_db()` callers: they build `<root>/.ll/history.db` by hand and test `is_file()`/`.exists()` [Agent 2 finding]
+- `scripts/little_loops/loops/lib/cli.yaml:120` (`ll-parallel`), `scripts/little_loops/loops/sprint-build-and-validate.yaml:156` (`ll-sprint run`) — gate consumers with no `|| true`, whose exit code flips to failure under a remote backend until the startup sites are fixed (this issue). The `lib/cli.yaml:66` `ll-history summary` gate is a reader → ENH-3657 (add `|| echo` or document exit 1). `evaluation-quality.yaml:46` and `backlog-flow-optimizer.yaml:35` already degrade via `|| echo "(no history available)"` [Agent 2 finding]
+- **→ ENH-3658** `hooks/scripts/context-monitor.sh` — `record_handoff_needed()`/`record_context_pressure()` already swallow the raise with `>/dev/null 2>&1 || true` (silent drop, no exit-code change); no edit needed unless the rows should reach the remote store [Agent 2 finding]
 
 ### Tests
 - New test module driving the three orchestrators under the remote stub; existing `test_remote_hooks.py` shows the fixture shape.
@@ -87,12 +106,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md:2957` — `AutoManager` § says `db_path` and `SQLiteTransport.__init__` resolve "via `resolve_history_db()`"; the constructor actually calls `resolve_history_store`, so the sentence is already stale and should be corrected with the audit in `AutoManager` [Agent 2 finding, confirmed at `:2957`, `:2959`]
-- `docs/reference/API.md:5184` — `main_ctx_stats` § "the DB path resolves via `resolve_history_db()`"; update if the site gains a remote branch, in `main_ctx_stats` [Agent 2 finding]
-- `docs/reference/API.md:13427` — `generate_from_completed` § says it reads `<project_root>/.ll/history.db` "when present, otherwise scans the issues directory"; add the remote behavior, in `generate_from_completed` [Agent 2 finding]
+- **→ ENH-3657** `docs/reference/API.md:5184` — `main_ctx_stats` § "the DB path resolves via `resolve_history_db()`"; update if the site gains a remote branch, in `main_ctx_stats` [Agent 2 finding]
+- **→ ENH-3657** `docs/reference/API.md:13427` — `generate_from_completed` § says it reads `<project_root>/.ll/history.db` "when present, otherwise scans the issues directory"; add the remote behavior, in `generate_from_completed` [Agent 2 finding]
 - `docs/reference/API.md:9946` — `Backend chokepoint: little_loops.session_store.backend` § calls the module the "SQLite-only prerequisite for a future remote provider" and its import list omits `HistoryBackendNotLocal`, `RemoteTarget`, `refuse_on_remote`, `resolve_history_store`, `resolve_history_target`, in `Backend chokepoint` [Agent 2 finding]
 - `docs/ARCHITECTURE.md:758` — paragraph describing `session_store.backend` as the "SQLite-only chokepoint FEAT-3524's remote provider will register"; stale after FEAT-3535, in the `history.db` chokepoint paragraph [Agent 2 finding]
 - `docs/reference/CONFIGURATION.md:736` — `Remote history backend` § "Not supported remotely" bullet lists only `rebuild`, full `backfill`, `prune`, `compact`, `recompress`, `VACUUM`, `ATTACH`, snapshot export; add every command this audit ends up refusing or degrading (class (a)/(c)), in `Remote history backend` [Agent 2 finding]
-- `docs/reference/CLI.md:4381` — the "Under a remote history backend…" paragraph exists only in the `ll-session` section; add a matching note to the `ll-history`, `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-harness`, `ll-logs`, `ll-ctx-stats`, `ll-issues set-status`/`research-triage` sections for whatever behavior lands, in `ll-session` [Agent 2 finding]
+- `docs/reference/CLI.md:4381` — the "Under a remote history backend…" paragraph exists only in the `ll-session` section; add a matching note to the `ll-parallel`, `ll-sprint`, `ll-loop`, `ll-issues set-status`/`research-triage` sections for whatever behavior lands (the `ll-history`, `ll-harness`, `ll-logs`, `ll-ctx-stats` notes → ENH-3657), in `ll-session` [Agent 2 finding]
 - Gates: `scripts/tests/test_wiring_reference_docs.py` pins `history.backend.provider`, `Remote history backend` and `ll-session migrate`; `scripts/tests/test_docs_audience_gate.py` forbids `scripts/tests/`/`scripts/little_loops/` paths in `docs/guides`, `docs/reference` and `skills/` — cite `little_loops.<module>` in prose [Agent 2 finding]
 
 ### Codebase Research Findings
@@ -180,34 +199,33 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Every non-`session_store/` caller is classified (a)/(b)/(c) — the Integration Map caller table is the starting inventory (45 real calls + 2 in `context-monitor.sh`, not 49; three of the issue's listed files only mention the name in docstrings). Verification: a grep for `resolve_history_db(` outside `session_store/` matches the table.
-   > ⚠ Superseded — table omits the `skills/improve-claude-md/SKILL.md` CT-0 call
-2. `ll-parallel` and `ll-sprint run` start under the Hrana stub with `LL_HISTORY_DB` unset and reach their first phase; the two unguarded startup sites and the `wire_transports` sqlite branch no longer raise. `ll-loop run` (with and without `--worktree`, and a state using `prepatch_check`/`session_mode: continue`) completes without a `HistoryBackendNotLocal`.
-3. Best-effort (b) sites degrade to skip on `HistoryError`, including `apply_status_transition` (the status file must not change and then raise); reader (a) commands either reach the remote store or raise a clear `HistoryUnsupported` naming the operation — none surfaces a bare `HistoryBackendNotLocal` traceback.
-4. Coverage: a new remote-stub test module in the `test_remote_*.py` family drives the three orchestrators' startup using the `remote` fixture shape (including the `LL_HISTORY_DB` delenv) plus a dead-endpoint case asserting startup still succeeds; a local-provider twin proves behavior is unchanged. Existing tests that patch `resolve_history_db` by name (`test_worker_pool.py`, `test_transport.py`, `test_cli_harness.py`) keep passing or are updated with the change.
-5. `python -m pytest scripts/tests/` passes with the default local store; `ruff check` and `mypy` clean on touched files (scope `ruff format` to changed files).
+Order matters (per the Outcome Risk mitigation): land the startup fixes and the `HistoryError` guard first, then the writer conversions, then the meta-test.
 
-### Wiring Phase (added by `/ll:wire-issue`)
+1. **Startup fixes.** `wire_transports` and `main_parallel` use `SQLiteTransport()`; `_cmd_sprint_run` computes `history_db = resolve_history_store()` once and reuses it at `:660`/`:807`; widen the `RemoteTarget` type hints (`SQLiteTransport`, `record_orchestration_run`, `record_issue_event`, `process_issue_inplace`). Verification: `ll-parallel`, `ll-sprint run` and `ll-loop run`/`resume` start under the Hrana stub with `LL_HISTORY_DB` unset and reach their first phase; `mypy` clean.
+2. **`apply_status_transition` and `research_triage`.** Route through `resolve_history_store`, widen the guard to `HistoryError` only, keep the file write first, move the history write out of `acquire_lock`. Verification: under remote, the status file changes and the command exits 0; `test_unrelated_exception_propagates` still green; `preparation_policy._set_status_checked` and MCP `issue_set_status` inherit the fix.
+3. **Best-effort writers and mid-run sites.** Convert the `suppress(Exception)` / `try/except: pass` writers (`parallel/*`, `cli/loop/run.py`, `fsm/executor.py`, `runner_spec.py`) to `resolve_history_store`; prepatch sites catch `HistoryError` and fall back to `base_sha=None`; `summarize_completed_state` returns `None` early on a `RemoteTarget`. Verification: the stub receives the `loop_events` / `issue_events` / orchestration rows; a `prepatch_check` state and `session_mode: continue` finish without `error`.
+4. **Meta-test.** Add the caller-classification gate (see Wiring Phase). Verification: passes with an empty class-(b) allowlist; a zero-tolerance rule rejects `SQLiteTransport(resolve_history_db())`.
+5. **Tests + docs** for the in-scope sites (Wiring Phase). `python -m pytest scripts/tests/` passes with the default local store; `ruff check` and `mypy` clean on touched files (scope `ruff format` to changed files).
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+### Wiring Phase (added by `/ll:wire-issue`, narrowed after `/ll:advise` review)
 
-- Update `skills/improve-claude-md/SKILL.md` — classify the `Step CT-0` `resolve_history_db()` call and guard or degrade it under remote (keep the block short: SKILL.md is capped at 500 lines); then run `ll-adapt --host <gemini|kimi-code|qwen> --apply` to clear the mirror gates and re-run `scripts/tests/test_improve_claude_md_skill.py`
-- Update `scripts/little_loops/session_store/backend.py` — add a `_REMOTE_REFUSALS` entry for each new `refuse_on_remote(db, "<op>")` operation name, and add matching rows to `_REJECTED` in `scripts/tests/test_remote_operation_matrix.py::TestRejectedOperations`
-- Update `scripts/little_loops/decisions.py` `generate_from_completed()` — on a `RemoteTarget`, fall back to the issues-directory scan instead of `resolve_history_db(...).exists()`; `cli/issues/decisions.py:cmd_decisions` and the `test_decisions.py`/`test_cli_decisions.py` cases (`generate_from_completed` at ~`:944-975`, ~`:1399-1435`) need a remote twin
+_These touchpoints must be included in the implementation:_
+
 - Update `scripts/little_loops/transport.py` `wire_transports()` — this single fix also covers `cli/loop/lifecycle.py:cmd_resume`, `cli/loop/run.py:cmd_run`, `cli/parallel.py` and `cli/sprint/run.py`; add a `cmd_resume` assertion to the remote-stub startup tests rather than editing `lifecycle.py`
-- Update `scripts/little_loops/cli/issues/set_status.py` `apply_status_transition()` — widen the guard to include `HistoryError` (not `Exception`, to keep `test_unrelated_exception_propagates` valid); `preparation_policy._set_status_checked` and `mcp_server.tools._tool_issue_set_status` inherit the fix
-- Update `scripts/tests/test_worker_pool.py` — keep a module-level `resolve_history_db` name in `parallel/worker_pool.py` or update the two `patch.object(worker_pool_module, "resolve_history_db", ...)` sites (`:4546`, `:4568`)
-- Update `scripts/tests/test_transport.py::test_sqlite_branch_ignores_log_dir_and_honors_ll_history_db` — adapt if `wire_transports` stops calling `resolve_history_db()`
-- Add a caller-classification meta-test modeled on `scripts/tests/test_history_store_chokepoint_gate.py` (AST walk of `scripts/little_loops/` keyed by `(rel_path, enclosing_function)` with a drift check), matching `ast.ImportFrom` as well as calls; extend it or add a sibling assertion for the `skills/` and `hooks/scripts/` shell callers
+- Update `scripts/little_loops/cli/issues/set_status.py` `apply_status_transition()` — see Proposed Solution; `preparation_policy._set_status_checked` and `mcp_server.tools._tool_issue_set_status` inherit the fix
+- Update `scripts/little_loops/session_store/backend.py` — add a `_REMOTE_REFUSALS` entry (and a matching `_REJECTED` row in `test_remote_operation_matrix.py::TestRejectedOperations`) only if a class-(c) site in this issue's scope ends up refusing; the reader refusals belong to ENH-3657
+- Update `scripts/tests/test_worker_pool.py` — the two `patch.object(worker_pool_module, "resolve_history_db", ...)` sites (`:4546`, `:4568`) must follow the rename to `resolve_history_store` (or keep a module-level `resolve_history_db` name)
+- Update `scripts/tests/test_transport.py` — `test_sqlite_branch_ignores_log_dir_and_honors_ll_history_db` and `test_sqlite_registered_by_name` pin the `wire_transports` sqlite branch against `resolve_history_db()`; adapt to `SQLiteTransport()`
+- Add a new `test_remote_*.py` module: `remote` fixture per the `test_remote_hooks.py` shape (including the `LL_HISTORY_DB` delenv), driving `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume`, `ll-issues set-status`, plus a dead-endpoint case and a local-provider twin
+- Add a caller-classification meta-test modeled on `scripts/tests/test_history_store_chokepoint_gate.py`: AST walk of `scripts/little_loops/` matching `ast.Call` nodes, keyed by `(rel_path, enclosing_function)` (owner map as in `test_usage_selection_chokepoint_gate.py:_enclosing_functions`) with a drift test asserting stale entries are empty and a detector self-test; do **not** add `ImportFrom` matching (a function-local `from x import name` is caught by `ast.walk`), but fail on an aliased import. Reader-site entries are allowlisted with "→ ENH-3657"
 - Add `scripts/tests/test_fsm_continuity.py` and `scripts/tests/test_fsm_executor.py` remote cases — `summarize_completed_state()` with `db=None`, and `_check_prepatch_check()` under a `prepatch_check` policy
-- Update docs — `docs/reference/API.md` (`AutoManager`, `main_ctx_stats`, `generate_from_completed`, `Backend chokepoint`), `docs/ARCHITECTURE.md:758`, `docs/reference/CONFIGURATION.md` `Remote history backend`, `docs/reference/CLI.md` per-CLI remote notes; keep `test_wiring_reference_docs.py` and `test_docs_audience_gate.py` green
-- Decide scope for the hand-built `.ll/history.db` paths in `cli/artifact/serve.py`, `cli/artifact/dashboard.py`, `cli/doctor_trim.py` and `workflow_sequence/io.py` (advisory; class (c)-shaped, not `resolve_history_db()` callers)
+- Update docs — `docs/reference/API.md:2957` (`AutoManager` sentence is already stale: the constructor calls `resolve_history_store`), `docs/reference/API.md` `Backend chokepoint` and `docs/ARCHITECTURE.md:758` (both call the module SQLite-only; stale after FEAT-3535), `docs/reference/CONFIGURATION.md` `Remote history backend` (document the prepatch `base_branch` fallback), `docs/reference/CLI.md` notes for `ll-parallel`/`ll-sprint`/`ll-loop`/`ll-issues set-status`; keep `test_wiring_reference_docs.py` and `test_docs_audience_gate.py` green
 
 ## Impact
 
 - **Priority**: P3. Affects only opt-in remote-backend users, but a startup failure in a main orchestrator is severe for them.
-- **Effort**: Medium.
-- **Risk**: Low; local SQLite behavior must stay byte-identical (`resolve_history_store` returns a plain `Path` for a local store).
+- **Effort**: Medium (after the split; reader/docs/hand-built work moved to ENH-3657/ENH-3658).
+- **Risk**: Low-Medium; local SQLite behavior must stay byte-identical (`resolve_history_store` returns a plain `Path` for a local store). Converting the `suppress(Exception)` writers turns on real network writes for remote users: per-issue `SQLiteTransport` construction in sprint pays `telemetry_timeout_ms` per issue against a dead endpoint, and `set_status` history writes must stay out of `acquire_lock`. Remote users always get the prepatch `base_branch` fallback (reads are local-only) — document it.
 
 ## Steps to Reproduce
 
@@ -217,13 +235,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Every non-`session_store/` caller of `resolve_history_db()` is classified and either routed, guarded or refused with a named `HistoryUnsupported`.
-- [ ] `ll-parallel`, `ll-sprint` and `ll-loop` start under a remote (Hrana stub) backend without an unhandled `HistoryBackendNotLocal`.
-- [ ] With the default local store, `python -m pytest scripts/tests/` passes unchanged.
+- [ ] The caller-classification meta-test passes with an empty class-(b) allowlist, and a zero-tolerance rule rejects any `SQLiteTransport(resolve_history_db())` pattern; reader and hand-built sites are allowlisted with a pointer to ENH-3657 / ENH-3658.
+- [ ] `ll-parallel`, `ll-sprint run`, `ll-loop run` and `ll-loop resume` start under a remote (Hrana stub) backend with `LL_HISTORY_DB` unset without an unhandled `HistoryBackendNotLocal`, and the stub receives the `loop_events` / `issue_events` / orchestration writes (a silently disabled sink does not pass).
+- [ ] A remote-stub sprint completes at least one wave with exit 0; a `prepatch_check` state and a `session_mode: continue` state finish without ending `error`.
+- [ ] `ll-issues set-status` under remote changes the status file, records the history rows, and exits 0; an unrelated exception still propagates.
+- [ ] Dead endpoint (`remote.stop()`): startup still exits 0 within a wall-clock bound, with no `Traceback` and no auth-token sentinel in stderr.
+- [ ] Local-provider twin: behavior unchanged, and `transport._path == resolve_history_db()`.
+- [ ] `python -m pytest scripts/tests/` passes with the default local store; tests that patch `resolve_history_db` by name (`test_worker_pool.py`, `test_transport.py`) may be updated for the rename.
 
 ## Related
 
 - FEAT-3535 (remote libSQL history backend); see its Deviations and Resolution sections.
+- ENH-3657 (reader CLIs, `improve-claude-md` CT-0, reader docs) and ENH-3658 (hand-built `.ll/history.db` paths, `context-monitor.sh`) — split out of this issue; land this one first.
 
 ## Related Key Documentation
 
@@ -248,8 +271,7 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 **Outcome Confidence**: 56/100 → LOW
 
 ### Concerns
-- Class (a) reader sites (`cli/history.py`, `cli/harness.py`, `cli/logs.py`, `decisions.py`, `user_messages.py`) have no per-site verdict yet: "reach the remote store or raise `HistoryUnsupported`" is left to implementer judgement, and the reader layer coerces with `Path(db)`, so routing to remote is not a call-site-only change.
-- Scope of the hand-built `.ll/history.db` paths (`cli/artifact/serve.py`, `dashboard.py`, `doctor_trim.py`, `workflow_sequence/io.py`) is undecided (advisory).
+- RESOLVED by the split: class (a) reader sites moved to ENH-3657 (default verdict: named `refuse_on_remote`, with per-site degrades); hand-built `.ll/history.db` paths moved to ENH-3658. Re-run `/ll:confidence-check` on the narrowed scope.
 - Guard style disagrees across the codebase (narrow tuple in `set_status.py` vs broad `Exception` elsewhere); the issue picks `HistoryError`, which is consistent with the Decision Rules.
 
 ### Outcome Risk Factors
