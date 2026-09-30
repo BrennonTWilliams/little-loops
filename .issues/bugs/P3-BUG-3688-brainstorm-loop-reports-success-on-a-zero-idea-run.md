@@ -23,7 +23,7 @@ The shipped `brainstorm` loop can finish `done` with **zero ideas**: `verify_art
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+`verify_artifacts` only checks that `brainstorm.md` is non-empty, so a zero-idea run finishes `done` and sinks can execute.
 
 ## Expected Behavior
 
@@ -31,10 +31,10 @@ The shipped `brainstorm` loop can finish `done` with **zero ideas**: `verify_art
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - silent success on an empty run, small blast radius
+- **Effort**: Small - one added check in `verify_artifacts` plus a fixture
+- **Risk**: Low - fails a run that has no ideas; nothing else changes
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 

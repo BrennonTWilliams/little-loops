@@ -24,10 +24,10 @@ Each child lands with its own enablement in one change: widen `BUILT_CAPABILITIE
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - optional capabilities; the core engine works without them
+- **Effort**: Large - three gated capabilities (ground, materialize, pre-mortem) plus the deferred `ground=web`
+- **Risk**: Low - each is gated behind a profile knob and lands with its own enablement
+- **Breaking Change**: No
 
 ## Children
 - **FEAT-3584** — Brainstorm ground state with codebase and web evidence probes (open; v1 = codebase only)

@@ -27,11 +27,11 @@ _Created 2026-09-30 from the EPIC-3581 fifth pre-implementation review (`/ll:adv
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+No measurement exists for the grid, blind re-tag, occupancy steering, LLM dedup or batched round judging; the design is committed to in seven issues on reasoning alone.
 
 ## Expected Behavior
 
-[What should happen instead]
+Each load-bearing claim has a recorded measurement and go/no-go verdict before FEAT-3667's grid-dependent commands and FEAT-3582 are built.
 
 ## Motivation
 
@@ -39,10 +39,10 @@ Four spec-detail reviews produced a large design (grid + occupancy steering, bli
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - gates the FEAT-3667 grid pieces and FEAT-3582
+- **Effort**: Small - one day, ≈ 75 LLM calls, offline scripts only
+- **Risk**: Low - no repo code changes; results only re-route existing issues
+- **Breaking Change**: No
 
 ## Scope
 
