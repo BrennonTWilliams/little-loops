@@ -192,7 +192,7 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 ## Related
 
 - BUG-3652 (startup/write-path audit; **done**, `62ac0fc89`); ENH-3677 (shared `remote` fixture; `blocked_by`, land first); ENH-3682 (prepatch read budget; independent, `relates_to` only); FEAT-3535 (remote libSQL backend).
-- ENH-3668 (`HistoryTarget`-aware readers; serves what this issue refuses in the interim); ENH-3658 (hand-built paths; coordinate on the shared guard).
+- ENH-3668 (strict-read infra), ENH-3684 (`ll-history` flips) and ENH-3685 (MCP + SFT) — split 2026-09-30; they serve what this issue refuses in the interim; ENH-3658 (hand-built paths; coordinate on the shared guard).
 - Consequence to record: remote users lose `ll-history` reader subcommands (except `summary`, which degrades) and MCP `history_search` until ENH-3668; `ll-harness` reads work.
 
 ## Status
