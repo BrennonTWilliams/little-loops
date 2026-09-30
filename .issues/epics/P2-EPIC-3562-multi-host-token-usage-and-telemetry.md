@@ -96,6 +96,18 @@ Before closing the epic, replace each owner entry with an evidence-backed verdic
 - **ENH-3665** — Prove Kimi component and replay identity
 
 Standalone **ENH-3649** (reader isolation and diagnostics) is done and remains outside this epic's child count.
+- **ENH-3671** — Implement OpenCode stored token usage (open)
+- **ENH-3672** — Implement Pi stored token usage (open)
+- **ENH-3673** — Implement Qwen stored token usage (open)
+- **ENH-3674** — Implement Gemini stored token usage (open)
+- **ENH-3675** — Implement OMP stored token usage (open)
+- **ENH-3676** — Implement Kimi Code stored token usage (open)
+
+
+
+
+
+
 
 ## Implementation Order and Readiness
 
