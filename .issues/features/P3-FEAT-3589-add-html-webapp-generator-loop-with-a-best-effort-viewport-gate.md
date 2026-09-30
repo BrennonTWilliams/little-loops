@@ -1,7 +1,7 @@
 ---
 id: FEAT-3589
 type: FEAT
-title: Add html-webapp-generator loop enforcing single-viewport app-shell artifacts
+title: Add html-webapp-generator loop with a best-effort viewport gate
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -18,11 +18,11 @@ score_ambiguity: 25
 score_change_surface: 18
 ---
 
-# FEAT-3589: Add html-webapp-generator loop enforcing single-viewport app-shell artifacts
+# FEAT-3589: Add html-webapp-generator loop with a best-effort viewport gate
 
 ## Summary
 
-Add a standalone built-in FSM loop, `html-webapp-generator`, that produces a single-viewport, webapp-style HTML artifact: an app-shell layout with no document-level scroll. It is enforced by a non-LLM Playwright viewport gate, not just prompt wording.
+Add a standalone built-in FSM loop, `html-webapp-generator`, that aims for a single-viewport, webapp-style HTML artifact. A non-LLM Playwright viewport gate measures and retries layout failures; after its bounded retry cap the loop may accept an artifact with a clearly reported `VIEWPORT_UNFIT` result.
 
 ## Current Behavior
 
@@ -33,7 +33,7 @@ No built-in loop produces a single-viewport, app-shell HTML artifact:
 
 ## Expected Behavior
 
-`ll-loop run html-webapp-generator "<description>"` converges on a self-contained `index.html` app-shell (header / sidebar / main panes) that fills the viewport (`100dvh`) with no document-level scroll at every configured viewport (default 1440x900, 1024x768, 375x667). Overflow is confined to internal scroll panes. Violations are caught by the non-LLM `viewport_gate`, which appends per-viewport measurements to the run's `critique.md` and routes back to `run_gen_eval` for regeneration; harness faults route to `failed`.
+`ll-loop run html-webapp-generator "<description>"` attempts to converge on a self-contained `index.html` app-shell (header / sidebar / main panes) that fills the viewport (`100dvh`) with no document-level scroll at every configured viewport (default 1440x900, 1024x768, 375x667). Overflow belongs in internal scroll panes. The non-LLM `viewport_gate` appends per-viewport measurements to the run's `critique.md` and routes failures back to `run_gen_eval` until its cap; at the cap it measures the **current** page and reports a visible best-effort `VIEWPORT_UNFIT` status if overflow remains. Harness faults route to `failed`.
 
 ## Motivation
 
@@ -56,7 +56,7 @@ plan → run_gen_eval (loop: oracles/generator-evaluator) → smoke_test → vie
    - assert `document.documentElement.scrollHeight <= innerHeight` and `scrollWidth <= innerWidth`. `scrollHeight` counts overflowed content even under `overflow: hidden`, so page-level clipping is still caught (prototype-confirmed: a `body{overflow:hidden}` page still fails the height check).
    - assert the bounding boxes of key interactive elements (`button`, `a`, `input`, `select`, `textarea`, `[role=button]`) that are visible and not inside a scrollable ancestor lie within the viewport. This catches content clipped inside `overflow: hidden` containers. Elements inside semantically hidden subtrees (`[inert]`, `[hidden]`, `[aria-hidden="true"]`, `visibility: hidden`) are excluded — a closed off-canvas drawer hidden only by translation sits outside the viewport and would otherwise false-fail at mobile size. Coverage note: interactive elements only — non-interactive content clipped in an `overflow: hidden` (non-scrollable) pane is caught by the rubric layout-fit criterion and the full-page screenshot, not by this gate.
 4. **Feedback on failure**: before routing back to `run_gen_eval`, `viewport_gate` must append the measured dimensions and overflow amounts per viewport to `${context.run_dir}/critique.md` under an `## Issues to Address` heading, as `vision_gate` does. `smoke_test` writes nothing on failure, which would leave the regeneration pass blind to why it failed.
-5. **Exit-code contract** (matches `smoke_test`): an artifact failure prints `FAIL:...` and exits 0 → `on_no: run_gen_eval`. A harness fault (node/Playwright missing, unreadable path) exits non-zero → `on_error: failed`. Bound ping-pong with a per-run round-cap file (like `vision_gate`'s `.vision_rounds`). At the cap, accept with a warning (decided 2026-09-25, matches `vision_gate` precedent): print the failing per-viewport measurements in the acceptance line so the violation is recorded in the log and critique.md. Loop docs must say "best-effort enforcement, up to 3 refine rounds", never "never ships an overflowing page".
+5. **Exit-code contract** (matches `smoke_test`): an artifact failure prints `FAIL:...` and exits 0 → `on_no: run_gen_eval`. A harness fault (node/Playwright missing, unreadable path) exits non-zero → `on_error: failed`. Bound viewport ping-pong with a per-run round-cap file. At the cap, **measure before accepting** and print `VIEWPORT_UNFIT` plus the failing per-viewport measurements in the acceptance line and critique.md; a clean pass prints `VIEWPORT_PASS`. A later vision-driven regeneration must be measured again. Bound `smoke_test` failures separately: the first two failures append critique and retry, while a third failure routes to `failed`. Docs must say "best-effort viewport fit, up to 3 viewport refine rounds", never "never ships an overflowing page".
 
 ### Explicitly out of scope: the shared oracle
 
@@ -75,8 +75,8 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ### Types
 
-- Loop context contract mirrors `html-website-generator` (`pass_threshold`, `design_tokens_context`, `design_guidance_context`) plus `viewports: str` — space-separated `/^\d+x\d+$/` entries, default `"1440x900 1024x768 375x667"`, parsed inside the `viewport_gate` node script. Interpolate it into the gate action as `${context.viewports:shell}`: the plain quoted form trips the MR-11 shell-safety warning, while the `:shell` suffix `shlex.quote()`s the resolved value (`scripts/little_loops/fsm/interpolation.py:280-341`) and needs no `mr11-ok` suppression marker (prototype-validated, 2026-09-25). `run_dir` still reaches the script only via the `ABS_DIR` env var, never interpolation, per the interpolation-baseline ratchet. Malformed entries are skipped with a warning on stdout; only a zero-valid-viewports list is a harness fault (non-zero exit → `failed`).
-- Budget: `max_steps` must be raised from the wrapper's `12`, accounting for **both** gates bouncing. The original 16-step estimate counted only `viewport_gate` rounds; `vision_gate` also routes back to `run_gen_eval`, and once the viewport cap is reached each vision-fail round still costs `run_gen_eval + smoke_test + viewport_gate(accept-at-cap) + vision_gate` = 4 steps. Worst path with both caps exhausted: `plan(1) + 3×(run_gen_eval, smoke_test, viewport_gate fail)` (9) `+ 3×(run_gen_eval, smoke_test, viewport_gate accept, vision_gate fail)` (12) `+ final accept cycle + done` (5) `= 27` steps. Prototype correction (2026-09-25): use `max_steps: 28` and loop-level `timeout: 7200` — the wrapper's field (`html-website-generator.yaml:21`) at 3600 is sized for one gate's bounce path. The structure test asserts `max_steps ≥ linear prefix + cap × states-per-round` for both gates.
+- Loop context contract mirrors `html-website-generator` (`pass_threshold`, `design_tokens_context`, `design_guidance_context`) plus `viewports: str` — space-separated `WxH` entries, default `"1440x900 1024x768 375x667"`, parsed inside the `viewport_gate` node script. Both dimensions must be positive integers at most 8192; `0x0` and oversized entries are malformed. Interpolate it into the gate action as `${context.viewports:shell}`: the `:shell` suffix safely quotes the resolved value. `run_dir` reaches the script only via the `ABS_DIR` env var, never interpolation, per the interpolation-baseline ratchet. Malformed entries are skipped with a warning on stdout; zero valid viewports is a harness fault (non-zero exit → `failed`).
+- Budget: the viewport-plus-vision worst path is 27 steps, but the copied `smoke_test.on_no → run_gen_eval` adds two steps per failure and has no cap today. Allow **two smoke-failure retries** globally (a third failure routes to `failed`) and reserve four more steps: worst path 31, `max_steps: 32` (one-step margin), loop-level `timeout: 7200`. The structure test must count both gate caps and the smoke budget; any exhausted smoke cap routes to `failed`, never silently accepts.
 
 ### Signatures
 
@@ -94,8 +94,9 @@ No Python source changes: the loop is package data picked up by `get_builtin_loo
 
 - `viewport_gate` FAIL condition, evaluated at each viewport in `viewports` (default `1440x900 1024x768 375x667`): document-level scroll present (`document.documentElement.scrollHeight > window.innerHeight` or `scrollWidth > window.innerWidth`), OR any visible interactive element (`button`, `a`, `input`, `select`, `textarea`, `[role=button]`) not inside a scrollable ancestor has a bounding box extending past the viewport edges — excluding elements inside semantically hidden subtrees (`[inert]`, `[hidden]`, `[aria-hidden="true"]`, `visibility: hidden`), so closed off-canvas drawers hidden that way do not false-fail at 375x667 (prototype finding, 2026-09-25: a translation-only-hidden drawer failed the gate at mobile size). Every configured viewport must pass for the gate to pass.
 - Exit-code mapping: artifact failure → exit 0 with `FAIL:` detail lines and no PASS token; harness fault (node/Playwright missing, unreadable artifact path, exit 124 timeout) → non-zero exit → verdict `error` → `on_error: failed`.
-- Round cap: `.viewport_rounds` counter file in `${context.run_dir}`, cap `3` (mirrors `.vision_rounds` / `ROUND_CAP = 3`, `html-website-generator.yaml:215`); increment only on gate-fail rounds. Disposition at exhaustion: **accept-at-cap** (decided 2026-09-25, matches `vision_gate` precedent, `html-website-generator.yaml:220-221`) — the acceptance output must print the failing per-viewport measurements so the violation lands in the run log.
-- Escape hatch: a per-run `viewports` context value overrides the default viewport list; it is a loop-context value, never a `with:` binding (unknown `with:` keys fail `_validate_with_bindings`). Malformed entries (not `WxH` integers) are skipped with a warning on stdout; only a zero-valid-viewports list is a harness fault (non-zero exit → `failed`).
+- Round cap: `.viewport_rounds` counter file in `${context.run_dir}`, cap `3`; increment only on gate-fail rounds. At exhaustion, measure the current page before **accept-at-cap** and emit `VIEWPORT_UNFIT` plus failing per-viewport measurements in the run log and critique. Run this measurement again after any vision-driven regeneration. A clean measured pass emits `VIEWPORT_PASS`.
+- Smoke cap: `.smoke_rounds` counts failures across the run; the first two append detail to critique and retry, and a third routes to `failed`.
+- Escape hatch: a per-run `viewports` context value overrides the default list; it is a loop-context value, never a `with:` binding. Malformed, zero, or over-8192 dimensions are skipped with a warning; no valid viewports is a harness fault.
 
 ### Codebase Research Findings
 
@@ -137,7 +138,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_guides_and_meta.py:446` — `test_doc_counts_all_match()` is the pytest gate behind the README loop-count bump; fails until `README.md:185` is updated [Agent 1 finding]
 - `scripts/tests/test_packaging_duplicate_files.py:18` — `test_readme_matches_repo_root()` enforces byte-equality `README.md` == `scripts/README.md` after the bump [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py:10494` — `TestHtmlWebsiteGeneratorLoop` is the clone template for `TestHtmlWebAppGeneratorLoop`: state set incl. `viewport_gate`/`vision_gate`, `smoke_test.on_yes == "viewport_gate"`, `critique.md` membership in the gate action, `ROUND_CAP` membership, `viewports` context default, and max_steps ≥ linear prefix + cap × states-per-round (`scripts/tests/test_flux_image_generator.py:114`) [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py::TestHtmlWebsiteGeneratorLoop` is the clone template for `TestHtmlWebAppGeneratorLoop`: state set incl. `viewport_gate`/`vision_gate`, `smoke_test.on_yes == "viewport_gate"`, critique append, both gate caps, the new global smoke cap, `viewports` context default, and a max-steps formula covering all three retry paths.
 - New behavioral test file (pattern: `scripts/tests/test_rlhf_svg_evaluate_smoke.py:86-136`) — regex-extract the `viewport_gate` inline node script (quoted heredoc), stub Playwright (`setViewportSize`/`evaluate` returning `scrollHeight`/`innerHeight`), assert PASS/FAIL tokens, exit codes, and the critique.md append; guard with `require_node()` [Agent 3 finding]
 - `scripts/tests/test_builtin_loops.py:21025` + `scripts/tests/data/loop_interpolation_baseline.json` — exact-set interpolation ratchet; the `viewport_gate` critique-append must hand paths via env var (`ABS_DIR`, like `vision_gate`) or the baseline gains entries its own `_comment` forbids [Agent 2 finding]
 - `scripts/tests/test_builtin_loops.py:307` — gate token must be compound (e.g. `VIEWPORT_PASS`), never bare `PASS` [Agent 2 finding]
@@ -162,17 +163,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - Validation surface: `ll-loop validate` (`scripts/little_loops/cli/loop/config_cmds.py:32-37`) → `load_and_validate` (`scripts/little_loops/fsm/validation/structural_rules.py:1873`), which runs `_validate_with_bindings` (rejects unknown `with:` keys vs the oracle's declared params — `viewports` must stay a parent loop-context value, never a `with:` binding) and `_validate_loop_references` (reachability — `oracles/generator-evaluator` must resolve; it does). Shell-safety rules that bite a Playwright probe state: MR-7 (unescaped `${VAR:-x}`), MR-11 (raw `${context.*}` in bash-token positions; per-site escape is a `# ll-lint: mr11-ok(<ns>.<key>) <reason>` marker, which must then be enumerated in `MR11_MARKER_ALLOWLIST`, `scripts/tests/test_builtin_loops.py:21088`, exact-equality assertion), MR-3 artifact isolation (satisfied by the top-level `scope: - "${context.run_dir}"` block, `html-website-generator.yaml:18-19`), and `_validate_missing_scope` (warns without it). MR-1/MR-2 meta-loop rules do not fire — an HTML generator's actions touch no harness artifacts.
-- Test surface beyond the name list: `test_expected_loops_exist` (`scripts/tests/test_builtin_loops.py:204`) asserts exact set equality (`assert expected == actual`, line 304) — the `html-webapp-generator` stem must be added or the suite fails. The `builtin_loops` fixture (`rglob("*.yaml")` + `is_runnable_loop`, lines 62-68) auto-discovers the new YAML and auto-applies: YAML parse, full `load_and_validate` + `validate_fsm`, failure-edge→failure-terminal, gate-completeness, `description:` field, `scope:` field, no bare `PASS` pattern, no unescaped bash `${...}` (lines 327-390). `TestValidatorWarningBudget` (line 17430) ratchets validator warnings — the new YAML must arrive warning-free (no-scope and unsafe-context-interp categories included) or that test fails.
-- README loop count is gate-enforced, not cosmetic: README.md:185 ("~108 FSM loops") is verified programmatically by `verify_documentation()` (`scripts/little_loops/doc_counts.py:182`) against the recursive runnable-loop count; mirror with `command cp -f README.md scripts/README.md`.
+- Test surface beyond the name list: `test_expected_loops_exist` (`scripts/tests/test_builtin_loops.py:204`) asserts exact set equality (`assert expected == actual`, line 304) — the `html-webapp-generator` stem must be added or the suite fails. The `builtin_loops` fixture (`rglob("*.yaml")` + `is_runnable_loop`, lines 62-68) auto-discovers the new YAML and auto-applies: YAML parse, full `load_and_validate` + `validate_fsm`, failure-edge→failure-terminal, gate-completeness, `description:` field, `scope:` field, no bare `PASS` pattern, no unescaped bash `${...}` (lines 327-390). `TestValidatorWarningBudget` (locate by class name) ratchets validator warnings — the new YAML must arrive warning-free (no-scope and unsafe-context-interp categories included) or that test fails.
+- README loop count is gate-enforced, not cosmetic: use the **current** count reported by `verify_documentation()` (`scripts/little_loops/doc_counts.py`) and increment it for the new loop; mirror with `command cp -f README.md scripts/README.md` rather than copying a stale `~108` figure.
 - Sub-loop routing facts: oracle `done` → parent `on_yes`; oracle `failed`/`screenshot_abandoned` → parent `on_no`; oracle max-steps → `on_no` (`scripts/little_loops/fsm/executor.py:1346-1377`). `run_gen_eval`'s `with:` block is `interpolate_dict`-ed before the child loads (executor.py:1122) and missing required child params (`run_dir`, `generate_prompt`) raise `ValueError` → `on_error` (executor.py:1124-1129) — the new loop binds them exactly as `html-website-generator.yaml:64-131` does.
 
 ### Prototype Validation Findings
 
 _Added 2026-09-25 — a working prototype of this loop was built and validated in a consumer project's `.loops/` against this checkout (local-editable), before the built-in lands here:_
 
-- Prototype: `.loops/html-webapp-generator.yaml` in the consumer project, following this issue's design; `ll-loop validate` passes with no warnings.
+- Prototype: a consumer-project loop definition following this issue's design; `ll-loop validate` passes with no warnings.
 - End-to-end: `ll-loop run html-webapp-generator "kanban board for a 4-person team"` passed every gate on the **first try**, 11m 37s over 5 steps (run dir `html-webapp-generator-20260925T191636`). Page height matched the window exactly at all three sizes; vision scores 8/7/8/9 and `layout_fit` 9. At 1440x900 the columns scroll inside their own panes; at 375x667 the layout collapsed to a menu button with a horizontally scrolling board — the responsive-collapse requirement works.
-- **Budget correction**: the originally proposed `max_steps: 16` was too low — `vision_gate` also sends runs back for another round, and if both gates use all 3 rounds the path is 27 steps (see § Program Design, Budget). As-built: `max_steps: 28`, `timeout: 7200`.
+- **Prototype budget history**: the original prototype used `max_steps: 28` and `timeout: 7200` after counting 27 viewport/vision steps. This omitted smoke failures; the current implementation target is `max_steps: 32` with a two-failure smoke cap (see § Program Design, Budget).
 - **Off-screen-drawer false fail**: a closed off-canvas menu translated off-screen (not semantically hidden) fails the gate at 375px because its links sit outside the window. Folded into the design: the gate skips `[inert]`/`[hidden]`/`[aria-hidden="true"]`/`visibility: hidden` subtrees, and the generator prompt requires closed drawers to be hidden that way (§ Proposed Solution, § Decision Rules).
 - **`viewports` interpolation**: `${context.viewports:shell}` — the plain quoted form gets an MR-11 shell-safety warning; the `:shell` form resolves the value safely (`shlex.quote`, `scripts/little_loops/fsm/interpolation.py:280-341`) and needs no suppression marker.
 - **Gate script delivery**: quoted heredoc (`node - <<'JS'`) instead of `node -e "..."` — avoids the quoting problems and still keeps `${` out of the script.
@@ -183,7 +184,7 @@ _Added 2026-09-25 — a working prototype of this loop was built and validated i
 ## Implementation Steps
 
 1. Create `scripts/little_loops/loops/html-webapp-generator.yaml` (new file) from `html-website-generator.yaml` with the app-shell generator prompt (including the responsive-collapse requirement) and rubrics. Keep the `generate_prompt` paragraph directing the generator to read `critique.md`'s "Issues to Address" (`html-website-generator.yaml:69-72`) verbatim — it is load-bearing: without it, `viewport_gate`'s critique append is write-only.
-2. Add the `viewport_gate` state (multi-viewport overflow + bounding-box check, critique append, round cap with accept-at-cap disposition). Set `max_steps: 28` and loop-level `timeout: 7200` (both-gates worst path is 27 steps — see § Program Design, Budget).
+2. Add the `viewport_gate` state (multi-viewport overflow + bounding-box check, critique append, measured status at the accept-at-cap disposition). Allow two `smoke_test` failure retries, append those failures to critique, and route a third failure to `failed`. Set `max_steps: 32` and loop-level `timeout: 7200` (31-step worst path with both gate caps and two smoke failures — see § Program Design, Budget).
 3. Run `ll-loop validate html-webapp-generator` (MR rules, per-run artifacts under `${context.run_dir}`).
 4. Update the README.md loop count and sync mirrors (`command cp -f README.md scripts/README.md`). Add the loop to the loop docs / catalog alongside `html-website-generator`.
 5. Add tests for the loop's structure/validation, following the existing tests for `html-website-generator`.
@@ -223,23 +224,25 @@ New loop `html-webapp-generator` with `input_key: description` and `required_inp
 _None remaining — both were resolved during pre-implementation review (2026-09-25):_
 
 - **Mobile semantics → keep 375x667 fully in the gate** ("no document scroll; internal scroll panes allowed"), made feasible by requiring responsive collapse (sidebar → off-canvas/hamburger, grids → single column) in the generator prompt. Exempting mobile would remove the gate's highest-value check — narrow viewports are where overflow breaks most.
-- **Round-cap exhaustion → accept-at-cap** with the failing per-viewport measurements in the acceptance line (see § Decision Rules).
+- **Round-cap exhaustion → measured accept-at-cap** with a visible `VIEWPORT_UNFIT` status and failing per-viewport measurements in the acceptance line (see § Decision Rules).
 
 ## Acceptance Criteria
 
-- `ll-loop validate html-webapp-generator` passes.
-- `viewport_gate` fails (exit 0, `FAIL:` output) for a page whose document scrolls at any configured viewport, and appends per-viewport measurements to `critique.md`.
-- `viewport_gate` passes for an app-shell page whose overflow is confined to internal scroll panes.
-- Harness faults route to `failed`, not back to `run_gen_eval`.
-- A per-run `viewports` override is honored (the gate measures at the overridden sizes); malformed entries are skipped with a warning.
-- At the round cap, `viewport_gate` accepts with a warning line carrying the failing per-viewport measurements (accept-at-cap disposition).
-- `max_steps` (≥ 28) covers the both-gates accept-at-cap worst path (27 steps) without budget exhaustion.
-- `viewport_gate` excludes elements in semantically hidden subtrees (`[inert]`, `[hidden]`, `[aria-hidden="true"]`, `visibility: hidden`) from the interactive-element bounding-box check, and the generator prompt requires closed off-canvas drawers to be hidden that way.
-- `oracles/generator-evaluator.yaml` is unchanged.
+- [ ] `ll-loop validate html-webapp-generator` passes.
+- [ ] `viewport_gate` fails (exit 0, `FAIL:` output) for a page whose document scrolls at any configured viewport, and appends per-viewport measurements to `critique.md`.
+- [ ] `viewport_gate` passes for an app-shell page whose overflow is confined to internal scroll panes.
+- [ ] Harness faults route to `failed`, not back to `run_gen_eval`.
+- [ ] A per-run `viewports` override is honored (the gate measures at the overridden sizes); malformed entries are skipped with a warning.
+- [ ] At the round cap, `viewport_gate` measures the current page before accepting and emits `VIEWPORT_UNFIT` with failing per-viewport measurements; after a later vision-driven regeneration it measures again. A clean pass emits `VIEWPORT_PASS`.
+- [ ] `smoke_test` appends failure detail to critique; the first two failures retry and a third routes to `failed`.
+- [ ] `max_steps` (≥ 32) covers the 27-step viewport/vision path plus two smoke retries (four steps), with one step of margin.
+- [ ] `viewport_gate` excludes elements in semantically hidden subtrees (`[inert]`, `[hidden]`, `[aria-hidden="true"]`, `visibility: hidden`) from the interactive-element bounding-box check, and the generator prompt requires closed off-canvas drawers to be hidden that way.
+- [ ] A per-run viewport override accepts only positive dimensions at most 8192; `0x0` and oversized values are warned and skipped, and zero valid viewports routes to `failed`.
+- [ ] `oracles/generator-evaluator.yaml` is unchanged.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+`docs/guides/LOOPS_REFERENCE.md`, `docs/reference/loops.md`, and `scripts/little_loops/loops/README.md` (generator catalog).
 
 ## Status
 
