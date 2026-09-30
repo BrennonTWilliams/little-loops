@@ -21,7 +21,11 @@ blocks:
 
 # ENH-3662: Prove Qwen live cache and duplicate usage contract
 
-## Evidence gap
+## Summary
+
+Prove the Qwen native token-usage contract needed by ENH-3673. This issue records producer evidence and typed metric/channel availability; the delivery issue implements stored ingestion, current-session triggering, and the reader.
+
+## Current Behavior
 
 ENH-3648 captured a real Qwen Code 0.24.6 on-disk UI/assistant usage pair.
 The live probe failed after the configured OAuth free tier was discontinued.
@@ -29,7 +33,7 @@ The pair reports zero cached content and no cache-write field; input
 inclusivity, thought-token inclusion, response identity across the two
 representations, and resume/compaction behavior remain unknown.
 
-## Required proof
+## Expected Behavior
 
 With working authentication, capture a sanitized versioned live invocation
 and matching transcript with tool use, cache hit/write if available, and
@@ -47,3 +51,37 @@ stored ingestion, trigger and reader are proven.
 - [ ] Record per-metric/channel `supported`, evidence-backed `unsupported`, or `unknown` verdicts for input, output, cache read/write, and thought tokens. Prove or leave explicit the inclusivity, omission, grain/reset, and UI/assistant request-join semantics.
 - [ ] Give ENH-3673 the complete-enough native fixture and duplicate-pair rule. ENH-3673 proves that the parser preserves `usageMetadata` and that one response produces one stored observation and a fresh selected read.
 - [ ] If authentication or nonzero cache behavior remains unavailable, record the exact blocker and keep those semantics `unknown`; keep this evidence issue open or `blocked` rather than claiming unsupported telemetry.
+
+## Completion Rule
+
+Mark this evidence issue `done` only when every metric/channel and identity rule needed for the selected canonical stored path has a supported or evidence-backed unsupported verdict. An unselected auxiliary channel may stay `unknown` only when the EPIC-3562 ledger names it as outside that path and explains why it cannot duplicate or change the canonical figure. If an in-scope field, request identity, or source path remains `unknown`, keep this issue `open` or `blocked`; completing the fixture alone does not release ENH-3673.
+
+## Program Design
+
+- Capture a sanitized, versioned producer sample for assistant usageMetadata and systemPayload.uiEvent copies with their native IDs, preserving the envelope and request order needed to test identity and replay.
+- Record each metric/channel verdict in scripts/tests/fixtures/qwen/README.md with its source version, observed values, inclusive/exclusive meaning, omission behavior, grain, resume behavior, and evidence limits.
+- Update only proved entries in the typed telemetry map. Hand the exact fixture and identity rule to ENH-3673; no production normalizer is implemented in this evidence issue.
+
+### Signatures
+
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` — existing parser inspection point; record which native fields survive today. ENH-3673 owns any parser change.
+
+### Call Path
+
+- Native CLI/session file → sanitized versioned fixture → `iter_events` inspection → fixture README contract → typed telemetry map → ENH-3673 handoff.
+
+## Scope Boundaries
+
+- **In scope**: native capture, fixture sanitization, component and request-identity proof, typed metric/channel verdicts, and a concrete ENH-3673 handoff.
+- **Out of scope**: stored normalizer, lifecycle trigger, and reader cutover (ENH-3673); shared replay/refresh infrastructure (ENH-3534).
+
+## Impact
+
+- **Priority**: P3 — evidence is required before measured Qwen ingestion.
+- **Effort**: Small to medium, depending on CLI/model access and cache behavior.
+- **Risk**: Low to the current runtime; an unproved contract would create silent accounting errors downstream.
+- **Breaking Change**: No.
+
+## Status
+
+**Open** | Created: 2026-09-29 | Priority: P3

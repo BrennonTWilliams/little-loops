@@ -30,7 +30,28 @@ A real historical tokens pair has an unknown CLI version and a repeated message 
 
 Preserve native tokens through the file-level normalizer and distinguish an updated message from a new request using the proved identity and grain. Derive disjoint input, cache-read, cache-creation, and output components only where ENH-3663 proves the semantics. A supported native field is not automatically a measured stored observation. Keep unproved components null/unknown; do not infer zero, request identity, or non-overlap from matching counts. Use the shared coverage selector and verified host/session identity for canonical reporting.
 
-If ENH-3663 proves native absence for an in-scope metric/channel, record that verdict in the typed map and epic ledger, then cancel this implementation issue if no supported ingestion path remains. If access or semantics stay unknown, keep this issue blocked and the epic incomplete; do not relabel unknown as unsupported.
+If ENH-3663 proves partial native support, store the proved components with explicit provenance and null unsupported components; canonical totals/rates that require missing components stay unavailable. If native absence is proved for every in-scope path, this issue still owns the direct-fallback disposition and explicit unavailable diagnostic; mark it done after that work, or cancel only if no change remains. An in-scope unknown keeps this issue blocked and the epic incomplete. If no after-usage event exists, prove another current-session trigger or keep this issue open for an explicit epic scope decision.
+
+The shared seam is ENH-3534's existing `UsageReplayRecord`, `HostUsageState`, `normalize_host_usage` where applicable, `refresh_raw_events`, and derive checkpoint contract. Consume it without changing its replay guarantees. If this host requires a shared seam change, implement it in coordination with ENH-3534 and extend shared tests; the other hosts do not become hard blockers.
+
+## Program Design
+
+- **Producer input**: file-level Gemini message tokens; ENH-3663 supplies the versioned field and component contract.
+- **Replay identity**: the ENH-3663 proved message/request key and update-versus-new-request rule. The key is scoped by verified host and session and survives full rebuild; copied or conflicting records remain unknown until resolved.
+- **Stored path**: adapt the native record at the session parser or replay-writer seam into `usage_events` with disjoint nullable components and durable source attribution. Reuse ENH-3534's refresh and ENH-3651's incremental derive checkpoint.
+- **Current session**: prove an after-usage host lifecycle event and source path before extending `usage_stop.handle`/`backfill_worker._run_usage_trigger` or choosing a host-specific equivalent. The worker commits an as-of boundary after derive.
+- **Reader**: `ll-ctx-stats` selects the verified host/session through `select_usage_coverage`, checks `usage_source_freshness`, and exposes a canonical rate only for qualified non-overlapping components.
+
+### Signatures
+
+- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` — existing parser entry point; preserve native usage needed by this host.
+- `_backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int` — existing replay writer; extend through a host-specific normalizer when the contract is proved.
+- `_run_usage_trigger(db_path: Path, source: Path, host: str, requested_at_ns: int) -> int` — existing Claude/Codex worker path; reuse only after this host's event timing and source are proved.
+
+### Call Path
+
+- Native session file → `iter_events` → `raw_events` → `_backfill_usage_events` → `usage_events` → `select_usage_coverage` → `_compute_cache_rate_from_usage` → `ll-ctx-stats`.
+- Native after-usage lifecycle event → adapter → `_run_usage_trigger` or proved equivalent → incremental derive checkpoint → reader freshness check.
 
 ## Integration Map
 
@@ -45,7 +66,7 @@ If ENH-3663 proves native absence for an in-scope metric/channel, record that ve
 - [ ] A parser-replayable real fixture passes through iter_events, raw_events, usage_events, and the shared selector. It preserves the native usage fields needed for this host and does not change unrelated normalized content.
 - [ ] Proven repeated, resumed, live/stored, and copied records are counted once per native request. Full rebuild, incremental derive, and repeated refresh of available originals agree; missing originals or unverified attribution never manufacture measured usage.
 - [ ] A captured Gemini lifecycle event fires after current-session usage is available and drives the real adapter → worker → ingest → incremental derive → stored read path. The selected host/session has a committed as-of/freshness proof; a failed or skipped worker cannot appear fresh.
-- [ ] ll-ctx-stats uses the stored reader for Gemini only after that end-to-end path passes. The direct fallback retires only with a proven replacement or evidence-backed unavailable verdict; missing store, partial components, and unresolved overlap produce explicit unavailable diagnostics and audit subtotals rather than a canonical rate.
+- [ ] This issue owns the Gemini direct-fallback disposition. `ll-ctx-stats` switches to the stored reader only after the end-to-end path passes, or emits an explicit unavailable diagnostic after proved native absence. Missing store, partial components, and unresolved overlap never produce a fabricated canonical rate; audit subtotals remain labeled.
 - [ ] The typed telemetry map and epic ledger record supported, unsupported, or unknown for each metric/channel separately from ingestion status. Documentation and tests cover the host's actual native shape.
 
 ## Scope Boundaries

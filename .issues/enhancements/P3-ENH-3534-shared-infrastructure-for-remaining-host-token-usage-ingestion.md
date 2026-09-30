@@ -41,6 +41,8 @@ Maintain the shared replay dispatch and safe source refresh needed to ingest nat
 
 Provide a replay seam that lets each host-specific issue normalize its verified native records into `usage_events` without duplicating source refresh, attribution, derivation, or coverage policy. Host adapters may handle assistant `message.usage`, OpenCode `step-finish` tokens, Qwen `usageMetadata`, Gemini `tokens`, OMP `message.usage`, or Kimi `usage.record`; this issue does not assume one shape fits all.
 
+The current shared contract consists of `UsageReplayRecord`, source/host/session-scoped `HostUsageState`, `normalize_host_usage` for assistant-message records, `refresh_raw_events`, and ENH-3651's derive checkpoint. ENH-3671–3676 consume those guarantees and may add separate native adapters. A host requiring a shared change updates this issue's contract and shared tests in coordination with its delivery issue; no other host's evidence becomes a hard dependency.
+
 Only producer-verified observations with valid, complete canonical components can be `measured`. Partial, malformed, legacy, or unverified observations remain `unknown`; missing values are unavailable, never zero. A host's native metric/channel capability remains distinct from implemented ingestion.
 
 ### Upgrade and replay contract
@@ -62,7 +64,7 @@ Use the completed ENH-3543 shared observation selector for reporting. No host-sp
 
 ## Acceptance Criteria
 
-- [ ] Shared replay dispatch accepts verified host/source/session state and leaves unsupported or unproved shapes as unknown audit data; it never promotes a host merely because a payload resembles Claude usage.
+- [ ] Shared replay dispatch accepts verified host/source/session state and labels surviving unproved assistant usage as unknown audit data; it never promotes a host merely because a payload resembles Claude usage. Host-native shapes are owned by ENH-3671–3676.
 - [ ] An upgrade test starts with normalized raw rows missing usage, refreshes available originals, and rebuilds twice with stable totals and attribution. Missing originals remain unavailable with a diagnostic.
 - [ ] Refresh and rebuild preserve live-only rows, source positions, verified host attribution, derive freshness, and idempotency; an interrupted refresh/rebuild leaves readers explicitly stale or unavailable until repaired.
 - [ ] Shared reporting uses `select_usage_coverage`/`select_usage_observations`; unresolved overlap stays audit-only, and identical counts never establish request identity.
@@ -79,7 +81,7 @@ Use the completed ENH-3543 shared observation selector for reporting. No host-sp
 
 ### Types
 
-- Reuses `UsageReplayRecord` from ENH-3532. The shipped ENH-3532 Codex path is candidate-based rather than the proposed `UsageObservation`/`normalize_codex_usage` API; ENH-3534 defines `UsageObservation` for the assistant-message path in `writers.py`.
+- Reuses `UsageReplayRecord` from ENH-3532. The shipped ENH-3532 Codex path is candidate-based rather than the proposed `UsageObservation`/`normalize_codex_usage` API; the current assistant-message path already defines `UsageObservation` in `writers.py`.
 - `HostUsageState` binds a source, host and session for the assistant-message adapter. It holds no cumulative state until a host's grain and reset behavior are verified.
 
 ### Signatures
@@ -93,7 +95,7 @@ Use the completed ENH-3543 shared observation selector for reporting. No host-sp
 
 ## Verification Notes
 
-Verdict at time of check: **VALID** (no corrections needed; this section is a record of what was checked, not an outstanding action item). Evidence-quote check clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` (fresh) available.
+Historical verdict before the host-delivery split: **VALID** for the former scope. Evidence-quote check was clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` was available. This verdict does not certify the revised shared-infrastructure scope.
 
 Historical check, 2026-09-24: `_compute_cache_rate_from_jsonl` documented missing qwen/gemini/omp cache rates; `normalize_host_usage` and Codex rollout ingestion were then pending. The 2026-09-29 checkpoint below supersedes that implementation state.
 
@@ -134,8 +136,8 @@ from a different host is retained only as an unknown audit row. Codex still
 uses its closed-span candidate path, and Kimi's native records do not pass
 through this adapter. No six-host parser or metric normalization was added:
 the survey did not prove the input/cache semantics needed to derive disjoint
-components. ENH-3660–ENH-3665 remain the owners of those contracts, so this
-host delivery issues remain blocked on their respective native producer contracts.
+components. ENH-3660–ENH-3665 remain the owners of those contracts, and the
+matching host delivery issues remain blocked on their respective producer contracts.
 
 ## Status
 
