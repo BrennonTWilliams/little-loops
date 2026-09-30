@@ -7,11 +7,16 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T00:31:01Z'
-blocked_by:
-- ENH-3677
 relates_to:
+- ENH-3677
 - ENH-3658
 - ENH-3679
+confidence_score: 85
+outcome_confidence: 56
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # ENH-3680: Spool context-monitor.sh history writes instead of detached background writes
@@ -26,7 +31,8 @@ Under remote, the hook spawns a Python interpreter only for `resolve_history_db`
 
 1. **Gate:** verify whether any remote consumer needs live `context_pressure`/handoff rows (dashboards, `ll-doctor`, digest, `ctx-stats`; `ll-ctx-stats` is already refused under remote by ENH-3657). Record the answer in this issue.
 2. **If no consumer:** make remote a documented no-op — detect a remote target cheaply (no Python spawn where feasible) and skip both `record_*` calls; local and `LL_HISTORY_DB` keep immediate writes. **Close the spool design below as not needed.**
-3. **If a consumer exists:** implement the spool below. Sharing ENH-3679's envelope stays speculative; do not couple the two.
+   - **Remote detection must not grep `.ll/ll-config.json`:** `.ll/ll.local.md` deep-merges over it, so a shell-side grep misses local overrides. Have the Python SessionStart handler (which already classifies the store via `resolve_history_store`) write a small marker (e.g. `.ll/.history-remote`, removed when the store is local) and have the shell hook test for that file. Stale-marker risk is bounded to one session; the hook must still fail soft (`|| true`) if the marker and the actual target disagree.
+3. **If a consumer exists:** implement the spool below and add the fixture dependency edge at that point (the remote-stub tests need the hoisted `remote` fixture). Sharing ENH-3679's envelope stays speculative; do not couple the two. Until then the gate and the no-op need no fixture, so this issue carries no fixture dependency.
 
 ## Current Behavior
 
@@ -36,7 +42,7 @@ Both `record_*` calls pre-resolve with `resolve_history_db(".ll/history.db")` (`
 
 Under a remote target, the hook atomically publishes one immutable, mode-0600 event file per row and returns immediately. A bounded drain step claims complete files and replays typed lifecycle/pressure operations, including their `search_index` effects, at SessionStart and Stop. Cap pending spool size and age so a long remote outage cannot grow disk use without limit; report pruned events with a visible drop count. The remote insert(s) plus deduplication marker must be one atomic Hrana transaction or use durable per-row idempotency keys; separate `LibsqlConnection.execute()` calls plus `commit()` do not provide that guarantee. Local SQLite and `LL_HISTORY_DB` still write immediately. First verify that no remote consumer requires live `context_pressure` rows; remote rows may land up to one turn late.
 
-> **2026-09-30 design correction:** ENH-3679's local SQLite drain cannot serve remote libSQL. These issues may share an immutable event-file envelope and claim/recovery rules, but ENH-3680 owns the remote drain. Their implementation order is independent.
+> **2026-09-30 design correction:** the local SQLite drain sketched in ENH-3683 (ENH-3679's deferred spool) cannot serve remote libSQL. The two may share an immutable event-file envelope and claim/recovery rules only if both are ever built; ENH-3680 owns the remote drain regardless. Implementation order is independent.
 
 ## Scope Boundaries
 
@@ -81,8 +87,30 @@ With local SQLite or `LL_HISTORY_DB`, `context-monitor.sh` continues its immedia
 
 ## Related
 
-- ENH-3658 (split from), ENH-3679 (share only the immutable event-file envelope if both land; separate local and remote drains).
+- ENH-3658 (split from), ENH-3677 (fixture; relevant only on the spool path), ENH-3679 (no coupling: its Phase 2 is deferred; separate local and remote drains).
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-30_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 56/100 → LOW
+
+### Concerns
+- The issue is a two-branch plan (no-op vs spool) gated on a consumer-need question that is not yet answered; the implementation path cannot be chosen until the Decision Gate result is recorded in this issue.
+- No Integration Map / Files to Modify section: change sites (`hooks/scripts/context-monitor.sh`, `session_start.py`, `usage_stop.py`, marker writer, new spool/drain module) are inferred from prose, not enumerated.
+- Spool path leans on unproven mechanisms: atomic Hrana batch or durable idempotency keys, crash/claim recovery, and retention pruning have no precedent to model after.
+- Test fixture dependency (ENH-3677 hoisted `remote` fixture) is deferred to the spool path only; `HranaStub` exists in `scripts/tests/` but the hoisted fixture is still open.
+
+### Outcome Risk Factors
+- Ambiguity: decision gate unresolved (no-op vs spool) — resolve first; the no-op branch is small and mechanical, the spool branch is deep (atomicity, recovery, retention).
+- Deep per-site complexity on the spool path, broad enumeration across 6+ sites (shell hook, two Python hook handlers, marker, spool module, drain).
+- Recommended: answer the consumer gate and record it, then slice the spool into its own issue if a consumer exists.
 
 ## Status
 
 **Open** | Created: 2026-09-30 | Priority: P4
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-30T05:10:24 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

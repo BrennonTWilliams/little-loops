@@ -12,7 +12,7 @@ verify_verdict: VALID
 blocks:
 - ENH-3657
 - ENH-3658
-- ENH-3680
+- ENH-3682
 confidence_score: 100
 outcome_confidence: 67
 score_complexity: 14
@@ -78,7 +78,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 - **Files to modify (test-only)**: `scripts/tests/conftest.py` (gains the shared `remote`; no `remote`/`stub` exists there today, so no name collision) and the six copies — `test_remote_operation_matrix.py:30`, `test_remote_hooks.py:29`, `test_libsql_backend.py:67`, `test_remote_doctor.py:35`, `test_remote_ingestion_telemetry.py:58`, `test_remote_callers_bug3652.py:67`.
 - **Dependents inside the six files**: `test_remote_hooks.py::TestDeadEndpointDegrades.dead` (class-level fixture at :158) requests `remote`, rewrites the config, calls `remote.stop()` and returns it; it must keep working against the shared fixture. `test_libsql_backend.py::TestConnection.conn` and several `TestReadOnly`/`TestConnection` tests use the local `stub` directly (without `remote`) and stay on it.
-- **Consumers waiting on this**: ENH-3657, ENH-3658, ENH-3680 (frontmatter `blocks`); ENH-3668 and BUG-3659 also cite the fixture. No test files exist yet for ENH-3657/ENH-3658.
+- **Consumers waiting on this**: ENH-3657, ENH-3658, ENH-3682 (frontmatter `blocks`); ENH-3680 only if its spool path is chosen; ENH-3668 and BUG-3659 also cite the fixture. No test files exist yet for ENH-3657/ENH-3658.
 - **Stub location**: `HranaStub` lives in `scripts/tests/hrana_stub.py` (`class HranaStub(http.server.ThreadingHTTPServer)`; `.start()`, `.stop()`, `.url`, `.requests`, `.fail_next`, `.delay`, `.db`). All eight consumers import it as `from tests.hrana_stub import HranaStub`.
 - **Cache/reset entry points** (public, already called by every copy): `little_loops.session_store.db.clear_backend_config_cache`, `little_loops.session_store.remote_schema.clear_verification_cache`, `little_loops.session_store.remote_telemetry.reset_for_tests`.
 - **Same-shape setups that are NOT `remote` copies** (out of scope): `stub` fixtures in `test_remote_schema.py:38`, `test_hrana_client.py:39`, `test_libsql_backend.py:40`; autouse `_fresh` in `test_libsql_integration.py:74` and `_reset` in `test_remote_schema.py`. Unrelated `stub` fixtures (`_Stub`) in `test_autodev_proof_reentry.py:78`, `test_advise_ready_gate.py:81`.
@@ -88,7 +88,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 - **Re-verified 2026-09-29 (gap analysis)**: exactly six `def remote(` fixtures exist under `scripts/tests` (`test_remote_operation_matrix.py:30`, `test_remote_hooks.py:29`, `test_libsql_backend.py:67`, `test_remote_doctor.py:35`, `test_remote_ingestion_telemetry.py:58`, `test_remote_callers_bug3652.py:67`); no `remote` or `stub` fixture is defined in any of the three conftests (`scripts/tests/conftest.py`, `conformance/conftest.py`, `spike/action_stall_run_scope/conftest.py`), so no collision at any conftest level. `test_libsql_backend.py:67` is the only copy that is not self-contained (takes the local `stub` at `:40`).
 - **Stale wiring-note target**: BUG-3659 is `status: done`, so the Dependent Files/Documentation notes above that ask to repoint its `test_remote_hooks.py::remote` references describe a closed record. Editing it is optional and not needed for the acceptance criteria.
-- **Consumer chain**: ENH-3668 is `blocked_by: ENH-3657` only, but its body (Tests bullet, Related) depends on the shared fixture, so it reaches this issue transitively via ENH-3657; ENH-3658 and ENH-3680 carry direct `blocked_by: ENH-3677`. ENH-3682 plans a `HranaStub` test and has no edge to this issue.
+- **Consumer chain**: ENH-3668 is `blocked_by: ENH-3657` only, but its body (Tests bullet, Related) depends on the shared fixture, so it reaches this issue transitively via ENH-3657; ENH-3658 carries a direct `blocked_by: ENH-3677`. ENH-3682 plans a `HranaStub` test and now carries a direct `blocked_by: ENH-3677` edge (added 2026-09-30); ENH-3680 no longer does (its committed first step, the consumer gate and remote no-op, needs no fixture; it re-adds the edge if the spool path is chosen).
 - **Non-fixture `remote` names are safe**: `test_session_store_backend.py` (`:311`, `:328`, `:353`) and `spike/session_store_backend_dialect/test_backend.py:94` bind `remote` as a local variable, not a fixture request, so a conftest-level fixture does not affect them.
 - **`test_libsql_integration.py`** (`_fresh` autouse at `:72`, `_target` at `:48`) resets the same caches but builds no stub or config; it is not a `remote` copy and stays untouched.
 
@@ -184,7 +184,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 ## Related
 
-- BUG-3652 (landed without hoisting), ENH-3657, ENH-3658 (blocked by this).
+- BUG-3652 (landed without hoisting), ENH-3657, ENH-3658, ENH-3682 (blocked by this).
 
 ## Status
 

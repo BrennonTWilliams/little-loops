@@ -12,9 +12,9 @@ relates_to:
 - BUG-3652
 - ENH-3668
 - ENH-3658
+- ENH-3682
 blocked_by:
 - ENH-3677
-- ENH-3682
 blocks:
 - ENH-3668
 confidence_score: 70
@@ -27,7 +27,7 @@ score_change_surface: 0
 
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
 
-> **Reconciled 2026-09-30** after three `/ll:advise` (Opus) reviews (the last run after BUG-3652 landed, `62ac0fc89`, and a fourth pass that found a placement bug in the central guard). The body below is the single current design; the earlier per-site design (per-operation `_REMOTE_REFUSALS` keys, `_REJECTED` rows, ~12 per-doc notes, `refuse_on_remote(..., root=)`) is dropped. The confidence score below predates the additional CLI/test corrections in this issue; re-run `/ll:confidence-check` after ENH-3677 lands. The pre-reconcile text is in git history.
+> **Reconciled 2026-09-30** after three `/ll:advise` (Opus) reviews (the last run after BUG-3652 landed, `62ac0fc89`, and a fourth pass that found a placement bug in the central guard). The body below is the single current design; the earlier per-site design (per-operation `_REMOTE_REFUSALS` keys, `_REJECTED` rows, ~12 per-doc notes, `refuse_on_remote(..., root=)`) is dropped. The confidence score below predates the additional CLI/test corrections in this issue; re-run `/ll:confidence-check` after ENH-3677 lands (the confidence gate is enabled, so an unscored or stale issue stalls automation). The pre-reconcile text is in git history.
 
 ## Delivery Slices (2026-09-30 Opus review)
 
@@ -38,7 +38,9 @@ Land as two reviewable slices; the seam alone must never ship, because it turns 
 
 **Slicing rationale:** Opus advised two slices, with the boundary helper shipping with the seam (so a refusal is never a traceback) and docs shipping with the sites. An earlier three-way split (seam / helper+refuse sites / serve+docs) was rejected for that reason. This is kept as slices of one issue to avoid re-wiring ENH-3668's `blocked_by`; convert to separate issues only if the slices need independent scheduling.
 
-**Prerequisites:** ENH-3677 (fixture) and ENH-3682 (prepatch reads become `best_effort` and catch `HistoryUnsupported`; without it the re-raise reaches the FSM for `read_base_sha` on a behind/foreign/read-only-token remote store). **Narrow the re-raise** to the guard's own subclass (e.g. `HistoryRemoteRefused(HistoryUnsupported)`) rather than every `HistoryUnsupported`, so remote `ensure_schema` refusals keep degrading to `None` for callers that never opted in.
+**Prerequisite:** ENH-3677 (fixture). ENH-3682 is **no longer a prerequisite** (edge dropped 2026-09-30): because the re-raise is narrowed, remote `ensure_schema` refusals keep degrading to `None`, and `read_base_sha`/`read_base_dirty` use the relative `DEFAULT_DB_PATH`, which the guard never fires on. **Narrow the re-raise** to the guard's own subclass (e.g. `HistoryRemoteRefused(HistoryUnsupported)`) rather than every `HistoryUnsupported`. ENH-3682's regression test (`HistoryUnsupported` on a behind/read-only-token store still yields `None`) must pass on either merge order.
+
+**Design decision (2026-09-30, kept):** an Opus consult proposed a no-re-raise seam (`None` + `warn_once`, refusals only at the CLI boundary) to avoid changing the `None`-on-failure contract for ~67 callers. Rejected: any CLI the boundary helper misses would then print silent-empty output, which is the failure this issue exists to remove. The narrowed subclass confines the blast radius to callers that previously created a shadow DB. Compensate with a **complete non-CLI caller audit** (see below).
 
 ## Summary
 
@@ -79,7 +81,7 @@ These sites pre-resolve through `resolve_history_db()` and raise `HistoryBackend
 
 In `session_store.backend.open_history_readonly` (the `ensure=True` reader opener): when the configured provider is remote **and** the resolved target is a *default-shaped* absolute local path (`<root>/.ll/history.db`, `LL_HISTORY_DB` unset, no explicit `--db`), raise `HistoryUnsupported` instead of `ensure_schema`-creating a shadow DB. It fires only in that case and must respect the BUG-3181 absolute-path contract, an explicit `--db` (wrap it in `LocalTarget` at the CLI), `LL_HISTORY_DB`, and first-use local creation when the provider is not remote. Classify "remote" from the root derived from the path (`<root>/.ll/...`), not the cwd, so an MCP call with a foreign cwd is not misclassified.
 
-`history_reader/_base.py:_connect_readonly` gains a re-raise of the guard's own `HistoryUnsupported` subclass **above** its `except HistoryError` handler (not every `HistoryUnsupported`; see Delivery Slices). Record the contract change ("`None` on failure, raise on unsupported") in the docstring. Audit every non-CLI caller that passes an absolute default-shaped path and give it a catch or degrade: MCP `history_search`, `sft-corpus` `enrich`, the CT-0 block. (`hooks/session_start` digest is already gated by `not _remote_store`; the executor's `read_base_sha` uses the relative path and is unaffected.)
+`history_reader/_base.py:_connect_readonly` gains a re-raise of the guard's own `HistoryUnsupported` subclass **above** its `except HistoryError` handler (not every `HistoryUnsupported`; see Delivery Slices). Record the contract change ("`None` on failure, raise on unsupported") in the docstring. Audit every non-CLI caller that passes an absolute default-shaped path and give it a catch or degrade: MCP `history_search`, `sft-corpus` `enrich`, the CT-0 block. **The audit must be exhaustive, not this list:** ~40 modules import `history_reader`. Enumerate them (`grep -rl history_reader scripts/little_loops`) and record a per-module verdict in this issue before merging 3657a: relative `DEFAULT_DB_PATH` callers (`fsm/executor.py`, `work_verification.py`, `prepatch_check.py`, `cli/loop/evidence.py` `find_loop_run`, `cli/history_context.py`, `cli/session.py`) are unaffected by the guard; check `issue_history/*`, `token_provenance.py`, `fsm/cost_graph.py`, `hooks/session_start.py` and `cli/logs.py` for absolute default-shaped paths. Add a test that walks the audited modules for absolute-path construction so a future caller cannot regress silently. (`hooks/session_start` digest is already gated by `not _remote_store`; the executor's `read_base_sha` uses the relative path and is unaffected.)
 
 ### One boundary helper
 
@@ -177,7 +179,7 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 
 ## Acceptance Criteria
 
-- [ ] Work lands as slices 3657a (seam + boundary helper + caller audit) then 3657b; ENH-3682 has landed first and prepatch `read_base_sha` on a behind/read-only-token remote store still returns `None`.
+- [ ] Work lands as slices 3657a (seam + boundary helper + exhaustive caller audit with per-module verdicts recorded here) then 3657b; prepatch `read_base_sha` on a behind/read-only-token remote store still returns `None` (ENH-3682's regression test passes on either merge order).
 - [ ] Every site in the verdict table has its verdict implemented; refused sites, including `ll-messages --sft-format --reader db`, are covered by one parametrized remote-stub test (exit 1, `<prog> <sub>:` prefix, `libsql` in stderr, `"Traceback" not in err`, no reader requests when analytics capture is disabled) plus a local twin. Default `reader=auto` reaches JSONL instead of an unhandled refusal.
 - [ ] `_connect_readonly` re-raises the guard's `HistoryUnsupported` subclass (documented contract; other `HistoryUnsupported` from remote ensure still map to `None`) so a guard refusal never reads as empty data; non-CLI callers (MCP, `sft-corpus`, CT-0) are audited and handled.
 - [ ] The central guard fires only for a remote provider + default-shaped absolute local path with no `--db`/`LL_HISTORY_DB`, classifies remote from the path-derived root (not cwd), and under remote no reader creates a local `.ll/history.db` (assert absence). A caller-supplied absolute local path wrapped as `LocalTarget` stays local.
@@ -189,7 +191,7 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 
 ## Related
 
-- BUG-3652 (startup/write-path audit; **done**, `62ac0fc89`); ENH-3677 (shared `remote` fixture; `blocked_by`, land first); FEAT-3535 (remote libSQL backend).
+- BUG-3652 (startup/write-path audit; **done**, `62ac0fc89`); ENH-3677 (shared `remote` fixture; `blocked_by`, land first); ENH-3682 (prepatch read budget; independent, `relates_to` only); FEAT-3535 (remote libSQL backend).
 - ENH-3668 (`HistoryTarget`-aware readers; serves what this issue refuses in the interim); ENH-3658 (hand-built paths; coordinate on the shared guard).
 - Consequence to record: remote users lose `ll-history` reader subcommands (except `summary`, which degrades) and MCP `history_search` until ENH-3668; `ll-harness` reads work.
 
@@ -199,16 +201,14 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 
 ## Confidence Check Notes
 
-_Historical score from before this review; the `ll-messages`, analytics-request, and read-only-stub test corrections above supersede its "only blocker" statement. Re-score after ENH-3677 lands._
-
-_Added by `/ll:confidence-check` on 2026-09-30_
+_Added by `/ll:confidence-check` on 2026-09-30 (re-score after the reconcile rewrite and two-slice split)_
 
 **Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies hard override)
 **Outcome Confidence**: 48/100 → LOW
 
 ### Concerns
-- Design is well-specified and claims check out (`open_history_readonly`, `_connect_readonly`'s `except HistoryError`, `check_access`, 5 `cli/harness.py` + 8 `cli/history.py` `resolve_history_db(` sites, per-file `remote` fixture copies all confirmed); the only blocker is the dependency below.
-- Program Design gate, learning tests, parity/claim/decision/structure gaps: all clean.
+- Design is well-specified after the reconcile rewrite: verdict table, central guard, narrowed `HistoryRemoteRefused` re-raise, boundary helper, and two delivery slices are all concrete. Program Design gate, learning tests, parity/claim/decision/structure gaps: all clean.
+- Criterion 4 held at 15: the exhaustive non-CLI caller audit (~40 `history_reader` importers) is required by the acceptance criteria but its per-module verdicts are not yet recorded, and the read-only-token `HranaStub` mode is unverified.
 
 ### Gaps to Address
 - `blocked_by: ENH-3677` is `open` (hoisted `remote` fixture not yet landed) — Dependencies hard override forces STOP. Land ENH-3677 first, or drop the edge if the plan is to ship with a per-file fixture copy.
@@ -219,6 +219,7 @@ _Added by `/ll:confidence-check` on 2026-09-30_
 - Very wide blast radius on the shared seam (`_connect_readonly` ~67 callers, `open_history_readonly`); a missed non-CLI caller silently swallows a refusal or trips loop gates. Consider landing the seam change (Step 1) as its own reviewable slice first.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-30T05:10:50 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`
 - `/ll:confidence-check` - 2026-09-30T01:08:15 - `d09a5e0e-2f2f-4d02-a2fb-345fcc5b2f01.jsonl`
 - `/ll:advise` (Opus, placement-bug review) + reconcile rewrite - 2026-09-30
 - `/ll:confidence-check` - 2026-09-29T22:09:09 - `c419efbf-94bc-4735-80cf-772ead8ae35e.jsonl` (scores since cleared; re-run)
