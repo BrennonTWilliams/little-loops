@@ -107,7 +107,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 
 - **Third pre-implementation review** (2026-09-29, `/ll:advise` with Opus; nothing measured) — applied across all children:
   - **Tournament failure routing**: the parent `tournament` state routes `on_yes` → `portfolio` and `on_no`/`on_error`/`on_timeout` → `salvage_tournament` (a judge-call error otherwise discards every completed round). Judge states carry `timeout: 300`; the time guard is `TOURNAMENT_TIMEOUT_S + JUDGE_CALL_TIMEOUT_S + TAIL_S`. Confirm the action-timeout path with a `MockActionRunner` test before writing the routing (FEAT-3582).
-  - **Report owner**: a deterministic `render-report` engine command and a `render_report` state (between `validate_portfolio` and `route_sink`) are the only writers of `brainstorm.md`; `init` still empties it (FEAT-3667/3582).
+  - **Report owner**: a deterministic `render-report` engine command and a `render_report` state (after `portfolio`/`premortem` and **before** `validate_portfolio`, which requires a non-empty `brainstorm.md`; corrected 2026-09-30) are the only writers of `brainstorm.md`; `init` still empties it (FEAT-3667/3582).
   - **Clock**: the time guard takes `--elapsed-ms ${loop.elapsed_ms}` (active time incl. resume offset), never wall-clock `run_started_epoch`.
   - **Routing safety**: every classify-routed engine command prints a `fail` token on exit 1; happy tokens are listed explicitly; every classify state sets `_: finalize_failed`.
   - **Idempotent appends**: `record-round` (keyed by round+pair), `next-round` (skips recorded rounds), `ingest` (replaces by lens index; `lenses.txt` holds indices) so a re-run never double-counts; framings are sanitized of `|` and newlines.
@@ -115,7 +115,15 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
   - **Hidden LLM calls**: every prompt state uses `next:` + `on_error:` (or an explicit `evaluate:`) so the default `llm_structured` evaluator adds no call.
   - **FEAT-3582 merge gate**: `MockActionRunner` end-to-end runs (happy, floor-fail, child-timeout salvage, child-error salvage), one real run per pinned brief from the worktree with `PYTHONPATH=<worktree>/scripts` (the editable install otherwise resolves `main`), and the old-vs-new core comparison. The loop keeps the name `brainstorm` (fence/baseline/README keys are filename-keyed).
   - **Scope cuts**: `ground=web` and FEAT-3585's `fallback_html` mid-tournament restart are out of v1.
-  - **Quality metric**: FEAT-3596 adds a blind human A/B on the two pinned briefs (old top idea vs new winner; pass = win or tie on both).
+  - **Quality metric**: a blind human A/B on the two pinned briefs (old top idea vs new winner; pass = win or tie on both). _Moved 2026-09-30 (fourth review): the core A/B is a **FEAT-3582 merge gate**, not a FEAT-3596 close-out — every project is `local-editable`, so a quality regression lands with the rewrite. FEAT-3596 re-runs it for the four-mode and all-features configurations._
+
+- **Fourth pre-implementation review** (2026-09-30, `/ll:advise` with Opus; nothing measured; mechanism claims spot-checked against `executor.py`/`evaluators.py`) — applied across FEAT-3667/3582/3583/3584/3585/3586/3596:
+  - **Capability allowlist**: `resolve-profile` rejects knob values naming unbuilt features (`BUILT_CAPABILITIES`, FEAT-3667); FEAT-3583 ships presets with `ground`/`materialize`/`premortem` off; each optional child widens the allowlist and flips its own preset knob when it lands. Without this, `visual`/`functional`/`business` runs would route into missing states and fail after ~13 calls or after the full tournament.
+  - **Routing gaps closed**: `frame-apply` owns the default reframe-skip path (`reframe|pop_lens`); `collapse` emits `ground_codebase|shortlist`; `portfolio` emits `premortem|render|fail`; `lenses.txt` = `lens_index|framing|lens`; `render-report --failed` keeps a single `brainstorm.md` writer.
+  - **Step count enumerated**, not asserted: FEAT-3582 § LLM-state pairing pairs each LLM state with the shell state that captures its data block; expect ≈ 47–50 of 60, asserted in the merge-gate end-to-end test.
+  - **Merge gate has a pass criterion** (blind A/B win-or-tie on both briefs, cells ≥ old, duplicates ≤ old, ≤ 30 calls).
+  - **Kept, on evidence**: the `insufficient_time` guard (judge calls are not clamped to remaining budget; every judge state must set `timeout: 300`) and the 3×3 grid contract (wildcard both-axes rule holds from ≥ 6 occupied cells).
+  - **Process note**: four review rounds have now added contract rules without a single measured run. **Freeze the spec here** — the next information comes from implementing FEAT-3667 (with its executor smoke test), not from another review.
 
 ## Impact
 

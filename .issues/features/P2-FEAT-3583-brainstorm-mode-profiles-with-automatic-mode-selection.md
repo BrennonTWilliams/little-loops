@@ -39,7 +39,7 @@ Brainstorm has a single fixed pipeline with no notion of mode: every brief runs 
 ## Expected Behavior
 
 - Each profile (a small **JSON** preset under `scripts/little_loops/loops/brainstorm-profiles/`, so unfiltered `rglob("*.yaml")` scanners never read it) sets: `reframe` on/off,
-  default grid axes, idea schema, `ground` (none|codebase|web), `materialize`
+  default grid axes, idea schema, `ground` (none|codebase; `web` deferred), `materialize`
   (none|render), tournament rubric, `premortem` on/off, output shape
   (grid | portfolio | winner + risks).
 - `classify_mode` state runs right after `init` when `mode=auto`: LLM emits
@@ -85,7 +85,7 @@ EPIC-3581 identifies a mode mismatch: visual designs need rendered candidates ju
 
 FEAT-3667 already ships `resolve-profile`, the `profile.json` schema, and the `artifact` profile (FEAT-3582 wires the state). This issue **extends** them (it does not introduce them): three more presets, `classify_mode`, per-knob overrides in `resolve_profile`, and flipping the `mode` default to `auto`. Profiles live as `.json` data under `scripts/little_loops/loops/brainstorm-profiles/`:
 
-- Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes with enumerated bins, profile-specific idea fields (under the core `extra` object), `ground` (none|codebase|web), `materialize` (none|render), tournament rubric, `premortem`, and output shape (rendering only).
+- Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes with enumerated bins, profile-specific idea fields (under the core `extra` object), `ground` (none|codebase; `web` deferred), `materialize` (none|render), tournament rubric, `premortem`, and output shape (rendering only). **Presets ship every not-yet-built knob at its off value** (§ Pinned Preset Contents → Shipped vs target): `resolve-profile` rejects values outside FEAT-3667's `BUILT_CAPABILITIES`, so a preset can never route into a state that does not exist yet.
 - `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below `0.6` falls back to `artifact`. Malformed or unknown-mode output also falls back to `artifact` and is recorded as such. LLM self-reported confidence is poorly calibrated, so the run **makes the choice visible**: the loop prints `Mode: <x> (auto, confidence <c>) — rerun with mode=<y> to override` at start, and the report header repeats it. The four reference briefs in FEAT-3596 are the calibration data for the `0.6` threshold.
 - `resolve_profile` (engine-module command `resolve-profile`, extended from FEAT-3667; `little_loops.brainstorm_engine`): (1) base profile = explicit `mode=` if set, else classifier mode, else `artifact`; (2) each knob whose context value is non-empty overrides the base profile's value; (3) writes `${context.run_dir}/profile.json` including which knobs were overridden. An invalid explicit `mode=` or knob value fails the run (exit 1 → `finalize_failed`) rather than silently falling back.
 
@@ -96,7 +96,7 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 ### Types
 
 - `Axis`: `{name: str, bins: [str]}` — cell values must be members of `bins`
-- `Profile` (`extra` idea fields per mode are listed in § Pinned Preset Contents; the schema test asserts them): `{mode: str, lenses: [str], reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" (`web` deferred), materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
+- `Profile` (`extra` idea fields per mode are listed in § Pinned Preset Contents and stored as `extra_fields: [str]` — FEAT-3667's `Profile` type; the schema test asserts them): `{mode: str, lenses: [str], extra_fields: [str], reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" (`web` deferred), materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
 - `ModeDecision`: `{mode: str, confidence: float, rationale: str}`
 
 ### Signatures
@@ -181,7 +181,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Choose profile storage (prefer `.json`, or a YAML dir verified against the unfiltered rglob scanners and `test_builtin_loop_hardcode_gate.py`)
 - Register profile files in `package_data.py` `PACKAGE_DATA_ASSETS` if read via `importlib.resources`; run `ll-verify-package-data`
 - Add `classify_mode` to `fence.py` `FENCE_ROLES`
-- Add profile schema test modeled on `test_enh1768_profile_system.py`; add `resolve_profile` precedence tests via `_bash`
+- Add profile schema test modeled on `test_enh1768_profile_system.py`; add `resolve_profile` precedence tests by direct import of `little_loops.brainstorm_engine` (not `_bash`; matches the Tests section)
+- Add the capability wiring test: for every shipped profile, every routing token the engine can emit (`check-floors`, `collapse`, `portfolio`, `frame-apply`) routes to a state other than `finalize_failed`, and `resolve-profile` exits 1 for any knob value outside `BUILT_CAPABILITIES` (including explicit overrides such as `materialize=render`)
 
 ## Pinned Preset Contents
 
@@ -201,6 +202,8 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review); the schema test must assert thes
 | `lenses` | universal catalog (today's `frame` list) | visual-craft lenses (e.g. typography, color, layout density, motion, metaphor, constraint) | system lenses (e.g. data flow, failure modes, extensibility, migration, testability, operability) | market lenses (e.g. customer job, pricing, distribution, incumbents, regulation, unit economics) |
 | rubric focus | breadth, distinctness, memorability | visual clarity, hierarchy, fit to brief | feasibility in this codebase, leverage, blast radius | demand evidence, differentiation, cost to test |
 
+**Shipped vs target (2026-09-30 fourth review).** The table above is the **target** end state. What ships in this issue is the same table with `ground`, `materialize` and `premortem` at their off values (`none` / `none` / `false`) for every mode, because the states arrive in FEAT-3584/3585/3586 and a token routed to a missing state fails the run (a `visual` run after ~13 calls; `functional`/`business` after the full tournament). Each optional child, **in the change that lands its states**: (1) widens `BUILT_CAPABILITIES` in the engine, (2) flips its knob in the target profile(s) (`ground=codebase` for `functional`; `materialize=render` for `visual`; `premortem=true` for `functional`/`business`), (3) adds that flip to its acceptance criteria and the wiring test. Until then `mode=visual` still selects the visual axes, lenses and rubric, and an explicit `materialize=render` fails fast at `resolve-profile` instead of mid-run.
+
 - `output_shape: grid` renders the **grid map in addition to** the portfolio section (FEAT-3582 Acceptance Criteria: `brainstorm.md` presents a portfolio + the grid map); `portfolio` and `winner_risks` render the portfolio without the full grid map. `portfolio.json` is identical for all shapes.
 - Classifier confidence threshold: `0.6` (`>=` accepts). The classifier prompt lists the four modes with the one-line profile description; malformed/unknown output → `artifact`, recorded in `profile.json`.
 - `visual` keeps `premortem` off and `business` keeps `materialize` off; mixed briefs use per-knob overrides.
@@ -208,6 +211,8 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review); the schema test must assert thes
 ## Review Decisions
 
 _Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measured):_ profiles gain `lenses` (per-mode lens catalog read by `frame`); `business` defaults to `ground: none` and `reserve: 0` because `ground=web` is out of v1; profile data reaches prompts through engine `prompt-block` stdout blocks captured by the states (FEAT-3667), not by prompt-side file reads; `classify_mode` is a prompt state and must declare `next:` + `on_error:` (no hidden evaluator call) and route via an explicit classify with `_: finalize_failed` where it gates.
+
+_Added 2026-09-30 (EPIC-3581 fourth review, `/ll:advise` with Opus; nothing measured):_ presets ship unbuilt knobs off and each optional child flips its own (§ Pinned Preset Contents → Shipped vs target); `resolve-profile` enforces `BUILT_CAPABILITIES` (FEAT-3667); `ground` type text reconciled to `none|codebase`; tests are direct-import, not `_bash`.
 
 ## Impact
 
@@ -230,6 +235,7 @@ _Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measu
 - Every profile axis has enumerated bins, validated by the schema test.
 - Profile resolution is deterministic (script), and the resolved profile is written
   to `${context.run_dir}/profile.json`.
+- No shipped profile turns on a capability outside `BUILT_CAPABILITIES`; an explicit override naming one exits 1 at `resolve-profile` before any LLM call; a wiring test proves every token the engine can emit for every shipped profile routes somewhere other than `finalize_failed`.
 
 ## Related Key Documentation
 

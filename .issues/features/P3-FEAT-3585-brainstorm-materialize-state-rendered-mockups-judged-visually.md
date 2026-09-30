@@ -215,6 +215,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - The canary comparison and the per-verdict code check are scripts, not LLM claims; a verdict lacking both stamped codes counts as an abstention.
 - Mockups are rendered with non-`file:` requests aborted (stubbed-output test asserts the route-abort snippet is present in the action).
 - No pytest gate depends on Playwright (browser probes stay on-demand).
+- **Lands with its own enablement (2026-09-30):** in the same change, widen FEAT-3667's `BUILT_CAPABILITIES` to allow `materialize=render`, flip the `visual` preset to `materialize: render` (FEAT-3583 § Shipped vs target), extend the profile-token wiring test (`check-floors` → `materialize_author` and → `tournament` both resolve), and bump `max_steps` by the materialize states' own cost (≈ +5) instead of leaving it to FEAT-3596. Until then an explicit `materialize=render` fails at `resolve-profile` before any LLM call.
+- `materialize_author` gets the finalist list by a pinned mechanism: an engine block captured by a shell state (counted in the ≈ 5) or `Read` access to `finalists.json`/`ideas.jsonl` under `scope:`; record the choice (FEAT-3582 § Program Design → LLM-state pairing).
 - Reference visual-mode run (FEAT-3596) produces ≥ 3 rendered finalists and a
   ranked gallery.
 

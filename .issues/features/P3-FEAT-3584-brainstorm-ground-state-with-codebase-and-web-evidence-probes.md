@@ -198,6 +198,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - LLM-supplied strings never reach a shell: probes run as `subprocess` argv lists; `git grep` uses `-F -e <symbol> --`; issue IDs are validated against the ID pattern before `ll-issues show`.
 - `touchpoints` and `creates` are confined to the repo root: absolute paths, `..` traversal and paths resolving outside the root are rejected (`grounded: false`, reason `outside_repo`); `creates` parent-directory checks apply inside the root only. Fixtures cover `/etc/passwd`, `../x`, and a symlink escape.
 - `ground_codebase` is one parent step, routes with `next:` + `on_error:`, and adds no LLM call.
+- **Lands with its own enablement (2026-09-30):** in the same change, widen FEAT-3667's `BUILT_CAPABILITIES` to allow `ground=codebase`, flip the `functional` preset to `ground: codebase` (FEAT-3583 § Shipped vs target), extend the profile-token wiring test (`collapse` → `ground_codebase` → `shortlist_block`), and bump `max_steps` by this state's cost (+1) instead of leaving it to FEAT-3596.
 
 **Full criteria (v1 codebase items; web items are the deferred follow-up):**
 
@@ -222,7 +223,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added 2026-09-29 (EPIC-3581 pre-implementation review, `/ll:advise` with Opus):_
 
-- **Stale directives are superseded, not deleted, until `/ll:reconcile-issue` runs after FEAT-3667 lands** (line anchors shift): where § Similar Patterns, § Wiring Additions → Tests, § Implementation Steps 2 and the Codebase Research Findings describe inline `_bash`-extracted probe scripts, an inline `ground` state, or "adds 1 fixed step", read them as: probes are FEAT-3667 engine commands tested by direct import; `ground_codebase` and `ground_web` are the only new parent steps (2 + 1 LLM search), and the profile gate is routed by `check_floors` (no `ground_gate` state).
+- **Stale directives are superseded, not deleted, until `/ll:reconcile-issue` runs after FEAT-3667 lands** (line anchors shift): where § Similar Patterns, § Wiring Additions → Tests, § Implementation Steps 2 and the Codebase Research Findings describe inline `_bash`-extracted probe scripts, an inline `ground` state, or "adds 1 fixed step", read them as: probes are FEAT-3667 engine commands tested by direct import; `ground_codebase` and `ground_web` are the only new parent steps (2 + 1 LLM search), and the profile gate is routed by the **`collapse`** engine command's stdout token `ground_codebase` \| `shortlist` (no `ground_gate` state). _Corrected 2026-09-30 (fourth review): this previously said `check_floors`, which cannot gate a state that runs before `shortlist` and before `check_floors` (generation)._
 - `grounded` is a top-level optional field (see Types); `evidence` stays in `extra`.
 
 _Added 2026-09-29 (EPIC-3581 second review):_

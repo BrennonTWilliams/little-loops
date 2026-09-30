@@ -48,16 +48,17 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 
 **Routing-token safety** (2026-09-29, third review): FSM `evaluate: classify` reads stdout only and ignores exit codes, so an engine crash with empty stdout would silently follow the `_` default. Therefore every routed command (a) prints the literal token `fail` as its last stdout line on exit 1 **and** exit 2 (best effort on crash, via a top-level `try/finally` in `main`), (b) documents its happy tokens explicitly, and (c) is wired with `_: finalize_failed` (never a happy-path default) on every classify state. A test asserts each routed command prints `fail` on a forced violation and on a forced exception.
 
-**Idempotency** (2026-09-29): child-loop and per-lens state is not resumed (`active_sub_loop` is observability-only), so a re-run must never double-count. `record-round` upserts by `(round, pair, probe)`; `next-round` skips rounds already recorded in `tournament.jsonl`; `ingest` replaces all ideas of the same lens index (lens identity is the index into `lenses.txt`, not the lens text) instead of appending; `collapse` and `shortlist-apply` are pure rewrites. Framings written to `lenses.txt` are sanitized (`|` and newlines replaced by a space).
+**Idempotency** (2026-09-29): child-loop and per-lens state is not resumed (`active_sub_loop` is observability-only), so a re-run must never double-count. `record-round` upserts by `(round, pair, probe)`; `next-round` skips rounds already recorded in `tournament.jsonl`; `ingest` replaces all ideas of the same lens index instead of appending (lens identity is the `lens_index` field of each `lenses.txt` line — `lens_index|framing|lens`, assigned once by `frame-apply` — not the lens text and not the line number, since `pop_lens` deletes lines as it pops; idea IDs are allocated monotonically from the highest existing id and **never reused**, so a replaced lens's old ids are retired and generation order stays numeric id order); `collapse` and `shortlist-apply` are pure rewrites. Framings written to `lenses.txt` are sanitized (`|` and newlines replaced by a space).
 
 **Prompt blocks** (2026-09-29): YAML prompts can only interpolate `${context.*}`/`${captured.*}`, so commands that feed an LLM state print the data block **to stdout** (the state captures it and interpolates it inside a `<<<…>>>` fence). The instructions stay in the YAML; the engine never writes a whole prompt file. Untrusted text (briefs, idea titles/bodies, framings) is only ever emitted inside the block.
 
 | Command | Args | Reads | Writes | Stdout token |
 |---|---|---|---|---|
-| `resolve-profile` | `--mode M` `--set key=value`… (empty = inherit) `--decision-file F` (optional classifier output) | `brainstorm-profiles/*.json` | `profile.json` (incl. `overridden`, clamped `max_finalists`) | resolved mode |
-| `reframe-select` | `--raw-file F` | `profile.json` | `lenses.txt` framing seeds (`framing\|lens_index`; sanitized), `diverge_state.md` | count |
+| `resolve-profile` | `--mode M` `--set key=value`… (empty = inherit) `--decision-file F` (optional classifier output) | `brainstorm-profiles/*.json` | `profile.json` (incl. `overridden`, clamped `max_finalists`) | the `Mode: <x> (…)` banner line (informational, not routed); **exit 1 before any LLM call** when a mode or knob value is invalid **or names a capability not yet built** (see § Capability allowlist) |
+| `frame-apply` | `--raw-file F` | `profile.json` | `lenses.txt` (`lens_index\|framing\|lens`; empty framing; sanitized), `diverge_state.md` | `reframe` \| `pop_lens` (from `profile.json` `reframe`); `fail` on violation |
+| `reframe-select` | `--raw-file F` | `profile.json`, `lenses.txt` | `lenses.txt` (fills the framing field round-robin), `diverge_state.md` | count |
 | `ingest` | `--raw-file F` `--lens-index N` | `profile.json`, `ideas.jsonl` | `ideas.jsonl` (replace-by-lens-index, idempotent), `diverge_state.md` | ideas added |
-| `collapse` | `--groups-file F` | `ideas.jsonl` | `ideas.jsonl`, `dedup.log` (fail-open) | ideas kept |
+| `collapse` | `--groups-file F` | `ideas.jsonl`, `profile.json` | `ideas.jsonl`, `dedup.log` (fail-open; kept count, re-tag agreement rate, pre/post cell occupancy) | `ground_codebase` \| `shortlist` (from `profile.json` `ground`); `fail` on violation |
 | `shortlist-apply` | `--picks-file F` | `ideas.jsonl`, `profile.json` | `finalists.json`, `shortlist.json` | finalists count |
 | `check-floors` | `--stage generation\|pre_tournament\|final` `--elapsed-ms N` (pre_tournament; from `${loop.elapsed_ms}`) | ideas, finalists, profile | — (violations on stderr) | next-state token from the profile (`materialize` \| `tournament`; `ok` at `final`; `ground_web` is deferred, see EPIC-3581); `fail` on violation |
 | `build-schedule` | — | `finalists.json` | `schedule.json` (rounds → ordered pairs) | round count |
@@ -66,10 +67,10 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 | `probe-plan` | — | `tournament.jsonl` | `round_current.json`; stdout = reversed top-3 head-to-head pair block | pair count |
 | `rank` | — | `tournament.jsonl` | `tournament.json` | — |
 | `salvage` | — | `tournament.jsonl`, `schedule.json` | `tournament.json` (`partial`) | exit 1 = below salvage floor |
-| `portfolio` | `--synthesize` | `tournament.json`, `ideas.jsonl` | `portfolio.json`, `winners.md` | `premortem` \| `validate` \| `fail` |
-| `validate` | — | portfolio, ideas, finalists, profile | — | `ok` \| `fail` |
-| `render-report` | — | `profile.json`, `ideas.jsonl`, `finalists.json`, `shortlist.json`, `tournament.json`, `portfolio.json`, `premortem.json`?, `materialize.json`? | `brainstorm.md` (**the only writer**; `init` empties it) | `ok` \| `fail` |
-| `prompt-block` | `--kind diverge\|dedup\|shortlist\|reframe` | `profile.json`, `ideas.jsonl`, `diverge_state.md` | — (block on stdout: axes/bins, extra fields, rubric, occupancy, idea list) | — |
+| `portfolio` | `--synthesize` | `tournament.json`, `ideas.jsonl` | `portfolio.json`, `winners.md` | `premortem` \| `render` \| `fail` |
+| `validate` | — | portfolio, ideas, finalists, profile, `brainstorm.md` | — | `ok` \| `fail` |
+| `render-report` | `--failed` (optional: stub mode for `finalize_failed`) | `profile.json`, `ideas.jsonl`, `finalists.json`, `shortlist.json`, `tournament.json`, `portfolio.json`, `premortem.json`?, `materialize.json`?, `dedup.log`? | `brainstorm.md` (**the only writer**, incl. the `--failed` stub; `init` empties it) | `ok` \| `fail` |
+| `prompt-block` | `--kind frame\|diverge\|dedup\|shortlist\|reframe` | `profile.json`, `ideas.jsonl`, `diverge_state.md` | — (block on stdout: lens catalog, axes/bins, extra fields, rubric, occupancy, idea list) | — |
 
 **Input file formats** (pinned 2026-09-29; tagged NDJSON — one JSON object per line prefixed by the tag, other lines ignored, malformed lines skipped and counted, never fatal):
 
@@ -81,7 +82,13 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 | `shortlist-apply --picks-file` | `PICKS_JSON: {"<bin_a>\|<bin_b>": "i012", …}` — one id per multi-idea cell |
 | `record-round --verdicts-file` | `VERDICT_JSON: {"pair": int, "winner": "a" \| "b" \| null, "rationale": str, "seen": [str, str]?}` — one per pair; `seen` only in image mode |
 
-Later children add commands here and never change existing rows (`probe-anchor`, `materialize-check`, `annotate`). `render-report` is owned here: `brainstorm.md` has exactly one writer and later children extend its sections (gallery, risks, grounding flags) by adding inputs, not by writing the file. Report contents: mode header (`Mode: <x> (auto, confidence <c>) — rerun with mode=<y> to override`), portfolio (`output_shape` picks the layout; `grid` adds the grid map), off-grid share, dropped cells, `tie_rate`/`abstention_rate`/`low_confidence`/`partial`/`probe_incomplete`/`wildcard_fallback`, `grounded: unknown` flags, and optional gallery/risks sections when their inputs exist. The zero-idea and failure paths still get a stub report from `finalize_failed`.
+**Evaluator per command** (2026-09-30 fourth review): classify-routed (stdout token, `_: finalize_failed`, print `fail` on exit 1 **and** 2): `frame-apply`, `collapse`, `check-floors`, `record-round`, `portfolio`, `validate`, `render-report`. Exit-code-routed (`next:` + `on_error:`, or `evaluate: exit_code`; exempt from the print-`fail` rule because the exit code *is* the route): `resolve-profile`, `reframe-select`, `ingest`, `shortlist-apply`, `build-schedule`, `next-round` (exit 1 = no rounds left), `probe-plan`, `rank`, `salvage` (exit 1 = below salvage floor), `prompt-block`. Each CLI-table row is tested against this list.
+
+**Capability allowlist** (2026-09-30 fourth review): `resolve-profile` holds a module constant `BUILT_CAPABILITIES` (v1 = `{"ground": {"none"}, "materialize": {"none"}, "premortem": {False}, "reframe": {True, False}}`), and rejects (exit 1, violation on stderr, before any LLM call) any profile or override value outside it — including explicit overrides like `materialize=render`. FEAT-3584/3585/3586 each widen it in the same change that lands their states, and flip their preset knob (FEAT-3583 § Pinned Preset Contents). This is what keeps shipped presets from emitting a routing token (`materialize`, `premortem`, `ground_codebase`) whose target state does not exist yet.
+
+**Prompt-block delivery** (2026-09-30 fourth review): a prompt state cannot run shell, so every LLM state that needs a data block is preceded by a shell state that captures `prompt-block --kind <k>` (or `next-round`/`probe-plan`) stdout. This issue pins only the command side (which `--kind`s exist); the state-by-state pairing table and the resulting parent step count are owned by FEAT-3582 § Program Design.
+
+Rows are **frozen once FEAT-3582 merges**; until then this review's amendments may still change them, and later children only add commands (`probe-anchor`, `materialize-check`, `annotate`). `render-report` is owned here: `brainstorm.md` has exactly one writer (including the `--failed` stub `finalize_failed` calls) and later children extend its sections (gallery, risks, grounding flags) by adding inputs, not by writing the file. Report contents: mode header (`Mode: <x> (auto, confidence <c>) — rerun with mode=<y> to override`), portfolio (`output_shape` picks the layout; `grid` adds the grid map), off-grid share, dropped cells, `tie_rate`/`abstention_rate`/`low_confidence`/`partial`/`probe_incomplete`/`wildcard_fallback`, `grounded: unknown` flags, re-tag agreement rate and pre/post cell occupancy from `dedup.log` (a blind re-tagger drifting to middle bins would otherwise silently shrink `min_cells`), and optional gallery/risks sections when their inputs exist. The zero-idea and failure paths still get a stub report from `finalize_failed`, which calls `render-report --failed`.
 
 ## Use Case
 
@@ -102,7 +109,7 @@ All symbols live in `scripts/little_loops/brainstorm_engine.py` and are exposed 
 - `IdeaRecord`: `{id: str, title: str, body: str, framing: str, lens: str, cell: [str, str], off_grid: bool, grounded: bool | "unknown" | None, extra: dict}` — one JSON line per idea in `ideas.jsonl`
 - `FinalistsFile`: `{finalists: [str], reserve: {str: [str]}, dropped: {str: str}, judge_mode: str, assets: dict}`
 - `PairVerdict`: `{a: str, b: str, winner: str | null, probe: bool, round: int, rationale: str}`
-- `Profile`: `{mode: str, lenses: [str] (per-profile lens catalog; `frame` reads it), reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase", materialize: str, rubric: str, premortem: bool, output_shape: str, overridden: [str]}`
+- `Profile`: `{mode: str, lenses: [str] (per-profile lens catalog; `frame` reads it), reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], extra_fields: [str] (profile-specific idea fields under `extra`; `prompt-block --kind diverge` prints them), ground: "none" | "codebase", materialize: str, rubric: str, premortem: bool, output_shape: str, overridden: [str]}` — knob values outside `BUILT_CAPABILITIES` fail `resolve-profile` (§ Capability allowlist)
 
 ### Signatures
 
@@ -146,6 +153,8 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 
 ### Tests
 - `scripts/tests/test_brainstorm_engine.py` — new; the full list in FEAT-3582 § Integration Map → Tests, plus: CLI exit-code contract (0/1/2) per command, the `fail` token on a forced violation **and** a forced exception for every routed command, idempotency (re-running `ingest`/`record-round`/`next-round` never double-counts; salvage's round count is unchanged), framing sanitization (`|`, newline), `render-report` golden fixtures (grid/portfolio/winner_risks shapes, partial/low-confidence flags, missing optional inputs), prompt-block content and fencing, `insufficient_time` guard driven by `--elapsed-ms` (incl. the `JUDGE_CALL_TIMEOUT_S` term), salvage-floor arithmetic (N = 2..8), abstention thresholds, re-tag fallback, cap tie-break by generation order, `reframe-select` forced-ranking parse
+- **Executor smoke test** (2026-09-30 fourth review; a test, not a gate): a throwaway loop YAML defined inside the test (never a shipped loop) run through the real executor, whose shell states call `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine check-floors …` from a non-repo cwd. It proves the `$${}` escaping, that `LL_PYTHON` + `-m` resolves, and that the `fail` token and empty-stdout crash route through the real `classify` evaluator to `_`. This is the only in-scope way to de-risk the idiom before FEAT-3582, since this issue changes no YAML.
+- CLI-table conformance: every command's evaluator class matches § Evaluator per command; `resolve-profile` rejects `materialize=render`, `ground=codebase`, `premortem=true` while `BUILT_CAPABILITIES` excludes them; `frame-apply` routes `reframe` \| `pop_lens` and writes empty framings when `reframe` is off; `collapse` emits `ground_codebase` \| `shortlist`; ids are never reused on re-ingest; `render-report --failed` writes the stub; `collapse` records re-tag agreement and occupancy in `dedup.log`
 - `ll-verify-package-data` must pass (module and `brainstorm-profiles/` ship with the package; `pyproject.toml` includes `little_loops/**`)
 
 ### Dependent Files
@@ -171,6 +180,7 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 - All floors, schedule, ranking, probe, salvage, abstention, wildcard and dedup fixtures listed in FEAT-3582 pass.
 - No YAML file is modified; `python -m pytest scripts/tests/` and `ll-verify-package-data` pass; `ruff` and `mypy` clean for the new module.
 - `docs/reference/API.md` documents the module.
+- The executor smoke test passes (`$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine` through the real classify evaluator, incl. the empty-stdout crash → `_`); each command's evaluator class matches § Evaluator per command; `resolve-profile` enforces `BUILT_CAPABILITIES`; `frame-apply` and `render-report --failed` exist; ids are never reused on re-ingest.
 
 ## Related Key Documentation
 
@@ -194,6 +204,8 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 - **Ambiguity (22/25)**: remaining judgement calls are prompt wording (FEAT-3582) and profile bin names (FEAT-3583); neither blocks this issue.
 
 ## Review Decisions
+
+_Added 2026-09-30 (EPIC-3581 fourth review, `/ll:advise` with Opus; nothing measured):_ `frame-apply` added (the reframe-skip path — the **default** for `artifact` — had no command writing empty-framing `lenses.txt` lines and no route around `reframe`); `lenses.txt` pinned to `lens_index|framing|lens` (the two prior spellings, `framing|lens_index` here and `framing|lens` in FEAT-3582, disagreed and neither survives `pop_lens` deleting lines); `collapse` prints the `ground_codebase|shortlist` token (FEAT-3584's gate cannot be `check_floors`, which runs after `shortlist`); `portfolio`'s happy token renamed `validate` → `render` (it routes to `render_report`, not `validate_portfolio`); `render-report --failed` keeps a single writer; `BUILT_CAPABILITIES` allowlist in `resolve-profile`; evaluator classes pinned; freeze rule loosened to "once FEAT-3582 merges"; ids never reused; smoke test added to this issue's tests; re-tag agreement/occupancy logged.
 
 _Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measured):_ `render-report` and `prompt-block` added (no owner existed for `brainstorm.md` or for profile data reaching prompts); `fail` routing token on every routed command; idempotent appends keyed by round/pair/lens index; `--elapsed-ms` replaces `run_started_epoch`; `JUDGE_CALL_TIMEOUT_S` added to the time guard; `record-round`'s `fallback_html` token removed with FEAT-3585's restart; `lenses` added to `Profile`; `ground` type narrowed to `none | codebase`.
 

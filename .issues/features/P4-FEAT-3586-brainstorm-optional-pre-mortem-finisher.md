@@ -65,7 +65,7 @@ EPIC-3581 approach D adds an adversarial pre-mortem to reduce false confidence i
 
 Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.yaml`, after `portfolio` and before `validate_portfolio`:
 
-- No separate gate state (2026-09-29): the `portfolio` engine command prints `premortem` or `validate` as its last stdout line from the resolved profile, and `portfolio` routes on it (`evaluate: classify`, `_:` default → `validate_portfolio`). A disabled finisher costs **zero** parent steps.
+- No separate gate state (2026-09-29): the `portfolio` engine command prints `premortem` or `render` as its last stdout line from the resolved profile (or `fail`), and `portfolio` routes on it (`evaluate: classify` with both happy tokens listed explicitly and `_: finalize_failed` — a default that reached `validate_portfolio` would break classify safety; `render` routes to `render_report`). A disabled finisher costs **zero** parent steps.
 - `premortem_critic` (LLM, one call, winner + runner-up) → `premortem_defender` (LLM, one call) → `annotate` (script: engine command `annotate`). Total **3 parent steps** (critic, defender, `annotate`; the gate is folded into `portfolio`); no rounds, no counter, no `premortem_rounds`, no `retry_counter`, no per-run counter file.
 - `annotate` is a command of `little_loops.brainstorm_engine` (FEAT-3582 § Solution): it reads the two LLM outputs from files, validates the schema and idea-body immutability, writes `premortem.json`, updates `portfolio.json` `flags`, and never touches `winners.md`, `ideas.jsonl` idea rows, `ranking`, or slots.
 - Report rendering adds the `Risks & Kill Criteria` section from `premortem.json`.
@@ -130,7 +130,7 @@ _Carried from `/ll:refine-issue` — 2026-09-25, edited 2026-09-29 for the annot
 
 ## Implementation Steps
 
-1. Add `premortem_critic`, `premortem_defender` between `portfolio` and `render_report` (blocked by FEAT-3582/FEAT-3583); a `validate` token from `portfolio` routes straight past the finisher (`render_report` → `validate_portfolio`).
+1. Add `premortem_critic`, `premortem_defender` between `portfolio` and `render_report` (blocked by FEAT-3582/FEAT-3583); a `render` token from `portfolio` routes straight past the finisher (`render_report` → `validate_portfolio`).
 2. Implement `annotate` and `render_risks` in `brainstorm_engine.py` with unit tests first (TDD): schema validation, immutability check, fail-open, `unmitigated_fatal` flag.
 3. Extend `render-report` (FEAT-3667) to add `Risks & Kill Criteria` for the winner and runner-up when `premortem.json` exists; output unchanged when it does not.
 4. Add `FENCE_ROLES` entries; run `ll-loop validate brainstorm`.
@@ -150,6 +150,8 @@ _Carried from `/ll:refine-issue` — 2026-09-25, edited 2026-09-29 for the annot
 - A `fatal` risk with `mitigation: null` adds `unmitigated_fatal` to that idea's `flags` and is highlighted in the report; the idea still reaches sinks.
 - Malformed, unknown-id, mismatched, or revised-body critic/defender output fails open (`premortem_skipped`, `premortem.log`) and never fails the run.
 - Skipped cleanly when disabled; no change to output shape otherwise.
+- **Lands with its own enablement (2026-09-30):** in the same change, widen FEAT-3667's `BUILT_CAPABILITIES` to allow `premortem=true`, flip the `functional` and `business` preset knob to `true` (FEAT-3583 § Shipped vs target), extend the profile-token wiring test, and bump `max_steps` by this finisher's own cost (+3 when enabled) instead of leaving it to FEAT-3596.
+- The critic gets the winner/runner-up bodies by a pinned mechanism: either an engine block captured by one extra shell state (+1 step, then 4 parent steps) or `Read` access to `portfolio.json`/`ideas.jsonl` under the loop `scope:` (0 extra); the choice and the resulting step cost are recorded here when implemented (FEAT-3582 § Program Design → LLM-state pairing).
 
 ## Review Decisions
 
