@@ -36,6 +36,8 @@ Land as two reviewable slices; the seam alone must never ship, because it turns 
 - **3657a — seam + boundary helper**: central guard in `open_history_readonly`, `_connect_readonly` re-raise, read-mode remote ensure, the one boundary helper wired into `main_history`/`main_logs`/`main_ctx_stats`/`main_messages`, and the non-CLI caller audit (MCP `history_search`, `sft-corpus` `enrich`, CT-0). Seam tests included.
 - **3657b — sites, serve, docs**: per-site verdicts, `ll-harness` serve, `history summary`/`decisions`/`--reader auto` degrades, `sft-corpus`/CT-0 changes, skill mirrors, docs and the support table.
 
+**Slicing rationale:** Opus advised two slices, with the boundary helper shipping with the seam (so a refusal is never a traceback) and docs shipping with the sites. An earlier three-way split (seam / helper+refuse sites / serve+docs) was rejected for that reason. This is kept as slices of one issue to avoid re-wiring ENH-3668's `blocked_by`; convert to separate issues only if the slices need independent scheduling.
+
 **Prerequisites:** ENH-3677 (fixture) and ENH-3682 (prepatch reads become `best_effort` and catch `HistoryUnsupported`; without it the re-raise reaches the FSM for `read_base_sha` on a behind/foreign/read-only-token remote store). **Narrow the re-raise** to the guard's own subclass (e.g. `HistoryRemoteRefused(HistoryUnsupported)`) rather than every `HistoryUnsupported`, so remote `ensure_schema` refusals keep degrading to `None` for callers that never opted in.
 
 ## Summary
