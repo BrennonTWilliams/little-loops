@@ -83,14 +83,16 @@ In scope (sites ENH-3657 refuses in the interim):
 
 Out of scope: refuse/degrade verdicts (ENH-3657), startup/write paths (BUG-3652), hand-built path sites (ENH-3658).
 
+Also in scope (2026-09-30): serving `loops/sft-corpus.yaml` `enrich` (`lookup_session_metadata`), which ENH-3657 only degrades explicitly. Deleting ENH-3657's interim single support table entry per subcommand as each flips to serve.
+
 ## Acceptance Criteria
 
 - [ ] Each in-scope site returns data through `HranaStub` under a remote config and creates **no** local `.ll/history.db` (assert absence).
 - [ ] An unreachable endpoint is reported as such (not as "no data"), with no endpoint token in stderr.
 - [ ] `--db` / `LL_HISTORY_DB` still read the local file; `python -m pytest scripts/tests/` passes.
 - [ ] MCP `history_search` resolves the backend against `project_root`, with a remote-config-at-`project_root` + foreign-cwd test.
-- [ ] **Budgeted best-effort read (moved from BUG-3652, sixth `/ll:advise` review, 2026-09-29).** BUG-3652 ships the prepatch base-SHA read (`read_base_sha` / `read_base_dirty`) on the standard reader connection, so a black-holed endpoint can stall it for up to about 10 s per read. Add `open_history_readonly(..., best_effort: bool = False)`: for a `RemoteTarget` with `best_effort=True`, skip `ensure_schema` and open `LibsqlConnection(client(timeout=telemetry_timeout_ms), read_only=True, config=…, telemetry=True)` through a new `LibsqlBackend.connect_readonly_telemetry`, so `_guard` honors and `_run` sets the unreachable marker. Thread it through `_connect_readonly(..., best_effort=True)` for the two prepatch readers only. Add a black-holed-socket test double (accepts, never replies; `remote.stop()` fails instantly and cannot see the stall) asserting the read returns `None`, sets the marker, and sends no request once it is set. `telemetry_scope()` is not a shortcut: it only affects `schema.connect`.
-- [ ] **Read-only token limitation:** `_connect_readonly` uses `ensure=True`, which calls `check_access(write=True)`; with a read-only remote token every `history_reader` read returns `None` and silently falls back. Decide whether readers should open without the write probe.
+- [ ] **Budgeted best-effort read (moved from BUG-3652, sixth `/ll:advise` review, 2026-09-29).** BUG-3652 (landed `62ac0fc89`) ships the prepatch base-SHA read (`read_base_sha` / `read_base_dirty`) on the standard reader connection, so a black-holed endpoint can stall it for up to about 10 s per read. Add `open_history_readonly(..., best_effort: bool = False)`: for a `RemoteTarget` with `best_effort=True`, skip `ensure_schema` and open `LibsqlConnection(client(timeout=telemetry_timeout_ms), read_only=True, config=…, telemetry=True)` through a new `LibsqlBackend.connect_readonly_telemetry`, so `_guard` honors and `_run` sets the unreachable marker. Thread it through `_connect_readonly(..., best_effort=True)` for the two prepatch readers only. Add a black-holed-socket test double (accepts, never replies; `remote.stop()` fails instantly and cannot see the stall) asserting the read returns `None`, sets the marker, and sends no request once it is set. `telemetry_scope()` is not a shortcut: it only affects `schema.connect`.
+- ~~**Read-only token limitation**~~ — moved into ENH-3657 (2026-09-30): harness serve needs the read-mode ensure (`check_access(write=False)`), so it lands there; ENH-3668 inherits it.
 
 ## Related
 

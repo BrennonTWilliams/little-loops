@@ -4,7 +4,7 @@ type: ENH
 title: Route skill and loop hand-built .ll/history.db paths through the target-aware
   store
 priority: P3
-status: open
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T23:04:53Z'
@@ -12,6 +12,7 @@ relates_to:
 - BUG-3652
 - ENH-3657
 - ENH-3658
+closed_reason: superseded
 ---
 
 # ENH-3670: Route skill and loop hand-built .ll/history.db paths through the target-aware store
@@ -49,6 +50,10 @@ Route each through an `ll-*` CLI or `little_loops.session_store` (target-aware),
 
 - BUG-3652, ENH-3657, ENH-3658.
 
+## Resolution
+
+**Cancelled 2026-09-30 (superseded by ENH-3658)** after a pre-implementation `/ll:advise` (Opus) review: the site list overclaimed. `go-no-go:155` and `capture-issue:186-204` call `ll-history-context` / `ll-session search --fts`, whose `--db` default is the relative `DEFAULT_DB_PATH` (already remote-capable through the seam); their `.ll/history.db` text is prose. `analyze-history:145`, `configure/areas.md` and `compact-session:41` are prose/flag docs. Only `skills/update-docs/SKILL.md:~102` is a real hand-built path (silent degrade to the file scan). `sft-corpus.yaml` `stage` is ENH-3657; its `enrich` state is ENH-3657 (interim) / ENH-3668 (serve). The narrow hazard gate moved into ENH-3658.
+
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P3
+**Cancelled** | Created: 2026-09-29 | Priority: P3

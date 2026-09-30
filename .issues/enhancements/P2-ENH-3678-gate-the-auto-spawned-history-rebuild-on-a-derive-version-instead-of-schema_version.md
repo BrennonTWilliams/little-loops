@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T00:31:00Z'
+blocks:
+- ENH-3666
 ---
 
 # ENH-3678: Gate the auto-spawned history rebuild on a derive version instead of SCHEMA_VERSION
@@ -26,12 +28,17 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 - A flock so only one `--rebuild` runs at a time (a second spawn exits immediately).
 - Above a size threshold (e.g. 1 GB, configurable) the hook does not auto-spawn `--rebuild`; it reports "rebuild pending" (SessionStart output / `ll-doctor`) and the user runs `ll-session rebuild` explicitly.
 
+## Scope Boundaries
+
+- **In scope**: `REBUILD_DERIVE_VERSION` + `rebuild_derive_version` meta key, the SessionStart gate, a single-flight flock for `--rebuild`, the size-threshold opt-in and its pending notice.
+- **Out of scope**: restructuring `rebuild()` (ENH-3666), telemetry-writer resilience (ENH-3679), remote stores (never rebuild from a hook).
+
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - stops multi-GB full rebuilds (and their write-lock stalls) on schema bumps that change no derivation
+- **Effort**: Small - a version constant, one meta key, a flock, and a size gate in the SessionStart hook
+- **Risk**: Medium - a wrong migration stamp could skip a needed rebuild
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 
@@ -43,7 +50,7 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 
 ## Related
 
-- ENH-3666 (structural fix; now blocked by this issue), ENH-3678 (telemetry writer resilience).
+- ENH-3666 (structural fix; now blocked by this issue), ENH-3679 (telemetry writer resilience).
 
 ## Status
 

@@ -13,7 +13,7 @@ relates_to:
 - ENH-3668
 - ENH-3658
 blocked_by:
-- BUG-3652
+- ENH-3677
 confidence_score: 65
 outcome_confidence: 51
 score_complexity: 5
@@ -23,6 +23,15 @@ score_change_surface: 10
 ---
 
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
+
+> **Re-scoped 2026-09-30** after a third `/ll:advise` (Opus) review, run once BUG-3652 had landed (`62ac0fc89`). These edits **supersede** conflicting text below:
+> - **Blocker fixed:** `blocked_by` is now ENH-3677 (hoist the shared `remote` fixture). BUG-3652 is done and did **not** hoist it (it added a sixth copy, `test_remote_callers_bug3652.py:67`); every "BUG-3652 hoists the fixture" statement below is stale.
+> - **Fix the cause once, centrally.** In `history_reader._base._connect_readonly` (or `open_history_readonly`): when the configured provider is remote and the resolved target is a *default-shaped* local path (absolute `<root>/.ll/history.db`, `LL_HISTORY_DB` unset, no explicit `--db`), raise `HistoryUnsupported` instead of `ensure_schema`-creating a shadow `.ll/history.db`. It must fire only in that case (respect the BUG-3181 absolute-path contract, `--db`, `LL_HISTORY_DB`, and first-use local creation); record and test that carve-out. Remote reads use a read-mode check (`check_access(write=False)`, no ensure/migrate); a missing remote schema reads as empty, and `ll-harness` serve must treat it as such.
+> - **One CLI boundary helper** maps `HistoryUnsupported` to `<prog> <sub>: <exc>` on stderr + exit 1 (inside `cli_event_context`), replacing ~20 per-site catch blocks. **Drop** the per-operation `_REMOTE_REFUSALS` keys and `_REJECTED` rows (they only exist to be deleted by ENH-3668) and **drop the ~12 interim per-doc remote notes**: document reader behavior once, as a single support table in `CONFIGURATION.md` "Remote history backend" (linked from `CLI.md`), which ENH-3668 later shrinks. Add one parametrized refusal test over the refused sites instead of per-site tests.
+> - **Read-only-token limitation moved in** from ENH-3668: `ensure=True` calls `check_access(write=True)`, so a read-only remote token makes every reader return `None`. The read-mode ensure fix (Proposed Solution 1c) covers it; add an AC.
+> - **Notice channel decided:** degrade notice is the CLI `note:` line, emitted before touching the seam; the library `warn_once` in `_connect_readonly` (added by BUG-3652) must not also fire for that call. One channel per site, never both.
+> - **Add** a degrade for `loops/sft-corpus.yaml` `enrich` (`history_reader.lookup_session_metadata` is `.exists()`-gated in `history_reader/sessions.py:358`, so under remote it silently yields an un-enriched corpus): emit an explicit note and pass records through un-enriched. Serving it is ENH-3668.
+> - **Keep:** `ll-harness` serve, the degrade rows (`summary`, `decisions generate`, `--reader auto`, CT-0), the `sft-corpus` `stage` fix.
 
 > **Re-scoped 2026-09-29** after the `/ll:advise` (Opus) review: this issue now only *stops the tracebacks* (refuse / degrade, plus serving `ll-harness`). Real remote reads for `ll-history` reader subcommands and MCP `history_search` moved to **ENH-3668**. The earlier plan to "serve" ~11 sites by dropping the pre-resolve was unsafe (see Decision Rules) and is superseded throughout.
 
@@ -281,7 +290,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
-Prerequisite: BUG-3652 landed (it hoists/reconciles the shared `remote` fixture and edits the same `_REMOTE_REFUSALS`/`_REJECTED`).
+Prerequisite: ENH-3677 landed (hoists the shared `remote` fixture). BUG-3652 is already done. Note the 2026-09-30 re-scope banner: per-operation `_REMOTE_REFUSALS`/`_REJECTED` edits are dropped in favour of the central guard + one boundary helper.
 
 1. **Seams** (see Proposed Solution 1): per-operation `_REMOTE_REFUSALS` keys + `_REJECTED` rows; `refuse_on_remote(..., root=)`; read-mode remote ensure in `open_history_readonly`. Hoist the `remote` fixture into `conftest.py` if BUG-3652 did not.
 2. **Serve** `cli/harness.py` (`_retry_gate`, `_read_target_history`, `_resolve_baseline_of`, `read_baseline`, `cmd_dsl`): drop the pre-resolve, pass the relative default; verify rows round-trip through `HranaStub` and that no local `.ll/history.db` is created.
@@ -303,7 +312,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `skills/analyze-history/SKILL.md` and `skills/create-eval-from-issues/SKILL.md` to tell the model what a remote-refusal exit 1 means (no fallback exists in either today)
 - In `skills/improve-claude-md/SKILL.md`, edit CT-0 only (keep `[ -f .ll/decisions.yaml ]` and `decisions list --type rule 2>/dev/null | grep`, pinned by `test_wiring_skills_and_commands.py`); no checked-in `ll-adapt` host mirror of this skill was found, so run `ll-adapt --apply` and confirm whether it changes anything before treating step 2 as a mirror update
 - Hoist the `remote` fixture (currently copied in three test files) into `scripts/tests/conftest.py` or a shared helper before adding reader-CLI remote tests; add `_REJECTED` rows per new operation in `test_remote_operation_matrix.py`
-  > ⚠ Superseded — copies are in five files; BUG-3652 (landing first) owns the hoist and reconciliation; see Integration Map findings
+  > ⚠ Superseded — copies are in six files; ENH-3677 owns the hoist and reconciliation (BUG-3652 did not hoist it).
 - Regenerate the committed `create-eval-from-issues` host mirrors (`.gemini/`, `.qwen/`, `.kimi-code/`) via `ll-adapt --host <gemini|kimi-code|qwen> --apply` after the `ll-harness dsl` note edit
 - Gate any `ll-ctx-stats` refusal/notice on a `RemoteTarget` and pass `args.db` to `refuse_on_remote`, so `test_enh3549_codex_stored_ctx_stats.py` (`err == ""`) and the `--db` tests in `test_enh3656_stored_cache_rate.py` stay green
 - Add tests: `run_stats` `"No history.db found"` string invariant (`test_bug_3216_telemetry_digest_invocations.py`), `sft-corpus` `stage` reader flag (`test_loops_sft_corpus.py`)
@@ -331,6 +340,8 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 - [ ] Degrade sites (`history summary`, `decisions generate`, `--reader auto`, CT-0) keep stdout unchanged, exit 0, and print exactly one `note:` line on stderr only under a remote target; no endpoint token appears in any notice or refusal.
 - [ ] MCP `history_search` refusal resolves config against `project_root` (remote config at `project_root` + foreign cwd test).
 - [ ] `sft-corpus.yaml` `stage` no longer turns a remote refusal into an empty-success corpus; `"No history.db found"` is unchanged (invariant test).
+- [ ] Under remote, no reader creates a local `.ll/history.db` (assert absence) and the central guard fires only for a default-shaped path; a read-only remote token still serves `ll-harness` reads (`check_access(write=False)`).
+- [ ] `sft-corpus.yaml` `enrich` under remote emits an explicit note and passes records through un-enriched.
 - [ ] With an explicit `--db` / `LL_HISTORY_DB`, every refused site still runs locally; with the default local store, `python -m pytest scripts/tests/` passes unchanged.
 
 ### Codebase Research Findings
@@ -342,7 +353,7 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 ## Related
 
-- BUG-3652 (startup/write-path audit; `blocked_by`, land first).
+- BUG-3652 (startup/write-path audit; **done**, `62ac0fc89`) and ENH-3677 (shared `remote` fixture; `blocked_by`, land first).
 - FEAT-3535 (remote libSQL history backend).
 - ENH-3668 (`HistoryTarget`-aware readers; serves the `ll-history` subcommands and MCP `history_search` this issue refuses in the interim).
 - ENH-3658 (hand-built paths; shares `_REMOTE_REFUSALS`/`_REJECTED` edits: merge, don't overwrite).

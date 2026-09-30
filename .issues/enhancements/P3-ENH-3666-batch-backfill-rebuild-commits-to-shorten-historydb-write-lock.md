@@ -15,9 +15,31 @@ score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 10
 size: Large
+blocked_by:
+- ENH-3678
+- ENH-3679
 ---
 
 # ENH-3666: Batch backfill --rebuild commits to shorten history.db write lock
+
+> **Re-scoped 2026-09-30** after a `/ll:advise` (Opus) review. **This banner supersedes conflicting text below** (title left as-is for link stability; the design is now a shadow-build, not per-phase commits).
+>
+> **Premise correction.** The trigger is `last_rebuild_version < SCHEMA_VERSION` (`hooks/session_start.py:~213`): ~20 bumps since June, several changing no `_REBUILD_TABLES` derivation, each forcing a full multi-GB replay, with no single-flight guard. Fix the trigger and the dropped-telemetry symptom first: **blocked_by ENH-3678** (derive-version gate + single-flight flock + size-threshold opt-in) and **ENH-3679** (short-timeout + spool for best-effort telemetry writers). Dissent recorded: the incident bumps (09-23, 09-24, 09-29) *did* change usage derivation, so ENH-3678 alone would not have prevented that rebuild; this structural fix stays necessary. Consider also rebuilding `usage_events` only via the existing incremental `_USAGE_DERIVE_VERSION` path and making the other tables' rebuild per-table and derive-versioned, which may shrink this issue further; evaluate after ENH-3678 lands. Priority may drop to P4 until rebuilds still hurt after ENH-3678.
+>
+> **Decision (Implementation Step 1 is settled; no `/ll:decide-issue` needed): shadow-build with bounded batches, then a rename-only swap.**
+> - *Rejected:* per-phase commits + `rebuild_in_progress` marker (readers see empty/half tables and none check the marker; `project_digest` runs at SessionStart right after the worker spawns; usage/cost reports would show zero); id-range chunking (parsers depend on cross-range order: `usage_order` sorts by `source_path, ordinal`, session aggregates and `mine_corrections` need whole sessions); `wal_autocheckpoint`/`nice` (do not help a single long txn / lengthen the hold).
+> - *Parse outside the lock* is a component of the shadow design: read `raw_events WHERE id <= H` in a read snapshot (no lock under WAL), write into `<table>__rb` tables in batched txns. Create indexes on the empty shadow tables before inserting.
+> - *Swap:* rename live→`_old` and `__rb`→live in one short txn; **never DROP a GB table inside the swap txn**; drain `_old` in batched deletes afterwards, then drop when empty. The swap txn contains only the renames (assert by statement count, not wall time).
+> - *`search_index`* is a shared FTS5 table and cannot be swapped as a unit: select target rowids from a read snapshot, then delete+insert in rowid batches; document that search for the rebuilt kinds is briefly inconsistent.
+> - **`H`:** capture `MAX(raw_events.id)` once at start; every replay cursor is `WHERE id <= H`; `_set_usage_derive_checkpoint` records `H` (not `MAX(id)` at call time, which would mark mid-rebuild `raw_events` as derived and lose them permanently); rows `id > H` are then replayed incrementally after the swap.
+> - **Live-writer rows:** hooks insert directly into `tool_events` (`hooks/post_tool_use.py:~202`), `skill_events` (`writers.py:~328/743/4558`), `message_events` (`writers.py:~4360`) and `sessions` (`fsm/continuity.py:~61`) with no dedup key. **First verify** whether hook-written rows always have a `raw_events` counterpart. If yes, replay `id > H` after the swap covers them; if not, copy rows with `ts >= build_start` from old to new inside the swap txn. Either way assert no loss and no duplicate in a test.
+> - **Hold the existing `<db>.usage-refresh.lock` flock** (`backfill_worker.py:~48`) for the rebuild's whole run so the usage-trigger worker (every Stop hook), `backfill_usage_incremental`, `refresh_usage_source` and `refresh_raw_events` cannot interleave.
+> - **Take `_compact_sessions` out of `rebuild()`** (it holds the txn across a host-CLI subprocess and opens a second writer connection) and decide whether `summary_nodes`/`summary_spans` leave `_REBUILD_TABLES` (they hold non-reproducible LLM output that a wipe discards). Either changes rebuild's documented contract; check the 9-key return dict consumers.
+> - **Batch budget:** commit at 2,000 rows or 250 ms, then sleep ~50 ms before re-acquiring (SQLite's busy handler is unfair; commit-then-immediately-`BEGIN IMMEDIATE` can starve waiters even with short txns).
+> - **Acceptance criterion rewrite:** replace "no txn holds the lock longer than `_BUSY_TIMEOUT_MS`" (unachievable for a bare `DELETE`/`DROP` on GB tables) with "a concurrent writer at the production busy timeout always succeeds", tested with an injected between-batches hook (thread + barrier, post-state assertions, no wall-clock).
+> - **Rollback tests keep their intent, renamed and re-asserted:** `test_rebuild_rolls_back_replacement_when_replay_fails` → `test_rebuild_failure_preserves_live_tables` (live tables untouched, shadow tables cleaned up, meta and checkpoint unchanged); `test_rebuild_failure_rolls_back_usage_delete` → the same for non-live `usage_events`.
+> - **New tests:** concurrent `cli_events` insert between batches succeeds; `raw_events` inserted mid-build keeps `usage_derive_raw_id == H` and is picked up incrementally; live `tool_events` insert mid-build has the defined outcome; interrupted build leaves old tables intact plus a detectable leftover `__rb`/marker that the next run cleans up; `project_digest` returns old data during the build.
+> - **Size:** stays Large; re-score confidence after the `H`/live-writer verification.
 
 ## Summary
 
@@ -183,6 +205,8 @@ _Added by `/ll:refine-issue` — 2026-09-29 — based on codebase analysis:_
 
 ## Implementation Steps
 
+> ⚠ Superseded (2026-09-30): steps 1-3 are settled by the re-scope banner at the top (shadow-build + rename-only swap, `H`-bounded cursors, batched `search_index`); implement in that shape, after ENH-3678 and ENH-3679.
+
 1. Decide the atomicity strategy (shadow tables + short swap vs. per-phase commits with an in-progress `meta` marker) and record it in the issue.
 2. Restructure `rebuild()` so no single transaction spans the whole wipe + replay; commit/yield between batches.
 3. Defer `last_rebuild_version` and `_set_usage_derive_checkpoint` until every phase has completed; make an interrupted rebuild detectable and resumable.
@@ -225,6 +249,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Related but separate: the `database is locked` warning severity and the telemetry-insert timeout are not in scope here.
 
 ## Acceptance Criteria
+
+> ⚠ Superseded (2026-09-30): the first criterion below is replaced by "a concurrent writer at the production busy timeout always succeeds" (see the re-scope banner); the batch budget is 2,000 rows or 250 ms with a ~50 ms yield.
 
 - During `--rebuild` on a large DB, no single write transaction holds the lock longer than `_BUSY_TIMEOUT_MS`.
 - A concurrent `ll-*` command during a rebuild logs no `database is locked` warning and records its `cli_events` row.

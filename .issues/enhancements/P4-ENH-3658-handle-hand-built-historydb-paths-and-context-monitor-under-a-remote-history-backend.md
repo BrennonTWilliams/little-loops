@@ -6,7 +6,9 @@ title: Handle hand-built history.db paths and context-monitor under a remote his
 priority: P4
 status: open
 blocked_by:
-- BUG-3652
+- ENH-3677
+supersedes:
+- ENH-3670
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T05:29:44Z'
@@ -19,9 +21,17 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+relates_to:
+- ENH-3680
 ---
 
 # ENH-3658: Handle hand-built history.db paths and context-monitor under a remote history backend
+
+> **Re-scoped 2026-09-30** after a third `/ll:advise` (Opus) review, run once BUG-3652 had landed (`62ac0fc89`):
+> - **`hooks/scripts/context-monitor.sh` moved to ENH-3680** (spool-and-drain). The detached-background-write design (Option A / Implementation Step 2 / the slow-stub and `LL_HISTORY_DB` context-monitor ACs below) is **superseded**; ignore those items here. This issue now covers the five Python sites only.
+> - **Absorbs ENH-3670** (cancelled, `supersedes`): its only real site is `skills/update-docs/SKILL.md:~102` (`db_path = Path('.ll/history.db'); if db_path.exists()`, which silently degrades to the filesystem scan and can read a stale shadow DB). `go-no-go`/`capture-issue` call `ll-history-context`/`ll-session search` (relative default path, already remote-capable); `analyze-history:145`, `configure/areas.md` and `compact-session:41` are prose or a flag-default doc; `sft-corpus.yaml` `stage` is ENH-3657's and `enrich` is ENH-3657 (interim degrade) / ENH-3668 (serve).
+> - **Add a narrow hazard gate** (pytest, over `skills/`, `commands/`, `loops/*.yaml`, `hooks/`): flag `.exists()`/`-f` tests on `history.db` and `resolve_history_db()` calls, with a reasoned allowlist (`context-monitor.sh` until ENH-3680 lands). Not a gate on the bare string `.ll/history.db`, which fires on prose.
+> - **Blockers:** `blocked_by` is now ENH-3677 (shared `remote` fixture hoist); BUG-3652 is done and did not hoist it. Anchor fix: `cli/loop/run.py` hand-built path is now `:699` (was `:691`); cite it by function (`cmd_run` `--serve` dashboard render).
 
 ## Summary
 
@@ -249,7 +259,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P4 - these sites fail quietly (no startup abort), so impact is low.
-- **Effort**: Medium - five hand-built sites plus one hook script, ~6 test files and 4 doc files.
+- **Effort**: Medium - five hand-built Python sites plus the `update-docs` skill site and a hazard gate, ~5 test files and 4 doc files (the hook script moved to ENH-3680).
 - **Risk**: Low - local behavior unchanged.
 - **Breaking Change**: No
 
@@ -257,11 +267,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - [ ] `cmd_dashboard`, `main_doctor`'s `--trim` path, both `serve.py` sites (`make_history_route`, `_make_page_html_factory`) and the `cli/loop/run.py` `--serve` render resolve through `resolve_history_store` and handle a `RemoteTarget` explicitly (refuse or skip, naming the remote backend); no site reports "not found" or renders an empty-as-if-fresh result. `--db` / `db_path=` / `LL_HISTORY_DB` overrides still take the local path.
 - [ ] `ll-doctor --trim` under remote leaves `ll-doctor`'s exit code unchanged and raises no traceback.
-- [ ] `context-monitor.sh` (Option A) no longer pre-resolves; under a remote stub the lifecycle and pressure rows arrive, and with the stub stopped the hook exits 0 with empty stderr.
-- [ ] With a **slow-but-reachable** remote stub (latency ≥ the hook's 5s timeout), a subprocess test using `capture_output` sees `context-monitor.sh` return in **under 2s** with exit 2 and the reminder on stderr — remote writes never sit on the critical path (this also checks the parent does not wait on the detached child through inherited pipes).
+- ~~`context-monitor.sh` (Option A) no longer pre-resolves; under a remote stub the lifecycle and pressure rows arrive, and with the stub stopped the hook exits 0 with empty stderr.~~ — moved to ENH-3680 (2026-09-30).
+- ~~With a **slow-but-reachable** remote stub (latency ≥ the hook's 5s timeout), a subprocess test using `capture_output` sees `context-monitor.sh` return in **under 2s** with exit 2 and the reminder on stderr — remote writes never sit on the critical path (this also checks the parent does not wait on the detached child through inherited pipes).~~ — moved to ENH-3680 (2026-09-30).
 - [ ] `_make_page_html_factory` and the `cli/loop/run.py` `--serve` render, under remote, skip the history panel with the stated reason (`history backend is remote (<provider>); snapshot unavailable`) instead of rendering an empty-as-if-fresh snapshot or aborting `--serve`; `--db` / local twin unchanged.
 - [ ] `make_history_route` under remote returns HTTP 501 with a JSON reason naming the provider (no `stat()` of a nonexistent file, no empty 200 payload); `--db` / local twin unchanged.
-- [ ] With `LL_HISTORY_DB` set, the literal-path writers in `context-monitor.sh` still redirect to that local DB (existing `TestContextMonitor` tests stay green).
+- ~~With `LL_HISTORY_DB` set, the literal-path writers in `context-monitor.sh` still redirect to that local DB (existing `TestContextMonitor` tests stay green).~~ — moved to ENH-3680 (2026-09-30).
+- [ ] `skills/update-docs/SKILL.md` no longer hand-builds `.ll/history.db`; under remote it uses the file scan explicitly (or a target-aware CLI) and never reads a stale shadow DB.
+- [ ] The hazard gate (see the re-scope note) passes with only reasoned allowlist entries.
 - [ ] Remote-stub tests cover each site with local twins; local behavior unchanged; `python -m pytest scripts/tests/` passes.
 
 ## Related
@@ -294,7 +306,7 @@ The Confidence Check concerns about the `collect_trim_report` mechanism and the 
 
 ## Related Issues (sequencing)
 
-- **Order (advise review, 2026-09-29):** BUG-3652 (hoists the shared `remote` fixture) → ENH-3657 ∥ ENH-3658 → ENH-3668. ENH-3657 and this issue both edit `_REMOTE_REFUSALS` and `test_remote_operation_matrix.py::_REJECTED` with independent keys/rows: whichever lands second merges, never overwrites. `blocked_by: BUG-3652` is set in frontmatter.
+- **Order (advise review, 2026-09-30; supersedes the 2026-09-29 order):** ENH-3677 (hoists the shared `remote` fixture; BUG-3652 is done and did not hoist it) → ENH-3657 ∥ ENH-3658 → ENH-3668; ENH-3680 (context-monitor spool) is independent after ENH-3677. ENH-3657 and this issue both edit `_REMOTE_REFUSALS` and `test_remote_operation_matrix.py::_REJECTED` with independent keys/rows: whichever lands second merges, never overwrites. `blocked_by: ENH-3677` is set in frontmatter.
 
 ## Verification Notes
 

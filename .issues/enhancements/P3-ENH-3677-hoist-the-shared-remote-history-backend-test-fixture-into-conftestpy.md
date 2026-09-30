@@ -10,6 +10,7 @@ captured_at: '2026-09-30T00:30:36Z'
 blocks:
 - ENH-3657
 - ENH-3658
+- ENH-3680
 ---
 
 # ENH-3677: Hoist the shared remote history-backend test fixture into conftest.py
@@ -26,12 +27,17 @@ The fixture is copied in `test_remote_operation_matrix.py:29`, `test_remote_hook
 
 One shared fixture in `conftest.py` (parametrize or add a variant if the copies differ materially); each remote test file uses it; new reader-CLI and hand-built-path remote tests (ENH-3657, ENH-3658) import it instead of adding copies.
 
+## Scope Boundaries
+
+- **In scope**: one shared `remote` fixture in `scripts/tests/conftest.py`; migrating the six existing copies to it.
+- **Out of scope**: writing new remote-stub tests (ENH-3657, ENH-3658), changing `HranaStub`, any non-test code.
+
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - unblocks ENH-3657/ENH-3658 test work; no user-facing change
+- **Effort**: Small - move one fixture, reconcile six copies
+- **Risk**: Low - test-only
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 
