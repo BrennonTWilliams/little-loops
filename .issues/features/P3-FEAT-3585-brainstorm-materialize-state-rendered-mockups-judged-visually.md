@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T00:33:14Z'
-parent: EPIC-3581
+parent: EPIC-3687
 labels:
 - loops
 - brainstorm
@@ -221,6 +221,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
   ranked gallery.
 
 ## Review Decisions
+
+_Added 2026-09-30 (EPIC-3581 fifth review, `/ll:advise` with Opus):_ this issue moved to **EPIC-3687** (optional capabilities) so it no longer gates EPIC-3581 or FEAT-3596. Re-run `/ll:reconcile-issue` and `/ll:confidence-check` after FEAT-3667 lands (scores are missing or stale). Its own enablement change (widen `BUILT_CAPABILITIES`, flip the preset knob, wiring test, `max_steps`) and its own reference run stay in scope.
 
 _Added 2026-09-29 (EPIC-3581 pre-implementation review, `/ll:advise` with Opus):_
 

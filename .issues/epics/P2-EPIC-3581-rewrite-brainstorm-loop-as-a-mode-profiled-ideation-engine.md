@@ -94,7 +94,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 - **Data contract** (stable IDs, common fields incl. top-level optional `grounded`, enumerated axis bins, canonical `portfolio.json`, generation vs. finalist floors) is specified in FEAT-3582 and implemented by FEAT-3667; other children extend it only.
 - **Validation before sinks**: `validate_portfolio` gates `route_sink`; no sink fires on an invalid run.
 - **Profile precedence**: mode selects the base profile, explicit knobs override it, `""` means inherit (FEAT-3583).
-- **Ordering**: FEAT-3667 (engine module) → FEAT-3582 (loop rewrite) → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586}; FEAT-3596 is hard-blocked only by FEAT-3667/3582/3583 (so P4 FEAT-3586 does not gate it) but cannot close until all optional children are done.
+- **Ordering**: FEAT-3667 (engine module) → FEAT-3582 (loop rewrite) → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586}; FEAT-3686 (spike, 2026-09-30) gates FEAT-3582 and the grid-dependent parts of FEAT-3667; FEAT-3596 is hard-blocked by FEAT-3667/3582/3583/3686 and closes on the core engine only — the optional capabilities (FEAT-3584/3585/3586) moved to EPIC-3687 and record their own reference runs.
 - **Profile plumbing** (2026-09-28 review): FEAT-3582 owns `resolve_profile`, the `profile.json` schema, and the `artifact` profile; FEAT-3583 extends them (presets, classifier, overrides).
 - **Tournament runs as a sub-loop** (one parent `max_steps` step; finalists ≤ 8, full round-robin judged **one call per round** — ≈ 7 round calls + 1 batched probe call; child `max_steps: 45`, `timeout: 1800`; parent `timeout: 5400` keeps a 600 s tail so salvage/portfolio/finalize always run, and `check_floors --stage pre_tournament` fails `insufficient_time` early); `diverge` runs once per lens with round-robin framings. `top_k` is removed; `winners.md` = portfolio members.
 - **Grounding shape** (FEAT-3584): `touchpoints` (must exist) vs `creates` (must not collide); `shortlist` keeps a reserve so no back-edge into `ground`/`materialize`.
@@ -124,6 +124,16 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
   - **Merge gate has a pass criterion** (blind A/B win-or-tie on both briefs, cells ≥ old, duplicates ≤ old, ≤ 30 calls).
   - **Kept, on evidence**: the `insufficient_time` guard (judge calls are not clamped to remaining budget; every judge state must set `timeout: 300`) and the 3×3 grid contract (wildcard both-axes rule holds from ≥ 6 occupied cells).
   - **Process note**: four review rounds have now added contract rules without a single measured run. **Freeze the spec here** — the next information comes from implementing FEAT-3667 (with its executor smoke test), not from another review.
+
+- **Fifth pre-implementation review** (2026-09-30, `/ll:advise` with Opus, structural/process pass; nothing measured):
+  - **Spike first (FEAT-3686)**: a ≈ 1-day, ≈ 75-call offline replay of `postmortems/brainstorm-baseline/fresh-20260929/*/ideas.jsonl` measures tagger self-agreement, old-loop grid headroom, occupancy-steering lift, LLM dedup precision/recall and batched-round judge consistency, with go/no-go thresholds. It also produces the shared consensus tags that FEAT-3582's merge gate and FEAT-3596's comparison read, which removes the FEAT-3582 ↔ FEAT-3596 ownership circle. A failing grid result drops the grid/re-tag/wildcard-on-both-axes machinery (`cell` is nullable meanwhile); a failing batched-judge result falls back to per-pair judging with `max_finalists` 6.
+  - **Epic closes on the core**: FEAT-3584/3585/3586 moved to EPIC-3687 so an optional P3/P4 child cannot hold this epic open.
+  - **Presets ship in FEAT-3667**: all four profile JSONs (unbuilt knobs off) so FEAT-3582's brief-2 (functional) gate runs `mode=functional` rather than the artifact axes.
+  - **`reframe` deferred to v2**: `BUILT_CAPABILITIES` allows `reframe: {False}` in v1 (the `artifact`/`visual` default is already off); `reframe-select` and the `reframe` state are not built until a follow-up brings measurements. `functional`/`business` presets ship `reframe: false`; the "true double diamond" goal item is deferred with it.
+  - **Token ceiling**: total context tokens are gated at ≤ 1.5× the old loop's ≈ 880k per brief (≈ 22 calls × ≈ 63k ≈ 1.4M is the estimate), because the rewrite otherwise contradicts its own token-bloat motivation.
+  - **Import origin**: run records and the FEAT-3667 smoke test assert `little_loops.__file__` lives in the checkout under test; verify gates already inject the worktree `PYTHONPATH`, so the FEAT-3667 hazard is loud (`ModuleNotFoundError`), but once the module is on `main` a worktree run without `PYTHONPATH` silently imports `main`'s copy (FEAT-3582/3583).
+  - **Rollback**: a clean `git revert` of FEAT-3582's single commit is the kill switch; breaking-change CHANGELOG entry plus a warning when a removed context key is passed. BUG-3688 hotfixes the old loop's zero-idea silent success now.
+  - **Blind A/B is a smoke check**: single rater on n = 2 briefs has little statistical power.
 
 ## Impact
 
@@ -175,13 +185,13 @@ Out of scope:
 - Embedding-based novelty (the `novelty_backend` placeholder is removed, not built).
 
 ## Children
+_FEAT-3584 / FEAT-3585 / FEAT-3586 (grounding, materialize, pre-mortem) moved to **EPIC-3687** on 2026-09-30 so this epic can close on the core engine._
 - **FEAT-3667** — Brainstorm engine module: deterministic core, CLI contract, and artifact profile (open)
 - **FEAT-3582** — Brainstorm engine core: reframe, grid diverge, pairwise tournament, portfolio (open; loop side, blocked by FEAT-3667)
 - **FEAT-3583** — Brainstorm mode profiles with automatic mode selection (open)
-- **FEAT-3584** — Brainstorm ground state with codebase and web evidence probes (open)
-- **FEAT-3585** — Brainstorm materialize state: rendered mockups judged visually (open)
-- **FEAT-3586** — Brainstorm optional pre-mortem finisher (open)
 - **FEAT-3596** — Brainstorm engine integration, reference runs, and evaluation (open)
+- **FEAT-3686** — Brainstorm design spike: measure grid, dedup and batched-judge claims on baseline ideas (open)
+
 
 ## Success Metrics
 

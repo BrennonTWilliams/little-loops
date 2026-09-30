@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T00:33:14Z'
-parent: EPIC-3581
+parent: EPIC-3687
 labels:
 - loops
 - brainstorm
@@ -154,6 +154,8 @@ _Carried from `/ll:refine-issue` — 2026-09-25, edited 2026-09-29 for the annot
 - The critic gets the winner/runner-up bodies by a pinned mechanism: either an engine block captured by one extra shell state (+1 step, then 4 parent steps) or `Read` access to `portfolio.json`/`ideas.jsonl` under the loop `scope:` (0 extra); the choice and the resulting step cost are recorded here when implemented (FEAT-3582 § Program Design → LLM-state pairing).
 
 ## Review Decisions
+
+_Added 2026-09-30 (EPIC-3581 fifth review, `/ll:advise` with Opus):_ this issue moved to **EPIC-3687** (optional capabilities) so it no longer gates EPIC-3581 or FEAT-3596. Re-run `/ll:reconcile-issue` and `/ll:confidence-check` after FEAT-3667 lands (scores are missing or stale). Its own enablement change (widen `BUILT_CAPABILITIES`, flip the preset knob, wiring test, `max_steps`) and its own reference run stay in scope.
 
 _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 

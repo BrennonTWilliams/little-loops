@@ -23,6 +23,7 @@ score_ambiguity: 22
 score_change_surface: 18
 blocked_by:
 - FEAT-3667
+- FEAT-3686
 ---
 
 # FEAT-3582: Brainstorm engine core: reframe, grid diverge, pairwise tournament, portfolio
@@ -422,6 +423,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
   that share a framing but differ in mechanism (both kept).
 
 ## Review Decisions
+
+_Added 2026-09-30 (EPIC-3581 fifth review, `/ll:advise` with Opus, structural/process pass; nothing measured):_
+- **Blocked by FEAT-3686 (spike).** The spike owns the common tagging pass and writes the shared consensus tags (`postmortems/brainstorm-spike/tags.jsonl`) that the merge gate's "occupied cells" / "retained duplicates" comparison reads; this removes the earlier dependence on work owned by FEAT-3596 (which is itself blocked by this issue). A failing spike result changes this issue's contract (grid/re-tag/wildcard removed, or per-pair judging with `max_finalists` 6); apply the routing in FEAT-3686 § Outcomes and routing before starting.
+- **`reframe` deferred to v2.** `BUILT_CAPABILITIES["reframe"] = {False}` (FEAT-3667): Expected Behavior 1's `reframe` state, `reframe_select`, and the `reframe` token from `frame_apply` are not built in v1; `frame_apply` always routes `pop_lens`. Supersedes the reframe wording in Expected Behavior 1, Call Path and the step budget (−1 LLM call and −2 steps when the profile would have enabled it).
+- **Token ceiling.** The merge gate adds: total context tokens per brief ≤ 1.5× the old loop's baseline (≈ 880k per brief; the estimate is ≈ 22 calls × ≈ 63k ≈ 1.4M), on top of the ≤ 30-call ceiling. A run above it needs a documented reason or a cheaper design (smaller `dedup` excerpts, fewer lenses).
+- **Rollback and migration.** The single commit must `git revert` cleanly (no partial renames, no data-file changes outside the commit). The CHANGELOG entry is a **breaking change** under a concrete version and states the removed keys are now ignored; additionally `init` emits a one-line warning when a removed context key (`novelty_threshold`, `max_saturation`, `novelty_backend`, `top_k`) is passed, so existing callers notice. Zero-idea silent success on the *old* loop is hotfixed separately in BUG-3688.
+- **Import origin in run records.** Real merge-gate runs print `python3 -c 'import little_loops; print(little_loops.__file__)'` output into the run record, proving the worktree copy was used (`PYTHONPATH=<worktree>/scripts`).
+- **Blind A/B is a smoke check.** One rater on n = 2 briefs cannot show significance; treat a tie-or-win as "no regression detected", not as proof of improvement, and say so in the record.
 
 _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 

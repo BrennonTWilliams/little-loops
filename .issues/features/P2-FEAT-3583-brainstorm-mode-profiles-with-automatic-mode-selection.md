@@ -210,6 +210,8 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review); the schema test must assert thes
 
 ## Review Decisions
 
+_Added 2026-09-30 (EPIC-3581 fifth review, `/ll:advise` with Opus, structural/process pass; nothing measured):_ all four preset JSONs are now created by **FEAT-3667** (unbuilt knobs off); this issue adds `classify_mode`, the per-knob override plumbing, the `mode` default flip to `auto`, and tuning of the presets (axes/bins are provisional until FEAT-3686 reports). `reframe` is deferred to v2 (`BUILT_CAPABILITIES["reframe"] = {False}`): `functional`/`business` ship `reframe: false`, and the "target" `reframe: true` cells in § Pinned Preset Contents are the follow-up's, not v1's. Blocked-by also includes FEAT-3686 transitively via FEAT-3582.
+
 _Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measured):_ profiles gain `lenses` (per-mode lens catalog read by `frame`); `business` defaults to `ground: none` and `reserve: 0` because `ground=web` is out of v1; profile data reaches prompts through engine `prompt-block` stdout blocks captured by the states (FEAT-3667), not by prompt-side file reads; `classify_mode` is a prompt state and must declare `next:` + `on_error:` (no hidden evaluator call) and route via an explicit classify with `_: finalize_failed` where it gates.
 
 _Added 2026-09-30 (EPIC-3581 fourth review, `/ll:advise` with Opus; nothing measured):_ presets ship unbuilt knobs off and each optional child flips its own (§ Pinned Preset Contents → Shipped vs target); `resolve-profile` enforces `BUILT_CAPABILITIES` (FEAT-3667); `ground` type text reconciled to `none|codebase`; tests are direct-import, not `_bash`.
