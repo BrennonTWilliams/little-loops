@@ -25,10 +25,12 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 ## Expected Behavior
 
 - A `REBUILD_DERIVE_VERSION` constant in `session_store/lifecycle.py` plus a `rebuild_derive_version` meta key (inline upsert, not in the `usage_derive_` namespace); the hook compares against it instead of `SCHEMA_VERSION`. `rebuild()` stamps it on success alongside `last_rebuild_version`.
-- Migration: a store with `last_rebuild_version == 58` and no derive key was rebuilt under the derivation code at this issue's landing. Stamp a **frozen legacy derive version** (initially equal to `REBUILD_DERIVE_VERSION`), never the current constant at migration time. Compare the stamped value with the current version; a store first opened after a future derive-version bump must rebuild. Lower or missing `last_rebuild_version` values rebuild once. Land this change before another schema bump, or re-evaluate the fixed legacy baseline against that bump.
+- Migration (no write from the hook): `rebuild_needed()` treats "no `rebuild_derive_version` key **and** `last_rebuild_version == 58`" as the **frozen legacy derive version** (a literal, initially equal to `REBUILD_DERIVE_VERSION`), never the current constant. Compare that with the current version; a store first opened after a future derive-version bump must rebuild. Lower or missing `last_rebuild_version` rebuilds once. Only a successful `rebuild()` writes `rebuild_derive_version` (alongside `last_rebuild_version`); the SessionStart hook never stamps. Land this change before another schema bump, or re-evaluate the fixed legacy baseline against that bump.
+- **Bump-rule guard (2026-09-30 review):** a test pins a fingerprint of `_REBUILD_TABLES`, `_REBUILD_SEARCH_KINDS`, `_REBUILD_TABLE_PREDICATES` and the rebuild-table DDL next to the constant, so changing any of them without bumping `REBUILD_DERIVE_VERSION` fails. The bump rule alone is human discipline.
+- **Failed-rebuild backoff:** record the last failed attempt (meta key, e.g. `rebuild_last_failure_ts`) and skip auto-spawn for a cooldown so a persistently failing rebuild is not retried on every session start.
 - Usage-only derivation changes bump `_USAGE_DERIVE_VERSION` (incremental path), **not** `REBUILD_DERIVE_VERSION`. Bump `REBUILD_DERIVE_VERSION` whenever any non-usage `rebuild()` output or selection changes: parser/replay semantics, `_REBUILD_TABLES` or search-index derivation, corrections, summaries, or prompt-opt enrichment. Document and test the bump rule near the constant.
-- A single-flight `fcntl.flock` (`LOCK_NB`) on a dedicated `<db>.rebuild.lock`, held for the replay's whole run. Do not reuse `<db>.usage-refresh.lock`: Stop workers take it with blocking `LOCK_EX` and store throttle state in it. A contending auto worker still performs incremental transcript ingest, then skips only the duplicate replay; a direct `ll-session rebuild` must report contention instead of silently claiming success.
-- Above a size threshold the hook does not auto-spawn `--rebuild`; it reports "rebuild pending" (SessionStart output / `ll-doctor`) and the user runs `ll-session rebuild` explicitly. The threshold is a **module constant (1 GB)**, not a config key, to avoid `config-schema.json` / dataclass / `test_config_schema.py` churn; promote it to config only if a user asks.
+- A single-flight `fcntl.flock` on a dedicated `<db>.rebuild.lock`. Do not reuse `<db>.usage-refresh.lock`: Stop workers take it with blocking `LOCK_EX` and store throttle state in it. **Lock protocol (2026-09-30 Opus review):** `rebuild()` runs its whole wipe-and-replay in one `BEGIN IMMEDIATE` transaction, so a concurrent worker's incremental ingest cannot write until it commits (it would hit the 5000 ms busy timeout and fail), and the local ingest watermark is one global wall-clock `last_raw_event_ts`, so an early-exiting worker can lose its transcript. Therefore: ingest takes a blocking `LOCK_SH`; replay takes `LOCK_EX`; after acquiring `LOCK_EX` the worker **re-checks `rebuild_needed()`** and skips the replay if another worker already completed it. A direct `ll-session rebuild` uses `LOCK_NB` on the exclusive lock and reports contention instead of silently claiming success.
+- Above a size threshold the hook does not auto-spawn `--rebuild`; it reports "rebuild pending" (SessionStart output / `ll-doctor`) and the user runs `ll-session rebuild` explicitly. Document what a pending rebuild means to readers (derived tables — sessions, tool/skill events, summaries, corrections, search index — keep pre-bump derivation until rebuilt; raw events and usage tables stay current). The threshold is a **module constant (1 GB)**, not a config key, to avoid `config-schema.json` / dataclass / `test_config_schema.py` churn; promote it to config only if a user asks.
 
 ## Scope Boundaries
 
@@ -39,7 +41,7 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 
 - **Priority**: P2 - stops multi-GB full rebuilds (and their write-lock stalls) on schema bumps that change no derivation
 - **Effort**: Small - a version constant, one meta key, a flock, and a size gate in the SessionStart hook
-- **Risk**: Medium - a wrong migration stamp could skip a needed rebuild
+- **Risk**: Medium - a wrong legacy-baseline rule could skip a needed rebuild
 - **Breaking Change**: No
 
 ## Integration Map
@@ -48,7 +50,7 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 - `scripts/little_loops/session_store/lifecycle.py` — `REBUILD_DERIVE_VERSION`; `rebuild()` stamps `rebuild_derive_version` alongside `last_rebuild_version` (inline meta upsert; not `usage_derive_*`; no migration or `SCHEMA_VERSION` bump).
 - `scripts/little_loops/cli/backfill_worker.py` / `session_store/lifecycle.py` — separate incremental ingest from the replay lock so a contending `--rebuild` worker does not discard its transcript; protect direct rebuild calls too.
 - `scripts/little_loops/cli/doctor.py` — surface "rebuild pending".
-- Tests: `test_hook_session_start.py::TestSessionStartRebuild` (gate), a two-worker flock test (one replay, both transcripts ingested), a size-gate test, migration-stamp tests (`== 58` stamps the frozen legacy value; `57`/missing rebuild; an unmarked 58 store first opened after a simulated future derive bump rebuilds); `test_session_store_usage_refresh.py` asserts no `usage_derive_%` meta keys after refresh — keep the new key out of that namespace.
+- Tests: `test_hook_session_start.py::TestSessionStartRebuild` (gate), a two-worker flock test (one replay, second re-checks under `LOCK_EX`, both transcripts ingested), a fingerprint test for the bump rule, a failed-rebuild cooldown test, a size-gate test, migration tests (`== 58` with no key reads as the frozen legacy value without a write; `57`/missing rebuild; an unmarked 58 store first opened after a simulated future derive bump rebuilds); `test_session_store_usage_refresh.py` asserts no `usage_derive_%` meta keys after refresh — keep the new key out of that namespace.
 
 ## Program Design
 
@@ -58,7 +60,7 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 
 ### Signatures
 
-- `rebuild_needed(db: Path | str) -> bool` — True when `rebuild_derive_version != REBUILD_DERIVE_VERSION` after applying the frozen legacy-58 stamp rule; version identifiers are compared for equality, not ordered as strings. Replaces the inline `SCHEMA_VERSION` comparison in `hooks/session_start.py`.
+- `rebuild_needed(db: Path | str) -> bool` — True when `rebuild_derive_version != REBUILD_DERIVE_VERSION` after applying the implicit frozen-legacy rule for an unmarked `== 58` store; version identifiers are compared for equality, not ordered as strings. Replaces the inline `SCHEMA_VERSION` comparison in `hooks/session_start.py`.
 
 ### Call Path
 
@@ -66,9 +68,11 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 
 ## Acceptance Criteria
 
-- [ ] An unmarked store at `last_rebuild_version == 58` receives the fixed legacy derive version; `57`/missing rebuilds once. When the current derive version is subsequently bumped, that same unmarked legacy store rebuilds rather than being stamped as current.
+- [ ] An unmarked store at `last_rebuild_version == 58` is read as the fixed legacy derive version (no write); `57`/missing rebuilds once. When the current derive version is subsequently bumped, that same unmarked legacy store rebuilds rather than being treated as current.
 - [ ] A `SCHEMA_VERSION` bump that does not change derivation does not trigger a rebuild; a `REBUILD_DERIVE_VERSION` bump does.
-- [ ] Two concurrent `--rebuild` workers perform one replay while both ingest their own transcripts; contention never drops new raw events. A direct `ll-session rebuild` reports contention. Stop usage-refresh workers use their existing lock without sharing the rebuild lock file.
+- [ ] Two concurrent `--rebuild` workers perform exactly one replay (the second re-checks `rebuild_needed()` under the exclusive lock and skips); each worker's transcript is ingested (the second waits under `LOCK_SH`/`LOCK_EX` rather than exiting). A direct `ll-session rebuild` reports contention. Stop usage-refresh workers use their existing lock without sharing the rebuild lock file.
+- [ ] The SessionStart hook writes no meta stamp; `rebuild_derive_version` is written only by a successful `rebuild()`. A fingerprint test fails when `_REBUILD_TABLES`/`_REBUILD_SEARCH_KINDS`/predicates/DDL change without a `REBUILD_DERIVE_VERSION` bump.
+- [ ] A failed rebuild is not retried until its cooldown expires; the "rebuild pending" notice explains the stale-derived-tables consequence.
 - [ ] Above the size threshold the hook spawns no `--rebuild` and surfaces a pending notice.
 - [ ] `test_hook_session_start.py::TestSessionStartRebuild` updated to the new gate; remote stores still never rebuild from a hook.
 - [ ] Docs (`HISTORY_SESSION_GUIDE.md`, `CLI.md`, `API.md`, `ARCHITECTURE.md` `last_rebuild_version` wording) updated in end-user shape.

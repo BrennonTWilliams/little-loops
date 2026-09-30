@@ -46,6 +46,10 @@ A reachable migrated store with zero rows returns an empty result. An unreachabl
 
 An interim clean refusal is preferable to a traceback, but remote users still cannot use these history views. Typed targets are necessary because dropping `resolve_history_db()` pre-resolves while retaining absolute-path coercion can silently read or create a shadow local store.
 
+## Error Propagation Design (2026-09-30 Opus review)
+
+`_connect_readonly` and ~87 query-catch handlers map every failure to `None`/empty (only two use `_log_query_failure`), so a strict open alone still reports a mid-query remote failure as "no data". The served rows need **strict handling at both layers**: (1) a raising open (`strict=True` on the reader opener, or a typed result) used only by the serve rows, and (2) their query paths must not route through the swallowing handlers — catch `HistoryError` at the boundary and surface `unavailable`. Add a distinct `HistorySchemaUninitialized` error for a reachable but unmigrated store (do not overload `HistoryUnavailable`). Keep `Path | str | HistoryTarget | None` as the signature union; the Signatures section's narrower `HistoryTarget`-only form applies to the *boundary-resolved* value only.
+
 ## Proposed Solution
 
 1. Accept `Path | str | HistoryTarget | None` at the in-scope `history_reader` and `issue_history` functions. Resolve at the boundary with `resolve_history_target(path, root=project_root)`; pass the target onward without `Path(RemoteTarget)` or `.exists()` on remote targets. Keep local missing-file behavior.
@@ -78,7 +82,7 @@ An interim clean refusal is preferable to a traceback, but remote users still ca
 
 ### Signatures
 
-- `open_history_readonly(target: HistoryTarget, *, ensure: bool = False) -> Connection` — opens the already-resolved target without a local Path coercion.
+- `open_history_readonly(target: Path | str | HistoryTarget | None = None, *, ensure: bool = False, strict: bool = False) -> Connection` — unchanged union; `strict=True` (serve rows only) raises `HistoryUnavailable` / `HistorySchemaUninitialized` instead of relying on caller-side `None` mapping.
 - In-scope reader functions accept `Path | str | HistoryTarget | None` during migration; the CLI/MCP boundary supplies a `HistoryTarget` so inner calls do not resolve again.
 
 ### Call Path
@@ -104,7 +108,7 @@ An interim clean refusal is preferable to a traceback, but remote users still ca
 
 - [ ] Every **serve** row in the matrix returns the same data shape from a migrated remote stub and a local twin; every keep-refuse/degrade row retains its named ENH-3657 behavior.
 - [ ] No served path creates `.ll/history.db` under remote config or coerces `Path(RemoteTarget)`; `quality --workspace` refuses before `ATTACH` or local member-file checks.
-- [ ] Empty migrated, reachable unmigrated, and unreachable remote stores are distinguished in CLI and MCP results without exposing endpoint secrets.
+- [ ] Empty migrated, reachable unmigrated (`HistorySchemaUninitialized`), and unreachable remote stores are distinguished in CLI and MCP results without exposing endpoint secrets; a **mid-query** remote failure (stub `fail_next` after a successful open) also reports unavailable, never empty data.
 - [ ] MCP `history_search` resolves against `project_root` under a foreign cwd; an applicable explicit local override remains local.
 - [ ] SFT `enrich` serves session metadata remotely; existing local behavior and `python -m pytest scripts/tests/` pass.
 

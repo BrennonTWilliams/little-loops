@@ -7,6 +7,8 @@ status: open
 relates_to:
 - BUG-3652
 - ENH-3668
+blocks:
+- ENH-3657
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T01:30:56Z'
@@ -21,6 +23,10 @@ Bound the remote advisory reads used by FSM prepatch (`read_base_sha` and `read_
 ## Current Behavior
 
 BUG-3652 made the two prepatch reads remote-aware through relative `DEFAULT_DB_PATH`. They use the standard readonly path with `ensure=True`; a black-holed endpoint can hold the FSM thread for about 10 seconds per read, and these reads do not set the telemetry unreachable marker. A stopped stub fails immediately and does not test the stall.
+
+## Ordering and Exception Contract (2026-09-30 Opus review)
+
+**Land before ENH-3657's seam slice.** `read_base_sha`/`read_base_dirty` use `ensure=True`, so under remote they reach `ensure_schema` → `check_access(write=True)`, which raises `HistoryUnsupported` for a behind, foreign or read-only-token store. Today `_connect_readonly` swallows it into `None`; ENH-3657's re-raise would push it into the FSM prepatch path, which promises never to raise. The `best_effort` path therefore skips ensure **and** catches `HistoryError` including `HistoryUnsupported` (the never-raises contract stays with these two readers regardless of ENH-3657's re-raise, which must be narrowed to the guard's own subclass).
 
 ## Expected Behavior
 
@@ -76,7 +82,8 @@ Add `open_history_readonly(..., best_effort: bool = False)` and a remote `Libsql
 
 - [ ] A black-holed-socket test shows each prepatch read returns `None` within the configured telemetry timeout budget, sets the unreachable marker, and sends no new request while that marker is active.
 - [ ] Both readers still return actual remote data through a reachable `HranaStub`; local SQLite and standard reader timeouts remain unchanged.
-- [ ] Open and mid-query remote failures preserve each function's documented never-raises/`None` fallback; no local shadow DB is created.
+- [ ] Open and mid-query remote failures preserve each function's documented never-raises/`None` fallback, including a behind/foreign-schema store and a read-only token (`HistoryUnsupported`); no local shadow DB is created.
+- [ ] A regression test for the `HistoryUnsupported` case passes both before and after ENH-3657's `_connect_readonly` re-raise lands.
 - [ ] `python -m pytest scripts/tests/` passes; the new API behavior is documented.
 
 ## Related

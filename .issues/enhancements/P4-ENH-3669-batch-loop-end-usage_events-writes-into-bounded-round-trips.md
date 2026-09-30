@@ -3,7 +3,10 @@ id: ENH-3669
 type: ENH
 title: Batch loop-end usage_events writes into bounded round trips
 priority: P4
-status: open
+status: deferred
+deferred_by: human
+deferred_date: '2026-09-30T02:30:00Z'
+deferred_reason: latency benefit unmeasured; re-open only if loop-end remote write latency is measured and material
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T23:04:53Z'
@@ -12,6 +15,8 @@ relates_to:
 ---
 
 # ENH-3669: Batch loop-end usage_events writes into bounded round trips
+
+> **2026-09-30 (`/ll:advise` Opus review): deferred.** Batching is equivalent to the per-row loop (verified: `record_usage_event` is one INSERT plus cost computation; `execute_many` is one begin/conditional/commit/rollback pipeline), but the benefit is unmeasured. Re-open only after measuring loop-end write latency against a live remote endpoint and finding it material.
 
 ## Summary
 
@@ -78,4 +83,4 @@ Existing `_finish` → `record_usage_events` → `_connect_telemetry` → `Libsq
 
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P4
+**Deferred** | Created: 2026-09-29 | Priority: P4

@@ -27,7 +27,14 @@ Make `cli_event_context` resilient to a held local SQLite write lock: use a shor
 
 `cli_event_context` never stalls a command beyond the short telemetry timeout. If entry fails on `database is locked`, collect the exit code and duration, then spool **one completed event** at exit. If entry succeeds but the exit update fails, spool a typed completion update keyed by the inserted row ID. Drain on the next successful local telemetry connect. This is best-effort retention: when the size/age bound is reached, old pending events may be dropped with a visible count. Non-telemetry writers keep the 5000 ms timeout.
 
-## Design Decisions (2026-09-30, `/ll:advise` Opus review)
+## Phasing (2026-09-30 Opus review)
+
+The spool below is a large durability surface for best-effort telemetry rows, and its motivating lock holder (a multi-minute detached `--rebuild`) is largely removed by ENH-3678. Deliver in two phases:
+
+- **Phase 1 (this issue's committed scope):** a short end-to-end timeout for `cli_event_context` via an **explicit `busy_timeout_ms` parameter** threaded through `schema.connect` → `_configure_connection` (not a contextvar; `_configure_connection` hard-codes `_BUSY_TIMEOUT_MS` today), plus a sidecar **drop counter** (`.ll/`-scoped file, surfaced by `ll-doctor`) so drops are measurable. Non-telemetry writers keep 5000 ms.
+- **Phase 2 (spool):** implement the design below only if drop counts, measured after ENH-3678 ships, show material loss. Otherwise close it as not needed.
+
+## Design Decisions (2026-09-30, `/ll:advise` Opus review) — Phase 2
 
 - **No schema change.** `cli_events` rows carry no idempotency key. Persist each typed operation as an immutable, mode-0600 event file: write a unique temporary file, close it, and atomically publish it by rename. A drainer rename-claims a complete file, so a writer cannot append to a claimed inode. Process recovered claimed files after a crash; insert/update plus `spool_drained:<file-uuid>` marker in one SQLite transaction, then unlink. Prune old markers only after the corresponding file is absent and the crash-recovery retention window has passed.
 - **Short timeout applies only to `cli_event_context`**, including connection setup, entry insert and exit update. Set it before any `ensure_db`/`schema.connect` lock wait; shared `connect()` and other writers keep `_BUSY_TIMEOUT_MS` (5000 ms).
@@ -71,7 +78,8 @@ Make `cli_event_context` resilient to a held local SQLite write lock: use a shor
 
 ## Acceptance Criteria
 
-- [ ] With a real second connection holding `BEGIN IMMEDIATE`, both the entry-failure and exit-update-failure paths return within the short end-to-end timeout; completed event data appears once after the lock is released and the spool drains.
+- [ ] **Phase 1:** with a real second connection holding `BEGIN IMMEDIATE`, `cli_event_context` returns within the short timeout on both entry and exit, other writers keep 5000 ms, and the drop is counted and visible in `ll-doctor`.
+- [ ] **Phase 2 (only if justified by measured drops):** with a real second connection holding `BEGIN IMMEDIATE`, both the entry-failure and exit-update-failure paths return within the short end-to-end timeout; completed event data appears once after the lock is released and the spool drains.
 - [ ] Immutable event files prevent an append/claim race; a crash before or after claim/transaction commit neither loses nor duplicates an unpruned event. Two concurrent drainers are safe without a schema change.
 - [ ] Spool size and age are bounded; permanently unavailable storage cannot cause unbounded growth, and every pruned event increments a visible drop count. Claimed-file recovery and marker retention are covered.
 - [ ] Remote (libsql) backend behavior unchanged (its own unreachable-marker path).

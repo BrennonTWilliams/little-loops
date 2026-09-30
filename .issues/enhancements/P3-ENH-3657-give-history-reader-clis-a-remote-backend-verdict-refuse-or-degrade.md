@@ -14,6 +14,7 @@ relates_to:
 - ENH-3658
 blocked_by:
 - ENH-3677
+- ENH-3682
 blocks:
 - ENH-3668
 confidence_score: 70
@@ -27,6 +28,15 @@ score_change_surface: 0
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
 
 > **Reconciled 2026-09-30** after three `/ll:advise` (Opus) reviews (the last run after BUG-3652 landed, `62ac0fc89`, and a fourth pass that found a placement bug in the central guard). The body below is the single current design; the earlier per-site design (per-operation `_REMOTE_REFUSALS` keys, `_REJECTED` rows, ~12 per-doc notes, `refuse_on_remote(..., root=)`) is dropped. The confidence score below predates the additional CLI/test corrections in this issue; re-run `/ll:confidence-check` after ENH-3677 lands. The pre-reconcile text is in git history.
+
+## Delivery Slices (2026-09-30 Opus review)
+
+Land as two reviewable slices; the seam alone must never ship, because it turns today's silent-empty reads into tracebacks in every local-editable project.
+
+- **3657a — seam + boundary helper**: central guard in `open_history_readonly`, `_connect_readonly` re-raise, read-mode remote ensure, the one boundary helper wired into `main_history`/`main_logs`/`main_ctx_stats`/`main_messages`, and the non-CLI caller audit (MCP `history_search`, `sft-corpus` `enrich`, CT-0). Seam tests included.
+- **3657b — sites, serve, docs**: per-site verdicts, `ll-harness` serve, `history summary`/`decisions`/`--reader auto` degrades, `sft-corpus`/CT-0 changes, skill mirrors, docs and the support table.
+
+**Prerequisites:** ENH-3677 (fixture) and ENH-3682 (prepatch reads become `best_effort` and catch `HistoryUnsupported`; without it the re-raise reaches the FSM for `read_base_sha` on a behind/foreign/read-only-token remote store). **Narrow the re-raise** to the guard's own subclass (e.g. `HistoryRemoteRefused(HistoryUnsupported)`) rather than every `HistoryUnsupported`, so remote `ensure_schema` refusals keep degrading to `None` for callers that never opted in.
 
 ## Summary
 
@@ -67,7 +77,7 @@ These sites pre-resolve through `resolve_history_db()` and raise `HistoryBackend
 
 In `session_store.backend.open_history_readonly` (the `ensure=True` reader opener): when the configured provider is remote **and** the resolved target is a *default-shaped* absolute local path (`<root>/.ll/history.db`, `LL_HISTORY_DB` unset, no explicit `--db`), raise `HistoryUnsupported` instead of `ensure_schema`-creating a shadow DB. It fires only in that case and must respect the BUG-3181 absolute-path contract, an explicit `--db` (wrap it in `LocalTarget` at the CLI), `LL_HISTORY_DB`, and first-use local creation when the provider is not remote. Classify "remote" from the root derived from the path (`<root>/.ll/...`), not the cwd, so an MCP call with a foreign cwd is not misclassified.
 
-`history_reader/_base.py:_connect_readonly` gains `except HistoryUnsupported: raise` **above** its `except HistoryError` handler. Record the contract change ("`None` on failure, raise on unsupported") in the docstring. Audit every non-CLI caller that passes an absolute default-shaped path and give it a catch or degrade: MCP `history_search`, `sft-corpus` `enrich`, the CT-0 block. (`hooks/session_start` digest is already gated by `not _remote_store`; the executor's `read_base_sha` uses the relative path and is unaffected.)
+`history_reader/_base.py:_connect_readonly` gains a re-raise of the guard's own `HistoryUnsupported` subclass **above** its `except HistoryError` handler (not every `HistoryUnsupported`; see Delivery Slices). Record the contract change ("`None` on failure, raise on unsupported") in the docstring. Audit every non-CLI caller that passes an absolute default-shaped path and give it a catch or degrade: MCP `history_search`, `sft-corpus` `enrich`, the CT-0 block. (`hooks/session_start` digest is already gated by `not _remote_store`; the executor's `read_base_sha` uses the relative path and is unaffected.)
 
 ### One boundary helper
 
@@ -165,8 +175,9 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 
 ## Acceptance Criteria
 
+- [ ] Work lands as slices 3657a (seam + boundary helper + caller audit) then 3657b; ENH-3682 has landed first and prepatch `read_base_sha` on a behind/read-only-token remote store still returns `None`.
 - [ ] Every site in the verdict table has its verdict implemented; refused sites, including `ll-messages --sft-format --reader db`, are covered by one parametrized remote-stub test (exit 1, `<prog> <sub>:` prefix, `libsql` in stderr, `"Traceback" not in err`, no reader requests when analytics capture is disabled) plus a local twin. Default `reader=auto` reaches JSONL instead of an unhandled refusal.
-- [ ] `_connect_readonly` re-raises `HistoryUnsupported` (documented contract) so a guard refusal never reads as empty data; non-CLI callers (MCP, `sft-corpus`, CT-0) are audited and handled.
+- [ ] `_connect_readonly` re-raises the guard's `HistoryUnsupported` subclass (documented contract; other `HistoryUnsupported` from remote ensure still map to `None`) so a guard refusal never reads as empty data; non-CLI callers (MCP, `sft-corpus`, CT-0) are audited and handled.
 - [ ] The central guard fires only for a remote provider + default-shaped absolute local path with no `--db`/`LL_HISTORY_DB`, classifies remote from the path-derived root (not cwd), and under remote no reader creates a local `.ll/history.db` (assert absence). A caller-supplied absolute local path wrapped as `LocalTarget` stays local.
 - [ ] `ll-harness` serve sites return stub data, create no local `.ll/history.db`, and still serve a behind/ahead remote schema and a **read-only token** (`check_access(write=False)`); the test rejects writes with the same token rather than relying on a token-only auth check.
 - [ ] Degrade sites (`history summary`, `decisions generate`, `--reader auto`, CT-0, `sft-corpus` `enrich`) keep stdout unchanged, exit 0 (CLI cases), and print exactly one `note:` line on stderr only under a remote target; `warn_once` does not also fire; no endpoint token appears in any notice or refusal.

@@ -116,7 +116,7 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 - [ ] Every listed Python site classifies with the owning project root. A foreign cwd does not change the verdict; `LL_HISTORY_DB` uses the resolver's returned local Path.
 - [ ] Remote `cmd_dashboard` exits 1 with a snapshot-export refusal; local-missing and explicit `--db` behavior remain unchanged.
-- [ ] Remote `make_history_route` returns HTTP 501 JSON without local `stat()` or an empty HTTP 200; the page factory and `cmd_run --serve` display the same reason without aborting.
+- [ ] Remote `make_history_route` returns HTTP 501 JSON without local `stat()` or an empty HTTP 200; the page factory and `cmd_run --serve` display the same reason without aborting. The dashboard/page client renders the 501 reason as an unavailable panel state (no error toast, no retry storm on the poll timer) — verify the client-side handler and add a test.
 - [ ] Remote `ll-doctor --trim` has an informational text/JSON result, no traceback, and the same advisory exit code as a run without `--trim`.
 - [ ] `skills/update-docs` stays DB-first for a real local history file, takes the explicit scan fallback for a remote target or missing local file, and never reads a stale shadow DB; the narrow hazard gate passes with documented temporary allowlist entries.
 - [ ] Remote-stub and local-twin tests cover every changed site; `python -m pytest scripts/tests/` passes.
