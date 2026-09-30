@@ -14,7 +14,7 @@ relates_to: []
 
 ## Summary
 
-Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 28 children: 15 done and 13 unresolved (shared ENH-3534, six per-host evidence issues, and six host delivery issues). Standalone ENH-3649 is also done. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
+Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 28 children: 16 done and 12 unresolved (six per-host evidence issues and six host delivery issues; shared ENH-3534 is done). Standalone ENH-3649 is also done. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
 
 ## Goal
 
@@ -27,7 +27,7 @@ Every canonical token-consumption figure for a production host comes from stored
 
 ## Composition Review
 
-The 28 children cover the epic's named contracts. Claude and Codex have completed stored paths; the six remaining hosts each have a separate evidence issue and delivery issue. ENH-3534 owns only shared replay/refresh infrastructure:
+The 28 children cover the epic's named contracts. Claude and Codex have completed stored paths; the six remaining hosts each have a separate evidence issue and delivery issue. ENH-3534 (done 2026-09-30) owned only shared replay/refresh infrastructure:
 
 | Contract | Children | Remaining evidence or handoff |
 |----------|----------|-------------------------------|
@@ -56,7 +56,7 @@ Track each host's native evidence, stored producer, current-session trigger, and
 
 For each host, the in-scope consumption path is the native channel selected for canonical current-session reporting, plus any observed live/stored copy that could duplicate it. Its input, output, cache-read, and cache-creation semantics, request grain/identity, and reasoning/output relation need evidence wherever those fields affect canonical figures. An unselected auxiliary channel may remain `unknown` only when the ledger explicitly marks it outside that canonical path and explains why it cannot affect counting.
 
-Before closing the epic, replace each owner entry with an evidence-backed verdict: implemented with a stored producer, actual after-usage trigger, and freshness-qualified reader for every supported in-scope metric; or explicitly unavailable where native absence is proved. Partial native support is recorded per metric/channel. Supported components may be stored with missing components null, but canonical totals and rates that need missing components remain unavailable. A missing trigger for a supported current-session path, an in-scope `unknown`, or an open/deferred host child keeps the epic open. Each host delivery issue owns retiring its direct transcript fallback after a proved stored cutover or replacing it with an explicit unavailable diagnostic after a proved native absence. Close the epic only when shared ENH-3534 and all host evidence/delivery children are `done` or `cancelled`, with no unresolved in-scope verdict; a cancellation requires the ledger to explain why no work remains. If intended scope shrinks, revise this goal and ledger explicitly.
+Before closing the epic, replace each owner entry with an evidence-backed verdict: implemented with a stored producer, actual after-usage trigger, and freshness-qualified reader for every supported in-scope metric; or explicitly unavailable where native absence is proved. Partial native support is recorded per metric/channel. Supported components may be stored with missing components null, but canonical totals and rates that need missing components remain unavailable. A missing trigger for a supported current-session path, an in-scope `unknown`, or an open/deferred host child keeps the epic open. Each host delivery issue owns retiring its direct transcript fallback after a proved stored cutover or replacing it with an explicit unavailable diagnostic after a proved native absence. Close the epic only when all host evidence/delivery children are `done` or `cancelled`, with no unresolved in-scope verdict; a cancellation requires the ledger to explain why no work remains. If intended scope shrinks, revise this goal and ledger explicitly.
 
 ## Impact
 
@@ -162,3 +162,11 @@ Review follow-up 2026-09-29: added Claude numeric-parity and transcript-identity
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+## Review notes (2026-09-30, `/ll:advise` Opus)
+
+- Pi (ENH-3661), Qwen (ENH-3662), Gemini (ENH-3663) and OMP (ENH-3664) carry a structured `gate: external` (`satisfied: false`, owner `user`) so autodev defers them at dequeue; `status: blocked` is deliberately not used because autodev does not skip `blocked`. Flip `satisfied: true` when access is provided.
+- Sequencing: Kimi (ENH-3665 → ENH-3676) and OpenCode (ENH-3660 → ENH-3671) first; the gated hosts follow when access exists.
+- Evidence tiers: source-cited producer evidence is a distinct lower tier (provider-keyed, version-pinned, marked separately in `TelemetryCapability`); it never satisfies a delivery issue's Completion Rule or licenses measured canonical totals/rates without a captured nonzero-cache sample.
+- Partial support: a component may be stored null only when it is evidence-backed unsupported or the ledger names it outside the canonical path — never while `unknown`. Unblocking a host on a partial contract needs an explicit per-host ledger revision here.
+- Missing gate (to add under the Kimi/OpenCode work): a test asserting each fixture README verdict table agrees with the typed telemetry map; `test_verify_host_map.py` checks completeness only.

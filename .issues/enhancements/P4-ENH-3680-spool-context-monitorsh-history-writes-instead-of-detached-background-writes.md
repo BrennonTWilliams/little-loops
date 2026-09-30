@@ -9,9 +9,9 @@ discovered_date: '2026-09-30'
 captured_at: '2026-09-30T00:31:01Z'
 blocked_by:
 - ENH-3677
+- ENH-3679
 relates_to:
 - ENH-3658
-- ENH-3679
 ---
 
 # ENH-3680: Spool context-monitor.sh history writes instead of detached background writes
@@ -27,6 +27,8 @@ Both `record_*` calls pre-resolve with `resolve_history_db(".ll/history.db")` (`
 ## Expected Behavior
 
 The hook appends one small JSON line (kept under `PIPE_BUF`, 4 KB, for atomic `O_APPEND`) per row to a spool file and returns immediately. A drain step (rename-claim, time-boxed, idempotent) inserts the rows via the target-aware writers at SessionStart (first, to fix handoff ordering) and Stop. Local sqlite behavior is unchanged (`LL_HISTORY_DB` still redirects). First verify that no consumer reads `context_pressure` rows live; rows may land up to one turn late.
+
+> **2026-09-30:** reuses ENH-3679's spool file format and rename-claim/`spool_drained:<uuid>` drain rather than a second mechanism; now `blocked_by` ENH-3679.
 
 ## Scope Boundaries
 

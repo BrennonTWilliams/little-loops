@@ -3,7 +3,7 @@ id: ENH-3534
 type: ENH
 title: Shared infrastructure for remaining-host token usage ingestion
 priority: P3
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
@@ -23,6 +23,7 @@ relates_to:
 - ENH-3674
 - ENH-3675
 - ENH-3676
+completed_at: '2026-09-30T00:59:37Z'
 ---
 
 # ENH-3534: Shared infrastructure for remaining-host token usage ingestion
@@ -33,9 +34,10 @@ Maintain the shared replay dispatch and safe source refresh needed to ingest nat
 
 ## Current Behavior
 
-- `usage_refresh.py` can safely replace verified stored source rows from available originals, and `_backfill_usage_events` dispatches assistant-message usage through `normalize_host_usage`.
-- The shared dispatch qualifies Claude observations only. Codex uses its completed native path; Kimi native `usage.record` and the other hosts' differing usage shapes have no measured implementation yet.
-- The current-session usage Stop hook and stored `ll-ctx-stats` cache-rate reader serve Claude and Codex only. ENH-3671–3676 own the corresponding host-specific paths.
+_As of the 2026-09-29 checkpoint (see below), the shared seam is implemented; this section records what it does and does not cover._
+
+- `usage_refresh.py` safely replaces verified stored source rows from available originals; `_backfill_usage_events` dispatches assistant-message usage through `normalize_host_usage` with a source/host/session-scoped `HostUsageState`.
+- Only Claude 2.1.284 observations qualify as measured. Codex uses its closed-span candidate path; Kimi `usage.record` and the other hosts' native shapes are owned by ENH-3671–3676 and are not normalized here.
 
 ## Expected Behavior
 
@@ -64,11 +66,11 @@ Use the completed ENH-3543 shared observation selector for reporting. No host-sp
 
 ## Acceptance Criteria
 
-- [ ] Shared replay dispatch accepts verified host/source/session state and labels surviving unproved assistant usage as unknown audit data; it never promotes a host merely because a payload resembles Claude usage. Host-native shapes are owned by ENH-3671–3676.
-- [ ] An upgrade test starts with normalized raw rows missing usage, refreshes available originals, and rebuilds twice with stable totals and attribution. Missing originals remain unavailable with a diagnostic.
-- [ ] Refresh and rebuild preserve live-only rows, source positions, verified host attribution, derive freshness, and idempotency; an interrupted refresh/rebuild leaves readers explicitly stale or unavailable until repaired.
-- [ ] Shared reporting uses `select_usage_coverage`/`select_usage_observations`; unresolved overlap stays audit-only, and identical counts never establish request identity.
-- [ ] ENH-3671–3676 carry host-specific parser, normalization, capability, trigger, reader, and end-to-end fixture gates; ENH-3534 can close while their evidence or implementation remains open.
+- [x] Shared replay dispatch accepts verified host/source/session state and labels surviving unproved assistant usage as unknown audit data; it never promotes a host merely because a payload resembles Claude usage. Host-native shapes are owned by ENH-3671–3676.
+- [x] An upgrade test starts with normalized raw rows missing usage, refreshes available originals, and rebuilds twice with stable totals and attribution. Missing originals remain unavailable with a diagnostic.
+- [x] Refresh and rebuild preserve live-only rows, source positions, verified host attribution, derive freshness, and idempotency; an interrupted refresh/rebuild leaves readers explicitly stale or unavailable until repaired.
+- [x] Shared reporting uses `select_usage_coverage`/`select_usage_observations`; unresolved overlap stays audit-only, and identical counts never establish request identity.
+- [x] ENH-3671–3676 carry host-specific parser, normalization, capability, trigger, reader, and end-to-end fixture gates; ENH-3534 can close while their evidence or implementation remains open.
 
 ## Scope Boundaries
 
@@ -95,9 +97,7 @@ Use the completed ENH-3543 shared observation selector for reporting. No host-sp
 
 ## Verification Notes
 
-Historical verdict before the host-delivery split: **VALID** for the former scope. Evidence-quote check was clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` was available. This verdict does not certify the revised shared-infrastructure scope.
-
-Historical check, 2026-09-24: `_compute_cache_rate_from_jsonl` documented missing qwen/gemini/omp cache rates; `normalize_host_usage` and Codex rollout ingestion were then pending. The 2026-09-29 checkpoint below supersedes that implementation state.
+The pre-split verdict (VALID for the former, broader scope) is historical and does not certify the revised shared-infrastructure scope; the 2026-09-30 Resolution below supersedes it.
 
 ## Implementation checkpoint (2026-09-29)
 
@@ -139,9 +139,19 @@ the survey did not prove the input/cache semantics needed to derive disjoint
 components. ENH-3660–ENH-3665 remain the owners of those contracts, and the
 matching host delivery issues remain blocked on their respective producer contracts.
 
+## Resolution
+
+**Done** 2026-09-30 — verified against artifacts, not the checkpoint prose alone. `python -m pytest scripts/tests/test_enh3534_host_usage_dispatch.py scripts/tests/test_session_store_usage_refresh.py scripts/tests/test_ll_session_refresh.py` → 20 passed. `ll-session refresh --host … --session-id …|--all [--rebuild]` exists.
+
+- AC1 (dispatch labels unproved usage unknown): `test_claude_shaped_other_host_usage_stays_unknown`, `test_only_persisted_claude_contract_qualifies`, `test_state_scope_cannot_cross_host_or_session`, `test_opencode_shape_rebuild_preserves_unknown_provenance`.
+- AC2 (upgrade fixture, double rebuild, missing original): `test_refresh_recovers_stripped_usage_and_rebuild_is_stable`, `test_missing_original_retains_unknown_coverage`, `test_missing_original_reports_skip_without_data_loss`.
+- AC3 (live-only rows, positions, attribution, stale-until-repaired): `test_refresh_rejects_unverified_host_and_compacted_rows`, `test_failed_reingestion_rolls_back_existing_rows`, `test_legacy_host_rows_are_not_blanket_certified`; after a refresh and before `rebuild`, `usage_source_freshness` reports `unknown` (asserted in the first upgrade test) because the source cursor and derive checkpoint are cleared. A rebuild that fails partway rolls back as one transaction (existing `rebuild()` rollback tests).
+- AC4 (shared selector): consumers use `select_usage_coverage`/`select_usage_observations` (ENH-3543).
+- AC5: host-specific gates live in ENH-3671–3676, which remain open and blocked on ENH-3660–3665. Closing this issue does not certify eight-host coverage.
+
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Done** | Created: 2026-09-24 | Completed: 2026-09-30 | Priority: P3
 
 
 ## Session Log

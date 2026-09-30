@@ -7,9 +7,11 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T00:31:01Z'
-blocks:
-- ENH-3666
 relates_to:
+- ENH-3666
+- ENH-3678
+- ENH-3680
+blocks:
 - ENH-3680
 ---
 
@@ -27,6 +29,36 @@ Every `ll-*` writer waits `_BUSY_TIMEOUT_MS` (5000 ms) then logs `cli_event_cont
 
 Telemetry writes never stall a command beyond the short timeout and are not lost: on `OperationalError: database is locked` the row goes to a spool (`.ll/` scoped, size- and age-bounded, one small JSON line per row so appends stay atomic) and is drained/idempotently inserted on the next successful connect. Non-telemetry writers keep the 5000 ms timeout.
 
+## Design Decisions (2026-09-30, `/ll:advise` Opus review)
+
+- **No schema change.** `cli_events` rows carry no idempotency key and adding a UUID column would force a `SCHEMA_VERSION` bump. Instead make the drain idempotent **per spool file**: claim a file by atomic `rename` (so two concurrent drainers never process the same file), then insert its rows and a `meta` marker `spool_drained:<file-uuid>` in one transaction; skip any file whose marker exists.
+- **Short timeout applies only to best-effort telemetry writers** (`cli_event_context` and siblings), set per-connection; shared `connect()` and non-telemetry writers keep `_BUSY_TIMEOUT_MS` (5000 ms).
+- **One shared mechanism.** ENH-3680 (the `context-monitor.sh` hook spool) consumes this spool format and drain; do not build two. Blocks ENH-3680 accordingly.
+- **No longer blocks ENH-3666.** It mitigates the symptom (dropped rows, ~12 s stalls) under any long lock holder; ENH-3666's shadow-build keeps lock windows short regardless.
+- **Spool safety:** `.ll/`-scoped, mode 0600, one JSON line per row under `PIPE_BUF` (4 KB) for atomic `O_APPEND`, bounded by size and age; when the DB is permanently unavailable, oldest lines are dropped, never unbounded growth.
+
+## Integration Map
+
+- `scripts/little_loops/session_store/writers.py` — `cli_event_context` and the other best-effort telemetry writers (`_log_degraded`, `_DEGRADE_ERRORS`); a new spool module under `scripts/little_loops/session_store/`; drain on next successful connect (`schema.connect`/`ensure_db` path, telemetry only).
+- Must not add a raw `sqlite3.connect(` (`test_history_store_chokepoint_gate.py`); remote (libsql) path stays on its own unreachable-marker route (`libsql.py` `warn_once`).
+- Tests (`test_session_store_writers.py` shape): real second connection holding `BEGIN IMMEDIATE` (thread + barrier, post-state assertions, no wall clock); concurrent drainers insert each row once; bounded spool under permanent unavailability; remote path unchanged.
+- Docs: `docs/reference/API.md` `cli_event_context` paragraph (documents the 5000 ms timeout and `enter failed` warning), `docs/guides/HISTORY_SESSION_GUIDE.md` — end-user shape.
+
+## Program Design
+
+### Types
+
+- `SpoolRow` dataclass in a new `little_loops.session_store.spool` module: `table: str`, `values: dict[str, Any]`; serialized as one JSON line under 4 KB.
+
+### Signatures
+
+- `spool_append(db: Path | str, row: SpoolRow) -> None` — O_APPEND one line to the `.ll/`-scoped spool; bounded by size and age, never raises into the caller.
+- `drain_spool(conn: sqlite3.Connection, db: Path | str) -> int` — rename-claims each spool file, inserts its rows plus a `spool_drained:<file-uuid>` `meta` marker in one transaction, and returns rows inserted.
+
+### Call Path
+
+- `cli_event_context` (`little_loops.session_store.writers`) → short-timeout connect → `OperationalError: database is locked` → `spool_append`; next successful telemetry connect → `drain_spool`.
+
 ## Scope Boundaries
 
 - **In scope**: a short busy timeout for best-effort telemetry writers, a bounded local JSONL spool, and an idempotent drain on the next successful connect.
@@ -42,7 +74,7 @@ Telemetry writes never stall a command beyond the short timeout and are not lost
 ## Acceptance Criteria
 
 - [ ] With a real second connection holding `BEGIN IMMEDIATE`, a `cli_event_context` write returns within the short timeout and its row appears after the lock is released and the spool drains.
-- [ ] Spool is bounded (size/age), drained idempotently (no duplicate rows), and never grows unbounded when the DB is permanently unavailable.
+- [ ] Spool is bounded (size/age), drained idempotently via rename-claim + transactional `spool_drained:<uuid>` marker (no duplicate rows, two concurrent drainers safe, no schema change), and never grows unbounded when the DB is permanently unavailable.
 - [ ] Remote (libsql) backend behavior unchanged (its own unreachable-marker path).
 - [ ] Existing telemetry-writer tests pass; docs describe the spool.
 

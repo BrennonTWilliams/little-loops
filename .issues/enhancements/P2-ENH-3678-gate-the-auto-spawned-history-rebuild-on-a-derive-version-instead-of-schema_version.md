@@ -24,9 +24,10 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 ## Expected Behavior
 
 - A `REBUILD_DERIVE_VERSION` constant in `session_store/lifecycle.py` plus a `rebuild_derive_version` meta key (inline upsert, not in the `usage_derive_` namespace); the hook compares against it instead of `SCHEMA_VERSION`. `rebuild()` stamps it on success alongside `last_rebuild_version`.
-- Migration: if `last_rebuild_version >= 58` stamp the current derive version without rebuilding; otherwise rebuild once. Record the risk that a store whose last rebuild predates a real derivation change could skip a needed rebuild, and choose the stamp threshold deliberately.
-- A flock so only one `--rebuild` runs at a time (a second spawn exits immediately).
-- Above a size threshold (e.g. 1 GB, configurable) the hook does not auto-spawn `--rebuild`; it reports "rebuild pending" (SessionStart output / `ll-doctor`) and the user runs `ll-session rebuild` explicitly.
+- Migration: stamp the current derive version without rebuilding **only when `last_rebuild_version == 58` exactly** (that store was rebuilt under current derivation code); any lower or missing value rebuilds once. Pin to `== 58`, not `>= 58`, so a later derivation change landing without a schema bump is not silently skipped.
+- Usage-only derivation changes bump `_USAGE_DERIVE_VERSION` (incremental path), **not** `REBUILD_DERIVE_VERSION`. `REBUILD_DERIVE_VERSION` bumps only when parser or `_REBUILD_TABLES` derivation semantics change; document this rule next to the constant. This is what prevents a repeat of the 09-23/09-24/09-29 incident rebuilds (they changed usage derivation).
+- A single-flight `fcntl.flock` (`LOCK_NB`) reusing the `backfill_worker` `<db>.usage-refresh.lock` pattern, so only one `--rebuild` runs at a time (a second spawn exits immediately without touching the DB). Hold it for the rebuild's whole run.
+- Above a size threshold the hook does not auto-spawn `--rebuild`; it reports "rebuild pending" (SessionStart output / `ll-doctor`) and the user runs `ll-session rebuild` explicitly. The threshold is a **module constant (1 GB)**, not a config key, to avoid `config-schema.json` / dataclass / `test_config_schema.py` churn; promote it to config only if a user asks.
 
 ## Scope Boundaries
 
@@ -40,8 +41,31 @@ Stop the SessionStart hook from spawning a full `backfill_worker --rebuild` on e
 - **Risk**: Medium - a wrong migration stamp could skip a needed rebuild
 - **Breaking Change**: No
 
+## Integration Map
+
+- `scripts/little_loops/hooks/session_start.py` (`handle`, ~`:189-214`) — swap the `SCHEMA_VERSION` comparison for `REBUILD_DERIVE_VERSION`; add the size gate and pending notice; keep remote stores and `LL_NON_INTERACTIVE` suppression.
+- `scripts/little_loops/session_store/lifecycle.py` — `REBUILD_DERIVE_VERSION`; `rebuild()` stamps `rebuild_derive_version` alongside `last_rebuild_version` (inline meta upsert; not `usage_derive_*`; no migration or `SCHEMA_VERSION` bump).
+- `scripts/little_loops/cli/backfill_worker.py` — single-flight flock for `--rebuild`.
+- `scripts/little_loops/cli/doctor.py` — surface "rebuild pending".
+- Tests: `test_hook_session_start.py::TestSessionStartRebuild` (gate), a two-worker flock test (second exits, DB untouched), a size-gate test, migration-stamp tests (`== 58` stamps; `57`/missing rebuilds); `test_session_store_usage_refresh.py` asserts no `usage_derive_%` meta keys after refresh — keep the new key out of that namespace.
+
+## Program Design
+
+### Types
+
+- `REBUILD_DERIVE_VERSION: str` constant in `little_loops.session_store.lifecycle`; `rebuild_derive_version` `meta` key (inline upsert, string value).
+
+### Signatures
+
+- `rebuild_needed(db: Path | str) -> bool` — True when `rebuild_derive_version` is missing/older than `REBUILD_DERIVE_VERSION` after applying the `last_rebuild_version == 58` stamp rule; replaces the inline `SCHEMA_VERSION` comparison in `hooks/session_start.py`.
+
+### Call Path
+
+- `handle` (`little_loops.hooks.session_start`) → `rebuild_needed` → size gate → detached `little_loops.cli.backfill_worker` `--rebuild` → single-flight flock → `rebuild`.
+
 ## Acceptance Criteria
 
+- [ ] A store at `last_rebuild_version == 58` is stamped without rebuilding; `57`/missing rebuilds once.
 - [ ] A `SCHEMA_VERSION` bump that does not change derivation does not trigger a rebuild; a `REBUILD_DERIVE_VERSION` bump does.
 - [ ] Two concurrent `--rebuild` workers: the second exits without touching the DB.
 - [ ] Above the size threshold the hook spawns no `--rebuild` and surfaces a pending notice.

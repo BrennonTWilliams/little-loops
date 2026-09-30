@@ -58,6 +58,12 @@ ingestion, trigger and reader are verified.
 
 Mark this evidence issue `done` only when every metric/channel and identity rule needed for the selected canonical stored path has a supported or evidence-backed unsupported verdict. An unselected auxiliary channel may stay `unknown` only when the EPIC-3562 ledger names it as outside that path and explains why it cannot duplicate or change the canonical figure. If an in-scope field, request identity, or source path remains `unknown`, keep this issue `open` or `blocked`; completing the fixture alone does not release ENH-3676.
 
+## Evidence Tiers (added 2026-09-30 after `/ll:advise` review)
+
+Source-cited producer evidence (upstream source at a pinned version/commit, keyed by provider) may support an inclusivity/omission verdict only as a **distinct, lower tier**: record it as such in the fixture README and in the typed telemetry map (`TelemetryCapability`), never identically to a captured verdict. A captured nonzero-cache sample and a captured identity/replay fixture are still required before canonical totals or rates are reported as measured. Do not use source-only evidence to close this issue or release the delivery issue.
+
+Fixture sanitization: strip credentials, tokens, absolute home paths and prompt content before commit; the pre-commit `ll-verify-private-refs` hook must pass. Add a sync test asserting that this host's fixture README verdict table and the typed telemetry map agree (see EPIC-3562 note on the missing README↔`telemetry_matrix` gate).
+
 ## Program Design
 
 - Capture a sanitized, versioned producer sample for native usage records and their copied context records beside request steps, preserving the envelope and request order needed to test identity and replay.

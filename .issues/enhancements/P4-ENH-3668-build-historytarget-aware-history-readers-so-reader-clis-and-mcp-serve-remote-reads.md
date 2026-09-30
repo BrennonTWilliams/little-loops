@@ -36,8 +36,8 @@ ENH-3657 originally proposed "serving" ~11 reader sites by dropping the `resolve
 
 1. Thread a typed target through the reader layer: accept `Path | str | HistoryTarget | None` in `history_reader.*` (no `Path(db)` coercion of a `RemoteTarget`, which raises `TypeError`); resolve once at the CLI/MCP boundary with `resolve_history_target(path, root=...)`.
 2. Replace `.exists()` gates with a target-aware reachability check (`_target_available(target)`); an unreachable remote must be distinguishable from an empty store (today `_connect_readonly` maps `HistoryError` to `None`).
-3. Give `_connect_readonly` a read-mode remote check so a reader never needs a write-current schema; verify against `HranaStub` (`remote_schema.check_access(..., write=False)` already permits behind/ahead reads).
-4. Flip the ENH-3657 interim refusals to serve, one subcommand at a time; delete the matching `_REMOTE_REFUSALS`/`_REJECTED` rows.
+3. ~~Give `_connect_readonly` a read-mode remote check~~ — done in ENH-3657 (read-mode ensure in `open_history_readonly`); reuse it and verify each served subcommand against `HranaStub`.
+4. Flip the ENH-3657 interim refusals to serve, one subcommand at a time; remove the refuse verdict and its row in the ENH-3657 `CONFIGURATION.md` reader-support table (ENH-3657 adds no `_REMOTE_REFUSALS`/`_REJECTED` entries).
 5. `evolution._open_db` (sqlite-only, shared by `analyze` and CT-0): make it remote-aware or keep refusing.
 
 ## Integration Map
@@ -63,7 +63,7 @@ ENH-3657 originally proposed "serving" ~11 reader sites by dropping the `resolve
 ## Implementation Steps
 
 1. Accept `HistoryTarget` in `history_reader.*` and resolve once at each boundary (`resolve_history_target(path, root=...)`); replace `.exists()` gates with a target-aware reachability check.
-2. Flip ENH-3657's interim refusals to serve, one subcommand at a time, deleting the matching `_REMOTE_REFUSALS` / `_REJECTED` rows; decide `evolution._open_db` (remote-aware vs keep refusing).
+2. Flip ENH-3657's interim refusals to serve, one subcommand at a time, removing the matching row from the ENH-3657 reader-support table (no `_REMOTE_REFUSALS`/`_REJECTED` entries exist to delete); decide `evolution._open_db` (remote-aware vs keep refusing).
 3. `HranaStub` tests per site plus local twins; assert no local `.ll/history.db` is created and that an unreachable endpoint is reported distinctly; run `python -m pytest scripts/tests/`, `ruff check`, `mypy`.
 
 ## Impact

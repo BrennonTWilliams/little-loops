@@ -46,6 +46,10 @@ only for proved metric/channel semantics. Hand the contract to ENH-3671;
 ENH-3534 owns only shared replay/refresh. Keep the epic's OpenCode ledger
 incomplete until stored ingestion, trigger and reader are verified.
 
+### Access prerequisite (2026-09-30)
+
+Cache-hit/write capture needs a caching-capable provider (e.g. Anthropic/OpenAI credentials). OpenCode's inclusivity semantics are provider-dependent, so every verdict must be keyed by provider and version. Not gated as `external` because the existing 1.1.53 captures are real and identity/resume evidence can proceed without new access; the nonzero-cache case is the part that may need credentials — record it as the blocker per the AC below if unavailable. Sequenced first alongside ENH-3665 (Kimi) per the 2026-09-30 review.
+
 ## Acceptance Criteria
 
 - [ ] Save a sanitized, versioned native capture with a tool call, resume, and matching live/stored parts; document which cache-hit/write and retry/compaction cases were actually observed.
@@ -56,6 +60,12 @@ incomplete until stored ingestion, trigger and reader are verified.
 ## Completion Rule
 
 Mark this evidence issue `done` only when every metric/channel and identity rule needed for the selected canonical stored path has a supported or evidence-backed unsupported verdict. An unselected auxiliary channel may stay `unknown` only when the EPIC-3562 ledger names it as outside that path and explains why it cannot duplicate or change the canonical figure. If an in-scope field, request identity, or source path remains `unknown`, keep this issue `open` or `blocked`; completing the fixture alone does not release ENH-3671.
+
+## Evidence Tiers (added 2026-09-30 after `/ll:advise` review)
+
+Source-cited producer evidence (upstream source at a pinned version/commit, keyed by provider) may support an inclusivity/omission verdict only as a **distinct, lower tier**: record it as such in the fixture README and in the typed telemetry map (`TelemetryCapability`), never identically to a captured verdict. A captured nonzero-cache sample and a captured identity/replay fixture are still required before canonical totals or rates are reported as measured. Do not use source-only evidence to close this issue or release the delivery issue.
+
+Fixture sanitization: strip credentials, tokens, absolute home paths and prompt content before commit; the pre-commit `ll-verify-private-refs` hook must pass. Add a sync test asserting that this host's fixture README verdict table and the typed telemetry map agree (see EPIC-3562 note on the missing README↔`telemetry_matrix` gate).
 
 ## Program Design
 

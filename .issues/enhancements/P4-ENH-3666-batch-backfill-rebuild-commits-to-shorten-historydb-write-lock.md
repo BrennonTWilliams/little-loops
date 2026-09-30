@@ -2,8 +2,8 @@
 id: ENH-3666
 type: ENH
 title: Batch backfill --rebuild commits to shorten history.db write lock
-priority: P3
-status: open
+priority: P4
+status: deferred
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T15:29:40Z'
@@ -17,14 +17,20 @@ score_change_surface: 10
 size: Large
 blocked_by:
 - ENH-3678
+relates_to:
 - ENH-3679
+deferred_by: human
+deferred_date: '2026-09-30T01:00:27Z'
+deferred_reason: blocked_by_unmet
 ---
 
 # ENH-3666: Batch backfill --rebuild commits to shorten history.db write lock
 
 > **Re-scoped 2026-09-30** after a `/ll:advise` (Opus) review. **This banner supersedes conflicting text below** (title left as-is for link stability; the design is now a shadow-build, not per-phase commits).
 >
-> **Premise correction.** The trigger is `last_rebuild_version < SCHEMA_VERSION` (`hooks/session_start.py:~213`): ~20 bumps since June, several changing no `_REBUILD_TABLES` derivation, each forcing a full multi-GB replay, with no single-flight guard. Fix the trigger and the dropped-telemetry symptom first: **blocked_by ENH-3678** (derive-version gate + single-flight flock + size-threshold opt-in) and **ENH-3679** (short-timeout + spool for best-effort telemetry writers). Dissent recorded: the incident bumps (09-23, 09-24, 09-29) *did* change usage derivation, so ENH-3678 alone would not have prevented that rebuild; this structural fix stays necessary. Consider also rebuilding `usage_events` only via the existing incremental `_USAGE_DERIVE_VERSION` path and making the other tables' rebuild per-table and derive-versioned, which may shrink this issue further; evaluate after ENH-3678 lands. Priority may drop to P4 until rebuilds still hurt after ENH-3678.
+> **Premise correction.** The trigger is `last_rebuild_version < SCHEMA_VERSION` (`hooks/session_start.py:~213`): ~20 bumps since June, several changing no `_REBUILD_TABLES` derivation, each forcing a full multi-GB replay, with no single-flight guard. Fix the trigger and the dropped-telemetry symptom first: **blocked_by ENH-3678** (derive-version gate + single-flight flock + size-threshold opt-in); ENH-3679 (short-timeout + spool for best-effort telemetry writers) is `relates_to` only. Dissent recorded: the incident bumps (09-23, 09-24, 09-29) *did* change usage derivation, so ENH-3678 alone would not have prevented that rebuild; this structural fix stays necessary. Consider also rebuilding `usage_events` only via the existing incremental `_USAGE_DERIVE_VERSION` path and making the other tables' rebuild per-table and derive-versioned, which may shrink this issue further; evaluate after ENH-3678 lands. Priority may drop to P4 until rebuilds still hurt after ENH-3678.
+>
+> **2026-09-30 update (`/ll:advise` Opus): deferred at P4.** Blocked only by ENH-3678 (ENH-3679 is a symptom mitigation, not a prerequisite). Opus overruled the dissent below: a store at `last_rebuild_version == 58` was already rebuilt under current code, and ENH-3678 sends usage-only derivation changes through `_USAGE_DERIVE_VERSION`, so the incident bumps would not recur. Re-open and re-score only if rebuilds still hurt after ENH-3678 ships. Open items to resolve first when reactivated: whether hook-written `tool_events`/`skill_events`/`message_events`/`sessions` rows always have a `raw_events` counterpart (unverified), FTS5 `search_index` handling, and taking `_compact_sessions` out of `rebuild()`.
 >
 > **Decision (Implementation Step 1 is settled; no `/ll:decide-issue` needed): shadow-build with bounded batches, then a rename-only swap.**
 > - *Rejected:* per-phase commits + `rebuild_in_progress` marker (readers see empty/half tables and none check the marker; `project_digest` runs at SessionStart right after the worker spawns; usage/cost reports would show zero); id-range chunking (parsers depend on cross-range order: `usage_order` sorts by `source_path, ordinal`, session aggregates and `mine_corrections` need whole sessions); `wal_autocheckpoint`/`nice` (do not help a single long txn / lengthen the hold).
@@ -263,7 +269,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-29 | Priority: P3
+**Deferred** | Created: 2026-09-29 | Priority: P4
 
 
 ## Confidence Check Notes
