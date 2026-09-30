@@ -21,6 +21,8 @@ score_complexity: 16
 score_test_coverage: 20
 score_ambiguity: 22
 score_change_surface: 24
+relates_to:
+- FEAT-3686
 ---
 
 # FEAT-3667: Brainstorm engine module: deterministic core, CLI contract, and artifact profile
@@ -84,7 +86,7 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 
 **Evaluator per command** (2026-09-30 fourth review): classify-routed (stdout token, `_: finalize_failed`, print `fail` on exit 1 **and** 2): `frame-apply`, `collapse`, `check-floors`, `record-round`, `portfolio`, `validate`, `render-report`. Exit-code-routed (`next:` + `on_error:`, or `evaluate: exit_code`; exempt from the print-`fail` rule because the exit code *is* the route): `resolve-profile`, `reframe-select`, `ingest`, `shortlist-apply`, `build-schedule`, `next-round` (exit 1 = no rounds left), `probe-plan`, `rank`, `salvage` (exit 1 = below salvage floor), `prompt-block`. Each CLI-table row is tested against this list.
 
-**Capability allowlist** (2026-09-30 fourth review): `resolve-profile` holds a module constant `BUILT_CAPABILITIES` (v1 = `{"ground": {"none"}, "materialize": {"none"}, "premortem": {False}, "reframe": {True, False}}`), and rejects (exit 1, violation on stderr, before any LLM call) any profile or override value outside it — including explicit overrides like `materialize=render`. FEAT-3584/3585/3586 each widen it in the same change that lands their states, and flip their preset knob (FEAT-3583 § Pinned Preset Contents). This is what keeps shipped presets from emitting a routing token (`materialize`, `premortem`, `ground_codebase`) whose target state does not exist yet.
+**Capability allowlist** (2026-09-30 fourth review): `resolve-profile` holds a module constant `BUILT_CAPABILITIES` (v1 = `{"ground": {"none"}, "materialize": {"none"}, "premortem": {False}, "reframe": {False}}`; `reframe` narrowed to `{False}` by the 2026-09-30 fifth review — see Review Decisions), and rejects (exit 1, violation on stderr, before any LLM call) any profile or override value outside it — including explicit overrides like `materialize=render`. FEAT-3584/3585/3586 each widen it in the same change that lands their states, and flip their preset knob (FEAT-3583 § Pinned Preset Contents). This is what keeps shipped presets from emitting a routing token (`materialize`, `premortem`, `ground_codebase`) whose target state does not exist yet.
 
 **Prompt-block delivery** (2026-09-30 fourth review): a prompt state cannot run shell, so every LLM state that needs a data block is preceded by a shell state that captures `prompt-block --kind <k>` (or `next-round`/`probe-plan`) stdout. This issue pins only the command side (which `--kind`s exist); the state-by-state pairing table and the resulting parent step count are owned by FEAT-3582 § Program Design.
 
@@ -106,7 +108,7 @@ All symbols live in `scripts/little_loops/brainstorm_engine.py` and are exposed 
 
 ### Types
 
-- `IdeaRecord`: `{id: str, title: str, body: str, framing: str, lens: str, cell: [str, str], off_grid: bool, grounded: bool | "unknown" | None, extra: dict}` — one JSON line per idea in `ideas.jsonl`
+- `IdeaRecord`: `{id: str, title: str, body: str, framing: str, lens: str, cell: [str, str] | None, off_grid: bool, grounded: bool | "unknown" | None, extra: dict}` — one JSON line per idea in `ideas.jsonl`
 - `FinalistsFile`: `{finalists: [str], reserve: {str: [str]}, dropped: {str: str}, judge_mode: str, assets: dict}`
 - `PairVerdict`: `{a: str, b: str, winner: str | null, probe: bool, round: int, rationale: str}`
 - `Profile`: `{mode: str, lenses: [str] (per-profile lens catalog; `frame` reads it), reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], extra_fields: [str] (profile-specific idea fields under `extra`; `prompt-block --kind diverge` prints them), ground: "none" | "codebase", materialize: str, rubric: str, premortem: bool, output_shape: str, overridden: [str]}` — knob values outside `BUILT_CAPABILITIES` fail `resolve-profile` (§ Capability allowlist)
@@ -148,7 +150,7 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 
 ### Files to Modify
 - `scripts/little_loops/brainstorm_engine.py` — new
-- `scripts/little_loops/loops/brainstorm-profiles/artifact.json` — new (`.json` so unfiltered `rglob("*.yaml")` scanners never read it)
+- `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json` — new (`.json` so unfiltered `rglob("*.yaml")` scanners never read it); all four ship here with unbuilt knobs (`ground`, `materialize`, `premortem`, `reframe`) off, per FEAT-3583 § Shipped vs target. Axes/bins are provisional until FEAT-3686 reports; FEAT-3583 adds only the classifier, overrides and tuning
 - `docs/reference/API.md` — `little_loops.brainstorm_engine` section (docs audience: cite the module, not `scripts/` paths)
 
 ### Tests
@@ -204,6 +206,12 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 - **Ambiguity (22/25)**: remaining judgement calls are prompt wording (FEAT-3582) and profile bin names (FEAT-3583); neither blocks this issue.
 
 ## Review Decisions
+
+_Added 2026-09-30 (EPIC-3581 fifth review, `/ll:advise` with Opus, structural/process pass; nothing measured):_
+- **Spike gate (FEAT-3686).** The grid-dependent parts of this module — `ingest` cell normalization/`off_grid`, `collapse` re-tag, `shortlist-apply`, `check-floors` `min_cells`, the wildcard slot in `portfolio`, and the grid map in `render-report` — are **held until FEAT-3686 reports** (a failing grid result removes them from the contract). `cell` is therefore `[str, str] | None` in `IdeaRecord`. The grid-independent commands (`IdeaRecord`/`FinalistsFile` I/O, `check-floors` idea/finalist floors, `build-schedule`, `next-round`, `record-round`, `rank`, `probe-plan`, `salvage`, `validate`, `render-report` skeleton, `prompt-block`, the executor smoke test) may start in parallel with the spike. If the batched-judge row fails, `next-round`/`build-schedule` emit one pair per call and `max_finalists` is lowered to 6.
+- **All four preset JSONs ship here** (unbuilt knobs off) so FEAT-3582's brief-2 merge gate runs `mode=functional` rather than the artifact axes; FEAT-3583 no longer introduces preset files.
+- **`reframe` deferred to v2.** `BUILT_CAPABILITIES["reframe"] = {False}`: the `reframe` state and `reframe-select` are not built in v1 (`frame-apply` always takes the empty-framing path); an explicit `reframe=true` fails at `resolve-profile`. The `reframe-select` row and its tests are superseded until the follow-up brings measurements.
+- **Import-origin guard.** The executor smoke test and `test_brainstorm_engine.py` assert `little_loops.__file__` resolves inside the checkout under test and pass `PYTHONPATH` through to the subprocess (`LL_PYTHON` = `sys.executable`). Verify gates already inject the worktree `PYTHONPATH` (`worktree_utils.py`), so a worktree run before this module is on `main` fails loudly with `ModuleNotFoundError`; after it lands, a run without `PYTHONPATH` would silently import `main`'s copy, which the guard catches.
 
 _Added 2026-09-30 (EPIC-3581 fourth review, `/ll:advise` with Opus; nothing measured):_ `frame-apply` added (the reframe-skip path — the **default** for `artifact` — had no command writing empty-framing `lenses.txt` lines and no route around `reframe`); `lenses.txt` pinned to `lens_index|framing|lens` (the two prior spellings, `framing|lens_index` here and `framing|lens` in FEAT-3582, disagreed and neither survives `pop_lens` deleting lines); `collapse` prints the `ground_codebase|shortlist` token (FEAT-3584's gate cannot be `check_floors`, which runs after `shortlist`); `portfolio`'s happy token renamed `validate` → `render` (it routes to `render_report`, not `validate_portfolio`); `render-report --failed` keeps a single writer; `BUILT_CAPABILITIES` allowlist in `resolve-profile`; evaluator classes pinned; freeze rule loosened to "once FEAT-3582 merges"; ids never reused; smoke test added to this issue's tests; re-tag agreement/occupancy logged.
 

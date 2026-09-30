@@ -15,6 +15,7 @@ blocked_by:
 - FEAT-3582
 - FEAT-3583
 - FEAT-3667
+- FEAT-3686
 relates_to:
 - FEAT-2248
 - FEAT-3584
@@ -33,11 +34,11 @@ feature enabled, and a lightweight before/after comparison against the old loop.
 
 ## Dependency Note
 
-_2026-09-28:_ Hard-blocked only by FEAT-3582 and FEAT-3583. FEAT-3584/3585/3586 are `relates_to` so a P4 child (FEAT-3586) does not gate this P3 issue. Each optional child owns its own failure-path fixtures; this issue owns the **cross-child** interactions, the combined budget, and reference runs. Per-mode reference runs for `ground`, `materialize`, and `premortem` are recorded as each child lands, and this issue cannot be closed until all three are done.
+_2026-09-28:_ Hard-blocked only by FEAT-3582 and FEAT-3583. FEAT-3584/3585/3586 are `relates_to` so a P4 child (FEAT-3586) does not gate this P3 issue. Each optional child owns its own failure-path fixtures; this issue owns the **cross-child** interactions, the combined budget, and reference runs. Per-mode reference runs for `ground`, `materialize`, and `premortem` are recorded as each child lands, and — changed 2026-09-30 (fifth review) — **this issue closes on the core engine only**: FEAT-3584/3585/3586 moved to EPIC-3687, record their own reference runs and budget bumps, and no longer gate this issue or EPIC-3581.
 
 ## Baseline (captured 2026-09-29)
 
-The old loop is replaced in place by FEAT-3582, so its baseline is preserved outside the tree: `postmortems/brainstorm-baseline/` (gitignored, local-only) holds verbatim copies of the four historical `.loops/runs/brainstorm-*` dirs plus `BASELINE.md` (per-run ideas, LLM calls, tokens, wall-clock, pairwise difflib). **Do this before FEAT-3667/FEAT-3582 merge.** Pin the pre-rewrite commit SHA here (tree HEAD at snapshot: `2fe16824a`, verified to exist 2026-09-29). Because every little-loops project is `local-editable` against this checkout, `ll-loop run brainstorm` from an old-SHA worktree still resolves the **new** loop once FEAT-3582 is on `main`, which would silently spoil the baseline. So run the old loop from an extracted copy: `git show 2fe16824a:scripts/little_loops/loops/brainstorm.yaml > <scratch>/brainstorm-baseline.yaml` (rename `name:` to `brainstorm-baseline`; copy `loops/lib/common.yaml` alongside if `import:` does not resolve). The old loop is pure YAML plus stdlib `python3`, so it has no package dependency on the new module.
+The old loop is replaced in place by FEAT-3582, so its baseline is preserved outside the tree: `postmortems/brainstorm-baseline/` (gitignored, local-only) holds verbatim copies of the four historical `.loops/runs/brainstorm-*` dirs plus `BASELINE.md` (per-run ideas, LLM calls, tokens, wall-clock, pairwise difflib). **Do this before FEAT-3667/FEAT-3582 merge.** _(2026-09-30: the common tagging pass, its shared tags file and the FEAT-3582 merge-gate comparison inputs are now owned by FEAT-3686, so FEAT-3582's gate no longer depends on this issue; this issue only reads `postmortems/brainstorm-spike/tags.jsonl`.)_ Pin the pre-rewrite commit SHA here (tree HEAD at snapshot: `2fe16824a`, verified to exist 2026-09-29). Because every little-loops project is `local-editable` against this checkout, `ll-loop run brainstorm` from an old-SHA worktree still resolves the **new** loop once FEAT-3582 is on `main`, which would silently spoil the baseline. So run the old loop from an extracted copy: `git show 2fe16824a:scripts/little_loops/loops/brainstorm.yaml > <scratch>/brainstorm-baseline.yaml` (rename `name:` to `brainstorm-baseline`; copy `loops/lib/common.yaml` alongside if `import:` does not resolve). The old loop is pure YAML plus stdlib `python3`, so it has no package dependency on the new module.
 
 **The 2 fixed briefs (pinned 2026-09-29)** — verbatim, reused for old and new:
 1. _(artifact-shaped)_ "Suggest names and one-line taglines for an open-source CLI that watches a repository's issue backlog and drafts implementation plans."
@@ -90,11 +91,11 @@ old loop.
 - **Comparison vs old loop** on 2 fixed briefs: duplicates retained, occupied grid
   cells, LLM call count, total input/output tokens, wall-clock runtime, and the
   tournament `tie_rate` (judge position sensitivity on the top-3 head-to-heads; FEAT-3582 — measure it here before revisiting the round-robin format). No LLM-judged "usefulness"
-  metric.
+  metric. The blind A/B (one rater, n = 2) is a smoke check for regressions, not a significance test.
 - **Cost ceiling**: a default run (`mode: auto`, classifier included) makes ≤ 30 LLM calls (old loop
   14 measured 2026-09-29; estimate for the new core ≈ 1 classify + 1 frame + (1 reframe when enabled) + 9 diverge + 1 dedup + 1
   shortlist + ≈ 8 judge (≤ 7 batched round calls + 1 probe call) ≈ 21–22, leaving real slack; `max_finalists` must still not rise above 8). A run exceeding it fails the comparison and needs
-  a documented reason. Total input/output tokens and cache columns are **recorded, not gated** (per-session overhead was ≈ 94k tokens per call in the 06-27 run, so call count alone is the wrong cost unit); also record `tie_rate`, `abstention_rate`, and the per-brief wall-clock so the batched-judging trade-off (possible in-round anchoring, FEAT-3582 Review Decision 28) can be evaluated.
+  a documented reason. Total context tokens per brief are **gated at ≤ 1.5× the old loop's ≈ 880k** (fifth review; a rewrite that inflates tokens contradicts its own motivation), while input/output split and cache columns are **recorded, not gated** (per-session overhead was ≈ 94k tokens per call in the 06-27 run, so call count alone is the wrong cost unit); also record `tie_rate`, `abstention_rate`, and the per-brief wall-clock so the batched-judging trade-off (possible in-round anchoring, FEAT-3582 Review Decision 28) can be evaluated.
 
 ## Program Design
 
@@ -154,8 +155,7 @@ fixtures, a pinned combined budget, and a before/after comparison table.
   brainstorm` passes.
 - Comparison table (duplicates, cells, LLM calls, tokens, runtime, `tie_rate`)
   recorded against the old loop on 2 briefs; default-run LLM calls ≤ 30 (aligned with EPIC-3581 and § Expected Behavior; it previously said 45).
-- Issue stays open until FEAT-3584, FEAT-3585, and FEAT-3586 are done and their
-  reference runs recorded.
+- Closes on the core engine (reference runs for the modes whose capabilities are built, comparison, budget for the built states). Optional-capability reference runs (FEAT-3584/3585/3586, EPIC-3687) are recorded by those issues and do not gate closure.
 
 ## Status
 
