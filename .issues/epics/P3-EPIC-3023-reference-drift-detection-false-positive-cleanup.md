@@ -135,5 +135,12 @@ two done children); third (test suite green) left unchecked pending
 verification.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:31 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:verify-issues` - 2026-09-03T17:46:08 - `b50c8ee7-ec9c-45b3-9179-235a02273d8c.jsonl`
 - `/ll:verify-issues` - 2026-08-13T03:07:49 - `10ce6a50-a4a8-4b29-a122-e05a925e303c.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): ENH-2990 (done) shipped the `research_triage_events` table (schema v46) in `.ll/history.db`. This epic treats history.db only as a sink; schema rollup bookkeeping for that table lives in EPIC-2457.

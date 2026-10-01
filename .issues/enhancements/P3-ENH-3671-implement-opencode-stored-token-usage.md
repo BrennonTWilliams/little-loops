@@ -88,3 +88,13 @@ ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`
 ## Status
 
 **Blocked** | Created: 2026-09-30 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Shared usage seams (`refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, `_run_usage_trigger` dispatch, shared tests): the first delivery issue among ENH-3671/3672/3673 to land a change owns it; later hosts extend through host-keyed dispatch and rebase. Host-specific adapter work (OpenCode storage tree) stays here.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:29 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

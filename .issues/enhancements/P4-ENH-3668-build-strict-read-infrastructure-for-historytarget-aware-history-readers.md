@@ -9,6 +9,7 @@ discovered_date: '2026-09-29'
 captured_at: '2026-09-29T21:52:34Z'
 blocked_by:
 - ENH-3677
+- ENH-3657
 blocks:
 - ENH-3684
 - ENH-3685
@@ -121,3 +122,13 @@ An interim clean refusal (ENH-3657) is preferable to a traceback, but remote use
 ## Status
 
 **Open** | Created: 2026-09-29 | Priority: P4 | Re-scoped to infrastructure slice 2026-09-30
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Blocked by ENH-3657. This issue reuses ENH-3657's read-mode ensure and extends its boundary error-verdict helper (`history_error_verdict`) with the new classes (uninitialized, schema/project mismatch, 401/403, unavailable) and the MCP JSON shape; strict adds only raise-instead-of-`None` and the version-0 `HistorySchemaUninitialized` check. Reconcile the `ll-harness` quiet-degrade wording with ENH-3657's serve verdict when landing.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:25 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`

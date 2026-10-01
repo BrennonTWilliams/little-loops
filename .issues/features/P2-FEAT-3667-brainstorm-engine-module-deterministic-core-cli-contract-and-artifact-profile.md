@@ -225,4 +225,11 @@ _Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measu
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:26 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:confidence-check` - 2026-09-29T20:35:46 - `c1a7470e-ae08-48cc-8ac1-d91f782a8804.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue owns `Profile`/`Axis`, the four preset JSONs, and the override-aware `resolve_profile` (precedence tests live here). FEAT-3583 adds only the classifier, override plumbing, `mode` default flip, and tuning. `reframe` is deferred to v2 (`BUILT_CAPABILITIES` pins `reframe: {False}`); ground/materialize/premortem are owned by EPIC-3687.

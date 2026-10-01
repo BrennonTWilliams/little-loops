@@ -219,9 +219,16 @@ _Added by `/ll:confidence-check` on 2026-09-30 (re-score after the reconcile rew
 - Very wide blast radius on the shared seam (`_connect_readonly` ~67 callers, `open_history_readonly`); a missed non-CLI caller silently swallows a refusal or trips loop gates. Consider landing the seam change (Step 1) as its own reviewable slice first.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:25 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:50 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`
 - `/ll:confidence-check` - 2026-09-30T01:08:15 - `d09a5e0e-2f2f-4d02-a2fb-345fcc5b2f01.jsonl`
 - `/ll:advise` (Opus, placement-bug review) + reconcile rewrite - 2026-09-30
 - `/ll:confidence-check` - 2026-09-29T22:09:09 - `c419efbf-94bc-4735-80cf-772ead8ae35e.jsonl` (scores since cleared; re-run)
 - `/ll:verify-issues` - 2026-09-29T22:05:34 - `b6e9a962-45bc-4981-a31d-f5f911dc70c3.jsonl`
 - `/ll:refine-issue` - 2026-09-29T15:53:17 - `38b577b2-a780-4f13-a766-2b3309027fb9.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue owns the remote read-mode ensure (`check_access(write=False)`, no ensure/migrate) in `open_history_readonly` and the base boundary error-verdict helper mapping `HistoryUnsupported`/`HistoryRemoteRefused`. ENH-3668 is blocked by this issue and extends both; it does not redefine them.

@@ -46,3 +46,13 @@ All children are blocked by EPIC-3581's core (FEAT-3667 → FEAT-3582 → FEAT-3
 ## Status
 
 **Open** | Created: 2026-09-30 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Owns cross-capability integration for the optional children: cross-child fixtures (ground+materialize below the finalist floor, reserve promotion then materialize drops) and all-features worst-case `max_steps`/`timeout` verification, deferred from FEAT-3596 (non-gating there). Each child records its own reference run and bumps its own budget cost.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:29 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

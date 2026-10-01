@@ -224,4 +224,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:27 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:32 - `f51f0560-5252-48a7-8a81-10d11331e067.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): `reframe` is deferred to v2 (`BUILT_CAPABILITIES` allows `reframe: {False}` in v1), so the Goal's default-on reframe for `functional`/`business` is a v2 target. Rendered mockups/screenshots, `ground`, `materialize`, and `premortem` are owned by EPIC-3687; v1 visual mode covers axes, lenses and rubric (text judging) only. FEAT-3667 owns the profile schema, presets, and `resolve_profile`.

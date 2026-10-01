@@ -164,3 +164,13 @@ fixtures, a pinned combined budget, and a before/after comparison table.
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Closes on the core engine only. Reference runs cover modes whose capabilities are in `BUILT_CAPABILITIES`; optional-capability runs (FEAT-3584/3585/3586) are recorded by those issues. Cross-capability fixtures and the all-features worst-case budget pin are non-gating here and tracked as a closing item under EPIC-3687. Each child bumps its own `max_steps` cost; this issue only verifies the combined total.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:28 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

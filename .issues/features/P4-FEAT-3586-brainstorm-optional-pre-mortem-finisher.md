@@ -15,6 +15,7 @@ labels:
 blocked_by:
 - FEAT-3582
 - FEAT-3583
+- FEAT-3667
 reconcile_attempted: true
 confidence_score: 75
 outcome_confidence: 82
@@ -194,6 +195,7 @@ _Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate
 - `annotate` needs `portfolio.json`, `ideas.jsonl`, and the engine module, none of which exist yet. Signatures are pinned only against FEAT-3582's spec, so recheck them once FEAT-3582 lands.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:28 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:10 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:00:48 - `c90c2478-f308-49d4-930c-8be0a9590776.jsonl`
 - `/ll:confidence-check` - 2026-09-25T17:21:40 - `823eec8e-b4aa-4134-9728-fb6281ade224.jsonl`
@@ -202,3 +204,9 @@ _Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate
 - `/ll:refine-issue` - 2026-09-25T01:46:43 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:52 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This finisher bumps `max_steps` by its own cost (+3 when enabled). The first child to land converts `test_max_steps_is_60` into a derived-from-built-capabilities assertion; FEAT-3596 only verifies the all-features total. Lines stating the budget is 'owned by FEAT-3596' are superseded.

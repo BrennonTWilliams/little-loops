@@ -266,6 +266,7 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:26 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:09 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:00:47 - `c90c2478-f308-49d4-930c-8be0a9590776.jsonl`
 - `/ll:confidence-check` - 2026-09-25T17:21:39 - `823eec8e-b4aa-4134-9728-fb6281ade224.jsonl`
@@ -274,3 +275,9 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 - `/ll:refine-issue` - 2026-09-25T01:46:34 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:40 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): FEAT-3667 owns `Profile`/`Axis`, the four preset JSONs, and the override-aware `resolve_profile`. This issue adds only `classify_mode`, per-knob override plumbing, the `mode` default flip to `auto`, and preset tuning. Body text claiming presets/schema ownership is superseded by this note and Review Decisions.

@@ -11,6 +11,8 @@ labels:
 relates_to:
 - FEAT-3300
 - FEAT-3301
+depends_on:
+- EPIC-2457
 ---
 
 # EPIC-3041: Host-agnostic advisor
@@ -95,6 +97,7 @@ leftover from a prior `--check`-mode run (which persists the verdict field
 without writing Verification Notes) — corrected to `VALID` here.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:32 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-08T02:29:09 - `68b61242-b6be-4235-b2f6-614f534d7caf.jsonl`
 - `/ll:verify-issues` - 2026-08-14T16:47:56 - `c9c216e7-2d10-4e53-9fc0-c38b57955ad8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-08-13T22:00:52 - `e21c16b3-391d-4ef2-80c4-decd2dced91f.jsonl`

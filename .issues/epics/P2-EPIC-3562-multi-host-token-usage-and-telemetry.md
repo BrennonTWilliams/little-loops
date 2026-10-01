@@ -179,3 +179,13 @@ Review follow-up 2026-09-29: added Claude numeric-parity and transcript-identity
 - OpenCode 1.1.53 on this machine stores separate session, message, and part JSON files under its data storage tree, while current session discovery assumes `~/.opencode/projects/*.jsonl`. ENH-3660 must capture the actual layout; ENH-3671 owns a real source adapter and storage-tree fixture before claiming end-to-end coverage.
 - ENH-3660–3665 now own explicit canonical-source or no-source and duplicate-channel decisions. Their README records source-cited versus captured evidence and reasoning/output semantics; the typed map represents native metric-field availability and keeps source-only claims `unknown` until native capture.
 - ENH-3671–3676 own any extension to the completed ENH-3534 baseline, including source refresh, incremental derivation, freshness, and runtime trigger integration. Partial rows remain audit-only under the present row-level provenance contract.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): In addition to append-only schema-version ordering: for shared usage seams (`refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, `_run_usage_trigger` dispatch, shared tests), the first per-host delivery issue (ENH-3671/3672/3673 and later) to land owns the change; later hosts extend via host-keyed dispatch and rebase.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:31 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

@@ -15,6 +15,7 @@ labels:
 blocked_by:
 - FEAT-3582
 - FEAT-3583
+- FEAT-3667
 learning_tests_required:
 - playwright
 reconcile_attempted: true
@@ -254,8 +255,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-01T20:26:27 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T17:15:17 - `f2fe6fc2-4dc3-4f38-a10c-f2bd8be05a0c.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:07:46 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:47:08 - `344bbaba-06f1-4c37-b3c7-3b36aa7bfabc.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:48 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue owns the visual-mode reference run, its enablement change, and its own `max_steps`/`timeout` bump. FEAT-3596 documents only modes whose capabilities are in `BUILT_CAPABILITIES`; references to FEAT-3596 owning the visual run are superseded by this note.
