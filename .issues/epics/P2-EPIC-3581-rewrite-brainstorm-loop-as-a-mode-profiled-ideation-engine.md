@@ -134,6 +134,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
   - **Import origin**: run records and the FEAT-3667 smoke test assert `little_loops.__file__` lives in the checkout under test; verify gates already inject the worktree `PYTHONPATH`, so the FEAT-3667 hazard is loud (`ModuleNotFoundError`), but once the module is on `main` a worktree run without `PYTHONPATH` silently imports `main`'s copy (FEAT-3582/3583).
   - **Rollback**: a clean `git revert` of FEAT-3582's single commit is the kill switch; breaking-change CHANGELOG entry plus a warning when a removed context key is passed. BUG-3688 hotfixes the old loop's zero-idea silent success now.
   - **Blind A/B is a smoke check**: single rater on n = 2 briefs has little statistical power.
+  - **Spike result (FEAT-3686, 2026-09-30, 160 calls): GO with amendments.** Steering lifts occupied cells +2 vs a control; generator self-tags overstate occupancy so the blind re-tag is load-bearing; dedup needs a per-profile `duplicate_criterion` (precision 0.63 → 1.0 on names); axis bins need definitions and the `functional` `approach` axis needs sharpening (agreement 0.72); batched round judging with 8 finalists matches per-pair judging (τ 0.71, swap-consistency 0.82). Grid-dependent FEAT-3667 commands are no longer held. Details: `postmortems/brainstorm-spike/RESULTS.md`.
 
 ## Impact
 

@@ -55,6 +55,10 @@ Ran the old loop on both pinned briefs from an extracted copy (SHA `2fe16824a`, 
 
 Consequences for this issue: (a) the old loop's call count is **14** (13 excluding the `finalize_done` summary), not ≈ 12 — compare new vs old on the same definition; (b) difflib dedup fired once on the short-text brief (3 dropped) — the "never fires" claim is true for prose ideas but not for short names, so report both briefs separately; (c) still to do here: the common tagging pass for "duplicates retained" and "occupied cells" over `fresh-20260929/*/ideas.jsonl`.
 
+## Spike Findings (FEAT-3686, 2026-09-30)
+
+Measured on the two pinned briefs with lean `claude -p` calls (`postmortems/brainstorm-spike/RESULTS.md`): median API time per call — diverge ≈ 7 s, tag ≈ 7 s, dedup+re-tag (45 ideas) ≈ 10 s, batched judge round ≈ 4.6–6.0 s, per-pair judge ≈ 3.1–4.1 s; ≈ 20k context tokens per lean call (full loop sessions measured 63–94k, so token cost is dominated by session overhead). Use these as the **lower bound** for `PRE_TOURNAMENT_WORST_S` and re-measure in a real loop run. Merge-gate baselines: old loop occupies 6 of 9 cells on both briefs and retains 5 (brief 1) / ≈ 19 (brief 2) redundant ideas. Consensus tags for both baselines: `postmortems/brainstorm-spike/tags.jsonl` (this issue only reads it).
+
 ## Current Behavior
 
 Each EPIC-3581 child owns only its own slice. Nobody owns the epic's success metrics

@@ -4,7 +4,7 @@ type: FEAT
 title: 'Brainstorm design spike: measure grid, dedup and batched-judge claims on baseline
   ideas'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T05:35:03Z'
@@ -15,6 +15,7 @@ labels:
 - spike
 blocks:
 - FEAT-3582
+completed_at: '2026-09-30T05:55:21Z'
 ---
 
 # FEAT-3686: Brainstorm design spike: measure grid, dedup and batched-judge claims on baseline ideas
@@ -74,6 +75,22 @@ Also record: calls made, input/output/cache tokens per call, wall-clock per call
 - The consensus cell tags for both baselines' ideas are saved as the shared file FEAT-3582's merge gate and FEAT-3596's comparison read (`postmortems/brainstorm-spike/tags.jsonl`).
 - The outcome routing above is applied: FEAT-3667/FEAT-3582/FEAT-3583 carry a Review Decision citing the results, and any dropped grid pieces are removed from their contracts.
 - Latency/token figures are copied into FEAT-3596 for the timeout derivation and the token ceiling.
+
+## Results (2026-09-30)
+
+**Verdict: GO with four amendments; no design piece dropped.** 160 LLM calls, $3.26; full tables, raw calls and caveats in `postmortems/brainstorm-spike/RESULTS.md`; consensus tags in `postmortems/brainstorm-spike/tags.jsonl`.
+
+| # | Result | Verdict |
+|---|--------|---------|
+| 1 | Tagger agreement with bin definitions: b1 exact 0.83 / axes 0.91, 0.91; b2 exact 0.62 / axes 0.82, **0.72**. Names-only: 0.67 / 0.51 | b1 pass; b2 marginal (`approach` axis < 0.75); definitions required |
+| 2 | Old-loop occupied cells: 6 / 9 on both briefs | pass |
+| 3 | Occupied cells old → unsteered control → steered: b1 6 → 7 → 9; b2 6 → 6 → 8. Generator self-tags claim 9 cells on both (exact agreement with blind consensus 0.60 / 0.62) | pass (+2 vs control); blind re-tag justified |
+| 4 | Dedup, default prompt: b1 P 0.63 R 0.83; b2 P 1.0 (12/12 sampled) R ≈ 0.85–0.95. Strict per-profile criterion: b1 P 1.0 R 1.0 | pass with a `duplicate_criterion` per profile |
+| 5 | Batched round judging vs per-pair: swap-consistency 0.82 / 0.82; Kendall τ 0.71 / 0.71 (0.79 in reversed order); top-1 identical in all orders and per-pair; abstention 0; first-shown advantage 12 / 5 pp | pass; keep batched round judging and 8 finalists |
+
+**Amendments** (applied to FEAT-3667, FEAT-3582, FEAT-3583, FEAT-3596 on 2026-09-30): (1) bin definitions mandatory in every axis; (2) `duplicate_criterion` profile key printed in the dedup prompt block; (3) the `functional` `approach` axis is re-measured with the same 3-call tagger check before FEAT-3583 pins it; (4) old-loop baselines for the merge gate: 6 occupied cells; b1 5 / b2 ≈ 19 redundant retained ideas.
+
+Caveats: dedup labels were made by Claude, not a human (spot-check `m4_sample.json`); one model family generates, tags and judges; n = 2 briefs, one run each; lens lists reconstructed.
 
 ## Dependencies
 
