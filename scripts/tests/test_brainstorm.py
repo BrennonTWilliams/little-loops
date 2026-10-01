@@ -64,6 +64,7 @@ class TestBrainstormYaml:
             "cluster",
             "rank",
             "converge",
+            "check_ideas",
             "route_sink",
             "sink_file",
             "sink_issue",
@@ -124,6 +125,7 @@ class TestBrainstormYaml:
             "cluster",
             "rank",
             "converge",
+            "check_ideas",
             "route_sink",
             "sink_file",
             "verify_artifacts",
@@ -749,5 +751,46 @@ class TestBug2468ErrorRouting:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         (run_dir / "brainstorm.md").write_text("# Brainstorm\n\n## Top Idea\ncontent\n")
+        (run_dir / "ideas.jsonl").write_text('{"text": "a", "rationale": "r"}\n')
         result = _bash(self._verify_action(data, run_dir), tmp_path)
+        assert result.returncode == 0
+
+    # --- zero-idea guard (BUG-3688) -------------------------------------
+
+    def _guard_action(self, data: dict, run_dir: Path) -> str:
+        action: str = data["states"]["check_ideas"]["action"]
+        return action.replace("${captured.run_dir.output}", str(run_dir))
+
+    def test_converge_routes_through_check_ideas_before_sinks(self, data: dict) -> None:
+        states = data["states"]
+        assert states["converge"].get("next") == "check_ideas"
+        guard = states["check_ideas"]
+        assert guard.get("action_type") == "shell"
+        assert guard.get("evaluate", {}).get("type") == "exit_code"
+        assert guard.get("on_yes") == "route_sink"
+        assert guard.get("on_no") == "finalize_failed"
+        assert guard.get("on_error") == "finalize_failed"
+
+    @pytest.mark.parametrize("content", [None, "", "\n  \n\t\n"])
+    def test_zero_idea_ideas_jsonl_fails_guard_and_verify(
+        self, data: dict, tmp_path: Path, content: str | None
+    ) -> None:
+        """Missing, empty and blank-lines-only ideas.jsonl exit 2 at both gates."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "brainstorm.md").write_text("# Brainstorm\nNo synthesis produced\n")
+        if content is not None:
+            (run_dir / "ideas.jsonl").write_text(content)
+        guard = _bash(self._guard_action(data, run_dir), tmp_path)
+        assert guard.returncode == 2
+        assert "ideas.jsonl" in guard.stderr
+        verify = _bash(self._verify_action(data, run_dir), tmp_path)
+        assert verify.returncode == 2
+        assert "ideas.jsonl" in verify.stderr
+
+    def test_populated_ideas_jsonl_passes_guard(self, data: dict, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "ideas.jsonl").write_text('{"text": "a", "rationale": "r"}\n')
+        result = _bash(self._guard_action(data, run_dir), tmp_path)
         assert result.returncode == 0
