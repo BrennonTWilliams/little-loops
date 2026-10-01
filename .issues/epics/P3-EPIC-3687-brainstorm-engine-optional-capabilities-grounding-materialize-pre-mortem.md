@@ -36,7 +36,7 @@ Each child lands with its own enablement in one change: widen `BUILT_CAPABILITIE
 
 ## Ordering
 
-All children are blocked by EPIC-3581's core (FEAT-3667 → FEAT-3582 → FEAT-3583). The children are independent of each other.
+All children sequence after EPIC-3581's core (FEAT-3667 → FEAT-3582 → FEAT-3583). The children are independent of each other.
 
 ## Success Metrics
 

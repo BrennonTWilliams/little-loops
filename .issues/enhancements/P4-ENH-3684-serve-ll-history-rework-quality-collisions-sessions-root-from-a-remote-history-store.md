@@ -26,7 +26,7 @@ Flip the `ll-history` reader rows `rework`, `quality` (single-project), `audit-i
 
 ## Current Behavior
 
-After ENH-3657, these commands refuse cleanly under `history.backend.provider: libsql`. The nine `resolve_history_db(project_root / DEFAULT_DB_PATH)` sites in `cli/history.py` pass no `root=`, so backend config is found by a cwd walk rather than from `project_root`. Reader functions do `Path(db)` and some `.exists()`-gate, so a remote target cannot pass through them.
+After ENH-3657, these commands refuse cleanly under `history.backend.provider: libsql`. The nine `resolve_history_db()` call sites in `cli/history.py` pass no `root=`, so backend config is found by a cwd walk rather than from `project_root`. Reader functions do `Path(db)` and some `.exists()`-gate, so a remote target cannot pass through them.
 
 ## Expected Behavior
 
