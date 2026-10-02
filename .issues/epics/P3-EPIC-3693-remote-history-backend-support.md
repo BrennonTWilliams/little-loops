@@ -7,24 +7,84 @@ status: open
 captured_at: "2026-10-02T17:30:24Z"
 discovered_date: 2026-10-02
 discovered_by: link-epics
-relates_to: []
+relates_to:
+  - ENH-3678
+  - ENH-3679
+  - ENH-3668
+  - ENH-3684
+  - ENH-3685
 ---
 
 # EPIC-3693: Remote History Backend Support
 
 ## Summary
 
-Group of 10 related issues covering history readers, writers, and tests under a remote history backend: reader-CLI verdicts, hand-built `history.db` paths, strict-read infrastructure, shared test fixtures, derive-version rebuild gating, bounded lock waits, spooled context-monitor writes, budgeted prepatch reads, and serving `ll-history` and MCP/SFT readers from a remote store.
+Make an opt-in remote (libSQL) history backend fail cleanly instead of silently: reader CLIs refuse with a named verdict instead of a traceback, no reader creates a shadow local `.ll/history.db`, hand-built `history.db` paths classify against the project root, and best-effort prepatch reads are time-budgeted. Narrowed 2026-10-02 after an Opus pre-implementation review (BUG-3652's follow-ups).
+
+**Closure criterion:** each audited entry point has a documented serve/refuse/degrade verdict, creates no shadow local DB, and exposes no endpoint/token or unhandled traceback. Intentional advisory empty results and skipped writes remain permitted where stated below; an unsupported user-facing reader must not look like a successful empty query. Broader strict read serving (ENH-3668/3684/3685) is deferred; the limited `ll-harness` best-effort serving in ENH-3700 is in scope. Refused rows say "not supported with a remote backend" and promise no follow-up.
 
 ## Children
 
-- **ENH-3657** — Give history reader CLIs a remote-backend verdict (refuse or degrade) (open)
-- **ENH-3658** — Handle hand-built history.db paths under a remote history backend (open)
-- **ENH-3668** — Build strict-read infrastructure for HistoryTarget-aware history readers (open)
 - **ENH-3677** — Hoist the shared remote history-backend test fixture into conftest.py (open)
-- **ENH-3678** — Gate the auto-spawned history rebuild on a derive version instead of SCHEMA_VERSION (open)
-- **ENH-3679** — Bound cli_event_context lock waits with a short busy timeout and a drop counter (open)
-- **ENH-3680** — Spool context-monitor.sh history writes instead of detached background writes (open)
+- **ENH-3657** — Reader CLI refusal boundary and refuse sites (3657a) (open)
+- **ENH-3700** — Central reader guard and serve/degrade verdicts (3657b) (open)
+- **ENH-3658** — Handle hand-built history.db paths under a remote history backend (open)
 - **ENH-3682** — Budget best-effort remote prepatch history reads (open)
-- **ENH-3684** — Serve ll-history rework, quality, collisions, sessions, root from a remote history store (open)
-- **ENH-3685** — Serve MCP history_search and batch sft-corpus enrich from a remote history store (open)
+- **ENH-3680** — Spool context-monitor.sh history writes (cancelled: remote stays a documented no-op)
+
+## Goal
+
+Make the supported remote history surfaces predictable: every entry point serves, refuses or degrades according to the final matrix; no hidden local store, unhandled error or unbounded advisory request obscures that outcome.
+
+## Scope
+
+The five active children cover the shared test fixture, refusal boundary, central reader guard and selected fallbacks, hand-built snapshot paths and advisory prepatch deadline. The cancelled hook spool requires only sibling documentation. Strict CLI/MCP serving and local rebuild/lock work are detached as described below; no implementation of those deferred designs is needed for this epic to close.
+
+## Impact
+
+- **Priority:** P3 — correctness of opt-in remote history support.
+- **Effort:** Multiple independently reviewable reader, artifact and advisory slices.
+- **Risk:** The central guard changes the reader failure contract; recorded importer coverage and local override tests constrain the blast radius.
+- **Breaking Change:** Unsupported remote readers acquire explicit refusal output; local behavior remains unchanged.
+
+## Detached / deferred (not children; `relates_to` this epic)
+
+- **ENH-3678** (P2) and **ENH-3679** (P3) — local-store rebuild gating / lock-wait work; detached so the P2 fix and FEAT-3561 are not held behind P4 remote work by the epic-branch merge rule. Their follow-ons ENH-3698 (size gate, pending notice) and ENH-3699 (single-flight, deferred) hang off ENH-3678.
+- **ENH-3668**, **ENH-3684**, **ENH-3685** — remote read serving (strict-read infra, `ll-history` flips, MCP/SFT); deferred, detached (deferred is non-terminal, so keeping them parented would strand the epic branch). Revive when remote read demand exists.
+
+## Implementation order
+
+Remote track: ENH-3677 → ENH-3657 → ENH-3700. ENH-3658 and ENH-3682 each require ENH-3677; they can proceed independently of the refusal slice, but prefer ENH-3682 after ENH-3700 because both edit the reader seam. ENH-3658's CT-0 allowlist exists only until ENH-3700 lands; if the seam lands first, do not introduce that temporary entry.
+
+Local track: ENH-3678 → ENH-3698, with ENH-3679 independent of remote readers. Sequence `cli/doctor.py` / `CLI.md` check-count edits in ENH-3679, ENH-3698 and ENH-3658 when integrating; shared-file ownership is not an additional functional dependency. ENH-3698 must land before any `REBUILD_DERIVE_VERSION` bump. ENH-3699 remains deferred until a spike proves bounded-lock timeout recovery across a newer ingest watermark. Deferred remote serving follows ENH-3700 → ENH-3668 → ENH-3684/3685 if revived.
+
+## Final support matrix
+
+| Surface | Remote verdict at epic closure | Owner |
+|---|---|---|
+| `ll-history` analyze/activity/rework/quality/collisions/sessions/root; DB-backed logs; `ll-ctx-stats`; explicit messages DB reader | Refuse, named safe stderr, exit 1; preserve applicable explicit local overrides | ENH-3657 |
+| MCP `history_search` | Structured `is_error` refusal against the owning project root | ENH-3657 |
+| History summary, decisions generation, automatic messages reader, CT-0 | Documented file/JSONL fallback or skip with one note | ENH-3700 |
+| `ll-harness` | Best-effort remote serving; exact/behind stamped schema and read-only token; ahead/foreign/auth/uninitialized/unavailable/query failure degrades as documented | ENH-3700 |
+| Packaged SFT stage/enrich | Auto JSONL and explicit remote unenriched passthrough; unrelated errors fail the pipeline atomically | ENH-3700 |
+| Artifact snapshot route/dashboard/history panel; loop `--serve`; doctor `--trim` | Named refusal/501/unavailable panel or informational skip; server remains usable | ENH-3658 |
+| Prepatch base SHA/dirty reads | Best-effort remote data within one cumulative telemetry deadline, otherwise `None`; TTL marker suppresses repeat requests | ENH-3682 |
+| Context-monitor pressure/handoff writes | Documented remote no-op; reminders and exits unchanged | ENH-3680 (cancelled) |
+| Existing backend-aware `ll-session recent`/search queries | Existing remote support retained; omission of pressure/handoff writes is documented, not absence of all remote consumers | Existing behavior |
+
+This matrix is the acceptance baseline for the single public table in `docs/reference/CONFIGURATION.md`; link it from CLI/API guides rather than maintaining contradictory promises.
+
+## Acceptance Criteria
+
+- [ ] All active children are `done` or deliberately `cancelled`; deferred/detached work is not required to close the epic.
+- [ ] Every matrix row has remote/local tests for its actual entry point; foreign cwd and local override cases preserve owning-project resolution and create no shadow `.ll/history.db`.
+- [ ] Unsupported readers return explicit safe refusals; documented advisory fallbacks preserve stdout contracts and emit only their designated safe warning/note channel.
+- [ ] Cold and warm prepatch reads share one cumulative deadline; open and mid-query failures never escape the advisory path.
+- [ ] Dashboard 501 is rendered safely and stops polling; initial remote pages skip local snapshot work while serving continues.
+- [ ] Stage/enrich failures reach `terminal: true, failure: true`, publish no partial enrichment and never reach filter/publish/success sentinel.
+- [ ] The reader importer inventory, hazard gate allowlists, support docs and dependency backlinks agree with the implemented scope. Stale confidence scores are removed; re-run readiness checks on revised issues before implementation, after their prerequisites land.
+- [ ] The local authoritative suite (`python -m pytest scripts/tests/`) passes for the implementation; no unsupported reader message promises deferred remote serving.
+
+## Status
+
+**Open** | Created: 2026-10-02 | Priority: P3

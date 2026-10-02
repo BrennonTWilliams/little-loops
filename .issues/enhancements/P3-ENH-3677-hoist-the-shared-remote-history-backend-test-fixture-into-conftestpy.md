@@ -11,8 +11,10 @@ reconcile_attempted: true
 verify_verdict: VALID
 blocks:
 - ENH-3657
+- ENH-3700
 - ENH-3658
 - ENH-3682
+- ENH-3668
 confidence_score: 100
 outcome_confidence: 67
 score_complexity: 14

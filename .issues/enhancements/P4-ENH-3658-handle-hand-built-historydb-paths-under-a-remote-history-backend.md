@@ -6,23 +6,17 @@ priority: P4
 status: open
 blocked_by:
 - ENH-3677
-- ENH-3657
 supersedes:
 - ENH-3670
 relates_to:
 - ENH-3657
+- ENH-3700
 - ENH-3680
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T05:29:44Z'
 decision_needed: false
 reconcile_attempted: true
-confidence_score: 85
-outcome_confidence: 75
-score_complexity: 14
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
 parent: EPIC-3693
 epic: EPIC-3693
 ---
@@ -31,11 +25,12 @@ epic: EPIC-3693
 
 ## Summary
 
-Five Python call sites construct `<project>/.ll/history.db` directly and can mistake an opt-in remote history backend for a missing local database. Resolve the target against the **project root**, refuse snapshot-only operations cleanly, and give advisory views an explicit unavailable reason. Also remove the stale-shadow-DB hazard in `skills/update-docs/SKILL.md` and add a narrow regression gate. `context-monitor.sh` is owned entirely by ENH-3680; its former detached-write plan is superseded.
+Five Python call sites construct `<project>/.ll/history.db` directly and can mistake an opt-in remote history backend for a missing local database. Resolve the target against the **project root**, refuse snapshot-only operations cleanly, and give advisory views an explicit unavailable reason. Also remove the stale-shadow-DB hazard in `skills/update-docs/SKILL.md` and add a narrow regression gate. `context-monitor.sh` is cancelled-in-place (ENH-3680 cancelled 2026-10-02): remote writes are intentionally skipped, so it gets a permanent hazard-gate allowlist entry; its former detached-write plan is superseded.
 
 ## Current Behavior
 
 - `cli/artifact/serve.py` builds the path in `make_history_route()` and `_make_page_html_factory()`. Under remote config, the route can serve an empty HTTP 200 snapshot and the page can show an empty history panel.
+- The served client is `scripts/little_loops/templates/dashboard.llat/template.html.j2:refreshHistory` (currently lines 334–360). Any non-2xx throws a generic error, the catch sets an error status, and the polling interval continues; HTTP 501 currently needs an in-scope client edit.
 - `cli/artifact/dashboard.py:cmd_dashboard()` reports a missing local file before its existing snapshot-export refusal can run.
 - `cli/doctor_trim.py` builds the default path for `collect_trim_report()`, which `cli/doctor.py:main_doctor()` calls for `--trim`; remote telemetry reads as absent. The guard belongs in `main_doctor`, not in the local-only report helper.
 - `cli/loop/run.py:cmd_run` constructs the path for its `--serve` dashboard render; a remote store can appear empty or a propagated refusal can abort serve startup.
@@ -53,7 +48,7 @@ Classify each default-shaped path with `resolve_history_store(path, root=project
 | `main_doctor --trim` | Show an informational unsupported result (text and JSON), keep `ll-doctor`'s advisory exit code, and do not call `collect_trim_report`. |
 | `skills/update-docs` | Use an explicit filesystem-scan fallback or a target-aware CLI; never consult a stale shadow DB. |
 
-Keep one shared end-user reason string for route/page responses. Local-missing behavior and explicit local overrides remain unchanged. `skills/update-docs` stays DB-first for an actual local history file and uses the documented file scan only for a remote target or truly missing local file.
+Keep one shared safe reason for route/page responses: `History snapshots are not supported with a remote libsql backend.` HTTP 501 returns `{"verdict":"unsupported","reason":"<shared reason>"}`. In `refreshHistory`, handle 501 separately, parse its reason, render it with `textContent`, and clear the stored polling interval. Treat it as an unavailable panel state, with no error toast. Network errors and 5xx retain retry behavior. The initial remote page skips snapshot loading entirely. Local-missing behavior and explicit local overrides remain unchanged. `skills/update-docs` stays DB-first for an actual local history file and uses the documented file scan only for a remote target or truly missing local file.
 
 ## Motivation
 
@@ -63,13 +58,13 @@ A remote backend should not look like an empty local database. These paths bypas
 
 1. At each of the five Python call sites, resolve the default path using the owning project's root. Branch on `RemoteTarget` before `is_file()`, `stat()`, or snapshot export. For `cmd_dashboard`, keep the existing `snapshot_export` refusal operation; no new `_REMOTE_REFUSALS` or `_REJECTED` entry is needed.
 2. Guard `--trim` in `main_doctor` using its existing `_remote_target()` pattern. Leave `collect_trim_report` / `doctor_trim.py` local-only. Add one shared unavailable-reason value consumed by the serve route, page factory, and loop `--serve` render.
-3. Replace the `skills/update-docs` literal-path existence check with target-aware behavior. Add a pytest hazard gate over `skills/`, `commands/`, `loops/*.yaml`, and `hooks/` for executable `history.db` existence tests and `resolve_history_db()` calls, with reasoned allowlist entries. This issue is `blocked_by` ENH-3657, so CT-0 is already fixed when the gate lands and needs **no** allowlist entry. Allowlist `context-monitor.sh` only, with a reason naming ENH-3680, and remove the entry in that issue's PR; do not flag the bare string in prose.
+3. Replace the `skills/update-docs` literal-path existence check with target-aware behavior. Add a pytest hazard gate over `skills/`, `commands/`, `loops/*.yaml`, and `hooks/` for executable `history.db` existence tests and `resolve_history_db()` calls, with reasoned allowlist entries. This issue is no longer `blocked_by` ENH-3657/ENH-3700 (2026-10-02 Opus review): it never edits `session_store/backend.py`, and its five Python sites classify with `resolve_history_store`, not the central guard. CT-0 (`skills/improve-claude-md/SKILL.md` ~L206-209) calls `resolve_history_db()` directly, so the gate flags it until ENH-3700 switches it to `resolve_history_store`: add a **temporary** allowlist entry for CT-0 that ENH-3700's PR removes. Add a **permanent** allowlist entry for `context-monitor.sh` with the reason "remote writes intentionally skipped (ENH-3680 cancelled)". Do not flag the bare string in prose.
 4. Add remote-stub tests and local twins, then update the remote-history support docs with end-user wording.
 
 ## Scope Boundaries
 
 - **In scope:** the five Python call sites, the `main_doctor` guard, `skills/update-docs`, the narrow hazard gate, tests and user-facing docs.
-- **Out of scope:** `context-monitor.sh` (ENH-3680); `cli/logs.py` readers and CT-0 behavior (ENH-3657); `workflow_sequence/io.py` (correct JSONL fallback); `doctor_trim.py` internals; remote snapshot export itself.
+- **Out of scope:** `context-monitor.sh` behavior (ENH-3680, cancelled: remote writes stay skipped); `cli/logs.py` readers (ENH-3657) and CT-0 behavior (ENH-3700); `workflow_sequence/io.py` (correct JSONL fallback); `doctor_trim.py` internals; remote snapshot export itself.
 
 ## Behavior Parity
 
@@ -79,7 +74,7 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 ### Files to Modify
 
-- `scripts/little_loops/cli/artifact/serve.py` (`make_history_route`, `_make_page_html_factory`), the served history-panel client handler (locate under the artifact page assets; see the 501 criterion), `cli/artifact/dashboard.py`, `cli/doctor.py`, `cli/loop/run.py` (`cmd_run --serve` dashboard render; locate by function, not the old `:691` anchor).
+- `scripts/little_loops/cli/artifact/serve.py` (`make_history_route`, `_make_page_html_factory`), `scripts/little_loops/templates/dashboard.llat/template.html.j2` (`refreshHistory`, polling interval handle, unavailable status), `cli/artifact/dashboard.py`, `cli/doctor.py`, `cli/loop/run.py` (`cmd_run --serve` dashboard render; locate by function, not the old `:691` anchor).
 - The shared serve/dashboard reason constant or `ServeContext` field, `skills/update-docs/SKILL.md`, one pytest hazard-gate test, and remote/local tests in `test_feat3323_sse_bridge.py`, `test_feat3304_artifact_dashboard.py`, `test_remote_doctor.py` / `test_cli_doctor_trim.py`, plus a `cmd_run --serve` render test.
 - `docs/reference/CONFIGURATION.md` and `docs/reference/CLI.md`; pin new user-facing strings in `test_wiring_reference_docs.py` and keep `test_docs_audience_gate.py` green. No generated `site/` copies are edited directly.
 
@@ -109,8 +104,8 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 ## Implementation Steps
 
-1. Land ENH-3677's shared `remote` test fixture and ENH-3657 (the shared `open_history_readonly` guard and CT-0 fix; both touch `session_store/backend.py` and the remote-operation tests, so sequencing avoids a merge conflict), then implement the Python target checks and one shared unavailable reason.
-2. Update `skills/update-docs` and add the narrow hazard gate with temporary allowlist entries for work owned by ENH-3657/3680.
+1. Land ENH-3677's shared `remote` test fixture, then implement the Python target checks and one shared unavailable reason. ENH-3657/ENH-3700 may edit the same remote-operation test file: merge independent assertions rather than replacing rows. `cli/doctor.py` and the `CLI.md` install-surface check wording are also touched by ENH-3698 and ENH-3679: sequence those edits, do not run them in parallel.
+2. Implement the named `refreshHistory` 501 branch and polling cancellation. Update `skills/update-docs` and add the narrow hazard gate with a **temporary** CT-0 allowlist entry only while ENH-3700's seam work remains pending (its PR removes the entry), and a **permanent** `context-monitor.sh` entry (reason: remote writes intentionally skipped). Scan packaged built-in loops under `scripts/little_loops/loops/` as well as repository `loops/` and `.loops/` executable artifacts.
 3. Add a remote stub plus local twin for each changed path, including a foreign-cwd/project-root case and `LL_HISTORY_DB` redirection. Confirm the existing local missing-file behavior.
 4. Update documentation and run `python -m pytest scripts/tests/`, `ruff check scripts/`, and `python -m mypy scripts/little_loops/`.
 
@@ -125,14 +120,14 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 - [ ] Every listed Python site classifies with the owning project root. A foreign cwd does not change the verdict; `LL_HISTORY_DB` uses the resolver's returned local Path.
 - [ ] Remote `cmd_dashboard` exits 1 with a snapshot-export refusal; local-missing and explicit `--db` behavior remain unchanged.
-- [ ] Remote `make_history_route` returns HTTP 501 JSON without local `stat()` or an empty HTTP 200; the page factory and `cmd_run --serve` display the same reason without aborting. **Client-side scope (decide first, record here):** locate the history-panel fetch/poll handler in the served page assets and check how it treats a non-2xx. If it already degrades quietly, add only a test pinning that; if not, the fix is a small in-scope edit to that handler (render the JSON `reason` as an unavailable panel state, stop polling on 501, no error toast). Add the handler to the Integration Map either way.
+- [ ] Remote `make_history_route` returns the specified HTTP 501 JSON before local `stat()`; initial remote pages skip snapshots and show the shared reason. `refreshHistory` in the dashboard template renders the 501 reason with `textContent` and stops polling without an error toast; network/5xx failures still retry. Cover safe rendering with an HTML-like canary reason and verify a second polling tick makes no 501 request.
 - [ ] Remote `ll-doctor --trim` has an informational text/JSON result, no traceback, and the same advisory exit code as a run without `--trim`.
 - [ ] `skills/update-docs` stays DB-first for a real local history file, takes the explicit scan fallback for a remote target or missing local file, and never reads a stale shadow DB; the narrow hazard gate passes with documented temporary allowlist entries.
 - [ ] Remote-stub and local-twin tests cover every changed site; `python -m pytest scripts/tests/` passes.
 
 ## Related
 
-- BUG-3652 (done startup/write caller audit), FEAT-3535 (remote libSQL backend), ENH-3677 (shared fixture prerequisite), ENH-3657 (reader-CLI sibling; `blocked_by`, lands first), ENH-3680 (`context-monitor.sh` spool, separate scope). ENH-3670 is cancelled and superseded by this issue.
+- BUG-3652 (done startup/write caller audit), FEAT-3535 (remote libSQL backend), ENH-3677 (shared fixture prerequisite), ENH-3657/ENH-3700 (reader-CLI siblings; no longer `blocked_by`; ENH-3700 removes the temporary CT-0 allowlist entry), ENH-3680 (cancelled 2026-10-02: `context-monitor.sh` stays a documented remote no-op). ENH-3670 is cancelled and superseded by this issue.
 
 ## Related Key Documentation
 
@@ -144,21 +139,9 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-30_
+_Updated 2026-10-02 after the EPIC-3693 pre-implementation review._
 
-**Readiness Score**: 85/100 → STOP — ADDRESS GAPS (Dependencies Hard Override; raw aggregate would be PROCEED WITH CAUTION)
-**Outcome Confidence**: 75/100 → MODERATE
-
-### Concerns
-- Client-side scope of the history-panel 501 handling is an explicit "decide first" item in Acceptance Criteria; the handler location is not yet named in the Integration Map.
-- The `make_history_route` / `_make_page_html_factory` / `cmd_run --serve` / `cmd_dashboard` / `main_doctor` sites are confirmed present, but ENH-3657 and ENH-3677 both edit `session_store/backend.py` and the shared remote-operation tests, so merge conflicts are likely if sequencing slips.
-
-### Gaps to Address
-- Unresolved `blocked_by`: ENH-3677 (open), ENH-3657 (open). Land both first, or remove the edge if it no longer applies.
-
-### Outcome Risk Factors
-- Broad enumeration across roughly 10-12 change sites (5 Python sites, skill, hazard gate, tests, docs) with local per-site logic changes.
-- One open sub-decision (client-side 501 handling) to be resolved during implementation.
+Prior 85/75 scores were cleared because the revised client/hazard-gate scope changed. The client question is resolved: the named dashboard template requires a safe 501 branch and polling cancellation. Implementation remains blocked by ENH-3677. Re-run `/ll:confidence-check` after that fixture lands; do not reuse the old aggregate as approval. Sequence shared doctor edits with ENH-3679/3698 at integration.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-30T05:10:36 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`
