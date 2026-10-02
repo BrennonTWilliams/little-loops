@@ -73,7 +73,7 @@ Revised issues with cleared/missing confidence scores require a new confidence c
 | `ll-history` analyze/activity/rework/quality/collisions/sessions/root; DB-backed logs; `ll-ctx-stats`; explicit messages DB reader | Refuse, named safe stderr, exit 1; preserve applicable explicit local overrides | ENH-3657 |
 | MCP `history_search` | Structured `is_error` refusal against the owning project root | ENH-3657 |
 | History summary, decisions generation, automatic messages reader, CT-0 | Documented file/JSONL fallback or skip with one note | ENH-3700 |
-| `ll-harness` | Best-effort remote serving; exact/behind stamped schema and read-only token; ahead/foreign/auth/uninitialized/unavailable/query failure degrades as documented | ENH-3700 |
+| `ll-harness` | Best-effort remote serving; exact/behind/ahead stamped schema and read-only token (`check_access(write=False)` policy); foreign/auth/uninitialized/unavailable/query failure degrades as documented | ENH-3700 |
 | Packaged SFT stage/enrich | Auto JSONL and explicit remote unenriched passthrough; unrelated errors fail the pipeline atomically | ENH-3700 |
 | Artifact snapshot route/dashboard/history panel; loop `--serve`; doctor `--trim` | Named refusal/501/unavailable panel or informational skip; server remains usable | ENH-3658 |
 | Prepatch base SHA/dirty reads | Best-effort remote data within one cumulative telemetry deadline, otherwise `None`; TTL marker suppresses repeat requests | ENH-3682 |

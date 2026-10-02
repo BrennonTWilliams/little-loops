@@ -10,6 +10,7 @@ discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:56:06Z'
 blocked_by:
 - ENH-3678
+- ENH-3698
 blocks:
 - ENH-3666
 relates_to:
