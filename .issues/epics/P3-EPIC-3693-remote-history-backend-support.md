@@ -58,6 +58,14 @@ Remote track: ENH-3677 → ENH-3657 → ENH-3700. ENH-3658 and ENH-3682 each req
 
 Local track: ENH-3678 → ENH-3698, with ENH-3679 independent of remote readers. Sequence `cli/doctor.py` / `CLI.md` check-count edits in ENH-3679, ENH-3698 and ENH-3658 when integrating; shared-file ownership is not an additional functional dependency. ENH-3698 must land before any `REBUILD_DERIVE_VERSION` bump. ENH-3699 remains deferred until a spike proves bounded-lock timeout recovery across a newer ingest watermark. Deferred remote serving follows ENH-3700 → ENH-3668 → ENH-3684/3685 if revived.
 
+## Composition Review
+
+_Reviewed 2026-10-02 against the code and Opus/Sonnet critiques; issue-plan amendments applied before implementation._
+
+Retain ENH-3677, ENH-3657, ENH-3700, ENH-3658 and ENH-3682 as the active remote-support slices. The refusal boundary and risky reader seam are separate reviews; the fixture is their test prerequisite. Cancel ENH-3680's spool and document the existing remote omission, acknowledging that remote recent/search consumers already exist but no live control-flow dependency was found. Detach ENH-3678/3679 and the rebuild follow-ons from this epic's branch; retain their local-store value. ENH-3699 stays deferred until its watermark/restart recovery spike is proven. Defer/detach ENH-3668/3684/3685 until demonstrated strict remote-read demand; their retained plans specify safe error, target and atomic SFT contracts if revived.
+
+Revised issues with cleared/missing confidence scores require a new confidence check before implementation; planned tests are not passing evidence. No child is claimed implementation-ready merely because its prose now validates.
+
 ## Final support matrix
 
 | Surface | Remote verdict at epic closure | Owner |

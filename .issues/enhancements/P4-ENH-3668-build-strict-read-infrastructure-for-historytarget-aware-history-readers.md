@@ -75,6 +75,8 @@ An interim clean refusal (ENH-3657) is preferable to a traceback, but remote use
 
 - `HistoryTarget = LocalTarget | RemoteTarget`.
 - `class HistorySchemaUninitialized(HistoryUnsupported)`.
+- `HistoryProjectMismatch(HistoryUnsupported)` with a stable reason (`missing_config`, `missing_stamp`, `foreign_stamp`) and `HistorySchemaMismatch(HistoryUnsupported)` for an ahead or proven incompatible schema. Preserve the existing parent class so non-strict catches remain valid; classify via these fields/types, not raw message substrings.
+- `HranaError.http_status: int | None` alongside its existing SQL/protocol code; safe verdicts inspect structured attributes without exposing their raw messages.
 - `strict_reads()` context manager plus `strict_reads_active() -> bool`.
 - `Verdict` (exit code, message, JSON payload) from `history_error_verdict`.
 
