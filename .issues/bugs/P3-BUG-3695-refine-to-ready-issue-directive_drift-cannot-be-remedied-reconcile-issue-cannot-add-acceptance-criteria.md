@@ -29,13 +29,21 @@ Observed in run `refine-to-ready-issue-20261002T111524` on ENH-3678 (history run
 
 This is a contract mismatch: a coverage gap (missing AC) is not a contradiction, so neither remedy state can fix it. Sibling of BUG-3574 (`PROPOSAL_UNSOUND` routed to reconcile, which cannot edit Proposed Solution) and ENH-3690 (`NON_VALID` citation-only findings have no repair route).
 
+## Steps to Reproduce
+
+1. Take an issue whose Integration Map lists a surface (e.g. `cli/doctor.py`) that no Acceptance Criterion covers, and whose code claims are otherwise accurate (ENH-3678 at the time of the observed run).
+2. Run `ll-loop run refine-to-ready-issue ENH-3678`.
+3. Observe `verify_issue` return `DIRECTIVE_DRIFT` (check B6 AC-coverage gap) and route to `check_reconcile_limit` -> `reconcile_issue`.
+4. Observe `reconcile_issue` report `RECONCILED` with "Acceptance Criteria: unchanged", then `refine_followup` append findings without adding ACs.
+5. Observe the loop exhaust both budgets and end `GATE_UNMET` via `record_gate_unmet` (`failed`).
+
 ## Expected Behavior
 
 A `DIRECTIVE_DRIFT` verdict whose finding is "Integration Map entry has no Acceptance Criterion" is repaired in-loop by adding the missing AC(s), after which `verify_issue` returns `VALID`. Budget exhaustion is reached only when the repair genuinely cannot converge.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Any automated refinement run on an issue whose Integration Map has uncovered points burns ~25 minutes and 30+ iterations, then fails `GATE_UNMET`, although the fix (add the AC the verify finding names) is small and fully specified. The only workaround is a manual AC edit, which defeats the unattended `refine-to-ready-issue` path. It is the third instance of a verdict routed to a remedy that cannot clear it (see BUG-3574, ENH-3690), so fixing the contract also removes a recurring class of false `GATE_UNMET` exits.
 
 ## Proposed Solution
 
@@ -55,11 +63,31 @@ Either option must update the `DIRECTIVE_DRIFT` wording in `commands/verify-issu
 - `scripts/tests/test_builtin_loops.py` - `TestRefineToReadyDispatch` route table
 - `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` and reconcile-issue tests
 
+## Program Design
+
+### Types
+
+- `verify_verdict: str` — the `verify_issue` verdict (`DIRECTIVE_DRIFT` here)
+- `verify_evidence: str` — the finding text naming the uncovered Integration Map entries
+
+### Signatures
+
+- `reconcile_issue(issue_id: str, verify_verdict: str, verify_evidence: str) -> str` — existing state running `/ll:reconcile-issue`; under Option A its scope widens so that, only when `verify_verdict` is `DIRECTIVE_DRIFT`, it may add ACs mapping one-to-one to Integration Map entries named in `verify_evidence`. Every other "no new requirements" rule is unchanged.
+- `add_missing_acs(issue_id: str, verify_evidence: str) -> str` — Option B only: new repair state with its own per-run budget counter under `${context.run_dir}`, exhaustion routing to `record_gate_unmet`.
+
+### Call Path
+
+`verify_issue` -> `check_reconcile_limit` -> `reconcile_issue` -> `normalize_structure` -> `verify_issue` — the repair loop that must now converge on `VALID`.
+
+`check_reconcile_limit` -> `check_gate_refine_limit` -> `refine_followup` -> `record_gate_unmet` — the observed failing path (research-only follow-up, then `GATE_UNMET`).
+
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Decide Option A (reconcile carve-out) vs Option B (dedicated `add_missing_acs` state); A is the smallest.
+2. Implement the chosen option in `commands/reconcile-issue.md` or `refine-to-ready-issue.yaml`, and update the `DIRECTIVE_DRIFT` wording in `commands/verify-issues.md`.
+3. Decide whether `check_reconcile_limit` should count only actual reconcile attempts rather than every entry.
+4. Update `TestRefineToReadyDispatch` and the reconcile-issue tests; add a regression case for an AC-coverage-only `DIRECTIVE_DRIFT`.
+5. Run `python -m pytest scripts/tests/` and replay the ENH-3678 three-AC gap to confirm it no longer ends `GATE_UNMET`.
 
 ## Impact
 
@@ -90,4 +118,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-10-02T17:52:15 - `dc7de560-ace3-44cc-8c42-afca4eb429ff.jsonl`
 - `/ll:capture-issue` - 2026-10-02T17:46:36 - `f95760a1-28e5-4de5-bec7-aaf05cf7e5d8.jsonl`

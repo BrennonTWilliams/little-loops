@@ -25,6 +25,13 @@ Run `refine-to-ready-issue-20261002T111524` (model `claude-sonnet-5-5`, as recor
 2. `estimate_cost_usd` returns `None` on any unknown model; `fsm/cost_graph.py` (`from_usage_jsonl`) then sets `has_unknown_model`, and `PerStateCost.table_row` renders `n/a`.
 3. Because cost is `None` whenever any contributor is unpriced, one unknown model blanks the per-state cost and the run-wide total (`_compute_totals`). The same gap leaves null `cost_usd` rows in `usage_events` (see the FEAT-3183 note in `pricing.py`).
 
+## Steps to Reproduce
+
+1. Run `python -c "from little_loops.pricing import estimate_cost_usd as e; print(e('claude-sonnet-5-5', 1000, 1000), e('claude-sonnet-5', 1000, 1000))"`.
+2. Observe `None` for `claude-sonnet-5-5` and a float for `claude-sonnet-5`.
+3. Run any `ll-loop run <loop>` whose host model is `claude-sonnet-5-5` (e.g. `refine-to-ready-issue`).
+4. Observe the end-of-run usage table print `n/a` in `est_cost` for every state.
+
 ## Expected Behavior
 
 - `claude-sonnet-5-5` is priced at its published API rate.
@@ -33,7 +40,7 @@ Run `refine-to-ready-issue-20261002T111524` (model `claude-sonnet-5-5`, as recor
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Every run on a newly released model silently loses cost visibility: the usage table shows `n/a` per state, the run-wide total is blanked, and `usage_events` accumulates null `cost_usd` rows that degrade history-based cost analysis. A single unpriced model ID blanks the whole column, so a missing table entry should degrade to a flagged estimate and a test should catch the gap before a release ships it.
 
 ## Proposed Solution
 
@@ -52,11 +59,31 @@ Run `refine-to-ready-issue-20261002T111524` (model `claude-sonnet-5-5`, as recor
 ### Tests
 - `scripts/tests/` pricing and `cost_graph` tests; new price-coverage test
 
+## Program Design
+
+### Types
+
+- `PerStateCost.approximate: bool = False` — new additive field; True when any contributing row was priced via family-prefix fallback
+
+### Signatures
+
+- `estimate_cost_usd(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> float | None` — existing; exact-match behavior unchanged
+- `estimate_cost_usd_approx(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> tuple[float, bool] | None` — new sibling; exact match first, then longest-prefix family match against `MODEL_PRICING`; the bool is the `approximate` flag
+- `PerStateCost.table_row(self) -> str` — existing; renders `~$X.XXXX` when `approximate`, `n/a` only for an unrecognized family
+
+### Call Path
+
+`CostReport.from_usage_jsonl` -> `estimate_cost_usd_approx` -> `estimate_cost_usd` — per-row pricing, flag aggregated per state.
+
+`CostReport.from_usage_jsonl` -> `PerStateCost.table_row` — rendering of the approximate marker.
+
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add `claude-sonnet-5-5` to `MODEL_PRICING` at the confirmed published rate.
+2. Add the family-prefix fallback with an `approximate` flag; thread it through `PerStateCost` and `CostReport.to_dict` additively, and render the `~` prefix in `table_row`.
+3. Add a test that fails when a harness-emittable model ID has no price entry.
+4. Verify `ll-history quality`'s cost-coverage gate distinguishes approximate from exact rows; update `docs/reference/API.md` if the JSON shape gains a field.
+5. Run `python -m pytest scripts/tests/` and re-render the ENH-3678 `usage.jsonl` table to confirm no `n/a`.
 
 ## Impact
 
@@ -82,4 +109,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-10-02T17:52:15 - `dc7de560-ace3-44cc-8c42-afca4eb429ff.jsonl`
 - `/ll:capture-issue` - 2026-10-02T17:46:36 - `f95760a1-28e5-4de5-bec7-aaf05cf7e5d8.jsonl`
