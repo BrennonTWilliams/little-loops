@@ -63,6 +63,57 @@ Either option must update the `DIRECTIVE_DRIFT` wording in `commands/verify-issu
 - `scripts/tests/test_builtin_loops.py` - `TestRefineToReadyDispatch` route table
 - `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` and reconcile-issue tests
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Additional sites inside known files to Modify**
+- `commands/reconcile-issue.md:116` — the "Every rewritten claim must trace to an existing finding" rule ending "Outside that one branch, do not invent new requirements" (L120) is the Option A edit site; the ENH-2937 Scope Boundaries branch 2b ("carved out of the tracing requirement") in `Contract (read this first)` is the carve-out precedent to mirror [Agent 3 finding]
+- `commands/reconcile-issue.md:309` — Output Format line `- Acceptance Criteria: [rewritten | unchanged]` in `Output Format`; a carve-out that adds ACs needs an output-format form reporting added criteria (the loop's CONCERNS text keys off it) [Agent 2 finding]
+- `commands/verify-issues.md:184` — B6 "AC coverage of identified integration points" sub-check in `B6` and the DIRECTIVE_DRIFT assignment rule (~L197–206) in `C. Verdict`, which define which findings are classed as drift [Agent 1 finding]
+- `commands/verify-issues.md:395` — persistence bullet "route it to `reconcile_issue`" in `Persist the verdict to frontmatter` (also ~L371 and ~L384 bullets naming `reconcile_issue`) must be reworded alongside the L263 table row [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:23` — header route-table comment (`VERIFY:DIRECTIVE_DRIFT → check_reconcile_limit`, L23/L31/L41) in the file header comment block [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:111` — `max_steps: 113` comment block (L74–147) in the header; Option B needs an "X -> Y for ..." entry and a bump, which breaks the three `== 113` pins listed under Tests [Agent 2 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:199` — `resolve_issue` seeds/resets every per-run counter file; an Option B counter (or any change to `refine-to-ready-reconcile-attempts` semantics) must be seeded here [Agent 2 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:623` — `check_claim_correction_budget` (BUG-3637) is the existing budget-then-repair-state shape to copy for Option B's `add_missing_acs` [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:1252` — `record_gate_unmet` echo text names "verify verdict, placeholders, Program Design, or acceptance criteria"; exhaustion target for Option B [Agent 2 finding]
+
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:589` — `ACCEPTANCE_CRITERIA` obligation also routes to `check_reconcile_limit` (ENH-3248) and shares the same `refine-to-ready-reconcile-attempts` counter as `VERIFY:DIRECTIVE_DRIFT`; changing counter semantics (Implementation Step 3) affects both routes in `route_score_obligation` [Agent 3 finding]
+- `scripts/little_loops/loops/prepare-issue.yaml:118` — `run_reconcile` invokes `/ll:reconcile-issue` (profile `reconcile-issue-auto`); an Option A carve-out widens what this caller may write too, but it has no `verify_verdict` context, so the carve-out must be gated on `verify_verdict: DIRECTIVE_DRIFT` in `run_reconcile` [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:718` — `reconcile_revision` (BUG-3574 proposal-revision path) also runs `/ll:reconcile-issue`; confirm the carve-out stays inert there in `reconcile_revision` [Agent 1 finding]
+- `scripts/little_loops/preparation_policy.py:638` — `reconcile_check` / `pick_remedy` "reconcile" decision; calls the same command, no code change expected in `pick_remedy` [Agent 2 finding]
+- `scripts/little_loops/cli/issues/check_verify_verdict.py:86` — `--directive-drift` flag help text ("route to `reconcile_issue`") in `classify_verify_verdict` / argparse help; update if the remedy name changes [Agent 1 finding]
+- `scripts/little_loops/cli/issues/next_obligation.py:77` — `VERIFY:DIRECTIVE_DRIFT` token emission in `_verify_class`; no change unless the verdict taxonomy changes [Agent 1 finding]
+- `skills/ll-reconcile-issue/SKILL.md` — Codex bridge copying the command's `description`/`argument-hint`; regenerate (`ll-adapt --host codex --apply`) only if the `commands/reconcile-issue.md` frontmatter `description` (which enumerates rewritable sections) is edited [Agent 2 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md:153` — token-table row "`VERIFY:DIRECTIVE_DRIFT`, `ACCEPTANCE_CRITERIA` | `check_reconcile_limit` (one `reconcile_issue` pass)" and L195 prose "`DIRECTIVE_DRIFT` ... goes to `reconcile-issue`" in `refine-to-ready-issue` route table [Agent 1 finding]
+- `docs/reference/COMMANDS.md:300` — `/ll:reconcile-issue` section ("rewrite ... in place", "left untouched", "reconciles the issue **against itself**") in `/ll:reconcile-issue`; plus the L1105 command-list row [Agent 2 finding]
+- `docs/reference/CLI.md:2639` — `--directive-drift` flag row (and the `next-obligation` VERIFY `sub_reason` list ~L2435) in `check-verify-verdict` [Agent 1 finding]
+- `docs/reference/API.md:975` — "three directive sections `/ll:reconcile-issue` rewrites" in the reconcile/issue-parser section [Agent 2 finding]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py:3116` — `PRE_TABLE` exact-equality in `TestRefineToReadyDispatch.test_pre_score_routing_table` (pins `VERIFY:DIRECTIVE_DRIFT` and `ACCEPTANCE_CRITERIA` → `check_reconcile_limit`); update only if the route changes (Option B) [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:1643` — `test_check_reconcile_limit_state_routing`, `test_check_reconcile_limit_counts_up_and_gates_at_two`, `test_check_reconcile_limit_counter_is_per_run`, `test_resolve_issue_seeds_reconcile_attempts_counter` pin counter file name, `lt 2`, `1`/`2` outputs and `on_no`/`on_error == check_gate_refine_limit`; will break if Implementation Step 3 changes counting [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:1814` — `test_reconcile_issue_state_routing` pins the exact action `/ll:reconcile-issue ${captured.issue_id.output}`, no fragment, `next`/`on_error == normalize_structure`; breaks if the action text is parameterised with the verdict [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:1870` — `data["max_steps"] == 113` in `test_precheck_format_and_fallback_routing`; breaks if Option B bumps `max_steps` [Agent 3 finding]
+- `scripts/tests/test_autodev_proof_reentry.py:131` — `test_max_steps_raised` `== 113` pin; breaks on an Option B `max_steps` bump [Agent 3 finding]
+- `scripts/tests/test_advise_ready_gate.py:215` — `test_max_steps_113` pin; breaks on an Option B `max_steps` bump [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:2762` — `test_proposal_revision_cycle_routing` asserts `check_reconcile_limit.on_yes == "reconcile_issue"` and `reconcile_revision` reachability; the BUG-3574 repair-cycle precedent to copy for an Option B routing test (alongside `test_resolve_issue_resets_proposal_revision_state`) [Agent 3 finding]
+- `scripts/tests/test_reconcile_issue_command.py` — new test file entry (not yet listed): add a class modelled on `TestReconcileScopeBoundariesEligibility` asserting the Option A carve-out in the Contract slice; existing assertions `test_tracing_requirement_carve_out_for_decision_directive` (needs "carved out" / "does not need a tracing finding"), `test_not_a_general_rewrite_addition` ("narrow", "Preserve untouched") and `test_scope_boundaries_conditionally_eligible` must keep passing; no test currently pins "do not invent new requirements" [Agent 3 finding]
+- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py:119` — `TestDirectiveDriftVerdict.test_verdict_table_and_persistence_have_directive_drift` asserts the literal `"| DIRECTIVE_DRIFT |"` and `verify_verdict: DIRECTIVE_DRIFT` / `verify_evidence:` in the persist slice; keep these literals when rewording, and add a method asserting the new remedy wording [Agent 3 finding]
+- `scripts/tests/test_wiring_skills_and_commands.py:487` — `test_host_artifacts_are_not_stale` (gemini, kimi-code, qwen, codex, omp) fails after the `commands/verify-issues.md` edit until mirrors are regenerated [Agent 3 finding]
+- `scripts/tests/test_verify_skill_prose.py` — growth guard (`BASELINE_COUNT = 17`) scanning `commands/*.md` for prose markers; new carve-out prose must not match them [Agent 3 finding]
+- `scripts/tests/test_docs_audience_gate.py` — `commands/` edits must not cite `scripts/tests/` or `scripts/little_loops/` paths [Agent 3 finding]
+- No existing test steps the real `refine-to-ready-issue.yaml` FSM with a stubbed `DIRECTIVE_DRIFT` verdict (all are static YAML or bash-state subprocess tests); the AC-coverage-only regression case is a new test shaped like `_run_check_reconcile_limit` or a stubbed `PersistentExecutor` run (`test_autodev_characterization.py` pattern) [Agent 3 finding]
+
+### Configuration
+_Wiring pass added by `/ll:wire-issue`:_
+- Mirrors: `.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md` — regenerate with `ll-adapt --host <gemini|kimi-code|qwen|codex> --apply` after `commands/verify-issues.md` edits; `commands/reconcile-issue.md` has `disable-model-invocation: true` so body-only edits have no mirror impact [Agent 2 finding]
+- `.ll/decisions.d/b5a1b051-4f32-42a8-b4ef-148a54801c52.json` — records the rejected option of widening reconcile-issue's contract to Program Design; Option A must be reconciled with that precedent (state why an AC-coverage carve-out is different) [Agent 1 finding]
+
 ## Program Design
 
 ### Types
@@ -88,6 +139,18 @@ Either option must update the `DIRECTIVE_DRIFT` wording in `commands/verify-issu
 3. Decide whether `check_reconcile_limit` should count only actual reconcile attempts rather than every entry.
 4. Update `TestRefineToReadyDispatch` and the reconcile-issue tests; add a regression case for an AC-coverage-only `DIRECTIVE_DRIFT`.
 5. Run `python -m pytest scripts/tests/` and replay the ENH-3678 three-AC gap to confirm it no longer ends `GATE_UNMET`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `commands/verify-issues.md` — reword the `| DIRECTIVE_DRIFT |` row (~L263) **and** the persistence bullets (~L371, ~L384, ~L395–397); keep the literals `| DIRECTIVE_DRIFT |`, `verify_verdict: DIRECTIVE_DRIFT`, `verify_evidence:`, `double-quoted YAML scalar` that `test_enh3250_verify_issues_proposal_vs_code.py` asserts
+- Update `commands/reconcile-issue.md` (Option A) — add the carve-out near L116–121 keeping "carved out"/"narrow"/"Preserve untouched" in the Contract slice, and extend the L309 `Acceptance Criteria: [rewritten | unchanged]` Output Format line; gate the carve-out on `verify_verdict: DIRECTIVE_DRIFT` so `prepare-issue.yaml` `run_reconcile` and `reconcile_revision` callers stay inert
+- If Option B: seed the new counter in `resolve_issue`, route `VERIFY:DIRECTIVE_DRIFT` to the new budget state, add the `max_steps` comment-block entry, and bump `max_steps` — then update the three `== 113` pins (`test_builtin_loops.py:1870`, `test_autodev_proof_reentry.py:131`, `test_advise_ready_gate.py:215`) and `PRE_TABLE`
+- If Step 3 changes `check_reconcile_limit` counting — remember `ACCEPTANCE_CRITERIA` shares the counter; update the `check_reconcile_limit` test family and `test_proposal_revision_cycle_routing`
+- Update `docs/guides/LOOPS_REFERENCE.md` (L153, L195), `docs/reference/COMMANDS.md` (`/ll:reconcile-issue`), and `docs/reference/CLI.md` (`--directive-drift`) to describe the new remedy
+- Add tests: carve-out class in `test_reconcile_issue_command.py`; new method in `TestDirectiveDriftVerdict`; AC-coverage-only `DIRECTIVE_DRIFT` regression (none exists today)
+- Regenerate host mirrors — `ll-adapt --host <gemini|kimi-code|qwen|codex> --apply` after the `commands/verify-issues.md` edit (`test_host_artifacts_are_not_stale`)
 
 ## Impact
 
@@ -118,6 +181,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-10-02T19:42:57 - `4830feb2-90ba-4747-9939-6d60a5df22df.jsonl`
 - `/ll:refine-issue` - 2026-10-02T17:56:39 - `211b3968-8e30-4656-bda0-11230a163531.jsonl`
 - `/ll:format-issue` - 2026-10-02T17:52:15 - `dc7de560-ace3-44cc-8c42-afca4eb429ff.jsonl`
 - `/ll:capture-issue` - 2026-10-02T17:46:36 - `f95760a1-28e5-4de5-bec7-aaf05cf7e5d8.jsonl`
