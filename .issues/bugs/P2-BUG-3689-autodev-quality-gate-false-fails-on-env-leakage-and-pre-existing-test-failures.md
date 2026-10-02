@@ -13,6 +13,12 @@ relates_to:
 - ENH-3697
 parent: EPIC-3694
 epic: EPIC-3694
+confidence_score: 95
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # BUG-3689: Autodev quality gate false-fails on inherited LL_PYTHON and terminal size
@@ -165,6 +171,7 @@ Reviewed 2026-10-02 with `ll-advise --signal user_requested --host claude-code -
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-02T20:44:07 - `87a65a08-ddb3-4e8a-b852-af350980921a.jsonl`
 - `/ll:verify-issues` - 2026-10-02T20:41:17 - `cd5e1b5d-cfd5-4657-840b-466941684a3e.jsonl`
 - `/ll:verify-issues` - 2026-10-01T21:31:21 - `6aa5587a-18d6-457b-930d-4a16b529f58a.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-01T21:29:38 - `b2628e12-0ee9-430f-aae0-6c0fc3dc7bf2.jsonl`
