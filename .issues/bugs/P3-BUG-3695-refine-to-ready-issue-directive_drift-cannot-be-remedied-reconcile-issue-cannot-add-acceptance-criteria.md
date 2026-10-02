@@ -9,6 +9,13 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:46:29Z'
 parent: EPIC-3694
+confidence_score: 90
+outcome_confidence: 60
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 18
+decision_needed: true
 ---
 
 # BUG-3695: refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria
@@ -179,8 +186,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-10-02 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-02_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 60/100 → MODERATE
+
+### Outcome Risk Factors
+- Unresolved design decision: Option A (reconcile carve-out) vs Option B (`add_missing_acs` state) is not selected, and Implementation Step 3 (whether `check_reconcile_limit` counts only real reconcile attempts) is also open. The counter is shared with the `ACCEPTANCE_CRITERIA` route, so the choice changes behavior beyond `DIRECTIVE_DRIFT`.
+- Broad enumeration across ~15 sites (command prose, loop YAML, 4 docs, host mirrors, 3 `max_steps == 113` pins under Option B).
+- `reconcile-issue` has 3 callers (`reconcile_issue`, `reconcile_revision`, `prepare-issue.yaml` `run_reconcile`); the carve-out must be gated on `verify_verdict: DIRECTIVE_DRIFT` or it widens writes for the other two.
+- Precedent in `.ll/decisions.d/b5a1b051-…json` rejected widening reconcile's contract to Program Design; Option A must justify why an AC-coverage carve-out differs.
+- No test steps the real FSM with a stubbed `DIRECTIVE_DRIFT` verdict; the AC-coverage regression is a new test shape.
+- Recommended: run `/ll:decide-issue BUG-3695` to select Option A or B before implementing.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-02T19:45:19 - `9a15ba2c-4c77-475b-8d6d-2e5aa8b1186f.jsonl`
 - `/ll:wire-issue` - 2026-10-02T19:42:57 - `4830feb2-90ba-4747-9939-6d60a5df22df.jsonl`
 - `/ll:refine-issue` - 2026-10-02T17:56:39 - `211b3968-8e30-4656-bda0-11230a163531.jsonl`
 - `/ll:format-issue` - 2026-10-02T17:52:15 - `dc7de560-ace3-44cc-8c42-afca4eb429ff.jsonl`
