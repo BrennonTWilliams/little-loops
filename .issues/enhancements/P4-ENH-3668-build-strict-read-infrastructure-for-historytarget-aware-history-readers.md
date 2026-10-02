@@ -17,6 +17,8 @@ relates_to:
 - BUG-3652
 - ENH-3657
 - ENH-3682
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3668: Build strict-read infrastructure for HistoryTarget-aware history readers

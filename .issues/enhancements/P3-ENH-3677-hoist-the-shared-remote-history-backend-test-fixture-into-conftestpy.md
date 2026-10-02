@@ -19,6 +19,8 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3677: Hoist the shared remote history-backend test fixture into conftest.py

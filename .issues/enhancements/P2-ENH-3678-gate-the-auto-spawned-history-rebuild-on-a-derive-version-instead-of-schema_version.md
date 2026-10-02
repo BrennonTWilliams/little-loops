@@ -11,11 +11,14 @@ blocks:
 - ENH-3666
 - FEAT-3561
 confidence_score: 90
+reconcile_attempted: true
 outcome_confidence: 64
 score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3678: Gate the auto-spawned history rebuild on a derive version instead of SCHEMA_VERSION
@@ -74,6 +77,114 @@ Ship as two slices of this one issue (keeps FEAT-3561/ENH-3666 edges intact); co
 - `scripts/little_loops/cli/doctor.py` — surface "rebuild pending".
 - Tests: `test_hook_session_start.py::TestSessionStartRebuild` (gate), a two-worker flock test (3678b) (one replay, second re-checks under `LOCK_EX`, both transcripts ingested), a fingerprint test for the bump rule, a failed-rebuild cooldown test, a size-gate test, migration tests (unmarked `>= floor` — including a simulated 59/60 store — reads as the frozen legacy value without a write; `57`/missing rebuild; an unmarked store first opened after a simulated future derive bump rebuilds); `test_session_store_usage_refresh.py` asserts no `usage_derive_%` meta keys after refresh — keep the new key out of that namespace.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-02 — based on codebase analysis:_
+
+- **Conventions in force (pattern-finder, 2026-10-02):**
+  - Derive versions are module-level *string* tags in `session_store/lifecycle.py`, compared by `!=` (equality, never ordered) — evidence: `_USAGE_DERIVE_VERSION` (`lifecycle.py:1037`), reader `lifecycle.py:1076` and `:1480`. `REBUILD_DERIVE_VERSION` must follow this shape (the Program Design `str` type already matches).
+  - Meta keys are written by inline `INSERT ... ON CONFLICT(key) DO UPDATE` inside the same transaction as the derived rows; there is no shared meta-setter — evidence: `_set_usage_derive_checkpoint` (`lifecycle.py:1053`) and the `last_rebuild_version` upsert in `rebuild()` (`lifecycle.py:1554`). The new key's stamp belongs in that same transaction so a rolled-back rebuild leaves it unwritten.
+  - `last_rebuild_version` is seeded NULL at schema creation (`schema.py` ~`:505`) and readers coerce missing/NULL to 0 (`session_start.py` `int(_row[0]) if (_row and _row[0]) else 0`); `usage_derive_*` keys are unseeded and read with a default. A new unseeded `rebuild_derive_version` key is the second style; `rebuild_needed()` must treat NULL and absent identically.
+  - Read-only opens: `Backend.connect_readonly` (`session_store/backend.py:276`, module wrapper `:358`) is the never-creates/never-migrates opener (`PRAGMA query_only`, raises `HistoryUnavailable`) — evidence: callers `lifecycle.usage_source_freshness` and `doctor._history_db_data`. Two other read-only openers disagree: `queries._connect_readonly` (raw `mode=ro` URI) and `history_reader/_base._connect_readonly` (`ensure=True`, so it **migrates**). The "no second migration-capable open" constraint rules out the latter; `usage_source_freshness` also shows the convention of returning an `unknown` status on any exception rather than raising.
+  - Flock sidecars live at `<db>.<name>.lock` beside the DB; the lock file may double as JSON state. Two idioms coexist and are contested: blocking `LOCK_EX` with JSON throttle state (`cli/backfill_worker.py:48`, `_run_usage_trigger`) versus polled `LOCK_EX|LOCK_NB` with timeout (`file_utils.acquire_lock`, callers `advisor.py`, `hooks/pre_done.py`, `hooks/pre_compact_handoff.py`, `hooks/edit_batch_nudge.py`). The bounded-wait `LOCK_SH` in the issue's protocol matches the second idiom's polling shape, but `acquire_lock` is exclusive-only, so shared-mode support is a decision for the implementer, not an existing primitive. Darwin flock contention semantics are documented in `test_file_utils.py` (~`:183-240`) and `.ll/learning-tests/fcntl.md`.
+  - Failed-attempt cooldown state is a `.ll/*.lock`-style file with a module-level TTL constant and a `_now()` clock seam — evidence: `UNREACHABLE_TTL_S` (`session_store/remote_telemetry.py:38`, use at `:130`). `*.lock` is already gitignored via `init/writers.py`. No rebuild cooldown exists today.
+  - Hook notices: stderr lines accumulate as `[little-loops] ...` strings in `feedback_lines` joined into `LLHookResult.feedback`; stdout is the context payload. A module-constant size threshold has precedent (`_LARGE_CONFIG_THRESHOLD`, `session_start.py:51`). No "pending" notice type exists yet.
+  - Doctor checks follow one shape: `_<x>_data() -> dict` (`status`, `severity`, `note`), `_print_<x>_section()`, and an `@register_check` returning `CheckResult`; dicts are added to the JSON payload and print list (`cli/doctor.py` ~`:1742`, `:1860`). `_history_db_data` (~`:503`) and `_schema_drift_data` (~`:678`) are the report-only precedents, and a not-yet-created DB reports `unsupported`/`informational` without creating it.
+  - **No convention exists** for a source/DDL fingerprint test: repo-wide search found `inspect.getsource` only in structural/AST tests and `hashlib` only over file bytes. The bump-rule guard is a new test kind; `test_session_store_schema.py::test_schema_version_matches_migrations_length` (plain assert on a hand-maintained int) is the nearest "pin" precedent.
+
+_Added by `/ll:refine-issue` — 2026-10-02 — based on codebase analysis:_
+
+- **Test conventions and traps (pattern-finder, 2026-10-02):**
+  - Version-gate tests monkeypatch the constant on `lifecycle` and use a real DB (`test_session_store_incremental_usage.py::test_normalizer_version_change_replays_historical_rows`); rollback tests assert the stamp key is *absent* after a failed run (`test_catchup_failure_rolls_back_rows_and_checkpoint`). The "unmarked store first opened after a future derive bump rebuilds" criterion fits this monkeypatch shape.
+  - `test_session_store_lifecycle.py::test_rebuild_updates_last_rebuild_version` (~`:1890`) is the existing stamp assertion; `rebuild_derive_version` needs the same coverage beside it.
+  - `test_session_store_schema.py` (~`:909-914`) asserts the exact meta key set on a fresh DB (`last_raw_event_ts`, `last_rebuild_version`). Seeding `rebuild_derive_version` at schema creation would break it — an unseeded key (written only by `rebuild()`) keeps it passing and also matches the "hook never stamps" constraint.
+  - `TestSessionStartRebuild` (`test_hook_session_start.py:366`) uses a real DB and a `_FakePopen` recording argv: fresh DB spawns `--rebuild`, a DB after `session_store.rebuild(db)` does not. The size gate and pending notice are testable by the same harness. `test_remote_hooks.py:76` proves remote stores never get `--rebuild` via a stub lacking `last_rebuild_version`; it must keep passing.
+  - Lock/cooldown tests inject time by monkeypatching `backfill_worker.time.time_ns` / `.sleep` with a `_Clock` (usage-refresh throttle tests), and the failure path there leaves the lock file empty.
+  - Doc surfaces that still state the `SCHEMA_VERSION > last_rebuild_version` trigger: `docs/ARCHITECTURE.md` (~`:772`), `docs/reference/API.md`, the `backfill_worker` module docstring, and the static `_USAGE` banner in `hooks/__init__.py` (new hook intents only; not test-enforced).
+
+### Files to Modify (wiring additions)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/__init__.py` — import `REBUILD_DERIVE_VERSION` / `rebuild_needed` from `lifecycle` (top-of-file import block, ~`:96`) **and** add them to `__all__`; `TestPackageReexportSurface::test_all_and_required_private_names_resolve` fails if only one is done. `_REBUILD_TABLE_PREDICATES` is *not* re-exported, so the fingerprint test must import it from `lifecycle` directly [Agent 1/2 finding]
+- `scripts/little_loops/cli/session.py` — `main_session`, `command == "rebuild"` arm (`rebuild(args.db, config=config)`, ~`:1016`) is where the 3678b contention report attaches; it has no `HistoryError` handler on this arm today (only `_main_migrate` and the `refresh` arm catch it), so a lock-contention path needs a new exit/return shape. Also `rebuild_parser` help/epilog (`_build_parser`, ~`:270`) and the `refresh` hint `Run ll-session rebuild ...` (~`:840`) if wording changes [Agent 2 finding]
+- `scripts/little_loops/session_store/lifecycle.py` — comment/docstring of `rebuild()` ("Updates the `last_rebuild_version` meta key to `SCHEMA_VERSION`") goes stale; update with the new stamp. `rebuild()` is also reached by `backfill(also_rebuild=True)` (~`:1744`) and `backfill_incremental(also_rebuild=True)` (~`:1680`) and by `ll-session backfill --rebuild` / `refresh --rebuild` (`cli/session.py` ~`:819`, `:883`, `:959`, `:982`, `:995`), so a lock placed *inside* `rebuild()` affects all of them while one placed only in `backfill_worker.main` or the `rebuild` CLI arm does not — decide placement explicitly for 3678b [Agent 2 finding]
+- `scripts/little_loops/cli/backfill_worker.py` — module docstring (`:11`, "SCHEMA_VERSION has changed since the last rebuild") and `hooks/session_start.py` comment (`:189-190`, "ENH-2581: pass --rebuild only when SCHEMA_VERSION has advanced") both state the old trigger; update with the swap. `main` has no argparse (ad hoc `"--rebuild" in args` + `skip_next` loop, ~`:120-206`), so any new flag is hand-added there [Agent 1/2 finding]
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/writers.py` — **the `_backfill_*` family the fingerprint must cover lives here, not in `lifecycle.py`**: `_backfill_tool_events`, `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_skill_events`, `_backfill_usage_events`, `_backfill_prompt_opt`, `_backfill_commit_events`, `_backfill_subagent_runs`, `_backfill_snapshots`, `_backfill_issues_and_snapshots`, `_backfill_loops`, `_backfill_learning_test_events`. `lifecycle.py` holds only `_backfill_sessions` (`:723`), `_backfill_raw_events` (`:800`) and `_compact_sessions` (`:530`). Parser reach is wider still: `session_store/sessions.py` (`iter_events`, per-host dispatch), the host normalizers (`qwen.py`, `gemini.py`, `omp.py`, `CodexNormalizer`), and `mine_corrections_from_messages` / `_iter_events*` in `writers.py` — pick and document the fingerprint boundary [Agent 1/2 finding]
+- `scripts/little_loops/session_store/writers.py:_backfill_usage_events` — overlaps the issue's rule that usage-only derivation changes bump `_USAGE_DERIVE_VERSION`, not `REBUILD_DERIVE_VERSION`; hashing it into the rebuild fingerprint would force a rebuild bump for a usage-only change. Decide whether it is excluded or the rule is restated [Agent 2 finding]
+- `scripts/little_loops/fsm/continuity.py` — calls `_backfill_messages` / `_backfill_assistant_messages` directly (`:64-65`); reached by a `_backfill_*` source fingerprint but is not a rebuild caller [Agent 1 finding]
+- `scripts/little_loops/session_store/usage_refresh.py` — `refresh_raw_events` deletes `usage_derive_*` keys on source replacement and never touches `last_rebuild_version`/`rebuild_derive_version`; imports `_backfill_raw_events` (`:118`); docstring (`:109`) says a failed rebuild "must be retried explicitly" — keep consistent with the cooldown semantics [Agent 1/2 finding]
+- `scripts/little_loops/hooks/usage_stop.py` — second spawner of `little_loops.cli.backfill_worker` (`--usage-trigger`, `:40`); shares `backfill_worker.main` and `<db>.usage-refresh.lock`, and its `refresh_usage_source` writes to the DB a rebuild holds `BEGIN IMMEDIATE` on. `--usage-trigger` already rejects `--rebuild`; keep that and do not share the new rebuild lock file with it [Agent 1/2 finding]
+- `scripts/little_loops/file_utils.py:acquire_lock` (`:122`) — exclusive-only polled `LOCK_EX|LOCK_NB`; callers `hooks/drift_check.py:88`, `hooks/pre_compact.py:164`. No `LOCK_SH` use exists anywhere in `scripts/little_loops` (searched), so the bounded `LOCK_SH` wait is new primitive code [Agent 1/3 finding]
+- `scripts/little_loops/init/writers.py:_GITIGNORE_ENTRIES` (`:106-108`) — `.ll/history.db*` and `.ll/*.lock` already cover `<db>.rebuild.lock` and a `<db>.rebuild-state.json` sidecar for consuming projects; this repo's own `.gitignore` has `.ll/*.lock` and only exact `.ll/history.db{,-shm,-wal}` entries, so a `.rebuild-state.json` sidecar name would match no rule here — prefer the `.lock` suffix or add a `.gitignore` line. `text_utils.py:DEFAULT_UNTRACKED_BY_DESIGN` (`:184`) is pinned to `_GITIGNORE_ENTRIES` by `test_config.py:377` [Agent 1/2 finding]
+- `scripts/little_loops/hooks/session_start.py:handle` — the remote guard (`raise RuntimeError("remote store: never rebuild from a hook")`, ~`:202`) must stay ahead of any new read-only open or lock/sidecar creation [Agent 1/2 finding]
+- Not coupled (searched, no hits): `skills/`, `commands/`, `agents/`, `loops/`, `.loops/` YAML, `hooks/hooks.json`, host adapters under `hooks/adapters/**` (all route through `hooks/session_start.py:handle`), `config-schema.json`, `hooks/__init__.py:_USAGE` (no new intent) [Agent 1/2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Existing tests that may break / need updating**
+- `scripts/tests/test_hook_session_start.py::TestAutomationPruningStayInTurn::test_pruning_gate_injects_stay_in_turn_instruction` (`result.feedback is None`, ~`:603`) — a "rebuild pending" notice must be suppressed on the automation-pruning path or this fails; `TestAmbientAutomationEnvHermeticity::test_suite_passes_with_ambient_ll_automation` re-runs the whole file under `LL_AUTOMATION=1` [Agent 3 finding]
+- `scripts/tests/test_hook_session_start.py::TestSessionStartRebuild::test_rebuild_flag_added_on_fresh_db` / `test_rebuild_flag_omitted_when_already_current` (`:389`, `:398`, `rebuild(in_tmp / ".ll" / "history.db")` at `:404`) — update to the derive-version gate (a fresh DB has no `rebuild_derive_version`) [Agent 1 finding]
+- `scripts/tests/test_remote_callers_bug3652.py::_CALLER_ALLOWLIST` (`:97`) and `test_allowlist_has_no_stale_entries` — a new doctor data function calling `resolve_history_db()` needs an allowlist entry (existing: `("cli/doctor.py", "_schema_drift_data")`); `rebuild_needed` inside `session_store/` is exempt [Agent 2/3 finding]
+- `scripts/tests/test_history_store_chokepoint_gate.py::test_no_raw_sqlite_connect_outside_chokepoint_and_allowlist` — AST-bans `sqlite3.connect(`; `rebuild_needed`, the hook and the doctor check must open via `connect_readonly` [Agent 1/3 finding]
+- `scripts/tests/test_enh3184_spawn_site_guard.py` — pins `(spawns, exemptions)` per module (`session_store/lifecycle.py` `(1, 0)`, `cli/doctor.py` `(2, 2)`); any new `subprocess.*` call there fails it (do not spawn the worker from `ll-doctor`) [Agent 3 finding]
+- `scripts/tests/test_remote_hooks.py::TestBackfillWorker::test_a_rebuild_is_refused_with_a_message_and_no_traceback` (`:308-312`) — remote refusal (`except HistoryUnsupported` in `backfill_worker.main`) must happen **before** the `<db>.rebuild.lock` is opened/created; `TestSessionStart::test_does_not_migrate_a_remote_store_on_start` asserts no `begin immediate` reaches the remote stub [Agent 2/3 finding]
+- `scripts/tests/test_remote_operation_matrix.py::TestRejectedOperations` (`:68`, `:97`, `:103`) — `lifecycle.rebuild()` / `backfill_incremental(also_rebuild=True)` must still raise `HistoryUnsupported(operation="rebuild")` with no new request, and `rebuild(tmp_path / "scratch.db")` under libsql must still succeed [Agent 2 finding]
+- `scripts/tests/test_enh_3166_qwen_normalizer.py::TestBackfillWorkerHost::test_flags_are_position_insensitive` (`:691`) — the only test running the real `--rebuild` argv through `worker_main` over a real DB asserting `sessions == 1`; any lock/re-check wrapper must keep it passing [Agent 3 finding]
+- `scripts/tests/test_ll_session.py::TestRebuildSubcommand` (`:1204`; `test_rebuild_parsed_from_argv`, `test_rebuild_invokes_session_store_rebuild`, `test_rebuild_json_flag`) — all patch `little_loops.cli.session.rebuild` with a plain counts dict and assert `messages=3` / `"tools"`; a contention path with a different call shape needs these updated [Agent 2/3 finding]
+- `scripts/tests/test_backfill_worker_usage_trigger.py::test_cli_requires_explicit_supported_trigger` — `--usage-trigger` + `--rebuild` must keep returning 1 [Agent 3 finding]
+- `scripts/tests/test_session_store_schema.py::test_structurally_matching_over_stamp_is_clamped` (`:2382`, asserts `last_rebuild_version` NULL/absent after clamp) — breaks if `ensure_db`/migrations start seeding or stamping the new key; safe if only `rebuild()` stamps [Agent 3 finding]
+- `scripts/tests/test_session_store_schema.py::test_meta_seeds_present` (`:900`) — correction to the Research Findings note above: its query is filtered (`WHERE key IN ('last_raw_event_ts', 'last_rebuild_version')`), so seeding `rebuild_derive_version` would **not** break it; keep the key unseeded anyway because the hook-never-stamps rule and the NULL/absent equivalence already require it [Agent 2 finding]
+- `scripts/tests/test_session_store_lifecycle.py::TestRebuild::test_rebuild_updates_last_rebuild_version` (`:1890`, `int(value) == SCHEMA_VERSION`) — keep `last_rebuild_version == SCHEMA_VERSION` stamped (the legacy floor depends on it); add the sibling `rebuild_derive_version` assertion beside it [Agent 3 finding]
+- Every test calling `rebuild(db)` now also stamps the new key; none assert its absence (`test_enh3532_codex_rollout_usage.py`, `test_claude_usage_producer.py`, `test_enh3534_host_usage_dispatch.py`, `test_enh3543_usage_coverage.py`, `test_session_discovery.py`, `test_enh_omp_normalizer.py`, `test_enh_3393_gemini_normalizer.py`) — no change expected [Agent 1/2 finding]
+- `scripts/tests/test_session_store_schema.py::TestPackageReexportSurface::test_all_and_required_private_names_resolve` — passes only if the new exports are imported and listed in `__all__` together [Agent 2/3 finding]
+
+**New tests to write**
+- `lifecycle.rebuild_needed`: unmarked at 57/58/59/60, NULL vs absent key, equal, behind, future bump via `monkeypatch.setattr(lifecycle, "REBUILD_DERIVE_VERSION", ...)`, DB absent, remote refuses, and a byte-identical-before/after read-only check modeled on `test_session_store_backend.py::TestConnectReadonlyStrict::test_existing_store_is_byte_identical_before_and_after` — in `test_session_store_lifecycle.py` near `TestRebuild` [Agent 3 finding]
+- Failed-rebuild stamp absence: model on `TestBackfillUsageEvents::test_rebuild_failure_rolls_back_usage_delete` (patches `_backfill_sessions` to raise) and assert `rebuild_derive_version` is absent after the rollback [Agent 3 finding]
+- Hook gate + size gate + pending notice: reuse `TestSessionStartRebuild._setup` and the inline `_FakePopen` argv recorder (`monkeypatch.setattr("little_loops.hooks.session_start.subprocess.Popen", ...)`); the notice goes through `feedback_lines` [Agent 3 finding]
+- Doctor "rebuild pending": data function + `@register_check` with `severity="informational"` (a `severity == "error"` + `unsupported` result changes exit codes via `_exit_code_for`), absent-DB case (`test_cli_doctor_install_checks.py::TestHistoryDb` style, `_bootstrap_at(db, version)` helper), remote "not applicable" case, and add the new function to `test_remote_doctor.py::TestNoTokenLeaks::test_no_doctor_surface_echoes_the_token`; `test_stray_ll_regression.py::test_ll_doctor_from_subdirectory_creates_no_stray_ll` must keep passing (root-resolved, read-only, creates nothing) [Agent 2/3 finding]
+- Fingerprint test: closest precedent is the checked-in-snapshot pattern in `test_session_store_schema.py::TestSchemaManifest::test_schema_manifest_matches_checked_in_file` (docstring carries the regeneration command; snapshot `session_store/schema_manifest.json`) — pin the hash beside it with a regeneration hint. Source-text precedents: `inspect.getsource` in `test_preparation_policy.py::test_policy_never_writes_the_spike_counter`, `ast.parse` in `test_sprint.py`; no existing test hashes Python source [Agent 3 finding]
+- 3678b worker tests: `LOCK_SH` bounded ingest vs `LOCK_EX` replay using same-process threads (Darwin separate `open()`s contend per `.ll/learning-tests/fcntl.md`) with `Event`/`Barrier` as in `test_file_utils.py::test_timeout_raises_when_held` and `test_exclusive_acquisition_one_wins`; cooldown sidecar via `_Clock` (`test_backfill_worker_usage_trigger.py`) asserting the sidecar JSON; a `--rebuild` argv test through `backfill_worker.main`; `ll-session rebuild` contention report with the lock held. No `LOCK_SH` test exists today [Agent 3 finding]
+- Gap: the hook → `backfill_worker --rebuild` → `rebuild()` chain is only tested in pieces (`TestSessionStartRebuild` argv, `TestBackfillWorkerHost` real run); the 3678a replay-duration measurement belongs with a real-DB run, not a new unit test [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/ARCHITECTURE.md` — second site beyond `~:772`: the v19 schema-table row (`raw_events`, ~`:695`) says "a new `last_rebuild_version` key gates the `SessionStart` hook's opt-in-on-migration `--rebuild` pass"; and the `ll-doctor --json` payload key list (~`:922`) if the doctor surface adds a key [Agent 2 finding]
+- `docs/reference/API.md` — `rebuild()` prose (~`:10158`, "Updates the `last_rebuild_version` meta key to `SCHEMA_VERSION`"), plus one-line `rebuild` descriptions (~`:5104`, `:9959`) and the reprice-on-rebuild note (~`:12637`); document `rebuild_needed()` / `REBUILD_DERIVE_VERSION` if exported [Agent 2 finding]
+- `docs/reference/CLI.md` — `ll-doctor` "always runs 7 default install-surface checks" count and name list (~`:494`) and `--json` key list (~`:497`) if a check is added; `ll-session rebuild` table row (~`:4397`), `rebuild` flags block (~`:4514`) for the contention report [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` (~`:885`) and `docs/codex/usage.md` (~`:173`) — `ll-doctor` install-surface check lists; `test_wiring_guides_and_meta.py` pins only the token `install-surface`, not the list [Agent 2 finding]
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — SessionStart section (`:52` table row, `:153` worker description, `:157` "You see" — add the `[little-loops] ... rebuild pending` line) [Agent 2 finding]
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — "rebuild is safe and repeatable" callout (~`:190-204`) and the `--json` note (~`:226`) in addition to the pending-rebuild explanation [Agent 2 finding]
+- All of the above fall under the docs-audience gate (`test_docs_audience_gate.py`): end-user shape, no `scripts/tests/` or `scripts/little_loops/` paths [Agent 3 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No `config-schema.json` / `test_config_schema.py` change needed with the 1 GB module constant; `scripts/little_loops/init/writers.py:_GITIGNORE_ENTRIES` already covers `.lock` sidecars (see Dependent Files for the `.rebuild-state.json` naming caveat) [Agent 2 finding]
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/session_store/__init__.py` — import and `__all__`-list `REBUILD_DERIVE_VERSION` / `rebuild_needed` together
+- Define the fingerprint boundary over `session_store/writers.py` `_backfill_*` (plus `lifecycle._backfill_sessions`/`_compact_sessions`) and decide the `_backfill_usage_events` / `_USAGE_DERIVE_VERSION` overlap before writing the test
+- Inject at `cli/session.py:main_session` `rebuild` arm — add the contention path with an explicit exit shape (no `HistoryError` handler exists on this arm); update `TestRebuildSubcommand`
+- Keep the remote refusal in `backfill_worker.main` and `session_start.handle` ahead of any lock/sidecar creation or read-only open
+- Suppress the pending notice on the automation-pruning path; update `TestAutomationPruningStayInTurn` only if the suppression is deliberately not applied
+- Open through `connect_readonly` only in `rebuild_needed`, the hook and the doctor check (chokepoint gate); allowlist a new doctor `resolve_history_db()` site in `_CALLER_ALLOWLIST`
+- Add the doctor "rebuild pending" check (`_<x>_data` / `_print_<x>_section` / `@register_check`, `severity="informational"`) and its payload key in `_print_report`; extend `TestNoTokenLeaks`
+- Update stale trigger wording in `hooks/session_start.py` (`:189-190`), `backfill_worker.py` docstring (`:11`), `lifecycle.rebuild` docstring, `docs/ARCHITECTURE.md` (`~:695`, `~:772`, `~:922`), `docs/reference/API.md` (`~:10158`), `docs/reference/CLI.md` (`~:494`, `~:4514`), `docs/guides/BUILTIN_HOOKS_GUIDE.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`
+- 3678b: decide lock placement (inside `rebuild()` vs only in `backfill_worker.main`/CLI arm) given `backfill(also_rebuild=)`, `backfill_incremental(also_rebuild=)`, `refresh --rebuild` all reach `rebuild()`; name the sidecar with a `.lock` suffix (or add a `.gitignore` line) so it is ignored in this repo
+
 ## Program Design
 
 ### Types
@@ -127,4 +238,7 @@ _Added by `/ll:confidence-check` on 2026-09-30_
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-10-02T17:30:38 - `6ecc6d6a-67ab-4f16-bac7-1454c735549d.jsonl`
+- `/ll:wire-issue` - 2026-10-02T17:27:57 - `f1065705-d813-48c2-b6b4-f468cf2be46f.jsonl`
+- `/ll:refine-issue` - 2026-10-02T17:18:44 - `17172743-fe56-4b5b-955c-a50b6984c2e7.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:23 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

@@ -15,6 +15,8 @@ relates_to:
 - ENH-3684
 - ENH-3677
 - ENH-3682
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3685: Serve MCP history_search and batch sft-corpus enrich from a remote history store

@@ -19,6 +19,8 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3682: Budget best-effort remote prepatch history reads

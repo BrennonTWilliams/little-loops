@@ -17,6 +17,8 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 18
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3680: Spool context-monitor.sh history writes instead of detached background writes

@@ -16,6 +16,8 @@ relates_to:
 - ENH-3658
 - ENH-3682
 - BUG-3652
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3684: Serve ll-history rework, quality, collisions, sessions, root from a remote history store

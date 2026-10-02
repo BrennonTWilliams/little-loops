@@ -23,6 +23,8 @@ score_complexity: 5
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 0
+parent: EPIC-3693
+epic: EPIC-3693
 ---
 
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
