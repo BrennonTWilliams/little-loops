@@ -4,23 +4,27 @@ type: ENH
 title: Serve ll-history rework, quality, collisions, sessions, root from a remote
   history store
 priority: P4
-status: open
+status: deferred
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T05:20:50Z'
 blocked_by:
-- ENH-3657
+- ENH-3700
 - ENH-3668
 relates_to:
+- EPIC-3693
+- ENH-3657
 - ENH-3677
 - ENH-3658
 - ENH-3682
 - BUG-3652
-parent: EPIC-3693
-epic: EPIC-3693
+deferred_by: human
+deferred_date: '2026-10-02T17:58:39Z'
 ---
 
 # ENH-3684: Serve ll-history rework, quality, collisions, sessions, root from a remote history store
+
+> **Deferred 2026-10-02** (Opus review of EPIC-3693's children): no known remote read demand. Remote read serving is out of scope for EPIC-3693 and was detached from it so the epic branch can close. Revive when demand exists. Until then ENH-3657 documents these rows as "not supported with a remote backend". Now `blocked_by` ENH-3700 (the central guard and read-mode ensure) instead of ENH-3657.
 
 ## Summary
 
@@ -43,7 +47,7 @@ After ENH-3657, these commands refuse cleanly under `history.backend.provider: l
 
 Each serve row enters `strict_reads()` at the CLI boundary, resolves once with `resolve_history_target(None, root=project_root)`, and reports failures through `history_error_verdict()` (one stderr line, non-zero exit, no traceback, no endpoint or token). `ll-history` defines no `--db`, so no local-override flag clause applies to these rows; `LL_HISTORY_DB` still forces local.
 
-A reachable migrated store with zero rows returns an empty result; a local "no such table" and its remote twin (`HranaOperationError` classified as schema mismatch) must give the same user-visible result as the local twin.
+A reachable migrated store with zero rows succeeds with an empty result. Successful remote output matches the local twin. Preserve existing local missing-table/query-error-to-empty behavior; a strict remote query failure instead follows ENH-3668's explicit error contract. Do not promise failure parity or classify every generic SQL error as schema mismatch.
 
 ## Motivation
 
@@ -113,17 +117,17 @@ Wrap each serve row's CLI handler in `strict_reads()`, resolve once at the bound
 - [ ] No serve row creates `.ll/history.db` under remote config or coerces `Path(RemoteTarget)`; `quality --workspace` refuses before `ATTACH`.
 - [ ] Empty migrated, uninitialized, unreachable, and mid-query-failure stores are distinguished in CLI output with the shared exit code and error shape, without exposing secrets.
 - [ ] A stale (behind or ahead) but stamped store is served or reported per ENH-3668's rule; project-id mismatch and 401/403 give a distinct, secret-free message.
-- [ ] Non-serve callers (hooks, digest, `ll-harness`) keep their BUG-3652 quiet-degrade behavior (regression test).
+- [ ] Non-strict callers (hooks, digest and ENH-3700's `ll-harness` serve) retain documented best-effort fallbacks for open and mid-query failure; explicit local overrides retain existing behavior even inside a strict scope.
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ## Related
 
-- ENH-3668 (infra; blocked_by), ENH-3657 (interim verdicts; blocked_by), ENH-3677 (shared fixture), ENH-3685 (MCP `history_search` + SFT `enrich`), ENH-3658, ENH-3682, BUG-3652, FEAT-3535.
+- ENH-3668 and ENH-3700 (infra/seam; blocked_by), ENH-3657 (interim verdicts; transitive prerequisite), ENH-3677 (shared fixture), ENH-3685 (MCP `history_search` + SFT `enrich`), ENH-3658, ENH-3682, BUG-3652, FEAT-3535.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, `docs/reference/API.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`.
 
 ## Status
 
-**Open** | Created: 2026-09-30 | Priority: P4
+**Deferred** | Created: 2026-09-30 | Priority: P4
