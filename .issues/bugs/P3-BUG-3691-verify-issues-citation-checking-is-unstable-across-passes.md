@@ -11,6 +11,8 @@ reconcile_attempted: true
 verify_verdict: DIRECTIVE_DRIFT
 relates_to:
 - ENH-3690
+parent: EPIC-3694
+epic: EPIC-3694
 ---
 
 # BUG-3691: verify-issues citation checking is unstable across passes

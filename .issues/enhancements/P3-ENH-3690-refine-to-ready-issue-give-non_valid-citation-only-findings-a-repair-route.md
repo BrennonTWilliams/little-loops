@@ -11,6 +11,8 @@ captured_at: '2026-10-01T22:03:25Z'
 verify_verdict: NON_VALID
 relates_to:
 - BUG-3691
+parent: EPIC-3694
+epic: EPIC-3694
 ---
 
 # ENH-3690: refine-to-ready-issue: give NON_VALID citation-only findings a repair route

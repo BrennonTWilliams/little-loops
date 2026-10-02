@@ -10,6 +10,8 @@ discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:24:32Z'
 relates_to:
 - BUG-3689
+parent: EPIC-3694
+epic: EPIC-3694
 ---
 
 # ENH-3692: code-run-gate: fail only on test failures new relative to the base SHA (baseline-aware gate)

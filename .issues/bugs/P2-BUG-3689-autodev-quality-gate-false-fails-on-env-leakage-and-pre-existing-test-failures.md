@@ -10,6 +10,8 @@ captured_at: '2026-10-01T21:02:05Z'
 reconcile_attempted: true
 relates_to:
 - ENH-3692
+parent: EPIC-3694
+epic: EPIC-3694
 ---
 
 # BUG-3689: Autodev quality gate false-fails on env leakage and pre-existing test failures
