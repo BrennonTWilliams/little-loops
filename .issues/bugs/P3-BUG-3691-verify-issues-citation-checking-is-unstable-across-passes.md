@@ -198,8 +198,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-10-01 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Scope vs ENH-3690: B8 governs only a path/line/symbol-location finding that `ll-issues format-check` does not back up — it is demoted to an advisory note and does not affect the verdict. Format-check-backed findings feed ENH-3690's repair route; premise-changing non-citation findings stay `NON_VALID` (ENH-3690).
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:00 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:verify-issues` - 2026-10-01T22:38:30 - `481f71a6-8878-4664-a5d1-327d85ef26ef.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-01T22:36:37 - `b3ad147a-1b97-4e9e-9ff4-48d129540768.jsonl`
 - `/ll:verify-issues` - 2026-10-01T22:29:42 - `a49c8713-7686-4a9e-bacf-5deb614f716c.jsonl`

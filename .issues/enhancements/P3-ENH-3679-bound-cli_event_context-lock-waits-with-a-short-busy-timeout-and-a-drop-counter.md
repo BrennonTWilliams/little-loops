@@ -94,6 +94,12 @@ Prior 90/79 scores were cleared: per-step timeout resets and a blocking counter 
 
 **Open** | Created: 2026-09-30 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Ordering vs ENH-3698: ENH-3679 lands before ENH-3698 (ENH-3698 is `blocked_by` this issue). The "after or with ENH-3698" wording is superseded for ENH-3698 — "with" is impossible under the `blocked_by` edge. Sequencing against ENH-3658 is unchanged.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:01 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:59 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

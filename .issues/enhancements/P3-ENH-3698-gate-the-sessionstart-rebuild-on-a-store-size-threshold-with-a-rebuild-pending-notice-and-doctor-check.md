@@ -112,6 +112,16 @@ A multi-GB rebuild from a hook is the incident that motivated ENH-3678. The gate
 
 - ENH-3678 (blocked_by; the gate), ENH-3699 (single-flight lock; deferred), ENH-3679 and ENH-3658 (edit the same `ll-doctor` surfaces; sequence), ENH-3666, FEAT-3561.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Ordering vs ENH-3679: ENH-3679 lands first (matches `blocked_by: ENH-3679`); this issue then rebases onto its `cli/doctor.py` drop-count line and the `ll-doctor` check list/count in `docs/reference/CLI.md`. "Land them in sequence" means ENH-3679 → ENH-3698.
+
 ## Status
 
 **Open** | Created: 2026-10-02 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:01 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`

@@ -535,8 +535,14 @@ _Added by `/ll:confidence-check` on 2026-09-29 (re-scored against the round-robi
 - **Change surface (18/25)**: the `context:` key removals and `winners.md` schema mapping ripple into sinks, docs, and FEAT-3583..3586.
 - **Ambiguity (22/25)**: judge rubric wording and the `reframe`/`diverge` prompt text are still left to the implementer.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Profile data vs FEAT-3667: the four preset JSONs (`artifact`, `visual`, `functional`, `business`) ship in FEAT-3667 with unbuilt knobs off; this issue owns only the state wiring that calls `resolve_profile`. "Ships with the built-in `artifact` profile only" is superseded; brief 2's `mode=functional` merge gate depends on the FEAT-3667 presets.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:03 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:09 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:38:55 - `6ac2993c-0f5a-489a-b5b9-4d778beaf475.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:07:51 - `a043a653-a6de-455c-af91-864f254d2405.jsonl`

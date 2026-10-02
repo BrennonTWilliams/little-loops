@@ -157,7 +157,14 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 
 _Cleared 2026-10-02 after the split into 3657a (this issue) and ENH-3700 (3657b). Prior scores (70/48) no longer apply. Re-run `/ll:confidence-check` once ENH-3677 lands._
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Exit-code wording vs ENH-3700: epilog and CLI.md "Exit codes" edits here cover `ll-ctx-stats` and `ll-history` only. `ll-harness` serves under a remote backend and never exits 1 for it — its wording belongs to ENH-3700.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:04 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:advise` (Opus, EPIC-3693 children review) + split into ENH-3657 / ENH-3700 - 2026-10-02
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:25 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:50 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

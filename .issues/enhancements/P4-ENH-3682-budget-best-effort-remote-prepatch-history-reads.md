@@ -116,6 +116,12 @@ Prior 86/72 scores were cleared: the old plan omitted cumulative cold verificati
 
 **Open** | Created: 2026-09-30 | Priority: P4
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Ordering/policy vs ENH-3657 and ENH-3700: the `_connect_readonly` narrowing/re-raise and read-mode ensure are owned by ENH-3700 (ENH-3657 makes no contract change there) — read "ENH-3657's (narrowed) `_connect_readonly` re-raise" as ENH-3700's; sequence softly, no new `blocked_by`. Best-effort cold verification uses `check_access(write=False)` per ENH-3700, which serves behind/ahead stores and read-only tokens; only foreign or unstamped stores are expected to raise `HistoryUnsupported`.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:04 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:31 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

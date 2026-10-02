@@ -262,8 +262,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-10-01 | Priority: P3
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Scope vs BUG-3691: "stays `NON_VALID`" applies only to premise-changing (non-citation) findings. An unbacked path/line/symbol-location finding is advisory and does not affect the verdict (BUG-3691 B8); format-check-backed citation findings take this issue's repair route. Revision/Acceptance wording saying "anything format-check does not back up stays `NON_VALID`" is superseded by this boundary.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:00 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-01T23:00:29 - `e877bc1c-48ea-4feb-ab39-87fd9cec4ed8.jsonl`
 - `/ll:wire-issue` - 2026-10-01T22:55:34 - `d1b3dc57-235c-4dfc-938b-d540a6f69069.jsonl`
 - `/ll:decide-issue` - 2026-10-01T22:49:22 - `268cb02f-8b6d-4e6b-b489-4d89e8acbc2e.jsonl`

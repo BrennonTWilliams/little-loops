@@ -225,6 +225,16 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture) and ENH-3657 (boundary helper
 
 - ENH-3657 (3657a, refuse boundary; `blocked_by`, lands first), ENH-3677 (shared `remote` fixture; `blocked_by`), ENH-3658 (hazard gate allowlist entry removed here), ENH-3682 (prepatch budget; independent), ENH-3668 (deferred strict-read infra), BUG-3652 (done), FEAT-3535 (remote libSQL backend).
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Exit-code wording vs ENH-3657: this issue owns `ll-harness` exit-code wording (serve; never refuses with exit 1 under a remote backend). ENH-3657's epilog/CLI.md exit notes cover `ll-ctx-stats` and `ll-history` only.
+
 ## Status
 
 **Open** | Created: 2026-10-02 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:05 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`

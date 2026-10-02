@@ -83,6 +83,16 @@ ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`
 - **Risk**: Medium — silent double counting or stale usage if identity or trigger timing is wrong.
 - **Breaking Change**: No CLI option change expected; a previously unverified fallback figure may become explicitly unavailable until stored evidence is current.
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Shared usage seams (`refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, `usage_stop.handle`/`_run_usage_trigger` dispatch, shared tests): the first delivery issue among ENH-3671..ENH-3676 to land a change owns it; later hosts extend through host-keyed dispatch and rebase. The "this issue owns any required extension" line applies only to the first lander. Host-specific adapter work stays in this issue.
+
 ## Status
 
 **Blocked** | Created: 2026-09-30 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-02T19:46:02 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
