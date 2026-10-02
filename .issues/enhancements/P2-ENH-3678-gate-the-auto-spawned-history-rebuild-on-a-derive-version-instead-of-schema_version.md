@@ -11,6 +11,7 @@ blocks:
 - ENH-3666
 - FEAT-3561
 confidence_score: 90
+verify_verdict: DIRECTIVE_DRIFT
 reconcile_attempted: true
 outcome_confidence: 64
 score_complexity: 10
@@ -101,6 +102,15 @@ _Added by `/ll:refine-issue` — 2026-10-02 — based on codebase analysis:_
   - `TestSessionStartRebuild` (`test_hook_session_start.py:366`) uses a real DB and a `_FakePopen` recording argv: fresh DB spawns `--rebuild`, a DB after `session_store.rebuild(db)` does not. The size gate and pending notice are testable by the same harness. `test_remote_hooks.py:76` proves remote stores never get `--rebuild` via a stub lacking `last_rebuild_version`; it must keep passing.
   - Lock/cooldown tests inject time by monkeypatching `backfill_worker.time.time_ns` / `.sleep` with a `_Clock` (usage-refresh throttle tests), and the failure path there leaves the lock file empty.
   - Doc surfaces that still state the `SCHEMA_VERSION > last_rebuild_version` trigger: `docs/ARCHITECTURE.md` (~`:772`), `docs/reference/API.md`, the `backfill_worker` module docstring, and the static `_USAGE` banner in `hooks/__init__.py` (new hook intents only; not test-enforced).
+
+_Added by `/ll:refine-issue` — 2026-10-02 — based on codebase analysis:_
+
+- **Bump-rule guard — a hash-pin precedent does exist (gap-analysis pass, 2026-10-02; refines the "no convention exists" note above):** the codebase pins a *hash of a guarded constant* beside a pinned version literal in two separate assertions, each naming the identifiers to edit and saying to change them "in the same commit" — evidence: `TestAllowlistVersionLockstep` (`scripts/tests/test_feat3304_artifact_dashboard.py:704`, `PINNED_HASH` at `:712`) guarding `_SHAREABLE_COLUMNS` / `_SHAREABLE_ALLOWLIST_VERSION` in `session_store/queries.py`. It hashes a `repr` of *data*, not function source, so source-text hashing of the `_backfill_*` family remains precedent-free; the failure-message convention (two asserts: "version changed, pins stale" vs "content changed, version not bumped") transfers either way. The checked-in-snapshot shape (`TestSchemaManifest`) is the second precedent and carries its regeneration command in the docstring.
+- **Contested: bump rules are usually comment-only.** `_USAGE_DERIVE_VERSION` (`lifecycle.py:1037`), `pii.CREDENTIAL_SCANNER_VERSION`, and `VERIFIER_COMPAT_VERSION` (`cli/verify_evidence.py`) carry a "Bump when …" comment and no failing test; only the allowlist version is test-enforced. Annotation convention: a comment block directly above the constant opening with "Bump when …" and stating the effect of a mismatch (`lifecycle.py` ~`:1035`, `queries.py` above `_SHAREABLE_COLUMNS`). Type annotation on such constants is inconsistent (`: int` present on two, absent on `_USAGE_DERIVE_VERSION`/`SCHEMA_VERSION`).
+- **Pending/stale state is exposed as a three-valued status with a reason code, never a bare bool, in the nearest precedent** — `usage_source_freshness` (`lifecycle.py`) returns `fresh`/`stale`/`unknown` plus a `reason`, maps any read failure to `unknown`, and compares a meta value against a module constant with `!=`. Counter-examples return bool (`learning_tests/gate.py:is_record_stale`, paired with a separate `describe_staleness` string describer). `RefreshResult.needs_rebuild` (`session_store/usage_refresh.py`) documents that no durable rebuild-pending state is stored — pending is derived on demand, which is the same property the issue's hook/doctor "rebuild pending" notice has. The issue's `rebuild_needed() -> bool` signature therefore sits on the minority side of this convention; the hook and doctor both need to distinguish "stale by derive version" from "pending by size gate", which a bare bool cannot carry.
+- **Size measurement has no shared helper and no `-wal` precedent.** Each site inlines `db_path.stat().st_size` behind an `exists()` guard on the main DB file only (retention gate `lifecycle.py` ~`:1904`; `recompress()` ~`:958`/`:993`). Units disagree: the retention gate divides by `1024 * 1024`, `recompress` by `1_000_000`. The only existing history-DB size threshold is the config-driven `RetentionConfig.min_db_size_mb: int = 800` (`config/features.py:1519`, default repeated in `from_dict` `:1527`), used solely by the prune gate — unrelated to, and distinct from, the issue's 1 GB module constant; "1 GB" needs a stated unit (GiB vs 10^9 bytes) and a stated decision on whether `-wal` bytes count, since a store mid-write can have a large uncheckpointed WAL.
+- **Comparison-site audit:** the hook's inline compare (`hooks/session_start.py:213`, reading `last_rebuild_version` at `:208-212`) is the only reader of `last_rebuild_version` outside tests, so the gate swap is a one-site change. Other `SCHEMA_VERSION` comparisons are not rebuild gating and must stay untouched: `issue_history/workspace_quality.py` (`schema_skew`), `cli/artifact/dashboard.py` (source-version warning), `cli/session.py:_main_migrate`, `cli/doctor.py:_schema_drift_data`. Additional stale-wording site beyond the Wiring lists: the `also_rebuild` docstrings of `backfill_incremental` (`lifecycle.py` ~`:1708`) and `backfill` (~`:1626`) state the old trigger.
+- **Ordering fact for FEAT-3561:** `SCHEMA_VERSION == 58` is hard-coded as a literal in ~34 assertions (`test_session_store_schema.py` ×28, `test_session_store_writers.py` ×5, `test_assistant_messages.py` ×1), with no shared constant; FEAT-3561's bump to 59 will touch all of them independent of this issue, and many carry stale names (e.g. `test_schema_version_is_seven`). Not this issue's scope, but a `rebuild_needed` migration test parameterized over 57–60 must set the version through `meta` rather than rely on `SCHEMA_VERSION`.
 
 ### Files to Modify (wiring additions)
 
@@ -238,6 +248,9 @@ _Added by `/ll:confidence-check` on 2026-09-30_
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-10-02T17:39:34 - `c4987968-ecb7-44fe-a16e-56254b7c993f.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-10-02T17:37:27 - `9416e528-98f1-4f80-9820-ac6e5fed4e1c.jsonl`
+- `/ll:verify-issues` - 2026-10-02T17:32:28 - `b0f899a2-5d6e-4053-9fcb-6bd7647cde0c.jsonl`
 - `/ll:reconcile-issue` - 2026-10-02T17:30:38 - `6ecc6d6a-67ab-4f16-bac7-1454c735549d.jsonl`
 - `/ll:wire-issue` - 2026-10-02T17:27:57 - `f1065705-d813-48c2-b6b4-f468cf2be46f.jsonl`
 - `/ll:refine-issue` - 2026-10-02T17:18:44 - `17172743-fe56-4b5b-955c-a50b6984c2e7.jsonl`
