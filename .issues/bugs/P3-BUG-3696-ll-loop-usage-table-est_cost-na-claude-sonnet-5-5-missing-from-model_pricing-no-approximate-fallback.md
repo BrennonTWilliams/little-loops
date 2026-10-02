@@ -9,6 +9,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:46:30Z'
 parent: EPIC-3562
+confidence_score: 90
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # BUG-3696: ll-loop usage table est_cost n/a: claude-sonnet-5-5 missing from MODEL_PRICING, no approximate fallback
@@ -57,7 +63,21 @@ Every run on a newly released model silently loses cost visibility: the usage ta
 - `docs/reference/API.md` - pricing / cost-report notes if the JSON shape gains a field
 
 ### Tests
+
 - `scripts/tests/` pricing and `cost_graph` tests; new price-coverage test
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_pricing.py:20` — add `claude-sonnet-5-5` to `LIVE_RATES` in `TestLiveRates` (certain break otherwise: `test_every_model_pinned`); `test_rates_match_live_table` / `test_batch_halves_each_rate` then cover it automatically; optionally add it to `TestModelPricing.test_known_models_present`, and `test_output_more_expensive_than_input` iterates all of `MODEL_PRICING` so the new rate must satisfy output > input [Agent 3 finding]
+- `scripts/tests/test_pricing.py` — new `TestEstimateCostUsdApprox` class: exact hit → `approximate=False`; `claude-sonnet-5-5-<suffix>`/dated ID → longest prefix, `approximate=True`; longest prefix beats shorter (use `monkeypatch.setitem(MODEL_PRICING, ...)`); `"unknown-model-xyz"`, `"unknown"`, `""` → `None`; a `None` token component → `None`; `is_batch`/`as_of` pass-through [Agent 3 finding]
+- `scripts/tests/test_pricing.py:106` — price-coverage test shaped like `test_every_model_pinned` and `test_host_runner_dispatch.py::TestModelAliasResolution::test_every_alias_target_is_ranked_and_priced`; pin an explicit set (`MODEL_ALIASES` values / `MODEL_RANKS["claude-code"]` / `MODEL_CONTEXT_WINDOW`), since "every ID the harness can emit" is unbounded [Agent 3 finding]
+- `scripts/tests/test_fsm_cost_graph.py:103` — `TestPerStateCost.test_to_dict_exact_keys` (exact 8-key equality) breaks only if `approximate` is always emitted; emit it only when True. Also add `test_table_row_approximate_marker` (`~$`, no `n/a`), a `test_defaults` assertion `approximate is False`, and `TestCostReport` cases: family-fallback row sets `approximate` with `has_unknown_model` False; exact + approximate mix; approximate + unknown mix → unknown wins, `cost_usd` None; `_compute_totals` aggregation; `write_json` → `read_json` round trip [Agent 3 finding]
+- `scripts/tests/test_fsm_cost_graph.py` — shared `fixture_jsonl` uses `claude-sonnet-4-5` (no `MODEL_PRICING` entry, no `claude-sonnet-4` family key); assertions check tokens/keys only so no break expected, but a truly unrecognised-family case needs its own fixture; same for `test_cli_cost_table.py` `fixture_jsonl` [Agent 3 finding]
+- `scripts/tests/test_usage_reporter.py:91` — `TestPrintUsageSummary.test_na_shown_for_unknown_model` (model `"unknown"`, no prefix match, `n/a` persists) and `test_cost_estimate_shown_for_known_model` (`"$" in out`, still true for `~$`); add a `claude-sonnet-5-5` row asserting `~$` and no `n/a` — the closest end-to-end table test [Agent 3 finding]
+- `scripts/tests/test_enh3538_token_observations.py:407` — `TestCostGraphRoundTrip.test_complete_json_has_no_missing_keys_and_legacy_numeric_reads` is the absence-when-default template for `approximate`; `test_incomplete_state_is_unpriced_and_survives_json_round_trip` requires the approx function to still return `None` for a `None` token component [Agent 3 finding]
+- `scripts/tests/test_cost_ceiling_enforcement.py:226` — `TestCostCeilingUnknownCases.test_unpriceable_model_does_not_abort` uses `"totally-unpriced-model-xyz"` (no `claude-` prefix, safe); add a ceiling-with-approximate-model case under `TestCostCeilingBreachAborts` once the executor decision is made [Agent 3 finding]
+- `scripts/tests/test_tier0_traces.py:140` — asserts locked per-state keys and `has_unknown_model is False` against static fixtures; unaffected by conditional emission [Agent 3 finding]
+- `scripts/tests/test_wiring_reference_docs.py:218` — pins the `## little_loops.pricing` heading in `docs/reference/API.md` (ENH-3067); optionally add a `("docs/reference/API.md", "estimate_cost_usd_approx", "BUG-3696")` tuple [Agent 1 finding]
+- `scripts/tests/test_pricing.py:364` — `TestEventDatePricingCallSites.test_cost_graph_prices_by_row_timestamp` drives `from_usage_jsonl` and asserts costs only; verify it still passes after the call-site swap [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -130,20 +150,6 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_GUIDE.md:228` — "unknown cost is never treated as under budget" in `Per-State Cost Ceiling` [Agent 2 finding]
 - `CHANGELOG.md` — entry belongs in a concrete release section at release prep, not `[Unreleased]` [Agent 1 finding]
 
-### Tests
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_pricing.py:20` — add `claude-sonnet-5-5` to `LIVE_RATES` in `TestLiveRates` (certain break otherwise: `test_every_model_pinned`); `test_rates_match_live_table` / `test_batch_halves_each_rate` then cover it automatically; optionally add it to `TestModelPricing.test_known_models_present`, and `test_output_more_expensive_than_input` iterates all of `MODEL_PRICING` so the new rate must satisfy output > input [Agent 3 finding]
-- `scripts/tests/test_pricing.py` — new `TestEstimateCostUsdApprox` class: exact hit → `approximate=False`; `claude-sonnet-5-5-<suffix>`/dated ID → longest prefix, `approximate=True`; longest prefix beats shorter (use `monkeypatch.setitem(MODEL_PRICING, ...)`); `"unknown-model-xyz"`, `"unknown"`, `""` → `None`; a `None` token component → `None`; `is_batch`/`as_of` pass-through [Agent 3 finding]
-- `scripts/tests/test_pricing.py:106` — price-coverage test shaped like `test_every_model_pinned` and `test_host_runner_dispatch.py::TestModelAliasResolution::test_every_alias_target_is_ranked_and_priced`; pin an explicit set (`MODEL_ALIASES` values / `MODEL_RANKS["claude-code"]` / `MODEL_CONTEXT_WINDOW`), since "every ID the harness can emit" is unbounded [Agent 3 finding]
-- `scripts/tests/test_fsm_cost_graph.py:103` — `TestPerStateCost.test_to_dict_exact_keys` (exact 8-key equality) breaks only if `approximate` is always emitted; emit it only when True. Also add `test_table_row_approximate_marker` (`~$`, no `n/a`), a `test_defaults` assertion `approximate is False`, and `TestCostReport` cases: family-fallback row sets `approximate` with `has_unknown_model` False; exact + approximate mix; approximate + unknown mix → unknown wins, `cost_usd` None; `_compute_totals` aggregation; `write_json` → `read_json` round trip [Agent 3 finding]
-- `scripts/tests/test_fsm_cost_graph.py` — shared `fixture_jsonl` uses `claude-sonnet-4-5` (no `MODEL_PRICING` entry, no `claude-sonnet-4` family key); assertions check tokens/keys only so no break expected, but a truly unrecognised-family case needs its own fixture; same for `test_cli_cost_table.py` `fixture_jsonl` [Agent 3 finding]
-- `scripts/tests/test_usage_reporter.py:91` — `TestPrintUsageSummary.test_na_shown_for_unknown_model` (model `"unknown"`, no prefix match, `n/a` persists) and `test_cost_estimate_shown_for_known_model` (`"$" in out`, still true for `~$`); add a `claude-sonnet-5-5` row asserting `~$` and no `n/a` — the closest end-to-end table test [Agent 3 finding]
-- `scripts/tests/test_enh3538_token_observations.py:407` — `TestCostGraphRoundTrip.test_complete_json_has_no_missing_keys_and_legacy_numeric_reads` is the absence-when-default template for `approximate`; `test_incomplete_state_is_unpriced_and_survives_json_round_trip` requires the approx function to still return `None` for a `None` token component [Agent 3 finding]
-- `scripts/tests/test_cost_ceiling_enforcement.py:226` — `TestCostCeilingUnknownCases.test_unpriceable_model_does_not_abort` uses `"totally-unpriced-model-xyz"` (no `claude-` prefix, safe); add a ceiling-with-approximate-model case under `TestCostCeilingBreachAborts` once the executor decision is made [Agent 3 finding]
-- `scripts/tests/test_tier0_traces.py:140` — asserts locked per-state keys and `has_unknown_model is False` against static fixtures; unaffected by conditional emission [Agent 3 finding]
-- `scripts/tests/test_wiring_reference_docs.py:218` — pins the `## little_loops.pricing` heading in `docs/reference/API.md` (ENH-3067); optionally add a `("docs/reference/API.md", "estimate_cost_usd_approx", "BUG-3696")` tuple [Agent 1 finding]
-- `scripts/tests/test_pricing.py:364` — `TestEventDatePricingCallSites.test_cost_graph_prices_by_row_timestamp` drives `from_usage_jsonl` and asserts costs only; verify it still passes after the call-site swap [Agent 3 finding]
-
 ## Program Design
 
 ### Types
@@ -205,6 +211,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-02T19:45:19 - `9a15ba2c-4c77-475b-8d6d-2e5aa8b1186f.jsonl`
 - `/ll:wire-issue` - 2026-10-02T19:42:58 - `4830feb2-90ba-4747-9939-6d60a5df22df.jsonl`
 - `/ll:refine-issue` - 2026-10-02T19:40:25 - `3112767e-a69b-4d0d-ad44-28f11d927193.jsonl`
 - `/ll:refine-issue` - 2026-10-02T18:00:09 - `211b3968-8e30-4656-bda0-11230a163531.jsonl`
