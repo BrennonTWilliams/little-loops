@@ -1,0 +1,12 @@
+{
+  "id": "8780671e-dfa4-4075-8ece-c9d7865ea0fb",
+  "type": "decision",
+  "timestamp": "2026-10-01T22:48:46Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Smallest change; reuses existing VERIFY:CLAIMS_OUTDATED route/counter/correct_claims cycle; A and C need the same verify-issues.md change plus new classifier/route infrastructure",
+  "rule": "Option B: relax verify-issues.md \u00a72C/\u00a74 so path/symbol-location fixes in premise sections are CLAIMS_OUTDATED",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (verify_evidence discriminator on VERIFY:other); Option C (VERIFY:other skips refine_followup)",
+  "issue": "ENH-3690"
+}
