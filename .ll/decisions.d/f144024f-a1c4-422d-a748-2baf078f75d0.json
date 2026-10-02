@@ -1,0 +1,12 @@
+{
+  "id": "e2df257e-fc58-463c-b937-8daabef6ba36",
+  "type": "decision",
+  "timestamp": "2026-10-02T20:01:45Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses verify-issues --from-evidence flag shape and ENH-2937 carve-out test pattern; Option B still needs an AC-writing command so it reduces to A plus a counter, max_steps bump and 3 pin updates.",
+  "rule": "Option A: caller-flag-gated reconcile-issue carve-out (--from-verify-evidence)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: dedicated add_missing_acs repair state with own counter",
+  "issue": "BUG-3695"
+}

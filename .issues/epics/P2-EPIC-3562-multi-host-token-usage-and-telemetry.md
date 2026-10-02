@@ -111,6 +111,10 @@ Before closing the epic, replace each owner entry with an evidence-backed verdic
 
 Standalone **ENH-3649** (reader isolation and diagnostics) is done and remains outside this epic's child count.
 - **BUG-3696** — ll-loop usage table est_cost n/a: claude-sonnet-5-5 missing from MODEL_PRICING, no approximate fallback (open)
+- **BUG-3701** — Stale model tables: MODEL_ALIASES sonnet and MODEL_RANKS lack claude-sonnet-5-5 (open)
+- **ENH-3703** — Optional family-prefix pricing fallback with approximate cost flag (open)
+
+
 
 
 ## Implementation Order and Readiness

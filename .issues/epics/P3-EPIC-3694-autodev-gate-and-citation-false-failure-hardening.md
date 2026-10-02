@@ -26,6 +26,8 @@ Recommended order (reviewed 2026-10-02 with an Opus second opinion): **BUG-3689 
 4. **ENH-3690** — refine-to-ready-issue: NON_VALID citation-only findings get a repair route (open, P3) — `blocked_by: BUG-3691`; Option B revised to gate on deterministic format-check keys
 5. **BUG-3695** — refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria (open, P3) — independent sibling of ENH-3690 (same "verdict has no working remedy" class); not part of this review round
 - ~~**ENH-3692**~~ — baseline-aware code-run-gate (**cancelled**, won't-do): the two motivating "pre-existing" failures pass on a clean `main` and only went red from uncommitted `.issues/` working-tree state, so the mechanism could not have rescued them and carried High masking risk; superseded by ENH-3697.
+- **BUG-3702** — refine_followup evidence-delta snapshot vanishes from shared scratch dir mid-state (open)
+
 
 ## Acceptance Criteria
 

@@ -21,7 +21,9 @@ score_change_surface: 18
 
 ## Summary
 
-The `ll-loop run` usage table shows `est_cost` as `n/a` for every state because the run's model, `claude-sonnet-5-5`, has no entry in `MODEL_PRICING`. The tool should estimate at API list prices regardless of how the user is billed (subscription or API key), and an unrecognized model ID should degrade to a flagged estimate rather than blanking the column.
+The `ll-loop run` usage table shows `est_cost` as `n/a` for every state because the run's model, `claude-sonnet-5-5`, has no entry in `MODEL_PRICING`. The tool should estimate at API list prices regardless of how the user is billed (subscription or API key), and an unpriced model ID should be named in the table output instead of silently blanking the column.
+
+> **Scope revision (advisor review, 2026-10-02):** the originally proposed family-prefix fallback (`approximate` flag, `~$` rendering) was dropped. Minor versions within a family are priced differently (`claude-opus-5-5` input $4 vs `claude-opus-5` $5; `claude-fable-5-1` cache read $0.25 vs `claude-fable-5` $1.00), and loop runs are mostly cache tokens, so an "approximate" figure can be 20–75% off. The fix is the exact price entry plus an unpriced-model footer. The fallback is tracked separately as an optional enhancement (see Related below).
 
 ## Current Behavior
 
@@ -42,25 +44,29 @@ Run `refine-to-ready-issue-20261002T111524` (model `claude-sonnet-5-5`, as recor
 
 - `claude-sonnet-5-5` is priced at its published API rate.
 - Cost is shown even when the host is on a subscription: this is an API-price estimate, not a billed amount.
-- A model ID absent from the table falls back to the closest known family (longest-prefix match, e.g. `claude-sonnet-5-5` -> `claude-sonnet-5`) and the table marks the figure as approximate (e.g. `~$0.1234`), rather than `n/a`.
+- When a state's cost is `n/a` because a model ID is absent from `MODEL_PRICING`, the usage table ends with a footer naming each unpriced model ID and where to add it (e.g. `unpriced: claude-sonnet-5-5 — add to little_loops.pricing.MODEL_PRICING`). No cost figure is invented for an unknown model.
 
 ## Motivation
 
-Every run on a newly released model silently loses cost visibility: the usage table shows `n/a` per state, the run-wide total is blanked, and `usage_events` accumulates null `cost_usd` rows that degrade history-based cost analysis. A single unpriced model ID blanks the whole column, so a missing table entry should degrade to a flagged estimate and a test should catch the gap before a release ships it.
+Every run on a newly released model silently loses cost visibility: the usage table shows `n/a` per state, the run-wide total is blanked, and `usage_events` accumulates null `cost_usd` rows that degrade history-based cost analysis. A single unpriced model ID blanks the whole column, so the table should say which model is missing and a test should catch gaps in the model tables the repo controls.
 
 ## Proposed Solution
 
-1. Add `claude-sonnet-5-5` to `MODEL_PRICING` using the current published rate (confirm against the Anthropic pricing page; do not copy `claude-sonnet-5`'s rate by assumption, since `claude-opus-5-5` and `claude-fable-5-1` differ from their predecessors).
-2. Add a family-prefix fallback in `estimate_cost_usd` (or a sibling helper) that returns an estimate plus an `approximate` flag; thread the flag through `PerStateCost` / `CostReport.to_dict` and render a `~` prefix in `table_row`. Keep the stable-JSON shape change additive.
-3. Add a test that fails when a model ID the harness can emit (`claude-<family>-<major>[-<minor>]` from the host runner's model map) has no price entry, so a new model cannot silently regress to `n/a`.
-4. Verify `ll-history quality`'s cost-coverage gate treats approximate rows distinctly from exact ones.
+1. Add `claude-sonnet-5-5` to `MODEL_PRICING`. Advisor review read the rate from the `claude-api` skill's pricing table (cached 2026-09-25) as **$2 input / $10 output / $0.20 cache read — identical to `claude-sonnet-5`**; cache creation follows the repo's 1.25× convention ($2.50), which that table does not list. **Confirm against the live Anthropic pricing page before merging** — the rate cannot be derived from the repo. Since the rate is identical, follow the `_HAIKU_4_5` pattern: a shared `_SONNET_5` dict used by both `claude-sonnet-5` and `claude-sonnet-5-5`, plus an identity test (like `test_haiku_ids_share_one_rate_dict`). If the confirmed rate differs, use a literal dict instead.
+2. Make `n/a` explain itself: track the model IDs whose pricing lookup returned `None` (only lookup failures — not rows that are `None` because a token component was incomplete) in `CostReport.from_usage_jsonl`, and have `CostReport.table()` append the unpriced-model footer when any exist. Keep the stable-JSON shape unchanged (the footer data is Python-API-only, like `has_unknown_model`); `table()` output is unchanged when every model is priced.
+3. Add a price-coverage test pinning an explicit, checkable set: `MODEL_ALIASES` values ∪ `MODEL_RANKS["claude-code"]` ∪ `MODEL_CONTEXT_WINDOW` keys ⊆ `MODEL_PRICING`. State plainly in the test docstring that this set would not have caught this bug, because `claude-sonnet-5-5` appears in none of those tables (it is reported only by the host in `usage.jsonl`).
+4. Note in `pricing.py`'s docstring (and `docs/reference/CLI.md`) that already-written null `cost_usd` rows in `usage_events` are not back-filled; `ll-history quality` semantics are unchanged because the fallback is not introduced.
+5. Fix the stale `docs/reference/CLI.md` text (~L1022 `~$X.XXX (model unknown)`, ~L1057 `cost_usd` of `0.0`) to match the real `n/a` / `null` behavior.
 
 ## Integration Map
 
+> **Scope revision (2026-10-02):** the prefix fallback / `approximate` flag was dropped from this issue. Every wiring and research note below that mentions `approximate`, `estimate_cost_usd_approx`, `~$`, `read_json` round-tripping the flag, the `_check_cost_ceiling` decision, `session_store/writers.py` call sites, `to_dict` conditional emission, or `ll-history quality` distinguishing rows is **deferred to the follow-up fallback enhancement** and is NOT in scope here. Still in scope: the `claude-sonnet-5-5` price entry (`pricing.py`, `LIVE_RATES`, identity test, docstring), the unpriced-model footer in `cost_graph.py`, the price-coverage test, `test_usage_reporter.py` end-to-end table test, and the stale `docs/reference/CLI.md` fixes. `_check_cost_ceiling` is unaffected (an unpriced model stays `cost_ceiling_unknown`).
+
 ### Files to Modify
-- `scripts/little_loops/pricing.py` - `MODEL_PRICING`, `estimate_cost_usd`
-- `scripts/little_loops/fsm/cost_graph.py` - `PerStateCost`, `table_row`, `from_usage_jsonl`, `_compute_totals`
-- `docs/reference/API.md` - pricing / cost-report notes if the JSON shape gains a field
+- `scripts/little_loops/pricing.py` - `MODEL_PRICING` (shared `_SONNET_5` dict), module docstring
+- `scripts/little_loops/fsm/cost_graph.py` - `CostReport.from_usage_jsonl` (track unpriced model IDs), `CostReport.table` (footer)
+- `docs/reference/CLI.md` - stale `est_cost` / `cost_usd` text (~L1022, ~L1057), unpriced-model footer note
+- `docs/reference/API.md` - `MODEL_PRICING` description (~L12627) if it enumerates models
 
 ### Tests
 
@@ -154,38 +160,41 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `PerStateCost.approximate: bool = False` — new additive field; True when any contributing row was priced via family-prefix fallback
+- `CostReport.unpriced_models: list[str]` — new Python-API-only field (default empty, sorted, de-duplicated); model IDs whose `estimate_cost_usd` lookup returned `None` while every token component was present. Not emitted by `to_dict`, so the stable-JSON shape is unchanged.
+- `_SONNET_5: dict[str, float]` — shared rate dict for `claude-sonnet-5` and `claude-sonnet-5-5` (module-level in `pricing.py`, like `_HAIKU_4_5`).
 
 ### Signatures
 
-- `estimate_cost_usd(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> float | None` — existing; exact-match behavior unchanged
-- `estimate_cost_usd_approx(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> tuple[float, bool] | None` — new sibling; exact match first, then longest-prefix family match against `MODEL_PRICING`; the bool is the `approximate` flag
-- `PerStateCost.table_row(self) -> str` — existing; renders `~$X.XXXX` when `approximate`, `n/a` only for an unrecognized family
+- `estimate_cost_usd(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> float | None` — existing; unchanged (exact-key lookup; unknown model → `None`)
+- `CostReport.table(self) -> str` — existing; appends a final `unpriced: <ids> — add to little_loops.pricing.MODEL_PRICING` line only when `unpriced_models` is non-empty; otherwise byte-identical to today
+- `CostReport.from_usage_jsonl(cls, path: Path) -> CostReport` — existing; additionally records unpriced model IDs
 
 ### Call Path
 
-`CostReport.from_usage_jsonl` -> `estimate_cost_usd_approx` -> `estimate_cost_usd` — per-row pricing, flag aggregated per state.
+`CostReport.from_usage_jsonl` -> `estimate_cost_usd` — per-row pricing; a `None` result with complete tokens records the model in `unpriced_models`.
 
-`CostReport.from_usage_jsonl` -> `PerStateCost.table_row` — rendering of the approximate marker.
+`CostReport.table` -> `CostReport.from_usage_jsonl` result's `unpriced_models` — footer rendering (via `_print_usage_summary` in `cli/loop/summary.py`).
 
 ## Implementation Steps
 
-1. Add `claude-sonnet-5-5` to `MODEL_PRICING` at the confirmed published rate.
-2. Add the family-prefix fallback with an `approximate` flag; thread it through `PerStateCost` and `CostReport.to_dict` additively, and render the `~` prefix in `table_row`.
-3. Add a test that fails when a harness-emittable model ID has no price entry.
-4. Verify `ll-history quality`'s cost-coverage gate distinguishes approximate from exact rows; update `docs/reference/API.md` if the JSON shape gains a field.
+1. Confirm the `claude-sonnet-5-5` rate against the live Anthropic pricing page; add it to `MODEL_PRICING` via a shared `_SONNET_5` dict (literal dict if the rate differs), add it to `LIVE_RATES` in the same change, and add the identity test and a BUG-3696 `pricing.py` docstring note.
+2. In `cost_graph.py`, track unpriced model IDs in `from_usage_jsonl` (lookup failures only, not incomplete-token rows) and render the footer in `CostReport.table()`; leave `to_dict`/`read_json`/`_compute_totals` unchanged.
+3. Add the pinned-set price-coverage test (`MODEL_ALIASES` values ∪ `MODEL_RANKS["claude-code"]` ∪ `MODEL_CONTEXT_WINDOW` keys ⊆ `MODEL_PRICING`) with a docstring stating it would not have caught this bug.
+4. Fix the stale `docs/reference/CLI.md` `est_cost` / `cost_usd` text and document the footer; note that already-written null `usage_events.cost_usd` rows are not back-filled.
 5. Run `python -m pytest scripts/tests/` and re-render the ENH-3678 `usage.jsonl` table to confirm no `n/a`.
 
-### Wiring Phase (added by `/ll:wire-issue`)
+### Wiring Phase (added by `/ll:wire-issue`, narrowed by scope revision)
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+_Touchpoints that remain in scope:_
 
-- Update `scripts/tests/test_pricing.py` — add `claude-sonnet-5-5` to `LIVE_RATES` in the same change as the `MODEL_PRICING` entry; add `TestEstimateCostUsdApprox` and the price-coverage test (state which model set it pins)
-- Update `scripts/little_loops/fsm/cost_graph.py` — import `estimate_cost_usd_approx`, swap the call in `CostReport.from_usage_jsonl`, add `approximate` to `PerStateCost`/`_compute_totals`, emit in `to_dict` only when True, and read it back in `CostReport.read_json`
-- Decide `scripts/little_loops/fsm/executor.py` `_check_cost_ceiling` behavior for approximate states (enforce against fallback figure, or treat as unknown) and add a `test_cost_ceiling_enforcement.py` case for the chosen behavior
-- Update `scripts/tests/test_fsm_cost_graph.py` and `scripts/tests/test_usage_reporter.py` — approximate-marker, mixed-row, round-trip, and `claude-sonnet-5-5` table tests; keep `test_to_dict_exact_keys` passing by conditional emission
-- Update `docs/reference/CLI.md` (L1022, L1057, example block), `docs/reference/API.md` (`## little_loops.pricing`), and the `ll-history quality` coverage note (`CLI.md:3722`, `HISTORY_SESSION_GUIDE.md:505`) if ingest stays exact-only
-- Update `pricing.py` module docstring with the BUG-3696 note; confirm the `claude-sonnet-5-5` rate externally (not derivable from the repo)
+- Update `scripts/tests/test_pricing.py` — add `claude-sonnet-5-5` to `LIVE_RATES` (same change as the `MODEL_PRICING` entry), the `_SONNET_5` identity test, and the pinned-set price-coverage test
+- Update `scripts/little_loops/fsm/cost_graph.py` — `unpriced_models` tracking in `from_usage_jsonl` and the footer in `table()`
+- Update `scripts/tests/test_fsm_cost_graph.py` — footer present for an unpriced model, absent when all priced, absent when `None` cost comes only from an incomplete token component, `to_dict` keys unchanged (`test_to_dict_exact_keys` keeps passing), `table()` byte-identical for all-priced data
+- Update `scripts/tests/test_usage_reporter.py` — a `claude-sonnet-5-5` row renders `$` and no `n/a`; `test_na_shown_for_unknown_model` still passes and now also asserts the footer
+- Update `docs/reference/CLI.md` (L1022, L1057, example block, L3722 null-row note) and `docs/reference/API.md` (`## little_loops.pricing` — keep the heading, pinned by `test_wiring_reference_docs.py:218`)
+- Confirm the `claude-sonnet-5-5` rate externally (not derivable from the repo)
+
+_Deferred to the follow-up fallback enhancement:_ `estimate_cost_usd_approx`, `PerStateCost.approximate`, `read_json` round-trip, `_check_cost_ceiling` decision, `session_store/writers.py` switch, `ll-history quality` row distinction.
 
 ## Impact
 
@@ -195,11 +204,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `estimate_cost_usd("claude-sonnet-5-5", ...)` returns a float at the published rate
-- [ ] A model ID with no table entry but a known family prefix yields an approximate estimate, not `None`
-- [ ] `ll-loop run` usage table shows `$X.XXXX` (or `~$X.XXXX` when approximate) for the ENH-3678 `usage.jsonl`; no `n/a` for a known family
-- [ ] A test fails if a model ID emitted by the harness lacks a price entry
+- [ ] `estimate_cost_usd("claude-sonnet-5-5", ...)` returns a float at the live-confirmed published rate, and `claude-sonnet-5` / `claude-sonnet-5-5` share one rate dict when the rates are identical (identity test)
+- [ ] `ll-loop run` usage table shows `$X.XXXX` with no `n/a` for the ENH-3678 `usage.jsonl`
+- [ ] A state whose cost is `n/a` because a model is absent from `MODEL_PRICING` produces a table footer naming each unpriced model ID; the footer is absent when all models are priced or when `None` cost comes only from incomplete token components; `CostReport.to_dict` keys are unchanged
+- [ ] A test fails if any `MODEL_ALIASES` target, `MODEL_RANKS["claude-code"]` entry, or `MODEL_CONTEXT_WINDOW` key lacks a `MODEL_PRICING` entry (docstring states this set would not have caught BUG-3696)
+- [ ] `docs/reference/CLI.md` `est_cost` / `cost_usd` text matches actual `n/a` / `null` behavior
 - [ ] `python -m pytest scripts/tests/` exits 0
+
+## Related
+
+- ENH-3703 — optional family-prefix pricing fallback with an `approximate` flag (deferred from this issue)
+- BUG-3701 — stale `MODEL_ALIASES['sonnet']` / `MODEL_RANKS` missing `claude-sonnet-5-5` (split out; not a pricing concern)
 
 ## Related Key Documentation
 
