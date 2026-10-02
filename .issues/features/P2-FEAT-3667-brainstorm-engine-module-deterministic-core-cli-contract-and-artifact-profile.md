@@ -15,12 +15,6 @@ blocks:
 - FEAT-3582
 - FEAT-3583
 - FEAT-3596
-confidence_score: 94
-outcome_confidence: 82
-score_complexity: 16
-score_test_coverage: 20
-score_ambiguity: 22
-score_change_surface: 24
 relates_to:
 - FEAT-3686
 ---
@@ -40,7 +34,7 @@ _Split from FEAT-3582 on 2026-09-29 (EPIC-3581 pre-implementation review, `/ll:a
 ## Expected Behavior
 
 - `little_loops.brainstorm_engine` exposes every function in FEAT-3582 § Program Design and the CLI commands below, invoked as `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine <cmd> --run-dir DIR ...` (`LL_PYTHON` is exported as `sys.executable` by `fsm/runners.py`, so the idiom is robust in consuming projects).
-- Includes `render-report`, `prompt-block`, `resolve-profile` and the built-in `artifact` profile JSON (with a `lenses` catalog) (`scripts/little_loops/loops/brainstorm-profiles/artifact.json`) so the loop rewrite and FEAT-3583 never re-touch these.
+- Includes `render-report`, `prompt-block`, `resolve-profile` and all four built-in preset JSONs (`artifact`, `visual`, `functional`, `business`, each with a `lenses` catalog and per-bin axis definitions; unbuilt knobs off) under `scripts/little_loops/loops/brainstorm-profiles/`, so the loop rewrite and FEAT-3583 never re-touch these.
 - Everything is unit-tested by direct import, test-first; nothing here depends on the FSM executor.
 - Landing this issue changes no user-visible behavior (the module is unused until FEAT-3582), so it is safe to merge to `main` on its own.
 
@@ -58,7 +52,7 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 |---|---|---|---|---|
 | `resolve-profile` | `--mode M` `--set key=value`… (empty = inherit) `--decision-file F` (optional classifier output) | `brainstorm-profiles/*.json` | `profile.json` (incl. `overridden`, clamped `max_finalists`) | the `Mode: <x> (…)` banner line (informational, not routed); **exit 1 before any LLM call** when a mode or knob value is invalid **or names a capability not yet built** (see § Capability allowlist) |
 | `frame-apply` | `--raw-file F` | `profile.json` | `lenses.txt` (`lens_index\|framing\|lens`; empty framing; sanitized), `diverge_state.md` | `reframe` \| `pop_lens` (from `profile.json` `reframe`); `fail` on violation |
-| `reframe-select` | `--raw-file F` | `profile.json`, `lenses.txt` | `lenses.txt` (fills the framing field round-robin), `diverge_state.md` | count |
+| `reframe-select` (**v2, not built here**; see Review Decisions) | `--raw-file F` | `profile.json`, `lenses.txt` | `lenses.txt` (fills the framing field round-robin), `diverge_state.md` | count |
 | `ingest` | `--raw-file F` `--lens-index N` | `profile.json`, `ideas.jsonl` | `ideas.jsonl` (replace-by-lens-index, idempotent), `diverge_state.md` | ideas added |
 | `collapse` | `--groups-file F` | `ideas.jsonl`, `profile.json` | `ideas.jsonl`, `dedup.log` (fail-open; kept count, re-tag agreement rate, pre/post cell occupancy) | `ground_codebase` \| `shortlist` (from `profile.json` `ground`); `fail` on violation |
 | `shortlist-apply` | `--picks-file F` | `ideas.jsonl`, `profile.json` | `finalists.json`, `shortlist.json` | finalists count |
@@ -84,7 +78,7 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 | `shortlist-apply --picks-file` | `PICKS_JSON: {"<bin_a>\|<bin_b>": "i012", …}` — one id per multi-idea cell |
 | `record-round --verdicts-file` | `VERDICT_JSON: {"pair": int, "winner": "a" \| "b" \| null, "rationale": str, "seen": [str, str]?}` — one per pair; `seen` only in image mode |
 
-**Evaluator per command** (2026-09-30 fourth review): classify-routed (stdout token, `_: finalize_failed`, print `fail` on exit 1 **and** 2): `frame-apply`, `collapse`, `check-floors`, `record-round`, `portfolio`, `validate`, `render-report`. Exit-code-routed (`next:` + `on_error:`, or `evaluate: exit_code`; exempt from the print-`fail` rule because the exit code *is* the route): `resolve-profile`, `reframe-select`, `ingest`, `shortlist-apply`, `build-schedule`, `next-round` (exit 1 = no rounds left), `probe-plan`, `rank`, `salvage` (exit 1 = below salvage floor), `prompt-block`. Each CLI-table row is tested against this list.
+**Evaluator per command** (2026-09-30 fourth review): classify-routed (stdout token, `_: finalize_failed`, print `fail` on exit 1 **and** 2): `frame-apply`, `collapse`, `check-floors`, `record-round`, `portfolio`, `validate`, `render-report`. Exit-code-routed (`next:` + `on_error:`, or `evaluate: exit_code`; exempt from the print-`fail` rule because the exit code *is* the route): `resolve-profile`, `reframe-select` (v2, not built), `ingest`, `shortlist-apply`, `build-schedule`, `next-round` (exit 1 = no rounds left), `probe-plan`, `rank`, `salvage` (exit 1 = below salvage floor), `prompt-block`. Each CLI-table row is tested against this list.
 
 **Capability allowlist** (2026-09-30 fourth review): `resolve-profile` holds a module constant `BUILT_CAPABILITIES` (v1 = `{"ground": {"none"}, "materialize": {"none"}, "premortem": {False}, "reframe": {False}}`; `reframe` narrowed to `{False}` by the 2026-09-30 fifth review — see Review Decisions), and rejects (exit 1, violation on stderr, before any LLM call) any profile or override value outside it — including explicit overrides like `materialize=render`. FEAT-3584/3585/3586 each widen it in the same change that lands their states, and flip their preset knob (FEAT-3583 § Pinned Preset Contents). This is what keeps shipped presets from emitting a routing token (`materialize`, `premortem`, `ground_codebase`) whose target state does not exist yet.
 
@@ -116,10 +110,10 @@ All symbols live in `scripts/little_loops/brainstorm_engine.py` and are exposed 
 ### Signatures
 
 - `main(argv: list[str] | None = None) -> int` — the `python -m` entry point; one `argparse` subparser per command in the CLI contract table; returns 0 / 1 / 2 per the exit-code contract
-- `check_floors(ideas: list[IdeaRecord], finalists: FinalistsFile, profile: Profile, stage: str) -> list[str]` — returns the violations (empty = pass); the single function behind `check-floors` and `validate`
+- `check_floors(ideas: list[IdeaRecord], finalists: FinalistsFile, profile: Profile, stage: str, elapsed_ms: int | None = None) -> list[str]` — returns the violations (empty = pass); the single function behind `check-floors` and `validate`; `elapsed_ms` is required at `stage == "pre_tournament"` (drives the `insufficient_time` guard) and ignored otherwise
 - `ingest_ideas(raw: str, ideas: list[IdeaRecord], profile: Profile) -> list[IdeaRecord]` — assigns stable IDs, normalizes and validates cells, flags `off_grid`
-- `build_schedule(finalists: list[IdeaRecord]) -> list[list[tuple[str, str]]]` — deterministic circle-method round-robin as a list of rounds
-- `render_report(run_dir: Path) -> str` — deterministic `brainstorm.md` renderer behind `render-report`
+- `build_schedule(finalist_ids: list[str]) -> list[list[tuple[str, str]]]` — deterministic circle-method round-robin over `FinalistsFile.finalists` (idea IDs) as a list of rounds
+- `render_report(run_dir: Path, failed: bool = False) -> str` — deterministic `brainstorm.md` renderer behind `render-report`; `failed=True` renders the `--failed` stub used by `finalize_failed`
 - `prompt_block(kind: str, run_dir: Path) -> str` — data block for an LLM state, behind `prompt-block` and the `next-round`/`probe-plan` stdout
 - `rank(verdicts: list[PairVerdict], finalists: list[IdeaRecord]) -> list[str]` — Copeland score, then head-to-head, then generation order
 - `resolve_profile(mode: str, overrides: dict[str, str], decision: dict | None) -> Profile` — base profile from `mode`, non-empty overrides win, empty string inherits
@@ -134,7 +128,7 @@ The 2026-09-29 review found FEAT-3582 too large to implement safely as one chang
 
 ## Proposed Solution
 
-Follow FEAT-3582 § Implementation Steps step 3 (module first, TDD). Build in this order: `Idea`/`Finalists` I/O and `check_floors` → `ingest` → `collapse` → `shortlist-apply` → `build_schedule`/`next-round` → `record-round`/`rank`/`probe-plan`/`salvage` → `portfolio`/`validate` → `resolve-profile` + `artifact.json`.
+Follow FEAT-3582 § Implementation Steps step 3 (module first, TDD). Build in this order: `Idea`/`Finalists` I/O and `check_floors` → `ingest` → `collapse` → `shortlist-apply` → `build_schedule`/`next-round` → `record-round`/`rank`/`probe-plan`/`salvage` → `portfolio`/`validate` → `resolve-profile` + the four preset JSONs.
 
 Rules pinned by the review (also reflected in FEAT-3582's spec):
 
@@ -142,7 +136,7 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 - **Salvage floor** = `max(1, min(3, rounds − 1))` complete rounds (`rounds` = N−1 for even N, N for odd); N = 4 has 3 rounds so it can salvage after 2. A timeout during the probe phase keeps the full round-robin ranking, sets `probe_incomplete` and `low_confidence`, and is **not** `partial`.
 - **Abstention**: `tournament.json` and `portfolio.json` carry `abstention_rate` (share of pair verdicts that abstained or failed proof). `> 0.25` sets `low_confidence`; `> 0.5` fails `validate` (no sink runs).
 - **Cell re-tag**: `collapse --groups-file` accepts an optional `RETAG_JSON` block (`{id: [axis1_bin, axis2_bin]}`) produced by a dedup call that never saw the original tags; a valid on-grid re-tag replaces `cell` (original kept in `extra.orig_cell`), an invalid one keeps the original.
-- **`reframe-select`**: the LLM returns framings in **ranked order** (best first, a forced ranking, not independent 1–5 scores that will tie); the script takes the first 3.
+- **`reframe-select`** (_v2, deferred: not built in this issue; kept as the follow-up's spec_): the LLM returns framings in **ranked order** (best first, a forced ranking, not independent 1–5 scores that will tie); the script takes the first 3.
 - **`grounded`** is a top-level optional `IdeaRecord` field (`true` | `false` | `"unknown"`; absent = unverified, counted as not-false). `evidence`/`touchpoints`/`creates` live in `extra`.
 - **Time guard**: `check-floors --stage pre_tournament` also fails with the violation `insufficient_time` when `PARENT_TIMEOUT_S − elapsed < TOURNAMENT_TIMEOUT_S + JUDGE_CALL_TIMEOUT_S + TAIL_S` (`JUDGE_CALL_TIMEOUT_S = 300`: a judge call is not bounded by the child's remaining budget, so the child can overrun by one call) (`elapsed` from `--elapsed-ms ${loop.elapsed_ms}` — the executor's active-time clock incl. the resume offset, `fsm/executor.py` `elapsed_offset_ms`; **never** a wall-clock epoch, which overstates after a `spawn` handoff, pause/resume or sleep; `PARENT_TIMEOUT_S` mirrors `brainstorm.yaml` `timeout`, asserted equal by a test in FEAT-3582). See FEAT-3582 § Tournament Specification → Budgets.
 
@@ -154,9 +148,9 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 - `docs/reference/API.md` — `little_loops.brainstorm_engine` section (docs audience: cite the module, not `scripts/` paths)
 
 ### Tests
-- `scripts/tests/test_brainstorm_engine.py` — new; the full list in FEAT-3582 § Integration Map → Tests, plus: CLI exit-code contract (0/1/2) per command, the `fail` token on a forced violation **and** a forced exception for every routed command, idempotency (re-running `ingest`/`record-round`/`next-round` never double-counts; salvage's round count is unchanged), framing sanitization (`|`, newline), `render-report` golden fixtures (grid/portfolio/winner_risks shapes, partial/low-confidence flags, missing optional inputs), prompt-block content and fencing, `insufficient_time` guard driven by `--elapsed-ms` (incl. the `JUDGE_CALL_TIMEOUT_S` term), salvage-floor arithmetic (N = 2..8), abstention thresholds, re-tag fallback, cap tie-break by generation order, `reframe-select` forced-ranking parse
+- `scripts/tests/test_brainstorm_engine.py` — new; the full list in FEAT-3582 § Integration Map → Tests, plus: CLI exit-code contract (0/1/2) per command, the `fail` token on a forced violation **and** a forced exception for every routed command, idempotency (re-running `ingest`/`record-round`/`next-round` never double-counts; salvage's round count is unchanged), framing sanitization (`|`, newline), `render-report` golden fixtures (grid/portfolio/winner_risks shapes, partial/low-confidence flags, missing optional inputs), prompt-block content and fencing, `insufficient_time` guard driven by `--elapsed-ms` (incl. the `JUDGE_CALL_TIMEOUT_S` term), salvage-floor arithmetic (N = 2..8), abstention thresholds, re-tag fallback, cap tie-break by generation order (no `reframe-select` tests: v2)
 - **Executor smoke test** (2026-09-30 fourth review; a test, not a gate): a throwaway loop YAML defined inside the test (never a shipped loop) run through the real executor, whose shell states call `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine check-floors …` from a non-repo cwd. It proves the `$${}` escaping, that `LL_PYTHON` + `-m` resolves, and that the `fail` token and empty-stdout crash route through the real `classify` evaluator to `_`. This is the only in-scope way to de-risk the idiom before FEAT-3582, since this issue changes no YAML.
-- CLI-table conformance: every command's evaluator class matches § Evaluator per command; `resolve-profile` rejects `materialize=render`, `ground=codebase`, `premortem=true` while `BUILT_CAPABILITIES` excludes them; `frame-apply` routes `reframe` \| `pop_lens` and writes empty framings when `reframe` is off; `collapse` emits `ground_codebase` \| `shortlist`; ids are never reused on re-ingest; `render-report --failed` writes the stub; `collapse` records re-tag agreement and occupancy in `dedup.log`
+- CLI-table conformance: every command's evaluator class matches § Evaluator per command; `resolve-profile` rejects `materialize=render`, `ground=codebase`, `premortem=true` while `BUILT_CAPABILITIES` excludes them; `frame-apply` always routes `pop_lens` and writes empty framings in v1 (`reframe` is pinned off by `BUILT_CAPABILITIES`; the `reframe` token branch exists only for v2); `collapse` emits `ground_codebase` \| `shortlist`; ids are never reused on re-ingest; `render-report --failed` writes the stub; `collapse` records re-tag agreement and occupancy in `dedup.log`
 - `ll-verify-package-data` must pass (module and `brainstorm-profiles/` ship with the package; `pyproject.toml` includes `little_loops/**`)
 
 ### Dependent Files
@@ -164,21 +158,26 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 
 ## Implementation Steps
 
+0. **Commit checkpoints** (2026-10-02 review, in place of a split): commit after each group below with the suite green, so a session that stops mid-issue leaves a coherent, tested partial module on `main` (it is unused until FEAT-3582):
+   - (a) `IdeaRecord`/`FinalistsFile` I/O, CLI skeleton with the 0/1/2 exit and `fail`-token contract, and the executor smoke test
+   - (b) `check-floors`, `build-schedule`, `next-round`, `record-round`, `rank`, `probe-plan`, `salvage`
+   - (c) `ingest`, `frame-apply`, `collapse`, `shortlist-apply`
+   - (d) `resolve-profile` + four presets, `prompt-block`, `portfolio`, `validate`, `render-report`, then docs
 1. Write `test_brainstorm_engine.py` fixtures first (FEAT-3582 § Integration Map → Tests, plus the FEAT-3667 additions), then implement in the order given in Proposed Solution.
 2. Define the CLI contract: one `argparse` subparser per command in the table, exit-code discipline (0/1/2), routing token as the last stdout line.
-3. Add `resolve-profile` and `artifact.json`; run `ll-verify-package-data`, `ruff check`, `ruff format` (changed files only), `mypy`, and the full pytest suite.
+3. Add `resolve-profile` and the four preset JSONs (`artifact`, `visual`, `functional`, `business`); run `ll-verify-package-data`, `ruff check`, `ruff format` (changed files only), `mypy`, and the full pytest suite.
 
 ## Impact
 
 - **Priority**: P2 - first link of the EPIC-3581 chain; FEAT-3582 is blocked by it
-- **Effort**: Medium - one new module, one JSON profile, one test file
+- **Effort**: Large - one new module with 15 v1 commands, four preset JSONs, golden render fixtures, an executor smoke test (relabelled 2026-10-02; was Medium)
 - **Risk**: Low - unused until FEAT-3582; no behavior change
 - **Breaking Change**: No
 
 ## Acceptance Criteria
 
 - `render-report` is the only writer of `brainstorm.md`; routed commands print `fail` on any non-zero exit; appends are idempotent.
-- Every command in the CLI contract table exists with the documented args, files, exit codes and stdout token, covered by direct-import and `python -m` subprocess tests.
+- Every command in the CLI contract table except `reframe-select` (deferred to v2) exists with the documented args, files, exit codes and stdout token, covered by direct-import and `python -m` subprocess tests.
 - All floors, schedule, ranking, probe, salvage, abstention, wildcard and dedup fixtures listed in FEAT-3582 pass.
 - No YAML file is modified; `python -m pytest scripts/tests/` and `ll-verify-package-data` pass; `ruff` and `mypy` clean for the new module.
 - `docs/reference/API.md` documents the module.
@@ -191,6 +190,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-29_
+
+> **Stale (2026-10-02 review):** these scores predate the fourth and fifth reviews and the FEAT-3686 spike results; the frontmatter scores were cleared. Re-run `/ll:confidence-check`.
 
 **Readiness Score**: 94/100 → PROCEED
 **Outcome Confidence**: 82/100 → HIGH CONFIDENCE
@@ -207,10 +208,12 @@ _Added by `/ll:confidence-check` on 2026-09-29_
 
 ## Review Decisions
 
+_Added 2026-10-02 (pre-implementation review, `/ll:advise` with Fable, confidence 0.85; nothing measured):_ Fixed four internal contradictions: the spike gate is marked superseded; `reframe-select` is marked v2 everywhere; all four presets ship here; signatures now match the CLI (`check_floors` `elapsed_ms`, `render_report` `failed`, `build_schedule` takes IDs). Effort relabelled Large. **Not split:** every candidate split point leaks through the shared `profile.json`, so commit checkpoints (Implementation Steps, step 0) guard against a mid-session stop instead. Dissent: given this repo's history of large issues stalling mid-session, a hard split is the stronger guard; revisit if an implementation session stops before checkpoint (b).
+
 _Added 2026-09-30 (FEAT-3686 spike results, `postmortems/brainstorm-spike/RESULTS.md`; measured on 2 baseline briefs, 160 calls):_ **GO — the "held until FEAT-3686 reports" gate on the grid-dependent commands is lifted; build them as specified**, with these amendments: (1) every profile axis carries a one-line **definition per bin** and `prompt-block` prints them (blind tagging agreed only 0.51–0.67 on bin names alone, 0.62–0.83 with definitions); (2) `Profile` gains `duplicate_criterion`, printed by `prompt-block --kind dedup` (the default "same underlying idea" prompt gave precision 0.63 on names; a strict criterion gave 1.0/1.0); (3) `functional.json` `approach` bins/definitions are provisional until re-measured (per-axis agreement 0.72 < 0.75; FEAT-3583 owns the re-measure); (4) `cell` stays nullable as defence, but the grid is not dropped. Expect **6–9 finalists**, not always 8: the old loop's ideas occupy only 6 of 9 cells; steered runs reach 8–9.
 
 _Added 2026-09-30 (EPIC-3581 fifth review, `/ll:advise` with Opus, structural/process pass; nothing measured):_
-- **Spike gate (FEAT-3686).** The grid-dependent parts of this module — `ingest` cell normalization/`off_grid`, `collapse` re-tag, `shortlist-apply`, `check-floors` `min_cells`, the wildcard slot in `portfolio`, and the grid map in `render-report` — are **held until FEAT-3686 reports** (a failing grid result removes them from the contract). `cell` is therefore `[str, str] | None` in `IdeaRecord`. The grid-independent commands (`IdeaRecord`/`FinalistsFile` I/O, `check-floors` idea/finalist floors, `build-schedule`, `next-round`, `record-round`, `rank`, `probe-plan`, `salvage`, `validate`, `render-report` skeleton, `prompt-block`, the executor smoke test) may start in parallel with the spike. If the batched-judge row fails, `next-round`/`build-schedule` emit one pair per call and `max_finalists` is lowered to 6.
+- ~~**Spike gate (FEAT-3686).**~~ _Superseded 2026-09-30 by the FEAT-3686 results above (gate lifted; build the grid commands as specified). Kept for history._ The grid-dependent parts of this module — `ingest` cell normalization/`off_grid`, `collapse` re-tag, `shortlist-apply`, `check-floors` `min_cells`, the wildcard slot in `portfolio`, and the grid map in `render-report` — are **held until FEAT-3686 reports** (a failing grid result removes them from the contract). `cell` is therefore `[str, str] | None` in `IdeaRecord`. The grid-independent commands (`IdeaRecord`/`FinalistsFile` I/O, `check-floors` idea/finalist floors, `build-schedule`, `next-round`, `record-round`, `rank`, `probe-plan`, `salvage`, `validate`, `render-report` skeleton, `prompt-block`, the executor smoke test) may start in parallel with the spike. If the batched-judge row fails, `next-round`/`build-schedule` emit one pair per call and `max_finalists` is lowered to 6.
 - **All four preset JSONs ship here** (unbuilt knobs off) so FEAT-3582's brief-2 merge gate runs `mode=functional` rather than the artifact axes; FEAT-3583 no longer introduces preset files.
 - **`reframe` deferred to v2.** `BUILT_CAPABILITIES["reframe"] = {False}`: the `reframe` state and `reframe-select` are not built in v1 (`frame-apply` always takes the empty-framing path); an explicit `reframe=true` fails at `resolve-profile`. The `reframe-select` row and its tests are superseded until the follow-up brings measurements.
 - **Import-origin guard.** The executor smoke test and `test_brainstorm_engine.py` assert `little_loops.__file__` resolves inside the checkout under test and pass `PYTHONPATH` through to the subprocess (`LL_PYTHON` = `sys.executable`). Verify gates already inject the worktree `PYTHONPATH` (`worktree_utils.py`), so a worktree run before this module is on `main` fails loudly with `ModuleNotFoundError`; after it lands, a run without `PYTHONPATH` would silently import `main`'s copy, which the guard catches.

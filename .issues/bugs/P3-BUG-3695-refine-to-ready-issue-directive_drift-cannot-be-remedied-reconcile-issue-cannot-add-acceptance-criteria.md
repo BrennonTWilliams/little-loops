@@ -9,12 +9,6 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:46:29Z'
 parent: EPIC-3694
-confidence_score: 90
-outcome_confidence: 60
-score_complexity: 14
-score_test_coverage: 18
-score_ambiguity: 10
-score_change_surface: 18
 decision_needed: false
 ---
 
@@ -95,10 +89,6 @@ Decided by `/ll:decide-issue` on 2026-10-02.
 - `commands/verify-issues.md` - `DIRECTIVE_DRIFT` verdict table wording (~line 263) and B6 verdict text
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` - route at ~589, `check_reconcile_limit`, `reconcile_issue` (Option B adds a state)
 
-### Tests
-- `scripts/tests/test_builtin_loops.py` - `TestRefineToReadyDispatch` route table
-- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` and reconcile-issue tests
-
 _Wiring pass added by `/ll:wire-issue`:_
 
 **Additional sites inside known files to Modify**
@@ -130,6 +120,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md:975` — "three directive sections `/ll:reconcile-issue` rewrites" in the reconcile/issue-parser section [Agent 2 finding]
 
 ### Tests
+- `scripts/tests/test_builtin_loops.py` - `TestRefineToReadyDispatch` route table
+- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` and reconcile-issue tests
+
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py:3116` — `PRE_TABLE` exact-equality in `TestRefineToReadyDispatch.test_pre_score_routing_table` (pins `VERIFY:DIRECTIVE_DRIFT` and `ACCEPTANCE_CRITERIA` → `check_reconcile_limit`); update only if the route changes (Option B) [Agent 3 finding]
 - `scripts/tests/test_builtin_loops.py:1643` — `test_check_reconcile_limit_state_routing`, `test_check_reconcile_limit_counts_up_and_gates_at_two`, `test_check_reconcile_limit_counter_is_per_run`, `test_resolve_issue_seeds_reconcile_attempts_counter` pin counter file name, `lt 2`, `1`/`2` outputs and `on_no`/`on_error == check_gate_refine_limit`; will break if Implementation Step 3 changes counting [Agent 3 finding]
@@ -164,7 +157,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Call Path
 
-`verify_issue` -> `check_reconcile_limit` -> `reconcile_issue` -> `normalize_structure` -> `verify_issue` — the repair loop that must now converge on `VALID`.
+`verify_issue` -> `check_reconcile_limit` -> `reconcile_issue` -> `normalize_structure` -> `clear_verify_verdict` -> `verify_issue` — the repair loop that must now converge on `VALID`. `verify_evidence` is still in frontmatter when `reconcile_issue` runs; `clear_verify_verdict` runs only after it.
 
 `check_reconcile_limit` -> `check_gate_refine_limit` -> `refine_followup` -> `record_gate_unmet` — the observed failing path (research-only follow-up, then `GATE_UNMET`).
 
@@ -173,8 +166,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 1. Option A (modified, caller-flag-gated) selected via `/ll:decide-issue` on 2026-10-02 (see Decision Rationale); Option B rejected.
 2. Add the `--from-verify-evidence` flag and carve-out to `commands/reconcile-issue.md` (flag parsing in `### 0. Parse Flags`, carve-out near L116–121, Output Format `[rewritten | added | unchanged]`); pass the flag only from `refine-to-ready-issue.yaml` `reconcile_issue`.
 3. Edit `commands/verify-issues.md`: B6 lists every uncovered Integration Map point in `verify_evidence` in one pass, and the `DIRECTIVE_DRIFT` wording names the actual remedy.
-4. Leave `check_reconcile_limit` unchanged (counting change is a no-op — see Proposed Solution).
-5. Update `TestRefineToReadyDispatch`/`test_reconcile_issue_state_routing` and the reconcile-issue tests; add the flag-inert assertions for `reconcile_revision` and `prepare-issue.yaml` `run_reconcile`, and an AC-coverage-only `DIRECTIVE_DRIFT` regression.
+4. Leave `check_reconcile_limit` unchanged: the counting change is a no-op (see Proposed Solution), and the budget stays at one reconcile per run (re-confirmed in the 2026-10-02 Fable review). Convergence depends on B6's one-pass enumeration; until the manual replay passes, that is unproven.
+5. Update `TestRefineToReadyDispatch`/`test_reconcile_issue_state_routing` and the reconcile-issue tests; add the flag-inert assertions for `reconcile_revision` and `prepare-issue.yaml` `run_reconcile`, and an AC-coverage-only `DIRECTIVE_DRIFT` regression. Add a test that pins the carve-out as inert on the `ACCEPTANCE_CRITERIA` route. That route reaches the same `reconcile_issue` state, so the action carries the flag, but `next_obligation` orders `VERIFY` before `ACCEPTANCE_CRITERIA`. The persisted verdict therefore cannot be `DIRECTIVE_DRIFT` when the `ACCEPTANCE_CRITERIA` obligation fires. Assert that ordering in `little_loops.cli.issues.next_obligation`.
 6. Regenerate host mirrors, run `python -m pytest scripts/tests/`. Manually replay an AC-coverage-only drift (a fresh fixture issue, not ENH-3678 — it no longer carries the verdict) as a non-gating verification note.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -202,6 +195,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `commands/reconcile-issue.md` names the carve-out: applies only with the flag, `verify_verdict: DIRECTIVE_DRIFT` and non-empty `verify_evidence`; each added bullet must trace to one `verify_evidence` item; the "do not invent new requirements" rule is otherwise unchanged and the carve-out is inert without the flag (asserted by a new test class in `test_reconcile_issue_command.py`)
 - [ ] `reconcile-issue` Output Format reports `Acceptance Criteria: [rewritten | added | unchanged]`
 - [ ] `commands/verify-issues.md` B6 requires listing every uncovered Integration Map point in `verify_evidence` in one pass, and the `DIRECTIVE_DRIFT` verdict table names the actual remedy
+- [ ] A test pins `VERIFY` ahead of `ACCEPTANCE_CRITERIA` in the `next_obligation` pre-score order, so the flagged `reconcile_issue` action cannot apply the carve-out on the `ACCEPTANCE_CRITERIA` route
 - [ ] A regression test covers an AC-coverage-only `DIRECTIVE_DRIFT` route (stubbed verdict) through `reconcile_issue` → `normalize_structure` → `clear_verify_verdict` → `verify_issue`
 - [ ] Host mirrors regenerated, route-table and reconcile tests updated, and `python -m pytest scripts/tests/` exits 0
 - _Manual verification (non-gating):_ replaying an AC-coverage-only drift on a fresh fixture issue no longer ends in `GATE_UNMET`
@@ -222,6 +216,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-10-02_
+
+> **Stale (2026-10-02 review):** these scores were measured while the Option A/B decision was still open, and the frontmatter scores were cleared. Re-run `/ll:confidence-check`.
 
 **Readiness Score**: 90/100 → PROCEED
 **Outcome Confidence**: 60/100 → MODERATE
