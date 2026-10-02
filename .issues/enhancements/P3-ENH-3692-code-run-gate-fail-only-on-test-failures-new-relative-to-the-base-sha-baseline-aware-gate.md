@@ -4,7 +4,7 @@ type: ENH
 title: 'code-run-gate: fail only on test failures new relative to the base SHA (baseline-aware
   gate)'
 priority: P3
-status: open
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:24:32Z'
@@ -12,6 +12,7 @@ relates_to:
 - BUG-3689
 parent: EPIC-3694
 epic: EPIC-3694
+closed_reason: superseded
 ---
 
 # ENH-3692: code-run-gate: fail only on test failures new relative to the base SHA (baseline-aware gate)
@@ -106,6 +107,16 @@ See BUG-3689 (13 false failures on BUG-3688, 2 of them pre-existing red on base)
 
 Fixing the two pre-existing corpus failures themselves (FEAT-3582 / EPIC-3687 prose-dependency drift; the ENH-3684 unverifiable quote) — track separately. Env/hermeticity fixes live in BUG-3689.
 
+## Resolution
+
+**Cancelled (won't-do)** — 2026-10-02, EPIC-3694 pre-implementation review (with an Opus second opinion via `/ll:advise`). The go/no-go this issue demanded came out no-go:
+
+- Both motivating "pre-existing" failures (`test_no_prose_dependency_drift_in_repo`, `TestRepoGate::test_no_new_unverifiable_evidence`) **pass on `main`** with `-n 0` (verified 2026-10-02). They were red only because they read the live `.issues/` working tree that autodev mutates, so a clean base-SHA worktree could not reproduce them faithfully and the mechanism would not have rescued the case.
+- Remaining red-on-`main` episodes are covered by `--context quality_gate=false`, and the baseline design carries High masking risk and Large effort.
+- Root cause is addressed directly by **ENH-3697** (corpus-ratchet tests read the committed tree).
+
+If red-on-`main` episodes later prove frequent and corpus-independent, reopen with fresh evidence; consider a narrow exception for named corpus tests rather than general baseline-awareness.
+
 ## Status
 
-**Open** | Created: 2026-10-02 | Priority: P3
+**Cancelled** | Created: 2026-10-02 | Priority: P3

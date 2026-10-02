@@ -9,8 +9,9 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:48:04Z'
 parent: EPIC-3694
-relates_to:
+supersedes:
 - ENH-3692
+relates_to:
 - BUG-3689
 - ENH-3639
 ---
@@ -19,7 +20,7 @@ relates_to:
 
 ## Summary
 
-Make the two repo-wide corpus-ratchet tests read the **committed** `.issues/` tree (`HEAD` / `git ls-files`) instead of the live working tree, so in-flight autodev edits to `.issues/` cannot turn them red. Replaces ENH-3692 (baseline-aware gate), which was closed won't-do after review of EPIC-3694.
+Make the two repo-wide corpus-ratchet tests read the **committed** `.issues/` tree (`HEAD` / `git ls-files`) instead of the live working tree, so in-flight autodev edits to `.issues/` cannot turn them red. Supersedes ENH-3692 (baseline-aware gate), which was closed won't-do after review of EPIC-3694.
 
 ## Current Behavior
 
@@ -41,10 +42,26 @@ A false `quality_failed` verdict blocks an otherwise-correct implementation and 
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - removes a transient false-failure class from the quality gate; `--context quality_gate=false` works around it meanwhile
+- **Effort**: Small - one shared helper used by two tests
+- **Risk**: Low - test-only; committed-tree reads can miss uncommitted drift by design
+- **Breaking Change**: No
+
+## Program Design
+
+### Types
+
+- `CommittedIssuesTree` — dataclass: `root: Path` (tmp dir or blob-reader root holding `HEAD:.issues/`), `head_sha: str`
+
+### Signatures
+
+- `committed_issues_tree(repo_root: Path) -> CommittedIssuesTree` — exports/reads `HEAD:.issues/` without touching the working tree; new helper in `scripts/tests/conftest.py`
+- `test_no_prose_dependency_drift_in_repo() -> None` — `scripts/tests/test_prose_dep_sweep_gate.py`, sweeps the committed tree
+- `test_no_new_unverifiable_evidence(gate_cli: str) -> None` — `TestRepoGate` in `scripts/tests/test_verify_evidence.py`, runs `ll-verify-evidence --all` against the committed tree
+
+### Call Path
+
+`test_no_prose_dependency_drift_in_repo` -> `committed_issues_tree` -> `check_format_gaps`; `test_no_new_unverifiable_evidence` -> `committed_issues_tree` -> `ll-verify-evidence --all`
 
 ## Acceptance Criteria
 

@@ -8,8 +8,10 @@ decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-10-01'
 captured_at: '2026-10-01T22:03:25Z'
-verify_verdict: NON_VALID
 relates_to:
+- BUG-3691
+- BUG-3695
+blocked_by:
 - BUG-3691
 parent: EPIC-3694
 epic: EPIC-3694
@@ -88,6 +90,15 @@ Decided by `/ll:decide-issue` on 2026-10-01.
 - For B: no YAML/Python/route changes; the `TestClaimsOutdatedVerdict` assertions (heading text + seven section names, `test_enh3250_verify_issues_proposal_vs_code.py:166-180`) stay green if those phrases are kept.
 - Against C: single route-key edit (`:594`) but `VERIFY:other` collapses `NON_VALID`, `RESOLVED`, `INVALID`, `DEP_ISSUES`, and premise findings; `verify_evidence` is unpersisted for them so the repair state would no-op.
 - **Risk to watch (B)**: relaxes the BUG-3637 premise-edit guard with a model-judged path-vs-premise split, and BUG-3691 shows citation judgment is unstable; keep the "both scopes present means `NON_VALID` wins" precedence and never-auto-correct set intact, and note `correct_claims` still has a single per-run budget.
+
+### Revision (2026-10-02, EPIC-3694 pre-implementation review)
+
+Revises the `/ll:decide-issue` choice above; Option B's *mechanism* (reuse the `VERIFY:CLAIMS_OUTDATED` route, no YAML/Python route change) stands, but its **discriminator changes**:
+
+- Option B as decided loosens the BUG-3637 premise-edit guard using a *model-judged* path-vs-premise split — the same unstable judgment BUG-3691 documents. That is a masking hazard: a premise-changing finding mislabeled "citation-only" would be auto-corrected.
+- **Revised rule (B′):** a finding qualifies for `CLAIMS_OUTDATED` only when it **maps to a deterministic `ll-issues format-check` key** (`stale_file_ref`, `ambiguous_file_ref`, `mislocated_symbol_ref`, the new `stale_line_ref`; the BUG-3691 rescope adds the defined-in/imported-in and bare-filename rules). Anything the model raises that format-check does not back up stays `NON_VALID`. "Both scopes present means `NON_VALID` wins", the never-auto-correct set, and the `verify_evidence` write requirement are unchanged.
+- Hence `blocked_by: BUG-3691`. Dissent considered: ship Option B now as a stopgap gated on the format-check keys that already exist (stale/ambiguous/mislocated); BUG-3691's new rules would then widen coverage. Reasonable if the 33-iteration `GATE_UNMET` burn recurs before BUG-3691 lands — drop `blocked_by` in that case, but keep the key-gating.
+- Follow-up option (not in scope): for `mislocated_symbol_ref` and uniquely-resolved `ambiguous_file_ref`, rewrite the citation mechanically in code (`symbol_resolves_elsewhere` gives the target) instead of via the model's `correct_claims`.
 
 ## Integration Map
 
@@ -169,13 +180,13 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Option B is selected (see Proposed Solution § Decision Rationale): change §2C / §2.5 / §4 of `commands/verify-issues.md`; the verdict contract gains no new value.
+1. Option B′ (see Decision Rationale § Revision): change §2C / §2.5 / §4 of `commands/verify-issues.md` so a finding qualifies for `CLAIMS_OUTDATED` only when backed by a deterministic `format-check` ref key; the verdict contract gains no new value.
    > ⚠ Superseded — Options 1/3 also need verify_evidence persistence and §2C scope change
 2. Implement the route in `refine-to-ready-issue.yaml` (or the §2C rule) so citation-only findings reach a claims-correction attempt with its own counter, never `check_gate_refine_limit`.
    > ⚠ Superseded — Option B selected; no YAML route or counter change
 3. Add a `test_builtin_loops.py` test for the new route and a regression test that premise-changing `NON_VALID` still reaches `record_gate_unmet`.
    > ⚠ Superseded — Option B adds no route; pin in test_enh3250 instead
-4. Update `docs/guides/LOOPS_REFERENCE.md`; run `ll-loop validate refine-to-ready-issue` and `python -m pytest scripts/tests/test_builtin_loops.py`.
+4. Update `docs/guides/LOOPS_REFERENCE.md`; run `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` (the route table is unchanged; no YAML edit, so no `ll-loop validate` step).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -201,7 +212,7 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 - **Priority**: P3 - Observed once; wastes a ~20 minute run, but the issue still surfaces as `GATE_UNMET` rather than corrupting state.
 - **Effort**: Small - one new route plus a counter state, or a single rule edit in `commands/verify-issues.md`.
-- **Risk**: Medium - touches the shared gate-band routing and verdict precedence; a loose discriminator could hide real `NON_VALID` findings.
+- **Risk**: Medium - loosens the BUG-3637 premise-edit guard; mitigated by gating on deterministic `format-check` keys (B′) rather than model judgment, and keeping `NON_VALID`-wins precedence.
 - **Breaking Change**: No
 
 ## Scope Boundaries
@@ -217,7 +228,7 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 ### Signatures
 
-- N/A under selected Option B — no `is_citation_only` discriminator; the §2C prose rule (model-judged) classifies citation-only findings as `CLAIMS_OUTDATED`. (Rejected Option A would have needed `is_citation_only(evidence: str) -> bool`.)
+- N/A under selected Option B′ — no `is_citation_only` code discriminator; the §2C prose rule classifies a finding as `CLAIMS_OUTDATED` only when a `format-check` ref key backs it (revised from model-judged). (Rejected Option A would have needed `is_citation_only(evidence: str) -> bool`.)
 
 ### Call Path
 
@@ -239,9 +250,9 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- A run whose only verify findings are wrong path/symbol citations is repaired in-loop or reports a distinct non-quality outcome instead of `GATE_UNMET`.
-- Premise-changing findings still persist as `NON_VALID`.
-- Covered by a test in `scripts/tests/test_builtin_loops.py` for the new route.
+- A run whose only verify findings are wrong path/symbol citations — each backed by a deterministic `ll-issues format-check` ref key — is repaired in-loop via the existing `VERIFY:CLAIMS_OUTDATED` route (with `verify_evidence` written) instead of ending `GATE_UNMET`.
+- Premise-changing findings, findings not backed by a `format-check` key, and any mix of the two still persist as `NON_VALID`; the never-auto-correct set is unchanged.
+- Covered by prose pins in `test_enh3250_verify_issues_proposal_vs_code.py::TestClaimsOutdatedVerdict` (relaxed §2C wording, key-gating, `NON_VALID`-wins, §4 carve-out); the `test_builtin_loops.py` route table (`PRE_TABLE`) is unchanged and stays green — Option B′ adds no route, so no new route test is required.
 
 ## Related Key Documentation
 

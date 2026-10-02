@@ -8,7 +8,6 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-01'
 captured_at: '2026-10-01T22:03:31Z'
 reconcile_attempted: true
-verify_verdict: DIRECTIVE_DRIFT
 relates_to:
 - ENH-3690
 parent: EPIC-3694
@@ -37,25 +36,27 @@ A citation defect that surfaces only on a late pass lands after the loop's repai
 
 ## Proposed Solution
 
-Move `path:line` / `file:symbol` citation resolution into a deterministic CLI check (like `ll-verify-evidence`) that `verify-issues` runs every pass and treats as ground truth; the model only judges semantic claims.
+Make citation findings deterministic **by extending `ll-issues format-check`** and making `verify-issues` consume its keys as ground truth; the model keeps only semantic claims.
+
+> **Rescoped 2026-10-02 (EPIC-3694 review, Opus second opinion).** The original plan — a brand-new `ll-verify-citations` CLI — is dropped. It duplicated `ll-issues format-check` (which already runs `stale_file_ref` / `ambiguous_file_ref` / `stale_symbol_ref` / `mislocated_symbol_ref` right before `verify_issue` and which `verify-issues` ignores), carried ~20 registration touchpoints, and still would not have caught the real defect (a symbol cited via its *importing* module: `symbol_exists_in_file` is satisfied by the import at `feed.py:44`). Research findings below predate the rescope; items about registering a new CLI no longer apply.
+
+1. **Defined-in vs imported-in rule** (`symbol_claims`): a symbol claimed in file F that F only *imports* (no `def`/`class`/assignment) while exactly one other tracked module defines it → `mislocated_symbol_ref` (use `symbol_resolves_elsewhere` for the target). Be conservative to avoid false positives where citing the importer is the intended usage-site claim: trigger only on definition-shaped claims (`file:symbol`, "defined in", `symbol()` as owner), and honor the existing `<!-- ll-prose-ok -->` suppression marker.
+2. **Line past end of file**: new gap key (e.g. `stale_line_ref`) for a cited `path:N[-M]` whose line exceeds the file length; `anchors.resolve_anchor` clamps today, so this needs its own check relative to the project root, not process cwd.
+3. **Bare-filename citations**: resolve slash-less refs (BUG-3689's `runner_spec.py:335`) through `text_utils.suffix_match_candidates` — 0 / 1 / >1 tracked paths → `stale_file_ref` / ok / `ambiguous_file_ref`, candidates sorted; report mirror-only matches distinctly; honor `(new)` planned-new markers.
+4. **Scope**: widen the symbol/line checks beyond `_symbol_claim_scope_text` (Summary / Current Behavior / Root Cause / Context) to cover Integration Map, Tests and Wiring Phase — the BUG-3689 pass-3 defect sat in Tests/Wiring Phase — keeping fenced-block skipping (`text_utils.fence_spans`).
+5. **`verify-issues` wiring**: new check **B8** (after check 7) reads `ll-issues format-check <ID> --format json` and treats its ref keys as authoritative; the model must not raise a path/line/symbol-location finding that format-check does not back up (demote it to an advisory note that does not affect the verdict). Fail-open wording matches B7: invocation failure → silent fallback.
 
 ## Integration Map
 
 ### Files to Modify
-- `commands/verify-issues.md` - run the deterministic citation check every pass and treat its output as ground truth
-- `scripts/little_loops/cli/verify_evidence.py` - existing artifact resolution (`resolve_artifact`, `build_tracked_index`) to reuse for exact full-path lookup only; it is exact-match, so bare filenames resolve through `text_utils.build_ref_index` / `suffix_match_candidates` instead (finding: "`resolve_artifact` is exact-match only")
-- `scripts/pyproject.toml` - register the new `ll-verify-*` entry point alongside `ll-verify-evidence`
+- `scripts/little_loops/issues/symbol_claims.py` — defined-in vs imported-in rule (`symbol_exists_in_file` / `symbol_resolves_elsewhere` callers)
+- `scripts/little_loops/issue_parser.py` — `check_format_gaps` (add `stale_line_ref`; bare-filename resolution; widened scope next to `_symbol_claim_scope_text`) and the gap dataclass
+- `scripts/little_loops/text_utils.py` — slash-less ref handling in `classify_file_ref` (or a sibling resolver using `suffix_match_candidates`); sorted candidates
+- `scripts/little_loops/cli/issues/format_check.py` — report/`--format json` surface for the new key(s)
+- `commands/verify-issues.md` — new check **B8** after §2B check 7; keep the `test_enh3250` anchors (`#### B. Verify Against Codebase`, `#### C. Determine Verdict`, `Persist the verdict to frontmatter`, `### 3. Request User Approval`) present and in order; `Bash(ll-issues:*)` is already granted
+- Host mirrors of `commands/verify-issues.md` — regenerate with `ll-adapt --host <gemini|qwen|kimi-code|codex> --apply` (never hand-edit)
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/verify_citations.py` (new) — new module (`main_verify_citations`, `check_citations`, `extract_citations`, `CitationFinding`); modelled on `main_verify_evidence` in `cli/verify_evidence.py` [Agent 1 finding]
-- `scripts/little_loops/cli/__init__.py` — import `main_verify_citations` and add to `__all__`; the only test enforcing the import is `test_cli_doctor_install_checks.py::TestEntryPoints.test_real_pyproject_all_entry_points_resolve` [Agent 3 finding]
-- `scripts/little_loops/init/writers.py` — add `"Bash(ll-verify-citations:*)"` to `_LL_PERMISSIONS` next to `"Bash(ll-verify-evidence:*)"`; no duplicate entries (`test_init_core.py::TestMergeSettings::test_idempotent_on_re_run`) [Agent 1 finding]
-- `skills/configure/areas.md` — add `ll-verify-citations` to the "Authorize all ll- CLI tools" option description [Agent 1 finding]
-- `commands/verify-issues.md` — frontmatter `allowed-tools` needs its own `Bash(ll-verify-citations:*)` line; add the new step as check **B8** under §2B after check 7 ("Evidence-quote existence check (BUG-3282)") so B6/B7 citations in §C, §2.5, `refine-issue.md` §3.9 and `arm_proposal_revision.py:_NO_EVIDENCE` need no renumbering [Agent 2 finding]
-- `skills/ll-verify-issues/SKILL.md` — generated bridge; regenerate with `ll-adapt --host codex --apply`, never hand-edit [Agent 2 finding]
-- `.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md` — generated host mirrors of `commands/verify-issues.md`; regenerate with `ll-adapt --host <gemini|qwen|kimi-code> --apply` [Agent 2 finding]
-- `.gemini/skills/configure/areas.md`, `.qwen/skills/configure/areas.md`, `.kimi-code/skills/configure/areas.md` — generated mirrors of `skills/configure/areas.md`; regenerate the same way [Agent 1 finding]
-- `README.md` and `scripts/README.md` — optional: "52 typed CLI tools" at line 184 is already stale against the 55 `[project.scripts]` entries and is not enforced against `pyproject.toml`; bumping it means editing both files (byte-identical, `test_packaging_duplicate_files.py::test_readme_matches_repo_root`) and the literal in `test_wiring_guides_and_meta.py` [Agent 2 finding]
+No new CLI: nothing to change in `scripts/pyproject.toml`, `cli/__init__.py`, `init/writers.py` (`_LL_PERMISSIONS`), `skills/configure/areas.md`, or `docs/reference/CLI.md` entry-point coverage.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` - runs `verify-issues --check --auto` each pass and routes on its verdict (a root `loops/` directory does not exist)
@@ -72,36 +73,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `ll-verify-evidence` (`scripts/little_loops/cli/verify_evidence.py`) - deterministic CLI check consumed by a skill/loop as ground truth
 
 ### Tests
-- `scripts/tests/test_verify_evidence.py` - model for a new citation-check test module (stable findings across repeated runs; bare-filename resolution)
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_verify_citations.py` (new) — new module; copy `test_verify_evidence.py` helpers (`_git`, `_init_repo`, `_mkissues`, `_write`, `_commit_all`, `repo` fixture, `_run(repo, *args, capsys)`) and the `TestCli` layout; no shared git-repo fixture exists in `conftest.py`, so each module redefines them; cover `extract_citations`, `check_citations`, `main_verify_citations` exit codes, the run-twice byte-identical JSON contract and sorted `ambiguous` candidates [Agent 3 finding]
-- `scripts/tests/test_text_utils.py` — `TestBuildRefIndex` shows the inline tmp-git-repo `RefIndex` construction to reuse for the bare-filename case [Agent 3 finding]
-- `scripts/tests/test_wiring_cli_registry.py` — add `("docs/reference/CLI.md", "ll-verify-citations", "BUG-3691")` to `DOC_STRINGS_PRESENT` (convention; `test_cli_entry_point_coverage` already fails until the `### ll-verify-citations` CLI.md section exists) [Agent 3 finding]
-- `scripts/tests/test_wiring_skills_and_commands.py` — optionally add `("commands/verify-issues.md", "ll-verify-citations", "BUG-3691")` to the presence tuples; `test_host_artifacts_are_not_stale[<host>-commands]` fails for gemini/kimi-code/qwen/codex until mirrors are regenerated [Agent 2 finding]
-- `scripts/tests/test_issue_parser.py` — `TestPriorityRegexCompletenessAllowlist._ALLOWLIST` needs `("cli/verify_citations.py", "_ISSUE_ID_RE")` if the new module defines a `P[0-5]-` regex; if `_ISSUE_ID_RE` moves out of `cli/verify_evidence.py` the existing key goes stale — import `resolve_artifact` rather than relocating it [Agent 2 finding]
-- `scripts/tests/test_bug3691_verify_issues_citations.py` (new) — new wiring test modelled on `test_enh3126_verify_issues_graph_seeding.py::TestVerifyIssuesFrontmatter` (`Bash(ll-verify-citations:*)` in command frontmatter and in `test_bridge_mirrors_allowed_tools`-style bridge check; B8 step present between check 7 and `#### C. Determine Verdict`) [Agent 3 finding]
-- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — may break: slices on `#### B. Verify Against Codebase` / `#### C. Determine Verdict` / `Persist the verdict to frontmatter` / `### 3. Request User Approval` via `body.index(...)`; the new B8 text must keep those anchors present and in order [Agent 3 finding]
-- `scripts/tests/test_verify_skill_prose.py::TestBaselineNeverIncreases::test_current_tree_baseline_does_not_grow` — may break (`BASELINE_COUNT = 17`) if B8 prose adds `python3 -c` or union-find wording; call the CLI and avoid inline Python JSON filtering [Agent 2 finding]
-- `scripts/tests/test_docs_audience_gate.py` — may break if B8 prose cites `scripts/` paths; cite `little_loops.cli.verify_citations` instead [Agent 3 finding]
-- `scripts/tests/test_verify_cli_allowlist.py::TestRun::test_clean_state_returns_zero` and `TestMainVerifyCliAllowlist::test_clean_state_returns_zero` — fail until `writers._LL_PERMISSIONS` and `areas.md` list the new CLI [Agent 3 finding]
-- `scripts/tests/test_cli_doctor_install_checks.py::TestEntryPoints::test_real_pyproject_all_entry_points_resolve` — fails until `cli/__init__.py` exports `main_verify_citations` [Agent 3 finding]
+- `scripts/tests/test_symbol_claims.py` / `test_issue_parser.py` / `test_format_check*.py` (locate the existing `stale_symbol_ref` / `stale_file_ref` suites): importing-module claim → `mislocated_symbol_ref`; defining-module claim → clean; line past EOF; bare filename 0/1/>1 matches with sorted candidates; mirror-only match; `(new)` planned file not flagged; `ll-prose-ok` suppression
+- Determinism: run `check_format_gaps` / `format-check --format json` twice over an unchanged fixture issue (`tmp_path` git repo; helpers in `test_verify_evidence.py` style) and assert byte-identical output
+- `scripts/tests/test_bug3691_verify_issues_citations.py` (new) — B8 present between check 7 and `#### C. Determine Verdict`; consumes `ll-issues format-check`; modelled on `test_enh3126_verify_issues_graph_seeding.py`
+- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — slices on the §2B/§C/§3 anchors via `body.index(...)`; must stay green
+- `scripts/tests/test_verify_skill_prose.py::TestBaselineNeverIncreases` (`BASELINE_COUNT = 17`) — B8 prose must not add `python3 -c` / union-find wording; name the CLI as owner, do not describe the resolution steps (EPIC-2938 invariant)
+- `scripts/tests/test_docs_audience_gate.py` — B8 prose must not cite `scripts/` paths (use `little_loops.<module>`)
+- `scripts/tests/test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` — fails until mirrors are regenerated
 
 ### Documentation
-- `docs/reference/CLI.md` - document the new `ll-verify-*` entry point
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/CLI.md` — the section must be titled exactly `### ll-verify-citations` (`doc_counts.py:verify_coverage`, enforced by `test_wiring_cli_registry.py::test_cli_entry_point_coverage`) [Agent 3 finding]
-- `docs/reference/COMMANDS.md` — describes `/ll:verify-issues` in its `/ll:verify-issues` section; optionally note the deterministic citation check (not gated) [Agent 1 finding]
-- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — lists what `/ll:verify-issues` checks ("Referenced files exist / Referenced functions/anchors exist") under its `/ll:verify-issues` entry; optional note (not gated) [Agent 2 finding]
-- `CONTRIBUTING.md` — "Instead, update these files" table is the new-CLI checklist; a per-tool section like "Evidence Quote Verification (ll-verify-evidence)" is needed only if a pre-commit hook or suite gate is added (none planned) [Agent 2 finding]
-
-### Configuration
-- N/A or list config files
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `.pre-commit-config.yaml` — no change: the `ll-verify-evidence` hook has no counterpart planned for citations (a whole-corpus scan would hit done/old issues, as `.ll/evidence-baseline.json` does) [Agent 2 finding]
-- `.github/workflows/ci.yml` — no change: gates run through pytest; `fetch-depth: 0` is needed only for history-index CLIs, and the new check uses `build_tracked_index` / `build_ref_index` (`git ls-files`) only [Agent 2 finding]
+- `docs/reference/CLI.md` — the `ll-issues format-check` section: new gap key(s) and bare-filename behavior
+- `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` — optional note under `/ll:verify-issues` that citation checks are deterministic
 
 ### Codebase Research Findings
 
@@ -131,19 +113,16 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 ### Types
 
-- `CitationFinding.cited: str`
-- `CitationFinding.resolved_path: str | None`
-- `CitationFinding.status: Literal["holds", "unresolved", "ambiguous"]`
+- `FormatGaps.stale_line_ref: list[str]` — new gap key (cited `path:N` beyond end of file); existing `stale_file_ref`, `ambiguous_file_ref`, `stale_symbol_ref`, `mislocated_symbol_ref` reused
 
 ### Signatures
 
-- `extract_citations(body: str) -> list[str]`
-- `check_citations(issue_path: Path, base_dir: Path) -> list[CitationFinding]`
-- `main_verify_citations() -> int`
+- `symbol_defined_in_file(index: SymbolIndex, file: str, symbol: str) -> bool | None` — new in `issues/symbol_claims.py`: True only for a definition (not an import); `None` when the file cannot be read/parsed
+- `check_format_gaps(...)` — unchanged signature; emits the new/changed keys
 
 ### Call Path
 
-`verify-issues` command -> `main_verify_citations` -> `check_citations` -> `resolve_artifact`
+`verify-issues` check B8 -> `ll-issues format-check <ID> --format json` -> `check_format_gaps` -> `symbol_claims` / `text_utils.suffix_match_candidates`
 
 ### Codebase Research Findings
 
@@ -164,10 +143,12 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `extract_citations` and `check_citations`: resolve bare filenames through `text_utils.build_ref_index` / `suffix_match_candidates` (0 / 1 / >1 tracked paths → `unresolved` / `holds` / `ambiguous`, ambiguous candidates sorted), and reuse `resolve_artifact` only for exact full-path lookup (it never matches a path without its directory)
-2. Add the `ll-verify-citations` CLI entry point and register it in `scripts/pyproject.toml`, `cli/__init__.py`, `init/writers.py:_LL_PERMISSIONS`, and `skills/configure/areas.md` (see Wiring Phase)
-3. Update `commands/verify-issues.md` to run the check every pass and treat its findings as ground truth; the model judges only semantic claims
-4. Add tests: byte-identical JSON across two runs over an unchanged `tmp_path` git-repo fixture issue, sorted `ambiguous` candidates, and bare-filename resolution; run `python -m pytest scripts/tests/`
+1. Add the defined-in vs imported-in rule in `symbol_claims` and route it to `mislocated_symbol_ref` (conservative trigger; honor `ll-prose-ok`).
+2. Add the line-past-EOF check and slash-less bare-filename resolution (0/1/>1, sorted candidates, mirror-only distinct, `(new)` markers skipped) in `check_format_gaps` / `text_utils`; widen scope to Integration Map, Tests and Wiring Phase.
+3. Surface the new key(s) in `ll-issues format-check` text/JSON output.
+4. Add check B8 to `commands/verify-issues.md` (format-check keys are ground truth; unbacked citation findings are advisory); regenerate host mirrors.
+5. Tests: per Tests section, including the run-twice byte-identical determinism test; run `python -m pytest scripts/tests/`.
+6. Replay the BUG-3689 case: a fixture with `runner_spec.py:335` (bare) and `cli/loop/feed.py:terminal_size()` must surface on pass 1.
 
 ### Codebase Research Findings
 
@@ -185,27 +166,11 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 - Outcome: `ll-verify-citations` exit codes follow the `ll-verify-evidence` contract (0 clean, 1 findings, 2 verification incomplete), and `commands/verify-issues.md` states what a non-zero invocation failure does; verified by `test_enh3250_verify_issues_proposal_vs_code.py` anchors staying in order.
 - Run-to-run precedents for the determinism test exist outside the verify CLIs (`test_ll_issues_find_similar.py::test_find_similar_deterministic` compares two invocations' output); the verify-CLI fixture style remains `test_verify_evidence.py`.
 
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `scripts/little_loops/cli/__init__.py` — import `main_verify_citations`, add to `__all__` (pyproject target is `little_loops.cli:main_verify_citations`)
-- Update `scripts/little_loops/init/writers.py` — add `"Bash(ll-verify-citations:*)"` to `_LL_PERMISSIONS`
-- Update `skills/configure/areas.md` — add `ll-verify-citations` to the "Authorize all ll- CLI tools" list
-- Update `commands/verify-issues.md` — add `Bash(ll-verify-citations:*)` to `allowed-tools` and add check B8 after §2B check 7, mirroring its fail-open wording (non-zero on invocation itself → silent fallback) and treating exit 2 as verification incomplete, never clean; keep the `test_enh3250` anchors in order and avoid `python3 -c` / `scripts/` paths
-- Reinstall the editable package (`<interp> -m pip install -e "./scripts[dev]"`, using the interpreter that runs pytest) so `ll-verify-cli-allowlist` sees the new entry point in installed metadata
-- Regenerate host mirrors — `ll-adapt --host <gemini|kimi-code|qwen|codex> --apply` for `commands/verify-issues.md` and `skills/configure/areas.md` changes
-- Update `docs/reference/CLI.md` — add a `### ll-verify-citations` section
-- Update `scripts/tests/test_wiring_cli_registry.py` — add the `DOC_STRINGS_PRESENT` row for `ll-verify-citations`
-- Update `scripts/tests/test_issue_parser.py` — add the `_ALLOWLIST` key only if `verify_citations.py` defines a priority-shaped regex
-- Add `scripts/tests/test_verify_citations.py` (new) and `scripts/tests/test_bug3691_verify_issues_citations.py` (new) — CLI behaviour (run-twice identical JSON, bare-filename resolution, sorted ambiguous candidates) and command/bridge wiring
-- Run `python -m pytest scripts/tests/test_wiring_skills_and_commands.py scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py scripts/tests/test_verify_skill_prose.py scripts/tests/test_docs_audience_gate.py` after the `verify-issues.md` edit
-
 ## Impact
 
 - **Priority**: P3 - causes a late-pass `GATE_UNMET` run end, but only when a citation defect exists
-- **Effort**: Medium - new deterministic check plus skill wiring and tests
-- **Risk**: Low - additive check; the model-judged path remains for semantic claims
+- **Effort**: Medium - extend format-check (3 rules + scope widening), one verify-issues check, mirrors and tests (no new CLI)
+- **Risk**: Low-Medium - the defined-in rule can false-positive on usage-site citations (mitigated by conservative trigger + suppression marker); barring unbacked model citation findings could hide errors format-check cannot express (prose without `file:symbol` form)
 - **Breaking Change**: No
 
 ## Steps to Reproduce
@@ -219,8 +184,11 @@ Citation verification is performed by the model with ad-hoc reads/greps (the pas
 
 ## Acceptance Criteria
 
-- Repeated `--check` passes over an unchanged issue yield the same citation findings.
-- A bare filename citation is resolved by search and not reported as a different path.
+- Repeated `--check` passes over an unchanged issue yield the same citation findings (byte-identical `format-check --format json` across two runs; `verify-issues` raises no citation finding that format-check does not back up).
+- A bare filename citation is resolved by search (0 / 1 / >1 tracked paths), never reported as a different path.
+- A symbol cited via a module that only imports it (BUG-3689's `cli/loop/feed.py:terminal_size()`) is reported `mislocated_symbol_ref` on pass 1, including in Tests / Wiring Phase sections.
+- A cited line beyond end of file is reported.
+- Planned-new (`(new)`) files are not reported stale.
 
 ## Related Key Documentation
 
