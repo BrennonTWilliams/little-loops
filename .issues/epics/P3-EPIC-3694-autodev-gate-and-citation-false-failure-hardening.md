@@ -22,3 +22,5 @@ Group of 4 related issues about autodev/refine gates failing on non-defects: Aut
 - **ENH-3692** — code-run-gate: fail only on test failures new relative to the base SHA (baseline-aware gate) (open)
 - **BUG-3691** — verify-issues citation checking is unstable across passes (open)
 - **ENH-3690** — refine-to-ready-issue: give NON_VALID citation-only findings a repair route (open)
+- **BUG-3695** — refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria (open)
+- **ENH-3697** — Make corpus-ratchet gate tests read the committed .issues tree, not the working tree (open)

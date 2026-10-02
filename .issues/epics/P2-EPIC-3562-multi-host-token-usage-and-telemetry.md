@@ -110,6 +110,8 @@ Before closing the epic, replace each owner entry with an evidence-backed verdic
 - **ENH-3676** — Implement Kimi Code stored token usage (blocked by ENH-3665)
 
 Standalone **ENH-3649** (reader isolation and diagnostics) is done and remains outside this epic's child count.
+- **BUG-3696** — ll-loop usage table est_cost n/a: claude-sonnet-5-5 missing from MODEL_PRICING, no approximate fallback (open)
+
 
 ## Implementation Order and Readiness
 
