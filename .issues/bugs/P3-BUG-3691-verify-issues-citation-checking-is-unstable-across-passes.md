@@ -52,7 +52,7 @@ Extend `ll-issues format-check`; do not add a CLI. This issue owns the detectors
 - Emit `examined_refs` as a **sibling metadata key in single-ID JSON**, alongside `directive_gaps` and `superseded_marker_count`. Keep it **out of `FormatGaps`**, `to_dict()`, gap predicates and text rendering. A keyword-only optional collector on `check_format_gaps` lets the CLI collect it; existing callers need no change. `--all` remains a sparse mapping of issues with actual gaps, without citation metadata.
 - Each serialized `CitationCheck` is `{ref, issue_line, issue_column, property, result}`. `ref` preserves the complete cited form, including `:N[-M]` or `:symbol()`, with enclosing backticks removed. For an attributed symbol/file pair, preserve the complete attribution span rather than reducing it to the bare symbol name. `issue_line` and `issue_column` are **1-based positions in the original full issue file**, including frontmatter. Match on the exact occurrence and property, not on a resolved filename or stripped path. If an extractor cannot retain an unambiguous original span, it must not publish coverage for that occurrence.
 - `property` is `path_resolves` | `line_in_range` | `symbol_resolves_in` | `symbol_defined_in`. `path_resolves` means uniquely resolvable against the tracked-file index, **not disk existence**. `symbol_resolves_in` uses the existing import-inclusive existence check; `symbol_defined_in` is a distinct definition-shaped claim. An imported symbol may pass the former while failing the latter. An import-inclusive pass must never be serialized as `symbol_defined_in: ok`.
-- `result` is `ok` or the exact gap-class key raised. `ok` is emitted only after that property has actually been checked. Missing/unsupported forms, absent indexes or root, unavailable reads, unsupported languages, planned-new refs, untracked-by-design refs, suppressed claims and breadth-capped claims have **no entry for the unexamined property**. A known stale/ambiguous path may have a failing `path_resolves` entry, but never a line/symbol pass. Unsuffixed bare filenames receive no new path coverage; supported attributed-symbol forms keep their existing behavior.
+- `result` is `ok` or the exact gap-class key raised. `ok` is emitted only after that property has actually been checked. Missing/unsupported forms, absent/failed/empty indexes or absent root, unavailable reads, unsupported languages, planned-new refs, untracked-by-design refs, suppressed claims and breadth-capped claims have **no entry for the unexamined property**. A known stale/ambiguous path may have a failing `path_resolves` entry, but never a line/symbol pass. The index builders fail empty on git errors; an empty/unknown index must not authorize path-failure coverage. A tracked path deleted from the working tree may pass index resolution but cannot get a line/symbol pass without a successful read. Unsuffixed bare filenames receive no new path coverage; supported attributed-symbol forms keep their existing behavior.
 - Preserve source positions through section selection and fenced-block skipping using `text_utils.fence_spans` / `in_fence`; do not derive coverage from `extract_file_paths`' deduplicated, line-stripped set or from concatenated section bodies. Do not change legacy extraction behavior as a side effect. Sort entries by `(issue_line, issue_column, ref, property, result)`, deduplicate identical entries, and never publish both `ok` and failure for the same occurrence/property.
 
 ### Detector rules and advisory representation
@@ -102,7 +102,7 @@ The prior new-CLI plan was rejected on 2026-10-02: it duplicated format-check an
 - Same raw citation in current-state and advisory scope; suppressed vs examined occurrence; different ranges in one file; repeated symbol names attributed to different files; original positions survive fence/scope selection
 - Single-ID metadata-only output leaves both gap predicates false, text says compliant and exit code is 0; `--all` does not gain compliant rows; `--fix --apply` leaves citation text untouched
 - Advisory findings render in text/JSON and set `has_gaps` only; existing blocking rules still fail as before; metadata does not enter the `_TEXT_RENDER_EXEMPT` dataclass-field guard because it is not a field
-- Byte-identical JSON over unchanged issue **and code/index snapshot**; explicit tests for absent/unknown property coverage
+- Byte-identical JSON over unchanged issue **and code/index snapshot**; explicit tests for absent/failed/empty indexes and unknown property coverage, including tracked-but-deleted files
 
 ## Program Design
 
@@ -137,6 +137,12 @@ Single-ID `format-check` -> build indexes once -> `check_format_gaps` with optio
 ## Root Cause
 
 Citation verification is performed by the model with ad-hoc reads/greps (the passes reported "direct reads and greps", no graph queries), not by a deterministic check, so coverage varies per pass.
+
+## Impact
+
+- **Priority**: P3 — inconsistent mechanical citation checks can cause late false gate failures
+- **Effort**: Medium — occurrence metadata, four detector changes, compatibility tests and corpus measurements
+- **Risk**: Medium — coverage overclaims can hide true findings; advisory rollout and blocking-set parity limit new gates
 
 ## Acceptance Criteria
 

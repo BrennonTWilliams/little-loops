@@ -14,6 +14,7 @@ relates_to:
 - BUG-3695
 blocked_by:
 - BUG-3691
+- BUG-3708
 parent: EPIC-3694
 epic: EPIC-3694
 ---
@@ -98,7 +99,7 @@ Revises the `/ll:decide-issue` choice above; Option B's *mechanism* (reuse the `
 
 - Option B as decided loosens the BUG-3637 premise-edit guard using a *model-judged* path-vs-premise split — the same unstable judgment BUG-3691 documents. That is a masking hazard: a premise-changing finding mislabeled "citation-only" would be auto-corrected.
 - **Revised rule (B′):** a finding qualifies for `CLAIMS_OUTDATED` only when it **maps to a deterministic `ll-issues format-check` key** (`stale_file_ref`, `ambiguous_file_ref`, `mislocated_symbol_ref`, the new `stale_line_ref`; the BUG-3691 rescope adds the defined-in/imported-in and bare-filename rules). Anything the model raises that format-check does not back up stays `NON_VALID`. "Both scopes present means `NON_VALID` wins", the never-auto-correct set, and the `verify_evidence` write requirement are unchanged.
-- Hence `blocked_by: BUG-3691`. Dissent considered: ship Option B now as a stopgap gated on the format-check keys that already exist (stale/ambiguous/mislocated); BUG-3691's new rules would then widen coverage. Reasonable if the 33-iteration `GATE_UNMET` burn recurs before BUG-3691 lands — drop `blocked_by` in that case, but keep the key-gating.
+- Hence `blocked_by: BUG-3691`; the 2026-10-03 contract review additionally requires BUG-3708 before enabling the policy below. Dissent considered: ship Option B now as a stopgap gated on the format-check keys that already exist (stale/ambiguous/mislocated); BUG-3691's new rules would then widen coverage. Reasonable if the 33-iteration `GATE_UNMET` burn recurs before BUG-3691 lands — drop `blocked_by` in that case, but keep the key-gating.
 - Follow-up option (not in scope): for `mislocated_symbol_ref` and uniquely-resolved `ambiguous_file_ref`, rewrite the citation mechanically in code (`symbol_resolves_elsewhere` gives the target) instead of via the model's `correct_claims`.
 
 ## Integration Map
@@ -269,7 +270,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): Scope vs BUG-3691: "stays `NON_VALID`" applies only to premise-changing (non-citation) findings. An unbacked path/line/symbol-location finding is advisory and does not affect the verdict (BUG-3691 B8); format-check-backed citation findings take this issue's repair route. Revision/Acceptance wording saying "anything format-check does not back up stays `NON_VALID`" is superseded by this boundary.
+**Contract handoff (2026-10-03 review of BUG-3691/BUG-3708/BUG-3695):** consume BUG-3691's single-ID `examined_refs` records by exact `{ref, issue_line, issue_column, property}` identity and explicit failing `result`, never mere gap-key presence elsewhere in the issue or absence of a finding. BUG-3708 must land before this issue so its authority/advisory table is preserved when repair eligibility is enabled. The existing `VERIFY:CLAIMS_OUTDATED` mechanism remains selected.
+
+BUG-3691's new keys are `advisory_stale_file_ref`, `advisory_ambiguous_file_ref`, `advisory_stale_symbol_ref`, `advisory_mislocated_symbol_ref`, and `stale_line_ref`; `symbol_resolves_in` and `symbol_defined_in` are distinct properties. B8 initially reports these without changing the verdict. This issue owns any explicit exception that makes a measured, citation-only advisory finding eligible for correction; **do not silently treat every advisory entry as a blocking verdict**. Evaluate eligibility per key and still require an independently established unchanged premise and a justified correction target. An ambiguous path alone does not supply a unique target.
+
+Checked passes demote only matching mechanical findings. Unexamined findings, line-content claims and premise consequences retain ordinary model-verdict handling; absence of deterministic support is not automatic demotion. A content/premise exception needs independent semantic evidence. The historical boundary that called every unbacked citation advisory is superseded by this occurrence/property boundary. Blocking promotion remains subject to the existing measured-precision and repair-route acceptance criterion; serialize overlapping command edits with BUG-3695.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:00 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
