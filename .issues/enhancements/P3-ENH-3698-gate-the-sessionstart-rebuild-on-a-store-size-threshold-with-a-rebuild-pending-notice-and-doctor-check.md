@@ -15,9 +15,9 @@ relates_to:
 - ENH-3658
 - BUG-3715
 confidence_score: 95
-outcome_confidence: 72
-score_complexity: 14
-score_test_coverage: 22
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
 ---
@@ -214,9 +214,20 @@ ENH-3678 (done; metadata decision), ENH-3679 (done; 250 ms CLI waits/drop counti
 
 ## Confidence Check Notes
 
-The frontmatter scores (readiness 95/100, outcome 72/100) are from the 2026-10-03 confidence check **before this review**. Its references to an open ENH-3679, main-only sizing, a hook-only gate, and deleting the bump pin are superseded by this design. Reassess confidence after calibration and before implementation approval; those historical scores are not a validation of the newly specified worker protocol.
+_Added by `/ll:confidence-check` on 2026-10-03 (re-scored against the post-review design: resolved-target sizing, main+WAL, worker post-ingest recheck)_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- Calibration is still outstanding: `REBUILD_AUTO_MAX_BYTES` is a provisional 1 GiB until offline replay timing picks the shipped value (Ambiguity 18/25). Not a blocker, but the constant, the recorded evidence, and the accepted 250 ms telemetry-drop residual must land with the change.
+- The doctor wording says the no-arg `@register_check` function returns `CheckResult(name="rebuild_pending", ...)`, but `register_check` (`cli/doctor.py:94`) takes `Callable[[], list[CheckResult]]`. Return `[CheckResult(...)]`.
+- Hook-to-worker protocol change (new `--auto-rebuild` flag, ingest-then-recheck ordering) spans lifecycle, hook, worker, and doctor; keep the call-order test (ingest commits before the final disposition check) as the first test written.
+
+_The earlier note's staleness warning (open ENH-3679, main-only sizing, hook-only gate, deleting the bump pin) is resolved by this re-score; those scores no longer stand._
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T18:44:58 - `b1c5eb16-ae1a-4e20-9a59-b0f92f518844.jsonl`
 - `/ll:advise` (Opus, resolved-target/WAL sizing and post-ingest gate critique; follow-up on BUG-3715 sequencing) - 2026-10-03
 - `/ll:confidence-check` - 2026-10-03T17:30:10 - `97ad9d47-f49e-462e-89fd-8370be4b7314.jsonl`
 - `/ll:advise` (Opus, second pre-implementation review: compaction-in-txn, summary_nodes wipe, notice wording) - 2026-10-03

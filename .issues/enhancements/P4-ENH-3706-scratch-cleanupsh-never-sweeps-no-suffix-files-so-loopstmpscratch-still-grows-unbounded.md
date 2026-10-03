@@ -13,6 +13,12 @@ relates_to:
 - BUG-3707
 - BUG-2525
 - ENH-3709
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3706: scratch-cleanup.sh never sweeps no-suffix files so .loops/tmp/scratch still grows unbounded
@@ -173,5 +179,6 @@ The 24h threshold, numeric suffix parser, live-PID exemption below seven days, b
 **Open** | Created: 2026-10-03 | Priority: P4 | Revised after review: 2026-10-03
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T18:44:58 - `b1c5eb16-ae1a-4e20-9a59-b0f92f518844.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:44:48 - `32f52444-a659-4ef8-933a-2361ae6c6aff.jsonl`
 - `/ll:format-issue` - 2026-10-03T17:29:28 - `782c403d-3c0b-47cc-a461-f433badb1263.jsonl`
