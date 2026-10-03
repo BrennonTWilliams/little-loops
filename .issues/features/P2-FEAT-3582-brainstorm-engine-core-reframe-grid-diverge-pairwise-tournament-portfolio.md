@@ -15,11 +15,11 @@ labels:
 relates_to:
 - FEAT-2248
 reconcile_attempted: true
-confidence_score: 95
-outcome_confidence: 70
+confidence_score: 75
+outcome_confidence: 68
 score_complexity: 5
 score_test_coverage: 25
-score_ambiguity: 22
+score_ambiguity: 20
 score_change_surface: 18
 blocked_by:
 - FEAT-3667
@@ -215,7 +215,7 @@ All symbols below live in `scripts/little_loops/brainstorm_engine.py` (importabl
 
 - `IdeaRecord`: `{id: str, title: str, body: str, framing: str, lens: str, cell: [str, str], off_grid: bool, grounded: bool | "unknown" | None, extra: dict}` — one JSON line per idea in `ideas.jsonl`
 - `FinalistsFile`: `{finalists: [str], reserve: {str: [str]}, dropped: {str: str}, judge_mode: str, assets: dict}` — § Data Contract → Finalists file
-- `PairVerdict`: `{a: str, b: str, winner: str | null, probe: bool, round: int, rationale: str}` — `a` is the idea shown first; `winner: null` = abstention; `probe: true` = reversed-order re-judgment of a top-3 head-to-head; `round` is the schedule round (one LLM call per round)
+- `PairVerdict`: `{pair: int, a: str, b: str, winner: str | null, probe: bool, round: int, rationale: str}` — `pair` is the pair index within the round (the upsert key with `round`/`probe`, matching `VERDICT_JSON`; added 2026-10-02 per FEAT-3667); `a` is the idea shown first; `winner: null` = abstention; `probe: true` = reversed-order re-judgment of a top-3 head-to-head; `round` is the schedule round (one LLM call per round)
 - `Portfolio`: see § Data Contract
 
 ### Signatures
@@ -404,7 +404,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - The tournament makes one judge call per **round** plus one probe call (≤ 8 calls for 8 finalists); `abstention_rate` is recorded, `> 0.25` sets `low_confidence`, and `> 0.5` makes `validate_portfolio` fail with no sink executed.
 - Tournament failure routing: the parent `tournament` state's `on_no`, `on_error` and `on_timeout` all reach `salvage_tournament`; a fixture where a judge call errors after ≥ 3 complete rounds yields a `partial` portfolio, not `finalize_failed`. Judge states carry `timeout: 300` and the guard includes `JUDGE_CALL_TIMEOUT_S`.
 - `brainstorm.md` is written only by `render_report`; a zero-content run never lets `sink_file` copy an empty report (`validate_portfolio` requires it non-empty).
-- Every classify state lists its happy tokens and sets `_: finalize_failed`; a fixture where the engine crashes with empty stdout lands in `finalize_failed`. Every LLM prompt state has `next:` + `on_error:` (or an explicit `evaluate:`) — asserted by a wiring test so no hidden evaluator call is added.
+- Every classify state lists its happy tokens and sets `_: finalize_failed`; a wiring test asserts **every classify state that calls `brainstorm_engine` routes `_` to `finalize_failed`** (FEAT-3667 cannot enforce this since it changes no YAML; 2026-10-02 review); a fixture where the engine crashes with empty stdout lands in `finalize_failed`, and one where the engine prints a happy token and then crashes (trailing `fail`) routes to `finalize_failed`. Every LLM prompt state has `next:` + `on_error:` (or an explicit `evaluate:`) — asserted by a wiring test so no hidden evaluator call is added.
 - Re-running `ingest` for a lens, `record-round`, or the child loop from `build_schedule` never double-counts verdicts or ideas.
 - **Merge gate (before this issue's commit reaches `main`)**: `MockActionRunner` end-to-end runs (happy, floor-fail, child-timeout salvage, child-error salvage); one real run per pinned brief from the worktree with `PYTHONPATH=<worktree>/scripts` (the editable install otherwise resolves `main`'s package); the old-vs-new core comparison from FEAT-3596's baseline, **with a pass criterion (2026-09-30 fourth review)**: on both pinned briefs the new winner **wins or ties a blind human A/B** against the old loop's top idea (both rendered in the same neutral title + body format so the comparison is actually blind), occupied cells ≥ the old loop's, retained duplicates ≤ the old loop's, and ≤ 30 LLM calls. The shared tagging pass over `postmortems/brainstorm-baseline/fresh-20260929/*/ideas.jsonl` is a prerequisite of this gate. The rewrite reaches `main` only after this passes (every project is `local-editable`; the quality risk lands with this issue, not with FEAT-3596). The loop keeps the name `brainstorm`. Also asserted by the merge-gate end-to-end test: the 9-lens happy-path parent step count equals the enumerated budget (§ Program Design → LLM-state pairing).
 - Profile gates add no parent steps: `check_floors` and `portfolio` emit routing tokens, and there is no `*_gate` state.
@@ -520,20 +520,25 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-29 (re-scored against the round-robin rewrite, Review Decisions 15–22). **Stale after the 2026-09-29 pre-implementation review (Review Decisions 28–38: split into FEAT-3667, batched judging, parent tail reserve) — re-run `/ll:confidence-check` once FEAT-3667 lands.**_
+_Added by `/ll:confidence-check` on 2026-10-02 (re-scored after the FEAT-3667 split, batched judging, `PairVerdict.pair`, and the classify-route `_` acceptance criterion). Supersedes the 2026-09-29 notes (95/70)._
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 70/100 → MODERATE
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override; raw tier would be PROCEED WITH CAUTION)
+**Outcome Confidence**: 68/100 → MODERATE
 
 ### Concerns
-- Scores re-verified against the round-robin rewrite; unchanged from the prior pass.
-- Prior concerns resolved: child loop named (`brainstorm-tournament.yaml`, § Tournament Specification → Child loop) and `eligible` vs premortem concession pinned (§ Data Contract).
-- Program Design, dependency, claim, and learning-test gates are all clean.
+- Program Design, claim, parity, structure, decision, and learning-test gates are clean (`stale_file_ref` flags only the not-yet-created `brainstorm_engine.py`, which FEAT-3667 owns).
+- Spec text is internally inconsistent on `reframe`: Expected Behavior 1, Call Path, and the Proposed Solution still describe `reframe`/`reframe_select`, while Review Decisions (2026-09-30) defer `reframe` to v2 (`BUILT_CAPABILITIES["reframe"] = {False}`; `frame_apply` always routes `pop_lens`). Implementer must follow the Review Decision.
+- `format-check` reports `soft_dep_hard_edge: FEAT-3667` — the dependency is genuinely hard here (engine module must exist first), so the edge is correct; the lint is advisory.
+- The parent step budget (≈ 45-50 of `max_steps: 60`) is an estimate to be recounted and asserted in the merge-gate end-to-end test.
+
+### Gaps to Address
+- **Unresolved `blocked_by`: FEAT-3667 (open)** — `brainstorm_engine.py`, the CLI contract, `resolve-profile`, and `artifact.json` do not exist yet, so every YAML state in this issue has nothing to call. Land FEAT-3667 first, then re-run `/ll:confidence-check`. (FEAT-3686, the spike, is completed/GO.)
 
 ### Outcome Risk Factors
-- **Complexity (5/25)**: rewrites most of a 459-line loop, adds a new child loop, and touches fence registry, interpolation baseline, README counts, and ~10 existing tests — expect iteration on validator warnings (MR-10/MR-11, warning budget).
+- **Deep per-site complexity (Complexity 5/25)**: rewrites most of a 459-line loop, adds a new child loop, and touches the fence registry, interpolation baseline, README counts, and ~10 existing tests across 6-15 sites — expect iteration on validator warnings (MR-10/MR-11, warning budget).
 - **Change surface (18/25)**: the `context:` key removals and `winners.md` schema mapping ripple into sinks, docs, and FEAT-3583..3586.
-- **Ambiguity (22/25)**: judge rubric wording and the `reframe`/`diverge` prompt text are still left to the implementer.
+- **Ambiguity (20/25)**: the `reframe` v1/v2 text conflict above, plus judge rubric and `diverge` prompt wording left to the implementer.
+- **Merge gate**: single-commit rewrite of a loop that every `local-editable` project runs; the blind A/B, token ceiling, and worktree real-run gates must pass before the commit reaches `main`.
 
 ---
 
@@ -542,6 +547,7 @@ _Added by `/ll:confidence-check` on 2026-09-29 (re-scored against the round-robi
 **Note** (added by `/ll:audit-issue-conflicts`): Profile data vs FEAT-3667: the four preset JSONs (`artifact`, `visual`, `functional`, `business`) ship in FEAT-3667 with unbuilt knobs off; this issue owns only the state wiring that calls `resolve_profile`. "Ships with the built-in `artifact` profile only" is superseded; brief 2's `mode=functional` merge gate depends on the FEAT-3667 presets.
 
 ## Session Log
+- `/ll:advise` (Opus, ENH-3678/FEAT-3667 review follow-up: PairVerdict.pair, classify-route test) - 2026-10-02
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:03 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:09 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:38:55 - `6ac2993c-0f5a-489a-b5b9-4d778beaf475.jsonl`

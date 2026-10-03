@@ -15,6 +15,12 @@ relates_to:
 - ENH-3678
 - ENH-3699
 - ENH-3658
+confidence_score: 75
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3698: Gate the SessionStart rebuild on a store-size threshold with a rebuild-pending notice and doctor check
@@ -85,7 +91,7 @@ A multi-GB rebuild from a hook is the incident that motivated ENH-3678. The gate
 
 ## Implementation Steps
 
-1. Land ENH-3678 first. Add the size constant and the check (main file only, GiB).
+1. Land ENH-3678 first. **Delete ENH-3678's ordering lockstep test** (`REBUILD_DERIVE_VERSION == _FROZEN_LEGACY_DERIVE_VERSION`, "do not bump before ENH-3698") in the same change that lands the size gate, so a derive bump becomes possible only once the gate exists. Add the size constant and the check (main file only, GiB). `rebuild_needed` already opens with a short busy timeout (ENH-3678); the doctor check reports a lock-timeout `unknown` as informational.
 2. Extend `handle` with the spawn/pending decision and the notice; suppress on the automation-pruning path; keep the remote guard first.
 3. Add the doctor check and payload key; allowlist/`TestNoTokenLeaks` updates.
 4. Tests per above; docs per above. Sequence the `cli/doctor.py` and `docs/reference/CLI.md` edits with ENH-3679 and ENH-3658.
@@ -105,7 +111,7 @@ A multi-GB rebuild from a hook is the incident that motivated ENH-3678. The gate
 - [ ] `ll-doctor` reports "rebuild pending" as an informational check (text and JSON), does not change the exit code, reports "not applicable" for a remote target, creates nothing, and is covered by `TestNoTokenLeaks`.
 - [ ] Remote stores never rebuild from a hook and never reach the size `stat()`.
 - [ ] A failed/unreadable size probe does not auto-spawn, treat the store as small, or claim a known pending state; doctor reports informational unknown. Record a representative sub-1 GiB replay duration in the implementation review while ENH-3699's single-flight protection remains deferred.
-- [ ] No `REBUILD_DERIVE_VERSION` bump lands before this issue (ENH-3678's constant comment names it).
+- [ ] No `REBUILD_DERIVE_VERSION` bump lands before this issue (ENH-3678's constant comment names it); ENH-3678's ordering lockstep test is deleted in this issue's change.
 - [ ] Docs (`CLI.md` check count/list, `BUILTIN_HOOKS_GUIDE.md`, `HISTORY_SESSION_GUIDE.md`) updated in end-user shape; `python -m pytest scripts/tests/` passes.
 
 ## Related
@@ -123,5 +129,25 @@ A multi-GB rebuild from a hook is the incident that motivated ENH-3678. The gate
 **Open** | Created: 2026-10-02 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-02_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override; aggregate alone would be PROCEED WITH CAUTION)
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Concerns
+- Criterion 1 (15/20): `handle` already carries an inline `last_rebuild_version < SCHEMA_VERSION` rebuild decision (`session_start.py` ~`:189-214`); this issue replaces/extends it via ENH-3678's `rebuild_needed()`, so the edit is an extension of existing logic, not greenfield.
+- Doctor surface is pinned by several gates (`test_enh3184_spawn_site_guard.py`, `TestNoTokenLeaks`, `_CALLER_ALLOWLIST`, `test_stray_ll_regression.py`, `test_history_store_chokepoint_gate.py`); each must be updated or kept passing in the same change.
+- Size-constant home is left as "a `lifecycle.py` or `session_start.py` module constant; pick one" — a minor open choice, resolvable during implementation.
+
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3678 (open) and ENH-3679 (open). Neither `rebuild_needed()` nor `REBUILD_DERIVE_VERSION` exists in `scripts/little_loops` yet, so the hook decision, the doctor check, and the lockstep-test deletion in Implementation Step 1 have nothing to build on or delete. Land ENH-3678 (then ENH-3679 for the `cli/doctor.py` / `CLI.md` sequencing) first, or drop the dependency edge if it no longer applies.
+
+### Outcome Risk Factors
+- Broad enumeration across ~12 change sites (hook, doctor, constant home, 4+ doc files, 5+ test files) with Local-depth logic at each; spread-out edits to `cli/doctor.py` and `docs/reference/CLI.md` must be sequenced with ENH-3679 and ENH-3658 to avoid merge conflicts.
+- Behavior depends on ENH-3678's `rebuild_needed()` contract (`stale`/`current`/`unknown`, short busy timeout) which is not yet implemented; any contract drift there ripples into the hook branch and doctor check.
+
 ## Session Log
+- `/ll:advise` (Opus, ENH-3678/FEAT-3667 review follow-up: delete ENH-3678 lockstep test) - 2026-10-02
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:01 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
