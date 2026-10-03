@@ -10,6 +10,12 @@ discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:46:29Z'
 parent: EPIC-3694
 decision_needed: false
+confidence_score: 80
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3695: refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria
@@ -217,20 +223,28 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-02_
+_Added by `/ll:confidence-check` on 2026-10-03 (supersedes the stale 2026-10-02 scoring)_
 
-> **Stale (2026-10-02 review; still unscored 2026-10-03 — re-run `/ll:confidence-check` after this re-scope):** these scores were measured while the Option A/B decision was still open, and the frontmatter scores were cleared. The 2026-10-02 advisor review also added scope (persist `verify_evidence` for `DIRECTIVE_DRIFT`, per-entry B6 walk, AC-quality rule, no-add Integration Map rule). Re-run `/ll:confidence-check` before implementation.
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 64/100 → MODERATE (1 point under `outcome_threshold` 65)
 
-### Remaining Outcome Risk Factors
+### Concerns
+- **Undeclared dependency.** Sequencing prose says implement after BUG-3708 (shared `commands/verify-issues.md`, mirrors, prose baseline; replay is noise until citation verdicts are stable), and BUG-3708 is itself `blocked_by` BUG-3691 (both open). BUG-3695 has no `blocked_by` frontmatter, so the Dependencies gate and loop ordering cannot see it. Add `blocked_by: [BUG-3708]` (Criterion 5 scored 10 for this).
+- Code anchors re-verified 2026-10-03: `reconcile-issue.md` L120 ("do not invent new requirements"), L125 (`### 0. Parse Flags`), L309 (Output Format); `verify-issues.md` L263 (DIRECTIVE_DRIFT row); `refine-to-ready-issue.yaml` L23/L589 (route), `reconcile_issue` ~L822, `reconcile_revision` ~L712; `test_reconcile_issue_state_routing` L1814. `--from-verify-evidence` is not yet defined anywhere (no naming collision).
+- The route-token gate is "optional hardening" and not in Acceptance Criteria; decide before implementing (the structural-invariant tests are the minimum).
+
+### Outcome Risk Factors
+- Broad enumeration across ~6-15 sites (3 command/loop files, ≥3 test files plus new test class, 4 docs, mirrors) with moderate cross-file contract complexity (flag, verdict, evidence, ordering invariants, shared reconcile budget).
 - Convergence is unproven: the budget is one reconcile per run, so the first pass must enumerate and repair every gap (fallback: `check_reconcile_limit` target 3).
 - `reconcile-issue` has 3 callers (`reconcile_issue`, `reconcile_revision`, `prepare-issue.yaml` `run_reconcile`); only the first passes the flag, and the carve-out is prompt prose, not structurally enforced.
 - Precedent `.ll/decisions.d/b5a1b051-…json` rejected widening reconcile to Program Design; the carve-out differs because Acceptance Criteria are already rewritable by reconcile and the new source is `verify_evidence`.
 - No test steps the real FSM with a stubbed `DIRECTIVE_DRIFT` verdict; the AC-coverage regression is a new test shape.
 - Shares `commands/verify-issues.md`, host mirrors and the prose baseline with BUG-3708 (B8 half of the BUG-3691 split): serialize the two.
-- Shared 1-reconcile-per-run budget with `ACCEPTANCE_CRITERIA` (see Budget interplay); a stale-verdict path to the carve-out does not exist today but rests on three implicit invariants (see "Why a stale verdict cannot trigger…").
+- Shared 1-reconcile-per-run budget with `ACCEPTANCE_CRITERIA` (see Budget interplay); no stale-verdict path to the carve-out is reachable today, but this rests on three implicit invariants (see "Why a stale verdict cannot trigger…").
 - _(Resolved 2026-10-02)_ `/ll:decide-issue BUG-3695` selected Option A; `decision_needed` cleared.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:18:06 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
 - `/ll:decide-issue` - 2026-10-02T20:01:51 - `c7a25ce4-f603-4faf-97bd-88495061e012.jsonl`
 - `/ll:confidence-check` - 2026-10-02T19:45:19 - `9a15ba2c-4c77-475b-8d6d-2e5aa8b1186f.jsonl`
 - `/ll:wire-issue` - 2026-10-02T19:42:57 - `4830feb2-90ba-4747-9939-6d60a5df22df.jsonl`

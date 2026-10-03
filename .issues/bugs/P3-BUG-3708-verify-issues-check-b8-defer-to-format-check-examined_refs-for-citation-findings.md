@@ -13,6 +13,12 @@ blocked_by:
 relates_to:
 - ENH-3690
 - BUG-3695
+confidence_score: 65
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3708: verify-issues check B8: defer to format-check examined_refs for citation findings
@@ -110,6 +116,26 @@ Without B8 the deterministic detectors from BUG-3691 do not change the verdict, 
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-03_
+
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Concerns
+- The `examined_refs` entry schema (`{ref, property, result}`, `property` ∈ `path_exists` | `line_in_range` | `symbol_defined_in`) exists only in BUG-3691's prose. B8 wording and the "model finding kind → property" mapping cannot be finalized until it lands.
+
+### Gaps to Address
+- **Unresolved `blocked_by`: BUG-3691 (open).** Remedy: land BUG-3691 (the `examined_refs` payload) first, or remove the dependency if B8 is reworked not to need it. Re-run `/ll:confidence-check BUG-3708` afterwards; with the dependency cleared, readiness would be ~85.
+
+### Outcome Risk Factors
+- B8 demotes model findings, so a wrong "examined" boundary can hide real defects; tests are string-presence only and cannot exercise the model's behavior. Mitigated by keying on `examined_refs` and fail-open.
+
 ## Status
 
 **Open** | Created: 2026-10-03 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:18:05 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`

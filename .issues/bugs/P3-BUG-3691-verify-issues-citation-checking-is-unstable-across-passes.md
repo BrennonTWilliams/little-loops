@@ -15,6 +15,12 @@ blocks:
 - BUG-3708
 parent: EPIC-3694
 epic: EPIC-3694
+confidence_score: 80
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # BUG-3691: verify-issues citation checking is unstable across passes
@@ -180,7 +186,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Note** (2026-10-03 review): split into this detector half and BUG-3708 (B8). B8 keys its demotion on `examined_refs` (emitted here), not on mere absence of a format-check finding; the new keys stay advisory until ENH-3690 promotes them.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-03_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- **`examined_refs` would count as a blocking gap.** `FormatGaps.has_blocking_gaps` (`issue_parser.py`) is `any(getattr(self, f.name) for f in fields(self) if f.name not in _ADVISORY_GAP_CLASSES)`, so any non-empty dataclass field outside `_ADVISORY_GAP_CLASSES` fails `format-check`'s exit code. `examined_refs` is a payload, not a gap, and is non-empty for every issue with a citation; as written, "Types" adds only `stale_line_ref` to `_ADVISORY_GAP_CLASSES`. Add `examined_refs` to the exclusion (and keep it out of `has_gaps`) or the advisory/exit-code-unchanged acceptance criterion fails on the first run. Add a test for it.
+- The advisory representation for the defined-in, bare-filename and widened-scope findings is left "keys or marker, chosen at implementation". Since `has_blocking_gaps` iterates dataclass fields, separate advisory keys in `_ADVISORY_GAP_CLASSES` is the only option that fits the existing mechanism; a per-finding marker would need new plumbing. Decide up front.
+- `symbol_defined_in_file` is feasible (`_extract_symbols(path, include_imports=...)` already exists; `SymbolIndex.symbols_in` uses the import-inclusive default), but it needs a second cache or a flag on `SymbolIndex` so the definition-only set is not re-parsed per claim.
+
+### Outcome Risk Factors
+- Broad surface: `FormatGaps`/`check_format_gaps` has ~9 non-test consumers (`next_obligation.py`, `preparation_policy.py`, `run_record.py`, `sequence.py`, `check_design.py`, `program_design.py`, `research_triage.py`, `cli_surface.py`, `format_check.py`) and 17 test files; a new dataclass field flows through all of them.
+- Moderate per-site complexity: three new detectors plus scope widening and a new payload share state in `check_format_gaps`, with false-positive risk (defined-in rule, bare-filename resolution) that the baseline/delta step must measure.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:18:04 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:00 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:verify-issues` - 2026-10-01T22:38:30 - `481f71a6-8878-4664-a5d1-327d85ef26ef.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-01T22:36:37 - `b3ad147a-1b97-4e9e-9ff4-48d129540768.jsonl`
