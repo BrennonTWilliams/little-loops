@@ -3,7 +3,7 @@ id: BUG-3702
 type: BUG
 title: refine_followup evidence-delta snapshot vanishes from shared scratch dir mid-state
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T19:59:15Z'
@@ -11,6 +11,7 @@ parent: EPIC-3694
 relates_to:
 - BUG-3705
 - BUG-3707
+completed_at: '2026-10-03T22:45:24Z'
 ---
 
 # BUG-3702: refine_followup evidence-delta snapshot vanishes from shared scratch dir mid-state
@@ -25,7 +26,7 @@ During `refine-to-ready-issue` run `refine-to-ready-issue-20261002T111524`, `ref
 
 ## Current Behavior
 
-`scripts/little_loops/cli/verify_evidence.py:write_snapshot` still allocates `root / SNAPSHOT_DIR / f"evidence-snapshot-{uuid.uuid4()}-{os.getpid()}.json"` (`SNAPSHOT_DIR = .loops/tmp/scratch`). `hooks/scripts/scratch-cleanup.sh` now only sweeps files untouched for `MIN_AGE_MINUTES=1440`, so a snapshot younger than 24h survives any number of session starts. The `write_snapshot` docstring still says the `-<pid>` suffix "makes an allocated file eligible for the `SessionStart` scratch-cleanup prune", which no longer describes the contract, and nothing pins that a snapshot younger than the guard survives, so lowering `MIN_AGE_MINUTES` would silently reintroduce the bug.
+`scripts/little_loops/cli/verify_evidence.py:write_snapshot` still allocates `root / SNAPSHOT_DIR / f"evidence-snapshot-{uuid.uuid4()}-{os.getpid()}.json"` (`SNAPSHOT_DIR = Path(".loops") / "tmp" / "scratch"`). `hooks/scripts/scratch-cleanup.sh` now only sweeps files untouched for `MIN_AGE_MINUTES=1440`, so a snapshot younger than 24h survives any number of session starts. The `write_snapshot` docstring still says the `-<pid>` suffix "makes an allocated file eligible for the `SessionStart` scratch-cleanup prune", which no longer describes the contract, and nothing pins that a snapshot younger than the guard survives, so lowering `MIN_AGE_MINUTES` would silently reintroduce the bug.
 
 ## Expected Behavior
 
@@ -86,8 +87,8 @@ History (confirmed 2026-10-02): pid-suffixed name + `scratch-cleanup.sh` dead-pi
 
 ## Acceptance Criteria
 
-- [ ] A hook-level test shows `scratch-cleanup.sh` leaves a recent (<24h) `evidence-snapshot-<uuid>-<deadpid>.json` in place and prunes the same file once backdated past the guard
-- [ ] The `write_snapshot` docstring describes the two-tier lifecycle (24h dead-pid guard, 7-day universal idle prune), not immediate prune eligibility
+- [x] A hook-level test shows `scratch-cleanup.sh` leaves a recent (<24h) `evidence-snapshot-<uuid>-<deadpid>.json` in place and prunes the same file once backdated past the guard
+- [x] The `write_snapshot` docstring describes the two-tier lifecycle (24h dead-pid guard, 7-day universal idle prune), not immediate prune eligibility
 - [ ] `python -m pytest scripts/tests/` exits 0
 
 ## Related

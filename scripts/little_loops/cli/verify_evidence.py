@@ -2014,7 +2014,10 @@ def write_snapshot(base_dir: Path, snapshot: EvidenceSnapshot, dest: Path | None
     """Atomically publish *snapshot*; ``dest=None`` allocates a unique scratch path.
 
     The ``-<pid>`` suffix makes an allocated file eligible for the
-    ``SessionStart`` scratch-cleanup prune. Raises :class:`SnapshotError` on an
+    ``SessionStart`` scratch-cleanup prune, which has two tiers: a dead-pid file
+    older than 24h is removed, and *any* file idle (mtime) for more than 7 days
+    is removed regardless of pid (ENH-3706). Reading a snapshot does not refresh
+    its mtime, so a consumer needing it longer than that must rewrite it. Raises :class:`SnapshotError` on an
     aliased destination or any write failure; no partial file is left behind.
     """
     from little_loops.file_utils import atomic_write_json

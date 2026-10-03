@@ -3080,8 +3080,16 @@ class TestScratchCleanupSessionEnd:
         assert owned.exists(), "file owned by a live PID must not be deleted"
         assert scratch.exists(), "dir must survive while a live-owned file remains"
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "pytest-2147483647.txt",
+            # BUG-3702: refine_followup evidence-delta snapshot (write_snapshot) shape.
+            "evidence-snapshot-0b6f2f0e-8d57-4c0e-9d9c-3f1f6a1c2b7d-2147483647.json",
+        ],
+    )
     def test_scratch_cleanup_removes_file_owned_by_dead_process(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
     ):
         """A scratch file whose owning PID is no longer alive is pruned."""
 
@@ -3090,7 +3098,7 @@ class TestScratchCleanupSessionEnd:
         scratch = tmp_path / ".loops/tmp/scratch"
         scratch.mkdir(parents=True)
         # PID 2**31-1 is not a valid/alive process on any real system.
-        dead = scratch / "pytest-2147483647.txt"
+        dead = scratch / name
         dead.write_text("stale")
         _backdate(dead)
         result = subprocess.run(
@@ -3100,12 +3108,22 @@ class TestScratchCleanupSessionEnd:
         assert not dead.exists(), "file owned by a dead PID must be pruned"
         assert not scratch.exists(), "dir should be removed once empty"
 
-    def test_scratch_cleanup_preserves_fresh_dead_pid_file(self, tmp_path: Path):
+    @pytest.mark.parametrize(
+        "name_template",
+        [
+            "pytest-{pid}.txt",
+            # BUG-3702: refine_followup evidence-delta snapshot (write_snapshot) shape.
+            "evidence-snapshot-0b6f2f0e-8d57-4c0e-9d9c-3f1f6a1c2b7d-{pid}.json",
+        ],
+    )
+    def test_scratch_cleanup_preserves_fresh_dead_pid_file(
+        self, tmp_path: Path, name_template: str
+    ):
         """BUG-3705: a dead-pid file younger than the age guard is an in-flight
         sibling session's output (redirect pids are dead on arrival) — keep it."""
         scratch = tmp_path / ".loops/tmp/scratch"
         scratch.mkdir(parents=True)
-        fresh = scratch / f"pytest-{_SCRATCH_DEAD_PID}.txt"
+        fresh = scratch / name_template.format(pid=_SCRATCH_DEAD_PID)
         fresh.write_text("in flight")
         result = run_scratch_cleanup(tmp_path)
         assert result.returncode == 0
