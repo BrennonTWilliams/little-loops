@@ -164,5 +164,6 @@ The occurrence schema, property mapping, advisory policy, exit-1 handling and re
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-10-03T17:56:21 - `b5e6edc5-35e7-47c8-bd8f-3ec9a6ef2ef2.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:52:30 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:18:05 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
