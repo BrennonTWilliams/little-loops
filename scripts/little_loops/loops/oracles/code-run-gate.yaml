@@ -343,6 +343,10 @@ states:
         echo "SKIP pass_rate=1.0"
         exit 0
       fi
+      # BUG-3689: drop inherited interpreter / terminal-size overrides so the
+      # suite sees a bare-terminal env. Explicit assignments inside test_cmd
+      # still win. Keep in sync with worktree_utils.HERMETIC_ENV_VARS.
+      unset LL_PYTHON COLUMNS LINES
       bash -c "$TEST_CMD" > "$${ABS_DIR}/test-results.txt" 2>&1
       RC=$?
       if [ -f "$${ABS_DIR}/pytest.json" ]; then

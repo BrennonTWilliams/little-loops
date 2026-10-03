@@ -307,6 +307,67 @@ class TestOracleWorktreePythonPath:
         assert "PP=\n" in self._run_test_state(wt, tmp_path / "r3", "")
 
 
+class TestOracleRunTestEnvScrub:
+    """BUG-3689: run_test drops inherited LL_PYTHON / COLUMNS / LINES before test_cmd."""
+
+    POLLUTED = {"LL_PYTHON": "/fake/python", "COLUMNS": "150", "LINES": "60"}
+    PROBE = (
+        'python3 -c "import os; '
+        "print('ENV=' + ','.join(k + '=' + os.environ.get(k, '-') "
+        "for k in ('LL_PYTHON', 'COLUMNS', 'LINES')) "
+        "+ ';PP=' + os.environ.get('PYTHONPATH', '') "
+        "+ ';GATE=' + os.environ.get('LL_VERIFY_GATE', '-'))\""
+    )
+
+    def _run(self, cwd: Path, run_dir: Path, test_cmd: str, src_dir: str = "", **env: str) -> str:
+        run_dir.mkdir(exist_ok=True)
+        (run_dir / "commands.json").write_text(
+            json.dumps({"test_cmd": test_cmd, "src_dir": src_dir})
+        )
+        action = ORACLE["states"]["run_test"]["action"]
+        bash(render(action, {"run_dir": str(run_dir)}), cwd, env={**self.POLLUTED, **env})
+        return (run_dir / "test-results.txt").read_text()
+
+    def test_inherited_overrides_removed_and_other_env_preserved(
+        self, repo: Path, tmp_path: Path
+    ) -> None:
+        out = self._run(
+            repo, tmp_path / "r1", self.PROBE, PYTHONPATH="/inherited", LL_VERIFY_GATE="1"
+        )
+        assert "ENV=LL_PYTHON=-,COLUMNS=-,LINES=-" in out
+        assert ";PP=/inherited;GATE=1" in out
+
+    def test_linked_worktree_pythonpath_prepended_after_scrub(
+        self, repo: Path, tmp_path: Path
+    ) -> None:
+        wt = tmp_path / "wt"
+        _git(repo, "worktree", "add", "-q", "-b", "wtb", str(wt))
+        out = self._run(wt, tmp_path / "r1", self.PROBE, "scripts", PYTHONPATH="/inherited")
+        assert "ENV=LL_PYTHON=-,COLUMNS=-,LINES=-" in out
+        assert f"{wt.resolve()}/scripts:/inherited" in out or f"{wt}/scripts:/inherited" in out
+
+    def test_explicit_assignment_in_test_cmd_wins(self, repo: Path, tmp_path: Path) -> None:
+        out = self._run(repo, tmp_path / "r1", f"COLUMNS=120 LL_PYTHON=/mine {self.PROBE}")
+        assert "ENV=LL_PYTHON=/mine,COLUMNS=120,LINES=-" in out
+
+    def test_failing_command_still_gate_failed(self, repo: Path, tmp_path: Path) -> None:
+        run_dir = tmp_path / "r1"
+        out = self._run(repo, run_dir, "exit 7")
+        assert "pass_rate=0.0" in out and out.rstrip().endswith("exit_code=7")
+        aggregate = TestOracleAggregate()
+        (run_dir / "commands.json").write_text(json.dumps({"test_cmd": "exit 7"}))
+        assert aggregate._aggregate(run_dir)[0] == "GATE_FAILED"
+
+    def test_yaml_unset_matches_shared_tuple(self) -> None:
+        from little_loops.worktree_utils import HERMETIC_ENV_VARS
+
+        action = ORACLE["states"]["run_test"]["action"]
+        m = re.search(r"^\s*unset ([A-Z_ ]+)$", action, re.MULTILINE)
+        assert m is not None
+        assert tuple(m.group(1).split()) == HERMETIC_ENV_VARS
+        assert action.index(m.group(0).strip()) < action.index('bash -c "$TEST_CMD"')
+
+
 # --------------------------------------------------------------------------- autodev
 
 

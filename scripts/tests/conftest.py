@@ -19,6 +19,7 @@ from hypothesis import settings as _hypothesis_settings
 
 from little_loops.host_runner import HOST_BINARY_NAMES, TEST_ONLY_BINARIES
 from little_loops.issue_parser import reset_deprecated_key_warnings
+from little_loops.worktree_utils import HERMETIC_ENV_VARS
 
 # =============================================================================
 # Hypothesis fuzz depth profiles
@@ -1199,6 +1200,8 @@ _CMD_RUN_ENV_VARS = (
     "LL_AUTOMATION_PROFILE",
     "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS",
     "LL_ANALYTICS_CAPTURE",
+    # BUG-3689: interpreter / terminal-size overrides inherited from an FSM gate
+    *HERMETIC_ENV_VARS,
 )
 
 
@@ -1228,6 +1231,19 @@ def _restore_cmd_run_env_vars(monkeypatch: pytest.MonkeyPatch) -> Generator[None
         monkeypatch.setenv(var, "")
         monkeypatch.delenv(var)
     yield
+
+
+@pytest.fixture(autouse=True)
+def pin_terminal_size(monkeypatch: pytest.MonkeyPatch, _restore_cmd_run_env_vars: None) -> None:
+    """Pin the terminal to 80x24 so inherited COLUMNS/LINES cannot change layout (BUG-3689).
+
+    Depends on ``_restore_cmd_run_env_vars`` so the shared scrub runs first. ``setenv``
+    rather than deletion: ``shutil.get_terminal_size`` may query a real tty when capture
+    is disabled; 80x24 matches its non-tty fallback. Tests needing another size
+    ``monkeypatch.setenv`` in their body, which runs after this fixture.
+    """
+    monkeypatch.setenv("COLUMNS", "80")
+    monkeypatch.setenv("LINES", "24")
 
 
 # =============================================================================

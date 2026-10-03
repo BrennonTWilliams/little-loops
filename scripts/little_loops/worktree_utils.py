@@ -26,6 +26,13 @@ if TYPE_CHECKING:
     from little_loops.logger import Logger
     from little_loops.parallel.git_lock import GitLock
 
+# BUG-3689: inherited interpreter / terminal-size overrides that make a test suite
+# behave differently under an FSM-driven gate than in a bare terminal. Scrubbed from
+# the epic-verify child env and from the test conftest; ``code-run-gate.yaml``'s
+# ``run_test`` ``unset`` line mirrors it (a structural test keeps them in sync).
+# Bounded fix list, not a general environment allowlist.
+HERMETIC_ENV_VARS: tuple[str, ...] = ("LL_PYTHON", "COLUMNS", "LINES")
+
 
 def export_history_db_env() -> None:
     """Export ``LL_HISTORY_DB`` so descendants share this checkout's history store.
@@ -741,7 +748,11 @@ def verify_epic_branch_before_merge(
     # shell expansions (e.g. test_recheck_set_folds_back_abandoned_residual)
     # bypass their PATH-stub mocks and fail deterministically. A bare terminal
     # pytest run never sets LL_PYTHON, so this only fires under the gate.
-    env.pop("LL_PYTHON", None)
+    # BUG-3689: the same scrub covers the terminal-size overrides (COLUMNS /
+    # LINES) so wide inherited widths do not fail width-sensitive tests; the
+    # env is shared by test_cmd and lint_cmd.
+    for var in HERMETIC_ENV_VARS:
+        env.pop(var, None)
     # Global worker budget for nested pytest-xdist runs: ll-parallel/ll-sprint
     # can trigger several verify gates concurrently, each of which would
     # otherwise spawn its own cpus//2-worker suite (the conftest cap is

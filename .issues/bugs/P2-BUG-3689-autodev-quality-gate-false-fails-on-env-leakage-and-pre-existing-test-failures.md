@@ -3,10 +3,11 @@ id: BUG-3689
 type: BUG
 title: Autodev quality gate false-fails on inherited LL_PYTHON and terminal size
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-01'
 captured_at: '2026-10-01T21:02:05Z'
+completed_at: '2026-10-03T00:51:35Z'
 reconcile_attempted: true
 verify_verdict: VALID
 relates_to:
@@ -165,12 +166,20 @@ Reviewed 2026-10-02 with `ll-advise --signal user_requested --host claude-code -
 - **Gate experiment:** inserting the proposed `unset` into an in-memory copy of the real `run_test` action removed all three inherited variables, preserved `PYTHONPATH` / `LL_VERIFY_GATE`, honored explicit command assignments, and recorded `exit_code=7` / `pass_rate=0.0` for a failing command; the real `aggregate` action then produced `GATE_FAILED`. Implementation must retain this regression assertion.
 - Production code remains unchanged by this review. Implementation still needs the regression tests and authoritative full-suite validation above.
 
+## Resolution
+
+**Fixed** 2026-10-02. `run_test` in `code-run-gate.yaml` now runs `unset LL_PYTHON COLUMNS LINES` before `bash -c "$TEST_CMD"`; `worktree_utils.HERMETIC_ENV_VARS` is the shared tuple driving the epic-verify child-env scrub (test and lint) and conftest's `_CMD_RUN_ENV_VARS`; new autouse `pin_terminal_size` pins `80x24`. Added `test_bug3689_gate_env.py` (fixture defaults + 11-case subprocess guard), `TestOracleRunTestEnvScrub` (real `run_test`/`aggregate` probe, explicit override, failure -> `GATE_FAILED`, YAML/tuple sync) and parametrized epic-verify scrub tests. Docs updated in `loops.md` and `API.md`.
+
+Verification: full suite with `COLUMNS=150 LINES=60 LL_PYTHON` inherited: 27588 passed, 1 failed (`test_no_parallel_serial_gate.py::TestKillGroupIfAlive::test_kills_grandchild_in_same_group` - timing-flaky process-group race under load; passes 3/3 in isolation, unrelated). ruff and mypy clean.
+
 ## Status
 
 **Open** | Created: 2026-10-01 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-03T00:51:35 - `0ed9e4cc-3ce5-4c83-940c-26ae9b3d09ea.jsonl`
+- `/ll:ready-issue` - 2026-10-03T00:42:48 - `958707c6-9c90-4106-af4c-a5c59abf0a65.jsonl`
 - `/ll:confidence-check` - 2026-10-02T20:44:07 - `87a65a08-ddb3-4e8a-b852-af350980921a.jsonl`
 - `/ll:verify-issues` - 2026-10-02T20:41:17 - `cd5e1b5d-cfd5-4657-840b-466941684a3e.jsonl`
 - `/ll:verify-issues` - 2026-10-01T21:31:21 - `6aa5587a-18d6-457b-930d-4a16b529f58a.jsonl`

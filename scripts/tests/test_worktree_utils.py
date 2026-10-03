@@ -1356,22 +1356,25 @@ class TestVerifyEpicBranchBeforeMerge:
 
         assert (ok, message, returncode) == (True, None, None)
 
-    def test_ll_python_scrubbed_from_child_env(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    @pytest.mark.parametrize("which", ["test", "lint"])
+    @pytest.mark.parametrize("var", ["LL_PYTHON", "COLUMNS", "LINES"])
+    def test_hermetic_env_vars_scrubbed_from_child_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, var: str, which: str
     ) -> None:
-        """BUG-3370: LL_PYTHON — set by DefaultActionRunner.run() when this gate is
-        invoked in-process from an FSM "verify" state action — must not ride
-        unscrubbed through project_child_env() into the test_cmd subprocess.
-        Left in place, tests with their own un-overridden ``${LL_PYTHON:-...}``
-        shell expansions bypass their PATH-stub mocks and fail deterministically
-        only when the gate was invoked this way (never on a bare terminal run,
-        which never sets LL_PYTHON)."""
-        monkeypatch.setenv("LL_PYTHON", "/fake/interpreter")
+        """BUG-3370 / BUG-3689: LL_PYTHON — set by DefaultActionRunner.run() when this
+        gate is invoked in-process from an FSM "verify" state action — and the inherited
+        COLUMNS / LINES terminal overrides must not ride through project_child_env()
+        into the test_cmd / lint_cmd subprocess. Left in place, tests with their own
+        un-overridden ``${LL_PYTHON:-...}`` expansions or width assumptions fail
+        deterministically only when the gate was invoked this way (never on a bare
+        terminal run)."""
+        monkeypatch.setenv(var, "/fake/interpreter" if var == "LL_PYTHON" else "150")
         repo = self._repo_with_epic_branch(tmp_path)
         logger = Logger(verbose=False)
         git_lock = GitLock(logger)
 
-        check = "import os,sys; sys.exit(1 if 'LL_PYTHON' in os.environ else 0)"
+        check = f"import os,sys; sys.exit(1 if {var!r} in os.environ else 0)"
+        cmd = f"python3 -c {shlex.quote(check)}"
 
         ok, message, returncode = verify_epic_branch_before_merge(
             "EPIC-1",
@@ -1379,8 +1382,8 @@ class TestVerifyEpicBranchBeforeMerge:
             verify_before_merge=True,
             repo_path=repo,
             worktree_base=repo / ".worktrees",
-            test_cmd=f"python3 -c {shlex.quote(check)}",
-            lint_cmd=None,
+            test_cmd=cmd if which == "test" else None,
+            lint_cmd=cmd if which == "lint" else None,
             logger=logger,
             git_lock=git_lock,
         )
