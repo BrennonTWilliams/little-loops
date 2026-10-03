@@ -28,6 +28,8 @@ Recommended order (re-reviewed 2026-10-03 with an Opus second opinion): **replay
 6. **BUG-3695** — refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria (open, P3) — unblocked (BUG-3708 done; rescore); live-evaluation AC split to a follow-up; sibling of ENH-3690 (same "verdict has no working remedy" class); reviewed 2026-10-03 with an evidence-gated AC/Step repair and unchanged budget
 - ~~**ENH-3692**~~ — baseline-aware code-run-gate (**cancelled**, won't-do): the two motivating "pre-existing" failures pass on a clean `main` and only went red from uncommitted `.issues/` working-tree state, so the mechanism could not have rescued them and carried High masking risk; superseded by ENH-3697.
 - **BUG-3702** — refine_followup evidence-delta snapshot vanishes from shared scratch dir mid-state (open, P4) — largely fixed by BUG-3705's 24h age guard; re-scoped to one parametrize case + two-tier docstring (~10 min), then close
+- **ENH-3718** — Live-evaluate reconcile-issue --from-verify-evidence DIRECTIVE_DRIFT repair (open)
+
 
 
 ## Acceptance Criteria
