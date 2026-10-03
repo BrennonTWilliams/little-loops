@@ -209,7 +209,21 @@ Reads these sources sequentially:
 >
 > The `SessionStart` hook rebuilds automatically only when the derivation
 > itself changed (tracked by a `rebuild_derive_version` stamp), not on every
-> schema upgrade. You can always run `ll-session rebuild` yourself.
+> schema upgrade, and only when the store is small enough (main database plus
+> WAL file bytes, a conservative proxy that can overcount). The hook's
+> background worker rechecks that size after ingesting new transcripts, just
+> before it would rebuild. A larger store is left stale: raw event ingestion
+> and usage derivation continue, but sessions, tool/skill events, corrections,
+> summaries and search stay out of date (mixed old and new rows after a
+> derivation change, or incomplete tables for a store that was never rebuilt),
+> because incremental backfill does not refresh them. The hook prints a
+> one-line notice and `ll-doctor` reports it under **Rebuild Pending**.
+> Recovery is optional and deferrable: run `ll-session rebuild` with no other
+> sessions active. It holds the write lock for the whole replay (so concurrent
+> telemetry can be dropped), clears leaf and condensed summaries, and
+> regenerates them with LLM calls inside that lock only when
+> `history.compaction.enabled` is set in the project's `ll-config.json` (the
+> manual command does not read `.ll/ll.local.md`).
 
 Beyond backfill, `issue_events` rows also arrive through two live channels:
 the EventBus-emitted `issue.*` path (`SQLiteTransport.send()`, FSM-loop/

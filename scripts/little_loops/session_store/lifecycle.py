@@ -46,7 +46,7 @@ from little_loops.session_store.sessions import (
     handles_from_paths,
     iter_events,
 )
-from little_loops.session_store.targets import LocalTarget
+from little_loops.session_store.targets import HistoryTarget, LocalTarget
 from little_loops.session_store.writers import (
     _backfill_assistant_messages,
     _backfill_commit_events,
@@ -1050,9 +1050,9 @@ _USAGE_DERIVE_VERSION = "enh3651-v1"
 # semantics, ``_REBUILD_TABLES`` or search-index derivation, corrections,
 # summaries, or prompt-opt enrichment. Usage-only derivation changes bump
 # ``_USAGE_DERIVE_VERSION`` instead (incremental path), never this constant.
-# A mismatch makes every store rebuild once (a full wipe-and-replay), so do NOT
-# bump before ENH-3698 (size gate) lands. Compared with ``!=`` (an identifier,
-# never ordered). ``test_rebuild_derive_fingerprint.py`` fails when the
+# A mismatch makes every store rebuild once (a full wipe-and-replay); the
+# SessionStart size gate (:func:`rebuild_disposition`) defers that replay on a
+# large store. Compared with ``!=`` (an identifier, never ordered). ``test_rebuild_derive_fingerprint.py`` fails when the
 # derivation changes without a bump.
 REBUILD_DERIVE_VERSION = "enh3678-v1"
 
@@ -1085,7 +1085,7 @@ class RebuildState:
     reason: str
 
 
-def rebuild_needed(db: Path | str = DEFAULT_DB_PATH) -> RebuildState:
+def rebuild_needed(db: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> RebuildState:
     """Decide whether *db* needs a ``rebuild()`` under the current derive version.
 
     Opens the store with the strict read-only ``connect_readonly`` (never creates or
@@ -1131,6 +1131,129 @@ def rebuild_needed(db: Path | str = DEFAULT_DB_PATH) -> RebuildState:
     if _FROZEN_LEGACY_DERIVE_VERSION == REBUILD_DERIVE_VERSION:
         return RebuildState("current", "legacy_floor")
     return RebuildState("stale", "derive_mismatch")
+
+
+# Largest stale store (main DB bytes + WAL bytes, filesystem sizes) whose replay the
+# SessionStart hook's detached worker starts automatically; a larger one is
+# ``pending`` until an explicit ``ll-session rebuild``. Bytes, main plus WAL: a
+# conservative proxy that can overcount overwritten WAL frames or free pages.
+# Calibrated offline (ENH-3698) on synthetic Claude stores replayed with
+# ``rebuild(db, config=None)``: ~1 KiB and ~50 us per raw row, i.e. about 3 s at 60 MiB,
+# 9 s at 180 MiB, 22 s at 450 MiB (linear). 64 MiB keeps replay near the 5 s
+# operational target with ~1.5x margin. Not a duration guarantee -- CLI telemetry waits
+# only 250 ms (ENH-3679), so even a short replay can drop concurrent events.
+REBUILD_AUTO_MAX_BYTES = 2**26
+
+
+@dataclass(frozen=True)
+class RebuildDisposition:
+    """Whether an automatic ``rebuild()`` may run (see :func:`rebuild_disposition`).
+
+    ``state`` is the metadata verdict from :func:`rebuild_needed` (its ``reason`` is
+    preserved for every outcome). ``size_bytes`` is main DB plus WAL bytes, ``0`` for a
+    missing store, ``None`` when no probe ran or it failed. ``outcome``: ``auto``
+    (stale, within :data:`REBUILD_AUTO_MAX_BYTES`), ``pending`` (stale, above it),
+    ``none`` (current or unknown: nothing to rebuild or no basis to), ``unknown_size``
+    (stale, but a size probe failed -- never treated as small).
+    """
+
+    state: RebuildState
+    size_bytes: int | None
+    outcome: Literal["auto", "pending", "none", "unknown_size"]
+
+
+def _store_bytes(path: Path) -> int | None:
+    """Main DB plus ``-wal`` bytes of *path* (a missing file counts 0), else ``None``.
+
+    ``None`` means a probe failed with an ``OSError`` other than ``FileNotFoundError``.
+    ``-shm`` is ignored: it is a shared-memory index, not committed data.
+    """
+    total = 0
+    for candidate in (path, path.with_name(path.name + "-wal")):
+        try:
+            total += candidate.stat().st_size
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+    return total
+
+
+def rebuild_disposition(db: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> RebuildDisposition:
+    """Decide whether an automatic ``rebuild()`` of *db* may run.
+
+    Resolves one target, asks :func:`rebuild_needed` about that exact target, and only
+    for a stale local store measures its size with filesystem stats at the same
+    resolved path. Report-only: never creates, migrates, checkpoints or queries rows,
+    and never raises (a resolution/read failure is ``unknown``/``read_error``, a size
+    probe failure ``unknown_size``). Remote, current and unknown stores are never
+    stat'ed.
+    """
+    try:
+        target = resolve_history_target(db)
+        state = rebuild_needed(target)
+    except Exception:
+        return RebuildDisposition(RebuildState("unknown", "read_error"), None, "none")
+    if state.status != "stale" or not isinstance(target, LocalTarget):
+        return RebuildDisposition(state, None, "none")
+    if state.reason == "db_missing":
+        return RebuildDisposition(state, 0, "auto")
+    size = _store_bytes(target.path)
+    if size is None:
+        return RebuildDisposition(state, None, "unknown_size")
+    return RebuildDisposition(state, size, "auto" if size <= REBUILD_AUTO_MAX_BYTES else "pending")
+
+
+def rebuild_compaction_enabled(config_path: Path | None) -> bool | None:
+    """Whether ``ll-session rebuild`` would run LLM compaction, or ``None`` if unknown.
+
+    Mirrors what the manual command loads: the raw project JSON at *config_path*, with no
+    ``.ll/ll.local.md`` merge. ``None`` when there is no config path or the file cannot
+    be read/parsed, so callers can word the caveat conservatively.
+    """
+    if config_path is None:
+        return None
+    try:
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+        enabled = raw.get("history", {}).get("compaction", {}).get("enabled", False)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return bool(enabled)
+
+
+def rebuild_pending_notice(state: RebuildState, compaction: bool | None) -> str:
+    """One-line user-facing notice that an automatic rebuild was deferred for size.
+
+    *state* selects the reason-specific wording (``derive_mismatch``: rows may be mixed;
+    otherwise tables may be incomplete); *compaction* is :func:`rebuild_compaction_enabled`.
+    """
+    if state.reason == "derive_mismatch":
+        stale = "historical and live-derived rows may be mixed"
+    else:
+        stale = "tables may be incomplete"
+    if compaction is True:
+        summaries = (
+            "it clears leaf/condensed summaries and regenerates them with LLM "
+            "summarization inside the same transaction (history.compaction is enabled)"
+        )
+    elif compaction is False:
+        summaries = (
+            "it clears leaf/condensed summaries without regenerating them "
+            "(history.compaction is disabled)"
+        )
+    else:
+        summaries = (
+            "it clears leaf/condensed summaries and, if history.compaction is enabled, "
+            "regenerates them with LLM summarization inside the same transaction"
+        )
+    return (
+        "[little-loops] History rebuild deferred: the store is above the automatic-rebuild "
+        "size limit, so derived tables (sessions, tool/skill events, corrections, "
+        f"summaries, search) remain out of date ({stale}). Raw event ingestion and usage "
+        "derivation continue; incremental backfill does not refresh the derived tables. "
+        "Optional recovery: run `ll-session rebuild` with no other ll sessions active -- "
+        f"it holds the write lock for the whole replay and {summaries}."
+    )
 
 
 def _usage_raw_cursor(

@@ -1,7 +1,7 @@
 """Detached transcript backfill worker spawned by lifecycle hooks (BUG-1882).
 
 Invoked as ``python -m little_loops.cli.backfill_worker <db_path> <path>
-[--rebuild] [--host HOST]``, where *path* is either a single ``.jsonl``
+[--rebuild | --auto-rebuild] [--host HOST]``, where *path* is either a single ``.jsonl``
 transcript file or a project folder whose ``*.jsonl`` files are globbed. Runs
 :func:`backfill_incremental` and exits. Because it is spawned with
 ``start_new_session=True`` it outlives the short-lived hook subprocess.
@@ -9,7 +9,14 @@ transcript file or a project folder whose ``*.jsonl`` files are globbed. Runs
 ``--rebuild`` (ENH-2581) additionally materializes the JSONL-derived cache
 tables from ``raw_events`` in the same call — passed by the hook only when
 ``rebuild_needed()`` reports the derivation changed since the last rebuild
-(``REBUILD_DERIVE_VERSION``; see ``session_start.py``). ``--host`` (ENH-3166) names the host whose transcripts
+(``REBUILD_DERIVE_VERSION``; see ``session_start.py``) and is never size-gated.
+``--auto-rebuild`` (ENH-3698) is the hook-only automatic path: it ingests first,
+then rechecks :func:`rebuild_disposition` against the post-ingest store and runs
+``rebuild(db, config=None)`` only if the outcome is still ``auto`` (a backlog that
+grew the store past ``REBUILD_AUTO_MAX_BYTES``, a now-current or unreadable store
+skips replay). It conflicts with ``--rebuild`` and is rejected before ingestion. No
+lock makes the recheck-and-replay atomic; concurrent workers can both pass it.
+``--host`` (ENH-3166) names the host whose transcripts
 *path* holds, so ``raw_events`` rows are stamped with the ingested host
 instead of the ambient one; an unrecognized host is rejected (ENH-3422 D8).
 This file has no argparse by design (minimal-parsing style); both flags are
@@ -118,6 +125,7 @@ def _run_usage_trigger(db_path: Path, source: Path, host: str, requested_at_ns: 
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     rebuild = "--rebuild" in args
+    auto_rebuild = "--auto-rebuild" in args
     usage_trigger = "--usage-trigger" in args
     requested_at_ns: int | None = None
     host: str | None = None
@@ -127,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         if skip_next:
             skip_next = False
             continue
-        if arg == "--rebuild":
+        if arg in ("--rebuild", "--auto-rebuild"):
             continue
         if arg == "--usage-trigger":
             continue
@@ -148,7 +156,14 @@ def main(argv: list[str] | None = None) -> int:
     if len(positional) < 2:
         print(
             f"Usage: {sys.argv[0]} <db_path> <jsonl_file_or_project_dir> "
-            "[--rebuild] [--host HOST] [--usage-trigger --requested-at-ns N]",
+            "[--rebuild | --auto-rebuild] [--host HOST] [--usage-trigger --requested-at-ns N]",
+            file=sys.stderr,
+        )
+        return 1
+
+    if rebuild and auto_rebuild:
+        print(
+            "backfill_worker: --rebuild and --auto-rebuild are mutually exclusive",
             file=sys.stderr,
         )
         return 1
@@ -170,13 +185,14 @@ def main(argv: list[str] | None = None) -> int:
     if usage_trigger:
         if (
             rebuild
+            or auto_rebuild
             or host not in {"claude-code", "codex"}
             or requested_at_ns is None
             or requested_at_ns <= 0
         ):
             print(
                 "backfill_worker: --usage-trigger requires --host claude-code or codex "
-                "and a positive --requested-at-ns, without --rebuild",
+                "and a positive --requested-at-ns, without --rebuild/--auto-rebuild",
                 file=sys.stderr,
             )
             return 1
@@ -203,6 +219,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         backfill_incremental(db_path, jsonl_files=jsonl_files, also_rebuild=rebuild, host=host)
+        if auto_rebuild:
+            # Ingestion has committed: decide on the store as it is now, not as the
+            # hook saw it, so a backlog that grew it past the ceiling never replays.
+            from little_loops.session_store import rebuild as _rebuild
+            from little_loops.session_store import rebuild_disposition
+
+            if rebuild_disposition(db_path).outcome == "auto":
+                _rebuild(db_path, config=None)
     except HistoryUnsupported as exc:  # e.g. --rebuild against a remote store (FEAT-3535)
         print(f"backfill_worker: {exc}", file=sys.stderr)
         return 1

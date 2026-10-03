@@ -248,7 +248,8 @@ class TestSessionStartGate:
     def test_stale_adds_rebuild(self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         calls, _ = self._setup(in_tmp, monkeypatch)
         handle(_event())
-        assert len(calls) == 1 and "--rebuild" in calls[0]
+        assert len(calls) == 1 and "--auto-rebuild" in calls[0]
+        assert "--rebuild" not in calls[0]
 
     def test_schema_bump_without_derive_bump_does_not_rebuild(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
@@ -264,14 +265,14 @@ class TestSessionStartGate:
         calls, _ = self._setup(in_tmp, monkeypatch)
         monkeypatch.setattr(lifecycle, "REBUILD_DERIVE_VERSION", "bumped")
         handle(_event())
-        assert "--rebuild" in calls[0]
+        assert "--auto-rebuild" in calls[0]
 
     def test_unknown_spawns_incremental_worker_without_rebuild(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls, _ = self._setup(in_tmp, monkeypatch)
         monkeypatch.setattr(
-            "little_loops.session_store.rebuild_needed",
+            "little_loops.session_store.lifecycle.rebuild_needed",
             lambda _db: RebuildState("unknown", "read_error"),
         )
         handle(_event())
@@ -287,9 +288,125 @@ class TestSessionStartGate:
         def _boom(_db):
             raise RuntimeError("bug in rebuild_needed")
 
-        monkeypatch.setattr("little_loops.session_store.rebuild_needed", _boom)
+        monkeypatch.setattr("little_loops.session_store.lifecycle.rebuild_needed", _boom)
         handle(_event())
-        assert len(calls) == 1 and "--rebuild" not in calls[0]
+        assert len(calls) == 1
+        assert "--rebuild" not in calls[0] and "--auto-rebuild" not in calls[0]
+
+    # -- ENH-3698: size gate ------------------------------------------------
+
+    @staticmethod
+    def _over_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(lifecycle, "REBUILD_AUTO_MAX_BYTES", 1)
+
+    def test_over_limit_spawns_ingestion_without_replay_flag(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls, _ = self._setup(in_tmp, monkeypatch)
+        self._over_limit(monkeypatch)
+        result = handle(_event())
+        assert len(calls) == 1 and "backfill_worker" in " ".join(calls[0])
+        assert "--rebuild" not in calls[0] and "--auto-rebuild" not in calls[0]
+        assert "History rebuild deferred" in (result.feedback or "")
+        assert "History rebuild deferred" not in (result.stdout or "")
+
+    def test_pending_notice_wording_and_compaction_from_raw_config(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls, _ = self._setup(in_tmp, monkeypatch)
+        self._over_limit(monkeypatch)
+        # Raw project JSON has compaction off; only the local override turns it on, and the
+        # manual command never merges .ll/ll.local.md, so the notice must say "disabled".
+        (in_tmp / ".ll" / "ll.local.md").write_text(
+            "---\nhistory:\n  compaction:\n    enabled: true\n---\n"
+        )
+        text = handle(_event()).feedback or ""
+        assert "tables may be incomplete" in text and "ll-session rebuild" in text
+        assert "history.compaction is disabled" in text
+        assert "retention" not in text
+
+    def test_pending_notice_names_enabled_compaction(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._setup(in_tmp, monkeypatch)
+        (in_tmp / ".ll" / "ll-config.json").write_text(
+            json.dumps({"history": {"compaction": {"enabled": True}}})
+        )
+        self._over_limit(monkeypatch)
+        text = handle(_event()).feedback or ""
+        assert "LLM summarization inside the same transaction" in text
+
+    def test_derive_mismatch_notice_says_mixed(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rebuild(in_tmp / ".ll" / "history.db")
+        self._setup(in_tmp, monkeypatch)
+        monkeypatch.setattr(lifecycle, "REBUILD_DERIVE_VERSION", "bumped")
+        self._over_limit(monkeypatch)
+        assert "mixed" in (handle(_event()).feedback or "")
+
+    def test_pending_notice_survives_popen_failure(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._setup(in_tmp, monkeypatch)
+        self._over_limit(monkeypatch)
+
+        def _boom(*_a, **_kw):  # type: ignore[no-untyped-def]
+            raise OSError("spawn failed")
+
+        monkeypatch.setattr("little_loops.hooks.session_start.subprocess.Popen", _boom)
+        assert "History rebuild deferred" in (handle(_event()).feedback or "")
+
+    def test_no_notice_when_small_current_or_unknown(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._setup(in_tmp, monkeypatch)
+        assert "deferred" not in (handle(_event()).feedback or "")
+        monkeypatch.setattr(
+            lifecycle, "rebuild_needed", lambda _t: RebuildState("unknown", "read_error")
+        )
+        self._over_limit(monkeypatch)
+        assert "deferred" not in (handle(_event()).feedback or "")
+
+    def test_unknown_size_adds_no_flag_and_no_notice(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls, _ = self._setup(in_tmp, monkeypatch)
+        monkeypatch.setattr(lifecycle, "_store_bytes", lambda _p: None)
+        result = handle(_event())
+        assert len(calls) == 1
+        assert "--rebuild" not in calls[0] and "--auto-rebuild" not in calls[0]
+        assert "deferred" not in (result.feedback or "")
+
+    def test_non_interactive_and_no_source_suppress_notice(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls, _ = self._setup(in_tmp, monkeypatch)
+        self._over_limit(monkeypatch)
+        monkeypatch.setenv("LL_NON_INTERACTIVE", "1")
+        assert "deferred" not in (handle(_event()).feedback or "")
+        assert calls == []
+        monkeypatch.delenv("LL_NON_INTERACTIVE")
+        import little_loops.user_messages as um
+
+        monkeypatch.setattr(um, "get_project_folder", lambda *a, **kw: None)
+        assert "deferred" not in (handle(_event()).feedback or "")
+        assert calls == []
+
+    def test_remote_store_gets_neither_flag_nor_notice(
+        self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls, _ = self._setup(in_tmp, monkeypatch)
+        self._over_limit(monkeypatch)
+        from little_loops.session_store.targets import BackendConfig, RemoteTarget
+
+        remote = RemoteTarget(BackendConfig(provider="libsql", url="https://h.example"))
+        monkeypatch.setattr(
+            "little_loops.session_store.db.resolve_history_store", lambda *a, **kw: remote
+        )
+        result = handle(_event())
+        assert all("--rebuild" not in c and "--auto-rebuild" not in c for c in calls)
+        assert "deferred" not in (result.feedback or "")
 
     def test_hook_writes_no_stamp(self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _calls, db = self._setup(in_tmp, monkeypatch)
@@ -310,13 +427,13 @@ class TestDeriveFingerprint:
     out of the set: ``rebuild()`` cannot apply them.
 
     Regenerate (from the repo root) after a deliberate change, in the same commit that
-    bumps ``REBUILD_DERIVE_VERSION`` (or, before ENH-3698, instead of bumping)::
+    bumps ``REBUILD_DERIVE_VERSION``::
 
         python -c "import sys; sys.path.insert(0, 'scripts'); from pathlib import Path; \\
         from tests.rebuild_fingerprint import regenerate; regenerate(Path('.'))"
 
-    ``frozen_legacy_digest`` is never regenerated. If ``current_digest`` differs from it
-    at ENH-3698's landing, bump ``REBUILD_DERIVE_VERSION`` there.
+    ``frozen_legacy_digest`` is never regenerated. A derivation change needs a bump; the
+    SessionStart size gate defers the resulting replay on a large store.
 
     Expected noise: about one trip a week over recent history, roughly half of them false
     positives (e.g. a ruff reflow adding a trailing comma). Regenerating by reflex defeats
@@ -350,9 +467,8 @@ class TestDeriveFingerprint:
         # Two-assert convention (TestAllowlistVersionLockstep): which half is stale?
         assert REBUILD_DERIVE_VERSION != lifecycle._FROZEN_LEGACY_DERIVE_VERSION, (
             "rebuild() derivation changed but REBUILD_DERIVE_VERSION was not bumped. "
-            "Before ENH-3698 lands you may not bump it: regenerate rebuild_fingerprint.json "
-            "WITHOUT a bump, accepting that existing stores stay stale for this change "
-            "until ENH-3698 (frozen_legacy_digest records the gap)."
+            "Bump it in the same change that regenerates rebuild_fingerprint.json (see this "
+            "class's docstring); the size gate defers the replay on a large store."
         )
         pytest.fail(
             "REBUILD_DERIVE_VERSION was bumped but rebuild_fingerprint.json is stale; "
@@ -455,14 +571,6 @@ class TestNormalizerStability:
 
 
 class TestFrozenLegacyPins:
-    def test_lockstep_derive_version_not_bumped_before_enh_3698(self) -> None:
-        """Deleted by ENH-3698 when the size gate lands."""
-        assert REBUILD_DERIVE_VERSION == lifecycle._FROZEN_LEGACY_DERIVE_VERSION, (
-            "do not bump REBUILD_DERIVE_VERSION before ENH-3698 (size gate) lands; "
-            "ENH-3698 deletes this test. Regenerating the fingerprint without a bump "
-            "leaves existing stores stale for that change."
-        )
-
     def test_frozen_legacy_derive_version_literal(self) -> None:
         """Permanent: bumping both constants would mark every legacy store current."""
         assert lifecycle._FROZEN_LEGACY_DERIVE_VERSION == "enh3678-v1"

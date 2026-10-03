@@ -150,11 +150,11 @@ Fires once when a Claude Code session begins. It:
 3. Cleans up the previous session's `.ll/ll-context-state.json`.
 4. Injects the resolved config into the session as context.
 5. **Optionally** injects a 7-day project digest from `history.db` (recently touched files, completed issues, recurring corrections) — this is the `## Recently touched` block you see at session start.
-6. Spawns a one-shot background worker that backfills `history.db` from session JSONL logs.
+6. Spawns a one-shot background worker that backfills `history.db` from session JSONL logs. When the derivation changed and the store is small enough, the worker also rebuilds the derived tables after ingestion, rechecking the size once ingestion has committed. Above the size limit (main database plus WAL bytes) the rebuild is deferred: ingestion still runs and the hook adds one stderr notice that the derived tables are out of date, with `ll-session rebuild` as the optional, whole-run write-locked recovery. `ll-doctor` reports the same state in its **Rebuild Pending** section.
 
 **Gated by:** always loads config; the digest is gated by `history.session_digest.enabled` (default **true**), tunable via `history.session_digest.days` and `history.session_digest.char_cap`.
 
-**You see:** the injected config/digest context, plus a `[little-loops] Config loaded: <path>` line on stderr. Never blocks.
+**You see:** the injected config/digest context, plus a `[little-loops] Config loaded: <path>` line on stderr and, for a large store whose rebuild was deferred, a line such as `[little-loops] History rebuild deferred: the store is above the automatic-rebuild size limit, so derived tables (…) remain out of date (tables may be incomplete)…`. Never blocks.
 
 ### Sweep stale cross-issue references
 

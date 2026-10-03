@@ -645,6 +645,92 @@ def _history_db_check() -> list[CheckResult]:
     return results
 
 
+def _rebuild_pending_data() -> dict:
+    """Automatic-rebuild eligibility of the default history store (ENH-3698).
+
+    Resolves through :func:`little_loops.session_store.rebuild_disposition`, so metadata
+    and size probes read the same resolved target (configured/env overrides included) and
+    nothing is created, migrated or spawned. Shared by the JSON, text, and registered-check
+    surfaces. Never raises and never echoes exception text or credentials.
+    """
+    from little_loops.config.core import resolve_config_path
+    from little_loops.session_store import (
+        lifecycle,
+        rebuild_compaction_enabled,
+        rebuild_disposition,
+        rebuild_pending_notice,
+    )
+
+    disposition = rebuild_disposition(DEFAULT_DB_PATH)
+    state = disposition.state
+    data: dict = {
+        "status": "unknown",
+        "severity": "informational",
+        "note": "",
+        "state": state.status,
+        "reason": state.reason,
+        "size_bytes": disposition.size_bytes,
+        "threshold_bytes": lifecycle.REBUILD_AUTO_MAX_BYTES,
+        "outcome": disposition.outcome,
+    }
+    if state.reason == "remote":
+        data.update(status="unsupported", note="not applicable to a remote store")
+    elif state.status == "current":
+        data.update(status="full", note="derivation current")
+    elif state.reason == "db_missing":
+        data.update(status="unsupported", note="not yet created")
+    elif state.status == "unknown":
+        data["note"] = f"could not establish rebuild eligibility ({state.reason})"
+    elif disposition.outcome == "unknown_size":
+        data["note"] = (
+            f"could not establish rebuild eligibility (unknown_size; derivation {state.reason})"
+        )
+    elif disposition.outcome == "auto":
+        data.update(
+            status="partial",
+            note=(
+                f"derivation stale ({state.reason}); eligible for automatic rebuild on an "
+                "interactive SessionStart with a source (size is rechecked after ingestion)"
+            ),
+        )
+    else:
+        compaction = rebuild_compaction_enabled(resolve_config_path(Path.cwd()))
+        data.update(
+            status="partial",
+            note=rebuild_pending_notice(state, compaction).removeprefix("[little-loops] "),
+        )
+    return data
+
+
+def _print_rebuild_pending_section() -> None:
+    """Print the Rebuild Pending section."""
+    data = _rebuild_pending_data()
+    print()
+    print("Rebuild Pending")
+    print("─" * 40)
+    symbol = _STATUS_SYMBOLS.get(data["status"], "?")
+    print(f"  {symbol}  {data['note']}")
+    if data["size_bytes"] is not None:
+        print(
+            f"     store size (main + WAL): {data['size_bytes']} bytes; "
+            f"automatic limit: {data['threshold_bytes']} bytes"
+        )
+
+
+@register_check
+def _rebuild_pending_check() -> list[CheckResult]:
+    """Registered informational check for deferred/eligible automatic history rebuilds."""
+    data = _rebuild_pending_data()
+    return [
+        CheckResult(
+            name="rebuild_pending",
+            status=data["status"],
+            note=data["note"],
+            severity="informational",
+        )
+    ]
+
+
 def _history_backend_data() -> dict:
     """Diagnostic for ``history.backend`` (FEAT-3535): provider, reachability, recorded vs
     installed schema version, the ``project_id`` stamp, config conflicts and the row counts
@@ -1820,6 +1906,7 @@ def _print_report(
             "skills_commands": _skills_commands_data(),
             "decisions_store": _decisions_store_data(),
             "history_db": _history_db_data(),
+            "rebuild_pending": _rebuild_pending_data(),
             "history_backend": _history_backend_data(),
             "schema_drift": _schema_drift_data(),
             "loop_validity": _loop_validity_data(),
@@ -1938,6 +2025,7 @@ not a broken install.
             _print_skills_commands_section()
             _print_decisions_store_section()
             _print_history_db_section()
+            _print_rebuild_pending_section()
             _print_history_backend_section()
             _print_schema_drift_section()
             _print_loop_validity_section()

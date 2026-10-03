@@ -364,7 +364,7 @@ class TestSessionStartBackfillThread:
 
 
 class TestSessionStartRebuild:
-    """ENH-2581: --rebuild is passed only when SCHEMA_VERSION > last_rebuild_version."""
+    """ENH-2581/ENH-3698: --auto-rebuild is passed only for a stale store within the size ceiling."""
 
     def _mock_popen(self, monkeypatch: pytest.MonkeyPatch) -> list[list]:
         calls: list[list] = []
@@ -393,7 +393,8 @@ class TestSessionStartRebuild:
         calls = self._setup(in_tmp, monkeypatch)
         handle(_event())
         assert len(calls) == 1
-        assert "--rebuild" in calls[0]
+        assert "--auto-rebuild" in calls[0]
+        assert "--rebuild" not in calls[0]
 
     def test_rebuild_flag_omitted_when_already_current(
         self, in_tmp: Path, monkeypatch: pytest.MonkeyPatch
@@ -406,6 +407,7 @@ class TestSessionStartRebuild:
         handle(_event())
         assert len(calls) == 1
         assert "--rebuild" not in calls[0]
+        assert "--auto-rebuild" not in calls[0]
 
 
 class TestSessionStartCodexTranscriptPath:

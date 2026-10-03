@@ -129,6 +129,9 @@ def handle(event: LLHookEvent) -> LLHookResult:
     # for initialized projects — uninitialized projects (no config) are a no-op
     # so the hook never creates a stray .ll/ directory.
     _project_context_block = ""
+    # ENH-3698: set when the interactive hook withholds an over-size rebuild; initialized
+    # here so a failed worker spawn cannot lose an already-established pending result.
+    _pending_notice: str | None = None
     if config_path is not None:
         with contextlib.suppress(Exception):
             from little_loops.session_store import ensure_db
@@ -186,10 +189,11 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _backfill_path = str(_pf) if _pf is not None else None
 
             if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):
-                # ENH-2581/ENH-3678: pass --rebuild only when the derivation changed
-                # (rebuild_needed() == stale), so the expensive cache-table rebuild
-                # does not run on every SCHEMA_VERSION bump. `unknown` (unreadable
-                # store) never rebuilds, but the incremental worker still spawns below.
+                # ENH-2581/ENH-3678/ENH-3698: --auto-rebuild only when the derivation
+                # changed (stale) AND the store is within the size ceiling; the worker
+                # rechecks after ingestion. An over-ceiling store stashes a pending notice
+                # instead. `unknown` (unreadable store) and unknown_size never rebuild, but
+                # the incremental worker still spawns below.
                 _worker_argv = [
                     sys.executable,
                     "-m",
@@ -201,12 +205,21 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 try:
                     if _remote_store:
                         raise RuntimeError("remote store: never rebuild from a hook")
-                    from little_loops.session_store import rebuild_needed
+                    from little_loops.session_store import (
+                        rebuild_compaction_enabled,
+                        rebuild_disposition,
+                        rebuild_pending_notice,
+                    )
 
-                    if rebuild_needed(_db_path).status == "stale":
-                        _worker_argv.append("--rebuild")
+                    _disposition = rebuild_disposition(_db_path)
+                    if _disposition.outcome == "auto":
+                        _worker_argv.append("--auto-rebuild")
+                    elif _disposition.outcome == "pending":
+                        _pending_notice = rebuild_pending_notice(
+                            _disposition.state, rebuild_compaction_enabled(config_path)
+                        )
                 except Exception:
-                    logger.debug("rebuild_needed check skipped", exc_info=True)
+                    logger.debug("rebuild_disposition check skipped", exc_info=True)
 
                 subprocess.Popen(
                     _worker_argv,
@@ -268,6 +281,9 @@ def handle(event: LLHookEvent) -> LLHookResult:
             )
     else:
         feedback_lines.append("[little-loops] Warning: No config found. Run ll-init to create one.")
+
+    if _pending_notice:
+        feedback_lines.append(_pending_notice)
 
     # 6. Feature-flag validation warnings.
     feedback_lines.extend(_validate_features(merged_config, project_root=root))
