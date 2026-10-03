@@ -15,9 +15,9 @@ relates_to:
 
 ## Summary
 
-Deliver `ll-next`, an advisory CLI that recommends the next project action across a fixed menu of verbs (implement, refine, resolve-blocker, run-loop, run-sprint, capture-issues) using auditable, deterministic scoring. Split out of FEAT-3561 after an Opus pre-implementation review (2026-10-03): the original single issue bundled nine generators, a schema migration, pressure/acceptance learning and a backtest, and the cut that follows real dependencies is core CLI first, then events/pressure, backtest and extra generators as independent follow-ups.
+Deliver `ll-next`, an advisory CLI that recommends the next project action across a fixed menu of verbs (implement, refine, resolve-blocker, run-loop, run-sprint, capture-issues) using auditable, deterministic scoring. Split out of FEAT-3561 after an Opus pre-implementation review (2026-10-03): core CLI first, then recommendation evidence/shared history, a choice-agreement backtest, and extra generators. Default output gives each available verb a first-round opportunity; pressure is opt-in.
 
-**Closure criterion:** `ll-next` ships for the six in-scope verbs with documented gates, coverage and exit codes; recommendation events record display and explicit/derived acceptance honestly; an as-of `implement-issue` backtest report exists with a contamination-aware ground truth. `--execute`, learned weights, LLM reranking, and the three finding-backed verbs are out of scope.
+**Closure criterion:** `ll-next` ships for six verbs with documented gates, coverage, unavailable-data behavior and exit codes; recommendation events/explicit acknowledgements and observed attribution never fabricate ignored labels; optional activity pressure is bounded and disabled by default; a reproducible as-of implement-issue choice-agreement report includes origin uncertainty and sample coverage. `--execute`, learned weights, LLM reranking, and the three finding-backed verbs are out of scope.
 
 ## Impact
 
@@ -29,15 +29,9 @@ Deliver `ll-next`, an advisory CLI that recommends the next project action acros
 ## Children
 
 - **FEAT-3561** — `ll-next` core: advisory CLI, four generators, gates/coverage, round-robin fill (open; blocked by FEAT-3681)
-- **FEAT-3711** — `recommendation_events`, derived acceptance and time-based bucket pressure (open; blocked by FEAT-3561)
+- **FEAT-3711** — recommendation events, shared read-only history, observed/explicit acceptance and opt-in activity pressure (open; blocked by FEAT-3561)
 - **FEAT-3712** — As-of `implement-issue` backtest report (open; blocked by FEAT-3561)
-- **FEAT-3713** — `capture-issues` and `run-sprint` generators (open; blocked by FEAT-3561)
-- **FEAT-3711** — ll-next recommendation_events, derived acceptance and time-based bucket pressure (open)
-- **FEAT-3712** — As-of implement-issue backtest report for ll-next (open)
-- **FEAT-3713** — ll-next capture-issues and run-sprint generators (open)
-
-
-
+- **FEAT-3713** — capture-issues and run-sprint generators (open; blocked by FEAT-3561 and FEAT-3711's shared reader)
 
 ## Goal
 
@@ -45,7 +39,7 @@ A user can ask "what should I do next?" and get a short, legible, evidence-backe
 
 ## Scope
 
-Four children. The core issue owns the CLI, schema, scoring integration and cross-type fill with no persisted state. The events child owns the only `SCHEMA_VERSION` bump and replaces round-robin with pressure. The backtest and extra-generator children are independent once the core lands.
+Four children. The core owns the CLI/output Schema, pure snapshot/scoring and round-robin fill with no history access/writes. The events child owns the only history migration/shared reader and adds opt-in pressure. The backtest is independent of the events child; extra generators reuse its reader and are sequenced after it.
 
 ## Detached / deferred (not children; `relates_to` this epic)
 
@@ -55,7 +49,7 @@ Four children. The core issue owns the CLI, schema, scoring integration and cros
 
 ## Implementation order
 
-FEAT-3681 → FEAT-3561 → { FEAT-3711, FEAT-3712, FEAT-3713 } (independent of one another). FEAT-3711 carries the only `SCHEMA_VERSION` bump (58 → 59); ENH-3678 (done) already stops it from auto-spawning a full rebuild.
+FEAT-3681 → FEAT-3561 → { FEAT-3711, FEAT-3712 }; FEAT-3711 → FEAT-3713. FEAT-3711 claims the next free history schema version at implementation time (currently 58 → 59 if still free). ENH-3678/ENH-3679 are done and supply rebuild gating/short-timeout seams; the recommendation writer must explicitly use those seams.
 
 ## Status
 
