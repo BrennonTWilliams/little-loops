@@ -15,9 +15,9 @@ blocks:
 - BUG-3708
 parent: EPIC-3694
 epic: EPIC-3694
-confidence_score: 80
-outcome_confidence: 67
-score_complexity: 14
+confidence_score: 92
+outcome_confidence: 63
+score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
@@ -173,7 +173,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-Historical `/ll:confidence-check` scores from 2026-10-03: readiness 80, outcome 67. These predate the contract corrections above and have not been recomputed.
+_Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract corrections)_
+
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Concerns
+
+- Every cited anchor resolves: `check_format_gaps`, `_ADVISORY_GAP_CLASSES`, `SymbolIndex.files_with_symbol`, `symbol_exists_in_file`, `suffix_match_candidates`, `fence_spans`/`in_fence`, and `terminal_size` imported by `cli/loop/feed.py`. The `superseded_marker_count`/`directive_gaps` sibling-metadata pattern in `format_check.py:768-778` matches the plan. `format-check` is clean for this issue and `check-design` passes.
+- Root Cause is one sentence about model behavior with no code anchor. The contract sections carry the real specification, so this only trims Criterion 3.
+- `check_format_gaps` has 14 call sites across 12 modules. The new keyword-only collector is additive, but the blast radius is wide.
+
+### Outcome Risk Factors
+
+- Broad change surface: 14 `check_format_gaps` call sites, and the advisory fields touch `has_gaps`, `to_dict()` and `_print_gaps` consumers.
+- Moderate per-site complexity: a span-aware extractor that preserves original positions through section selection and fence skipping. A coverage overclaim hides true findings.
+- Definition-shaped attribution (import usage vs ownership) can still be ambiguous. Advisory rollout and labelled findings are required, and the unknown-span rule (no `ok`) must hold.
+- Backlog count parity proves no new blocking gates, not citation precision.
 
 ### Concerns addressed in this review
 
@@ -189,6 +205,7 @@ Historical `/ll:confidence-check` scores from 2026-10-03: readiness 80, outcome 
 - Backlog count parity proves no new blocking gates, not citation precision or repeatability of semantic LLM verdicts.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:52:29 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:18:04 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:00 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:verify-issues` - 2026-10-01T22:38:30 - `481f71a6-8878-4664-a5d1-327d85ef26ef.jsonl`

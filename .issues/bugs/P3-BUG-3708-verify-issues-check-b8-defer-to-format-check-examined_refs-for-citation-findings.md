@@ -13,12 +13,12 @@ blocked_by:
 relates_to:
 - ENH-3690
 - BUG-3695
-confidence_score: 65
-outcome_confidence: 82
-score_complexity: 21
+confidence_score: 77
+outcome_confidence: 72
+score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
-score_change_surface: 25
+score_change_surface: 18
 ---
 
 # BUG-3708: verify-issues check B8: defer to format-check examined_refs for citation findings
@@ -136,7 +136,25 @@ No new Python types. Consumer metadata contract:
 
 ## Confidence Check Notes
 
-Historical `/ll:confidence-check` scores from 2026-10-03: readiness 65 (dependency hard override), outcome 82. They predate this review and have not been recomputed. **BUG-3691 remains an unresolved implementation dependency**; rerun confidence-check after its payload lands.
+_Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract corrections)_
+
+**Readiness Score**: 77/100 → STOP — ADDRESS GAPS (Dependencies hard override; the criteria sum alone would be PROCEED WITH CAUTION)
+**Outcome Confidence**: 72/100 → MODERATE
+
+### Gaps to Address
+
+- `blocked_by: BUG-3691` is `open`. B8 consumes the `examined_refs` payload that BUG-3691 defines and has not yet built (`examined_refs` and `advisory_*` keys appear nowhere in `scripts/little_loops`). Land BUG-3691 first, then rerun confidence-check. This is the only blocker; `format-check` is clean and `check-design` passes.
+
+### Concerns
+
+- No B8 exists in `commands/verify-issues.md`, so there is no duplicate. The insertion point (after check 7, before `#### C. Determine Verdict` at line 249) is correct.
+- Prose tests cannot prove the model obeys B8. Mechanical determinism and whole-verdict repeatability must not be conflated.
+
+### Outcome Risk Factors
+
+- Broad contract reuse: the consumer table must match BUG-3691's final schema exactly, and any producer drift forces a rewrite.
+- The coverage-table semantics (demote / surface / advisory / fallback) are subtle prose. They are guarded by command-contract tests only, plus the three-run live evaluation.
+- The change surface also includes four host mirrors regenerated via `ll-adapt`; there is no `.omp` root in this checkout.
 
 The occurrence schema, property mapping, advisory policy, exit-1 handling and replay contradiction are now specified rather than left for the implementer. Remaining risk: prose tests cannot prove model compliance; mechanical determinism and whole semantic-verdict repeatability must not be conflated.
 
@@ -146,4 +164,5 @@ The occurrence schema, property mapping, advisory policy, exit-1 handling and re
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:52:30 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:18:05 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`

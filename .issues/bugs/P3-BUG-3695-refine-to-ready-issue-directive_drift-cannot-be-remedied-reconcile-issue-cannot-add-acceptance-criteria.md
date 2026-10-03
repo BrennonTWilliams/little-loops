@@ -15,7 +15,7 @@ relates_to:
 - BUG-3691
 - ENH-3690
 decision_needed: false
-confidence_score: 80
+confidence_score: 75
 outcome_confidence: 64
 score_complexity: 10
 score_test_coverage: 18
@@ -204,7 +204,28 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-Historical `/ll:confidence-check` scores from 2026-10-03: readiness 80, outcome 64. They predate this review and have not been recomputed. Re-run after the declared BUG-3708 dependency lands.
+_Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract corrections)_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies hard override; the criteria sum alone would be PROCEED WITH CAUTION)
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Gaps to Address
+
+- `blocked_by: BUG-3708` is `open`, and BUG-3708 is itself blocked on BUG-3691. The chain is BUG-3691 → BUG-3708 → BUG-3695. Rerun confidence-check once BUG-3708 lands. This is the only blocker; `format-check` is clean and `check-design` passes.
+
+### Concerns
+
+- The root-cause anchors check out: `commands/verify-issues.md:263` (DIRECTIVE_DRIFT "remedied by `reconcile-issue`"), `refine-to-ready-issue.yaml:589` (`VERIFY:DIRECTIVE_DRIFT` → `check_reconcile_limit`), `commands/reconcile-issue.md:120` ("do not invent new requirements"), and the `target: 2` counter at `refine-to-ready-issue.yaml:618`. `--from-verify-evidence` is not yet implemented anywhere, so there is no duplicate.
+- `/ll:reconcile-issue` is called from two loop actions in `refine-to-ready-issue.yaml` (`reconcile_issue`, `reconcile_revision`) and one in `prepare-issue.yaml`. The flag must reach only `reconcile_issue`, which the negative-case pins cover.
+- The carve-out is command prose, not an enforced edit filter, so model compliance is live-evaluated rather than proven.
+
+### Outcome Risk Factors
+
+- Cross-cutting contract change (verify B6 + persistence, reconcile flag/eligibility, loop action, 4 docs, mirrors) with moderate per-site depth.
+- One shared reconcile attempt remains. Incomplete first-pass enumeration or applicability churn can still exhaust it, and no automatic budget fallback masks that defect.
+- The new real-child FSM test must adapt `autodev_harness.py`, which currently stubs the child.
+- A failed clear plus a verify call that writes nothing can retain stale evidence (documented limitation).
+- The command and mirror surface is shared with BUG-3708 and ENH-3690, so edits must be serialized.
 
 ### Concerns addressed in this review
 
@@ -222,6 +243,7 @@ Historical `/ll:confidence-check` scores from 2026-10-03: readiness 80, outcome 
 - Shared command/mirror surface with BUG-3708 and ENH-3690 requires serialized edits.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:52:31 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:18:06 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
 - `/ll:decide-issue` - 2026-10-02T20:01:51 - `c7a25ce4-f603-4faf-97bd-88495061e012.jsonl`
 - `/ll:confidence-check` - 2026-10-02T19:45:19 - `9a15ba2c-4c77-475b-8d6d-2e5aa8b1186f.jsonl`
