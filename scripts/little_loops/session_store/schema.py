@@ -1522,7 +1522,9 @@ _MIGRATIONS: list[str] = [
 ]
 
 
-def _configure_connection(conn: sqlite3.Connection) -> None:
+def _configure_connection(
+    conn: sqlite3.Connection, busy_timeout_ms: int = _BUSY_TIMEOUT_MS
+) -> None:
     """Apply concurrency pragmas to a freshly opened connection.
 
     ``busy_timeout`` makes a contended open wait instead of failing instantly
@@ -1535,7 +1537,7 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
     not prevent the database from opening.
     """
     try:
-        conn.execute(f"PRAGMA busy_timeout = {_BUSY_TIMEOUT_MS}")
+        conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
         conn.execute("PRAGMA journal_mode = WAL")
     except sqlite3.OperationalError:
         logger.debug("session_store: could not apply connection pragmas", exc_info=True)
@@ -1681,8 +1683,13 @@ def _local_db_path(target: Path | str | HistoryTarget) -> Path:
     return resolved.path
 
 
-def ensure_db(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> Path:
+def ensure_db(
+    path: Path | str | HistoryTarget = DEFAULT_DB_PATH, *, busy_timeout_ms: int | None = None
+) -> Path:
     """Create the database at *path* (if needed) and apply pending migrations.
+
+    ``busy_timeout_ms`` bounds each lock wait on the setup connection (ENH-3679);
+    ``None`` keeps the default ``_BUSY_TIMEOUT_MS``.
 
     Idempotent: safe to call on every session start. The parent directory is
     created if absent. Returns the resolved database path.
@@ -1713,19 +1720,24 @@ def ensure_db(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> Path:
                     )
                     break
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    timeout_ms = _BUSY_TIMEOUT_MS if busy_timeout_ms is None else busy_timeout_ms
+    conn = sqlite3.connect(str(db_path), timeout=timeout_ms / 1000)
     try:
-        _configure_connection(conn)
+        _configure_connection(conn, timeout_ms)
         _apply_migrations(conn)
     finally:
         conn.close()
     return db_path
 
 
-def connect(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> sqlite3.Connection:
+def connect(
+    path: Path | str | HistoryTarget = DEFAULT_DB_PATH, *, busy_timeout_ms: int | None = None
+) -> sqlite3.Connection:
     """Open a connection to the session database, ensuring the schema first.
 
     Rows are returned as :class:`sqlite3.Row` so callers can index by name.
+    ``busy_timeout_ms`` (ENH-3679) sets the per-lock-wait bound on both the setup and
+    returned connections; ``None`` keeps ``_BUSY_TIMEOUT_MS``. The remote branch ignores it.
     """
     resolved = _seam_target(path)
     if isinstance(resolved, RemoteTarget):
@@ -1739,9 +1751,10 @@ def connect(path: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> sqlite3.Conne
         if remote_telemetry.in_telemetry_scope() and hasattr(backend, "connect_telemetry"):
             return backend.connect_telemetry(resolved)  # type: ignore[no-any-return]
         return backend.connect(resolved)  # type: ignore[return-value]
-    db_path = ensure_db(resolved)
-    conn = sqlite3.connect(str(db_path))
-    _configure_connection(conn)
+    timeout_ms = _BUSY_TIMEOUT_MS if busy_timeout_ms is None else busy_timeout_ms
+    db_path = ensure_db(resolved, busy_timeout_ms=busy_timeout_ms)
+    conn = sqlite3.connect(str(db_path), timeout=timeout_ms / 1000)
+    _configure_connection(conn, timeout_ms)
     conn.row_factory = sqlite3.Row
     return conn
 

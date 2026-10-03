@@ -26,6 +26,12 @@ from little_loops.session_store import (
     record_correction,
     search,
 )
+from little_loops.session_store.writers import (
+    _is_lock_error,
+    cli_event_drops_path,
+    read_cli_event_drops,
+    record_dropped_cli_event,
+)
 from little_loops.transport import Transport
 
 # ENH-2529: consolidate per-test temp dirs under one module-scoped parent to cut
@@ -474,6 +480,13 @@ class TestRecordSkillEvent:
         assert len(rows) == 0, "record_skill_event must be a no-op when capture.skills excludes it"
 
 
+def _locked_error(code: int = sqlite3.SQLITE_BUSY) -> sqlite3.OperationalError:
+    """An ``OperationalError`` carrying a SQLite errorcode (ENH-3679 classifies by code only)."""
+    exc = sqlite3.OperationalError("database is locked")
+    exc.sqlite_errorcode = code  # type: ignore[attr-defined]
+    return exc
+
+
 class TestCliEventContext:
     """ENH-1848: cli_event_context() DB write round-trip and mechanics."""
 
@@ -549,17 +562,22 @@ class TestCliEventContext:
         import little_loops.session_store as ss
 
         def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
-            raise sqlite3.OperationalError("database is locked")
+            raise _locked_error()
 
         monkeypatch.setattr(ss, "connect", _locked_connect)
 
         db = tmp_path / "session.db"
         ran = False
-        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+        with caplog.at_level(logging.DEBUG, logger="little_loops.session_store.writers"):
             with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
                 ran = True
         assert ran, "wrapped command body must run even when the analytics INSERT fails"
         assert "cli_event_context: enter failed for" in caplog.text
+        # ENH-3679: a counted lock drop is debug-only and recorded exactly once.
+        assert all(
+            r.levelno == logging.DEBUG for r in caplog.records if "enter failed" in r.getMessage()
+        )
+        assert read_cli_event_drops(db) == {"E": 1, "X": 0}
 
     def test_cli_event_locked_exit_update_does_not_mask_success(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -575,7 +593,7 @@ class TestCliEventContext:
 
             def execute(self, sql: str, *params: object) -> object:
                 if sql.startswith("UPDATE cli_events"):
-                    raise sqlite3.OperationalError("database is locked")
+                    raise _locked_error()
                 return self._inner.execute(sql, *params)
 
             def __getattr__(self, name: str) -> object:
@@ -588,11 +606,18 @@ class TestCliEventContext:
 
         db = tmp_path / "session.db"
         ran = False
-        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+        with caplog.at_level(logging.DEBUG, logger="little_loops.session_store.writers"):
             with cli_event_context(db, binary="ll-issues", args=["show", "2701"]):
                 ran = True
         assert ran, "command body must complete even when the exit UPDATE fails"
         assert "cli_event_context: exit update failed for" in caplog.text
+        assert all(
+            r.levelno == logging.DEBUG
+            for r in caplog.records
+            if "exit update failed" in r.getMessage()
+        )
+        # Entry succeeded, exit dropped: exactly one completion record.
+        assert read_cli_event_drops(db) == {"E": 0, "X": 1}
 
     def test_cli_event_non_sqlite_error_in_enter_is_swallowed(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -3515,3 +3540,177 @@ class TestWriteCredentialScope:
             scopes=frozenset({"github-api"}),
             var_names=frozenset({"GH_TOKEN"}),
         )
+
+
+class TestCliEventLockBound:
+    """ENH-3679: 250 ms per-lock-wait bound on cli_event_context plus the drop counter."""
+
+    @staticmethod
+    def _hold_write_lock(db: Path) -> tuple[threading.Event, threading.Thread]:
+        """Hold ``BEGIN IMMEDIATE`` on *db* from a thread until the returned event is set."""
+        ready, release = threading.Event(), threading.Event()
+
+        def _holder() -> None:
+            c = sqlite3.connect(str(db), isolation_level=None)
+            try:
+                c.execute("BEGIN IMMEDIATE")
+                ready.set()
+                release.wait(30)
+                c.execute("ROLLBACK")
+            finally:
+                c.close()
+
+        t = threading.Thread(target=_holder, daemon=True)
+        t.start()
+        assert ready.wait(10)
+        return release, t
+
+    @pytest.fixture
+    def migrated_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        from little_loops.session_store import ensure_db
+
+        db = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db))
+        ensure_db(db)
+        return db
+
+    def test_entry_wait_is_bounded_and_counted(self, migrated_db: Path) -> None:
+        import time
+
+        release, t = self._hold_write_lock(migrated_db)
+        try:
+            start = time.monotonic()
+            with cli_event_context(migrated_db, binary="ll-bound"):
+                waited = time.monotonic() - start
+        finally:
+            release.set()
+            t.join(10)
+        assert 0.2 <= waited <= 2.0
+        assert read_cli_event_drops(migrated_db) == {"E": 1, "X": 0}
+
+    def test_exit_wait_is_bounded_after_long_body(self, migrated_db: Path) -> None:
+        import time
+
+        holder: dict[str, object] = {}
+        with cli_event_context(migrated_db, binary="ll-bound"):
+            time.sleep(0.4)  # longer than the 250 ms bound: must not deplete the exit wait
+            holder["release"], holder["t"] = self._hold_write_lock(migrated_db)
+            start = time.monotonic()
+        waited = time.monotonic() - start
+        holder["release"].set()  # type: ignore[attr-defined]
+        holder["t"].join(10)  # type: ignore[attr-defined]
+        assert 0.2 <= waited <= 2.0
+        assert read_cli_event_drops(migrated_db) == {"E": 0, "X": 1}
+
+    def test_both_telemetry_connects_use_short_timeout(
+        self, migrated_db: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[float] = []
+        real = sqlite3.connect
+
+        def _spy(database: object, *a: object, **k: object) -> sqlite3.Connection:
+            seen.append(float(k.get("timeout", 5.0)))  # type: ignore[arg-type]
+            return real(database, *a, **k)  # type: ignore[arg-type]
+
+        import little_loops.session_store.schema as schema
+
+        monkeypatch.setattr(schema.sqlite3, "connect", _spy)
+        with cli_event_context(migrated_db, binary="ll-bound"):
+            pass
+        assert seen == [0.25, 0.25]
+        seen.clear()
+        schema.connect(migrated_db).close()
+        assert seen == [5.0, 5.0]
+
+    def test_non_lock_errors_are_not_counted(
+        self, migrated_db: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import little_loops.session_store as ss
+        from little_loops.session_store.backend import HistorySuppressed
+
+        for exc in (
+            _locked_error(sqlite3.SQLITE_IOERR),
+            sqlite3.OperationalError("database is locked"),  # no errorcode at all
+            HistorySuppressed("remote down"),
+        ):
+
+            def _boom(*_a: object, _exc: Exception = exc, **_k: object) -> sqlite3.Connection:
+                raise _exc
+
+            monkeypatch.setattr(ss, "connect", _boom)
+            with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+                with cli_event_context(migrated_db, binary="ll-bound"):
+                    pass
+        assert read_cli_event_drops(migrated_db) == {"E": 0, "X": 0}
+        assert "enter failed" in caplog.text  # IOERR / errorcode-less keep their warning
+
+    def test_is_lock_error_classification(self) -> None:
+        assert _is_lock_error(_locked_error(sqlite3.SQLITE_BUSY))
+        assert _is_lock_error(_locked_error(sqlite3.SQLITE_LOCKED))
+        # extended codes mask down to the primary code
+        assert _is_lock_error(_locked_error(sqlite3.SQLITE_BUSY | (1 << 8)))
+        assert not _is_lock_error(sqlite3.OperationalError("database is locked"))
+        assert not _is_lock_error(_locked_error(sqlite3.SQLITE_IOERR))
+        assert not _is_lock_error(ValueError("x"))
+
+    def test_concurrent_appends_are_exact(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        threads = [
+            threading.Thread(target=lambda: [record_dropped_cli_event(db, "E") for _ in range(25)])
+            for _ in range(8)
+        ]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(30)
+        assert read_cli_event_drops(db) == {"E": 200, "X": 0}
+
+    def test_held_flock_does_not_stall_append(self, tmp_path: Path) -> None:
+        import fcntl
+        import time
+
+        db = tmp_path / "history.db"
+        record_dropped_cli_event(db, "E")
+        with open(cli_event_drops_path(db), "ab") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            start = time.monotonic()
+            record_dropped_cli_event(db, "X")
+            assert time.monotonic() - start < 0.5
+        assert read_cli_event_drops(db) == {"E": 1, "X": 1}
+
+    def test_torn_and_malformed_records_are_ignored(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        record_dropped_cli_event(db, "X")
+        with open(cli_event_drops_path(db), "ab") as fh:
+            fh.write(b"garbage_rec\n")  # 12 bytes, malformed
+            fh.write(b"0000000001E")  # torn tail
+        assert read_cli_event_drops(db) == {"E": 0, "X": 1}
+
+    def test_window_filters_old_records(self, tmp_path: Path) -> None:
+        import time
+
+        db = tmp_path / "history.db"
+        cli_event_drops_path(db).write_bytes(b"0000000001E\n")
+        record_dropped_cli_event(db, "E")
+        assert read_cli_event_drops(db) == {"E": 2, "X": 0}
+        assert read_cli_event_drops(db, since_epoch=time.time() - 60) == {"E": 1, "X": 0}
+
+    def test_sidecar_write_failure_never_escapes(self, tmp_path: Path) -> None:
+        # Parent directory missing -> os.open raises; must be swallowed.
+        record_dropped_cli_event(tmp_path / "missing" / "history.db", "E")
+
+    def test_other_writers_keep_default_timeout(
+        self, migrated_db: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import little_loops.session_store.schema as schema
+
+        conn = schema.connect(migrated_db)
+        try:
+            assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+        finally:
+            conn.close()
+        conn = schema.connect(migrated_db, busy_timeout_ms=250)
+        try:
+            assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 250
+        finally:
+            conn.close()

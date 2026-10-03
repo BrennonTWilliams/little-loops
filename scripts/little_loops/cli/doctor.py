@@ -539,7 +539,72 @@ def _history_db_data() -> dict:
             conn.close()
     except (sqlite3.Error, HistoryUnavailable) as exc:
         return {"status": "unsupported", "severity": "error", "note": f"unreadable: {exc}"}
-    return {"status": "full", "severity": "error", "note": str(db_path)}
+    return {
+        "status": "full",
+        "severity": "error",
+        "note": str(db_path),
+        "cli_event_drops": _cli_event_drops_data(),
+    }
+
+
+def _cli_event_drops_data() -> dict | None:
+    """Last-7-day ``cli_event_context`` lock drops (ENH-3679), split by kind.
+
+    Reads the ``<db>.cli-event-drops`` sidecar at the same resolved store path the writer
+    uses (``LL_HISTORY_DB`` / ``history.db_path`` honored), plus the 7-day ``cli_events``
+    row count for the ratio -- the ENH-3683 spool decision needs a windowed rate, not a
+    lifetime count. ``None`` under a remote backend (no local sidecar) or when the store is
+    absent. Computed once and shared by the JSON, text, and registered-check surfaces."""
+    import sqlite3
+    import time
+    from datetime import datetime
+
+    from little_loops.session_store.backend import HistoryUnavailable, resolve_backend
+    from little_loops.session_store.db import resolve_history_store
+    from little_loops.session_store.writers import read_cli_event_drops
+
+    try:
+        store = resolve_history_store(DEFAULT_DB_PATH)
+    except Exception:
+        return None
+    if not isinstance(store, Path) or not store.exists():
+        return None
+    since = time.time() - 7 * 86400
+    counts = read_cli_event_drops(store, since_epoch=since)
+    entry, completion = counts["E"], counts["X"]
+    events: int | None = None
+    if entry or completion:
+        cutoff = datetime.fromtimestamp(since, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            conn = resolve_backend().connect_readonly(store)
+            try:
+                row = conn.execute(
+                    "SELECT count(*) FROM cli_events WHERE ts >= ?", (cutoff,)
+                ).fetchone()
+                events = int(row[0])
+            finally:
+                conn.close()
+        except (sqlite3.Error, HistoryUnavailable):
+            events = None
+    return {
+        "window_days": 7,
+        "entry": entry,
+        "completion": completion,
+        "total": entry + completion,
+        "cli_events": events,
+        "ratio": (round((entry + completion) / events, 4) if events else None),
+    }
+
+
+def _cli_event_drops_note(drops: dict) -> str:
+    """One-line human summary of :func:`_cli_event_drops_data`."""
+    note = (
+        f"cli_events dropped under lock (last {drops['window_days']}d): "
+        f"{drops['entry']} entry, {drops['completion']} completion"
+    )
+    if drops["ratio"] is not None:
+        note += f" ({drops['total']} of {drops['cli_events']} events, {drops['ratio']:.2%})"
+    return note
 
 
 def _print_history_db_section() -> None:
@@ -550,17 +615,34 @@ def _print_history_db_section() -> None:
     print("─" * 40)
     symbol = _STATUS_SYMBOLS.get(data["status"], "?")
     print(f"  {symbol}  {data['note']}")
+    drops = data.get("cli_event_drops")
+    if drops is not None:
+        print(f"     {_cli_event_drops_note(drops)}")
 
 
 @register_check
 def _history_db_check() -> list[CheckResult]:
-    """Registered check for `.ll/history.db` presence/readability."""
+    """Registered check for `.ll/history.db` presence/readability.
+
+    Also emits an informational ``cli_event_drops`` result (ENH-3679) when the local store
+    has a drop sidecar to report; it never affects the exit code."""
     data = _history_db_data()
-    return [
+    results = [
         CheckResult(
             name="history_db", status=data["status"], note=data["note"], severity=data["severity"]
         )
     ]
+    drops = data.get("cli_event_drops")
+    if drops is not None:
+        results.append(
+            CheckResult(
+                name="cli_event_drops",
+                status="partial" if drops["total"] else "full",
+                note=_cli_event_drops_note(drops),
+                severity="informational",
+            )
+        )
+    return results
 
 
 def _history_backend_data() -> dict:

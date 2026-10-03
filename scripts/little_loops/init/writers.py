@@ -106,6 +106,7 @@ _GITIGNORE_ENTRIES: tuple[str, ...] = (
     ".ll/history.db*",
     ".ll/queue.db*",
     ".ll/*.lock",
+    ".ll/*.cli-event-drops",
     ".ll/ll-continue-prompt.md",
     ".ll/private-refs.local.txt",
     # Pure memoization for ll-verify-evidence; churns every run and carries

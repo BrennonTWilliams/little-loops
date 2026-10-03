@@ -63,11 +63,81 @@ def _log_degraded(message: str, name: str | None, exc: Exception) -> None:
         logger.warning("%s for %r (%s: %s)", message, name, type(exc).__name__, exc)
 
 
-def _connect_telemetry(path: Path | str | RemoteTarget) -> sqlite3.Connection:
+def _connect_telemetry(
+    path: Path | str | RemoteTarget, *, busy_timeout_ms: int | None = None
+) -> sqlite3.Connection:
     """``schema.connect`` for a best-effort event write: under a remote backend it runs with
-    the telemetry latency budget (FEAT-3535); for local SQLite it is exactly ``connect``."""
+    the telemetry latency budget (FEAT-3535); for local SQLite it is exactly ``connect``.
+
+    ``busy_timeout_ms`` (ENH-3679) is forwarded only when set, so ordinary writers call
+    ``connect(path)`` unchanged and keep the default timeout."""
     with remote_telemetry.telemetry_scope():
-        return _pkg.connect(path)
+        if busy_timeout_ms is None:
+            return _pkg.connect(path)
+        return _pkg.connect(path, busy_timeout_ms=busy_timeout_ms)
+
+
+# ENH-3679: per-lock-wait bound for ``cli_event_context`` (the default is 5000 ms), and the
+# sidecar that counts the events dropped when that bound is hit.
+_CLI_EVENT_BUSY_TIMEOUT_MS = 250
+CLI_EVENT_DROPS_SUFFIX = ".cli-event-drops"
+# One fixed-width record per drop: 10-digit epoch seconds + kind (E=entry, X=completion) + "\n".
+CLI_EVENT_DROP_RECORD_LEN = 12
+
+
+def _is_lock_error(exc: BaseException) -> bool:
+    """True for a SQLite lock failure (``SQLITE_BUSY``/``SQLITE_LOCKED``), by errorcode only.
+
+    ``getattr`` because a hand-constructed ``sqlite3.OperationalError`` carries no
+    ``sqlite_errorcode``; never raises."""
+    code = getattr(exc, "sqlite_errorcode", None)
+    if not isinstance(code, int):
+        return False
+    return (code & 0xFF) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+
+
+def cli_event_drops_path(db: Path | str) -> Path:
+    """Sidecar path that counts dropped ``cli_events`` for the store at *db*."""
+    return Path(str(db) + CLI_EVENT_DROPS_SUFFIX)
+
+
+def record_dropped_cli_event(db: Path | str, kind: str) -> None:
+    """Count a dropped ``cli_events`` write without a database write or blocking lock.
+
+    ``kind`` is ``"E"`` (entry: the whole event was lost) or ``"X"`` (completion: the row
+    was kept but ``exit_code``/``duration_ms`` were lost). Appends one fixed-width record
+    with a single ``os.write`` on an ``O_APPEND`` descriptor, which a local filesystem
+    keeps atomic below ``PIPE_BUF`` -- no read-modify-write, so a contended counter cannot
+    replace the SQLite stall. Never raises."""
+    try:
+        record = f"{int(time.time()):010d}{kind[:1]}\n".encode("ascii")
+        fd = os.open(cli_event_drops_path(db), os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o644)
+        try:
+            os.write(fd, record)
+        finally:
+            os.close(fd)
+    except Exception:
+        logger.debug("cli_event_context: could not record dropped event", exc_info=True)
+
+
+def read_cli_event_drops(db: Path | str, *, since_epoch: float = 0.0) -> dict[str, int]:
+    """Parse the drop sidecar into ``{"E": n, "X": n}`` for records at/after *since_epoch*.
+
+    Whole 12-byte records only: a malformed record or torn tail (possible on ENOSPC) is
+    ignored. A missing/unreadable sidecar reads as zero."""
+    counts = {"E": 0, "X": 0}
+    try:
+        data = cli_event_drops_path(db).read_bytes()
+    except OSError:
+        return counts
+    for offset in range(0, len(data) - CLI_EVENT_DROP_RECORD_LEN + 1, CLI_EVENT_DROP_RECORD_LEN):
+        rec = data[offset : offset + CLI_EVENT_DROP_RECORD_LEN]
+        stamp, kind, end = rec[:10], rec[10:11], rec[11:12]
+        if end != b"\n" or not stamp.isdigit() or kind not in (b"E", b"X"):
+            continue
+        if int(stamp) >= since_epoch:
+            counts[kind.decode("ascii")] += 1
+    return counts
 
 
 # NOTE: internal calls in this module go through ``_pkg.connect``/``_pkg.ensure_db``
@@ -544,9 +614,13 @@ def cli_event_context(
     by the wrapped body itself propagate (``except BaseException: exit_code =
     1; raise``).
 
-    The connection already carries a 5000ms ``PRAGMA busy_timeout`` applied
-    unconditionally by ``connect()`` (``schema.py:1405``); no separate timeout
-    is configured here. ``sys.stdout``/``sys.stderr`` are flushed (best-effort)
+    Each lock wait is bounded at 250ms (ENH-3679): both telemetry connections are
+    opened with ``timeout=0.25`` and ``PRAGMA busy_timeout = 250``, a fixed
+    per-connection property, so the exit UPDATE gets the same 250ms however long
+    the body ran. A timed-out event is dropped and counted in the
+    ``<db>.cli-event-drops`` sidecar (:func:`record_dropped_cli_event`; one drop per
+    event -- an entry drop skips the exit). Only ``SQLITE_BUSY``/``SQLITE_LOCKED``
+    count, and they log at ``debug``. ``sys.stdout``/``sys.stderr`` are flushed (best-effort)
     at the top of the ``finally`` block, before the exit UPDATE runs, so the
     wrapped body's payload reaches its consumer even if that consumer kills
     the process while the UPDATE is waiting on the busy timeout. Degraded-path
@@ -577,12 +651,12 @@ def cli_event_context(
     start = time.time()
     ts = _now()
     gate_open = True
+    effective_path: Path | RemoteTarget = Path(db_path)
     try:
         if _analytics_capture_disabled():
             # Kill switch: skip resolution entirely — no filesystem access, no
             # cli_events row, LL_HISTORY_DB never consulted.
             gate_open = False
-            effective_path: Path | RemoteTarget = Path(db_path)
         else:
             effective_path = resolve_history_store(db_path)
             if config is not None:
@@ -603,7 +677,7 @@ def cli_event_context(
                         {"cli_commands": capture.cli_commands}, "cli_commands", binary
                     )
         if gate_open:
-            conn = _connect_telemetry(effective_path)
+            conn = _connect_telemetry(effective_path, busy_timeout_ms=_CLI_EVENT_BUSY_TIMEOUT_MS)
             cursor = conn.execute(
                 "INSERT INTO cli_events(ts, binary, args) VALUES(?, ?, ?)",
                 (ts, binary, json.dumps(args[:50])),
@@ -612,8 +686,12 @@ def cli_event_context(
             conn.commit()
     except Exception as exc:
         # A deliberately skipped remote write (unreachable marker, store needing migration)
-        # was already reported once; repeating it on every invocation is noise.
-        (logger.debug if isinstance(exc, HistorySuppressed) else logger.warning)(
+        # was already reported once; repeating it on every invocation is noise. A counted
+        # lock drop (ENH-3679) is likewise expected under ordinary contention: debug-only.
+        lock_drop = _is_lock_error(exc) and isinstance(effective_path, Path)
+        if lock_drop and isinstance(effective_path, Path):
+            record_dropped_cli_event(effective_path, "E")
+        (logger.debug if lock_drop or isinstance(exc, HistorySuppressed) else logger.warning)(
             "cli_event_context: enter failed for %r (%s: %s)", binary, type(exc).__name__, exc
         )
         if conn is not None:
@@ -643,7 +721,10 @@ def cli_event_context(
                 )
                 conn.commit()
             except Exception as exc:
-                logger.warning(
+                lock_drop = _is_lock_error(exc) and isinstance(effective_path, Path)
+                if lock_drop and isinstance(effective_path, Path):
+                    record_dropped_cli_event(effective_path, "X")
+                (logger.debug if lock_drop else logger.warning)(
                     "cli_event_context: exit update failed for %r (%s: %s)",
                     binary,
                     type(exc).__name__,

@@ -455,7 +455,7 @@ class TestCmdList:
 class TestCliEventContextHardening:
     """ENH-3426: history-writer failures must never take down a JSON CLI."""
 
-    def test_locked_history_db_still_emits_json_with_warning(
+    def test_locked_history_db_still_emits_json_without_warning(
         self,
         capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
@@ -466,49 +466,63 @@ class TestCliEventContextHardening:
         This patches only little_loops.session_store.connect (history.db) —
         queue_store.connect is a separate function and stays real, so this
         proves the analytics side-channel cannot swallow the queue payload.
+        ENH-3679: a SQLITE_BUSY drop is counted and logged at debug, not warning.
         """
         import sqlite3
 
         import little_loops.session_store as ss
 
         def _locked_connect(*_a: object, **_k: object) -> sqlite3.Connection:
-            raise sqlite3.OperationalError("database is locked")
+            exc = sqlite3.OperationalError("database is locked")
+            exc.sqlite_errorcode = sqlite3.SQLITE_BUSY  # type: ignore[attr-defined]
+            raise exc
 
         monkeypatch.setattr(ss, "connect", _locked_connect)
 
-        with caplog.at_level(logging.WARNING, logger="little_loops.session_store.writers"):
+        with caplog.at_level(logging.DEBUG, logger="little_loops.session_store.writers"):
             with patch("sys.argv", ["ll-queue", "list", "--json"]):
                 result = main_queue()
         assert result == 0
         assert json.loads(capsys.readouterr().out) == []
-        assert "cli_event_context: enter failed for" in caplog.text
+        enter = [r for r in caplog.records if "enter failed" in r.getMessage()]
+        assert enter
+        assert all(r.levelno == logging.DEBUG for r in enter)
 
-    def test_locked_history_db_stderr_is_one_line_no_traceback(self, tmp_path: Path) -> None:
-        """Real subprocess check of the logging.lastResort stderr delivery path.
-
-        Only this test exercises the actual stderr handler (no traceback) —
-        the in-process caplog test above proves the record was emitted, not
-        that stderr received exactly one clean line.
-        """
+    @staticmethod
+    def _run_queue_list_with_failing_history(
+        tmp_path: Path, errorcode: str
+    ) -> subprocess.CompletedProcess[str]:
         (tmp_path / ".ll").mkdir()
         script = (
             "import sqlite3\n"
             "import little_loops.session_store as ss\n"
-            "def _locked_connect(*a, **k):\n"
-            "    raise sqlite3.OperationalError('database is locked')\n"
-            "ss.connect = _locked_connect\n"
+            "def _failing_connect(*a, **k):\n"
+            "    exc = sqlite3.OperationalError('database is locked')\n"
+            f"    exc.sqlite_errorcode = sqlite3.{errorcode}\n"
+            "    raise exc\n"
+            "ss.connect = _failing_connect\n"
             "import sys\n"
             "sys.argv = ['ll-queue', 'list', '--json']\n"
             "from little_loops.cli.queue import main_queue\n"
             "raise SystemExit(main_queue())\n"
         )
-        proc = subprocess.run(
+        return subprocess.run(
             [sys.executable, "-c", script],
             cwd=tmp_path,
             capture_output=True,
             text=True,
             timeout=30,
         )
+
+    def test_non_lock_history_error_stderr_is_one_line_no_traceback(self, tmp_path: Path) -> None:
+        """Real subprocess check of the logging.lastResort stderr delivery path.
+
+        Only this test exercises the actual stderr handler (no traceback) —
+        the in-process caplog test above proves the record was emitted, not
+        that stderr received exactly one clean line. ENH-3679: lock errors are
+        debug-only now, so the warning path is pinned with a non-lock errorcode.
+        """
+        proc = self._run_queue_list_with_failing_history(tmp_path, "SQLITE_IOERR")
         assert proc.returncode == 0
         assert json.loads(proc.stdout) == []
         lines = proc.stderr.strip().splitlines()
@@ -517,6 +531,13 @@ class TestCliEventContextHardening:
             "cli_event_context: enter failed for 'll-queue' (OperationalError: database is locked)"
             in lines[0]
         )
+
+    def test_lock_history_error_emits_nothing_on_stderr(self, tmp_path: Path) -> None:
+        """ENH-3679: a counted lock drop must not print a stderr line on every command."""
+        proc = self._run_queue_list_with_failing_history(tmp_path, "SQLITE_BUSY")
+        assert proc.returncode == 0
+        assert json.loads(proc.stdout) == []
+        assert proc.stderr.strip() == ""
 
 
 class TestCmdStatus:

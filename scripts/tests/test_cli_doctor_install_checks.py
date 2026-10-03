@@ -253,6 +253,76 @@ class TestHistoryDb:
         assert data["severity"] == "error"
 
 
+class TestCliEventDrops:
+    """ENH-3679: the cli_event_context drop counter surfaces through `_history_db_*`."""
+
+    @staticmethod
+    def _store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str = "history.db") -> Path:
+        from little_loops.session_store import ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        db = tmp_path / ".ll" / name
+        monkeypatch.setenv("LL_HISTORY_DB", str(db))
+        ensure_db(db)
+        return db
+
+    def test_reports_windowed_counts_and_ratio(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _history_db_check
+        from little_loops.session_store import cli_event_context
+        from little_loops.session_store.writers import cli_event_drops_path
+
+        db = self._store(tmp_path, monkeypatch)
+        for _ in range(4):
+            with cli_event_context(db, binary="ll-x"):
+                pass
+        cli_event_drops_path(db).write_bytes(b"0000000001E\n")  # outside the 7-day window
+        from little_loops.session_store.writers import record_dropped_cli_event
+
+        record_dropped_cli_event(db, "E")
+        record_dropped_cli_event(db, "X")
+
+        drops = _history_db_data()["cli_event_drops"]
+
+        assert drops["entry"] == 1 and drops["completion"] == 1 and drops["total"] == 2
+        assert drops["cli_events"] == 4
+        assert drops["ratio"] == 0.5
+        results = {r.name: r for r in _history_db_check()}
+        assert results["history_db"].status == "full"
+        assert results["cli_event_drops"].severity == "informational"
+        assert results["cli_event_drops"].status == "partial"
+        assert "1 entry, 1 completion" in results["cli_event_drops"].note
+
+    def test_no_drops_reports_zero_and_full(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _history_db_check
+
+        self._store(tmp_path, monkeypatch)
+
+        drops = _history_db_data()["cli_event_drops"]
+
+        assert drops["total"] == 0 and drops["ratio"] is None
+        assert {r.name: r.status for r in _history_db_check()}["cli_event_drops"] == "full"
+
+    def test_honors_ll_history_db_override(self, tmp_path: Path, monkeypatch) -> None:
+        """An override must read the sidecar the writer used, not `.ll/history.db`'s."""
+        from little_loops.session_store.writers import record_dropped_cli_event
+
+        db = self._store(tmp_path, monkeypatch, name="elsewhere.db")
+        (tmp_path / ".ll" / "history.db").write_bytes(b"")  # the default path stays decoy
+        record_dropped_cli_event(db, "E")
+
+        from little_loops.cli.doctor import _cli_event_drops_data
+
+        assert _cli_event_drops_data()["entry"] == 1  # type: ignore[index]
+
+    def test_absent_store_has_no_drops_section(self, tmp_path: Path, monkeypatch) -> None:
+        from little_loops.cli.doctor import _cli_event_drops_data
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("LL_HISTORY_DB", str(tmp_path / "nope.db"))
+
+        assert _cli_event_drops_data() is None
+
+
 class TestIsSqliteFile:
     """Tests for `_is_sqlite_file()` (BUG-3440).
 
