@@ -3,10 +3,11 @@ id: BUG-3708
 type: BUG
 title: 'verify-issues check B8: defer to format-check examined_refs for citation findings'
 priority: P3
-status: open
+status: done
 discovered_by: advise-review
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:05:31Z'
+completed_at: '2026-10-03T19:00:05Z'
 parent: EPIC-3694
 relates_to:
 - ENH-3690
@@ -166,12 +167,30 @@ _Added by `/ll:confidence-check` on 2026-10-03 (re-scored after BUG-3691 landed)
 - The coverage-table semantics (demote / surface / advisory / fallback) are guarded by command-contract tests only, plus the non-blocking three-run live evaluation.
 - Broad contract reuse: the consumer table must match BUG-3691's schema exactly (import constants from `little_loops.issues.citations`), and any producer drift forces a rewrite.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-03T19:00:05Z
+- **Status**: Completed
+
+### Changes Made
+- `commands/verify-issues.md`: added check B8 (two-source rule, coverage table, property-exact demotion, parse-based consumability, single shared call, `--check`/`--from-evidence` behavior), "B8 governs examined occurrences" clause in checks 1/2, explicit `## Context` ruling in §2C, §E step 3 reuse of B8's call, §5 citation summary line.
+- `docs/reference/CLI.md`: names verify-issues B8 as an `examined_refs` consumer.
+- Regenerated gemini / kimi-code / qwen mirrors via `ll-adapt` (codex unchanged; no `.omp` root).
+- `scripts/tests/test_bug3708_verify_issues_b8.py` (new, 18 tests): B8 structure, producer coverage contract.
+
+### Verification
+- New tests, ruff, mypy pass. Full suite: 27731 passed; 1 failure (`test_verify_evidence.py::TestRepoGate`, evidence spans in BUG-3696/BUG-3702) and 8 libsql live-endpoint errors are unrelated to this change.
+- B8 prose is ~45 lines, over the ~25-line target. The non-blocking live seeded-fixture evaluation was not run.
+
 ## Status
 
 **Open** | Created: 2026-10-03 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-03T19:00:05 - `3afdaacc-11c9-4c7d-b8bc-8b3f6b65ccb9.jsonl`
+- `/ll:ready-issue` - 2026-10-03T18:51:46 - `2559af5f-08fd-42f2-80c9-464852a2626e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T18:39:57 - `026897e5-79d3-46c5-82b4-0205c55bab40.jsonl`
 - `/ll:verify-issues` - 2026-10-03T17:56:21 - `b5e6edc5-35e7-47c8-bd8f-3ec9a6ef2ef2.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:52:30 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`

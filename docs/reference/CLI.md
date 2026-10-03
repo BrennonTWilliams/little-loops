@@ -2931,6 +2931,12 @@ definition claim. An entry exists only for a property that was actually checked
 `(issue_line, issue_column, ref, property, result)`, so repeated runs over an
 unchanged issue and code snapshot are byte-identical.
 
+`/ll:verify-issues` check B8 (BUG-3708) consumes this output: blocking citation
+findings come from the top-level gap lists, while `examined_refs` is used only to
+demote a conflicting model finding of the same occurrence and property or to report
+advisory coverage. Output that does not parse as a JSON object with a list-typed
+`examined_refs` is ignored and verify falls back to model judgment.
+
 Also reports `template_placeholders` (ENH-3244) — a literal unfilled template
 placeholder (e.g. `TBD - requires codebase analysis`, `[Major phase 1]`)
 still present in the section whose `creation_template` emits it, formatted

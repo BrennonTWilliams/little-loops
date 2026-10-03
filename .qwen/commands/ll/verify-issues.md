@@ -34,6 +34,7 @@ if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 # Parsed here so downstream section 3/4 logic can branch on it, but it has no
 # effect when CHECK_MODE is true (--check always runs the full 2A-2E sweep;
 # it is the producer of verify_evidence, never a consumer of it).
+# Check B8 (format-check citations) is skipped under --from-evidence.
 FROM_EVIDENCE=false
 if [[ "$FLAGS" == *"--from-evidence"* ]]; then FROM_EVIDENCE=true; fi
 ```
@@ -116,8 +117,10 @@ entry (Section 4.5): that line's format is parsed by `issue_design_timestamp()`
 Program Design gate's arming.
 
 #### B. Verify Against Codebase
-1. **Check files exist**: Do referenced files still exist?
-2. **Verify line numbers**: Has the code moved or changed?
+1. **Check files exist**: Do referenced files still exist? (B8 governs examined
+   occurrences — see check 8.)
+2. **Verify line numbers**: Has the code moved or changed? (B8 governs examined
+   occurrences — see check 8.)
 3. **Validate code snippets**: Does quoted code match current code?
 4. **Test claims**: Is the described behavior accurate?
 5. **Check decisions rules**: Gate on the decisions log, then run the query without
@@ -211,6 +214,54 @@ Program Design gate's arming.
    first or the proposal-repair path re-derives the fiction. The verdict is
    currently **advisory** — reported and persisted, but not routed; see §C.
 
+8. **Citation findings via format-check (BUG-3708)** — `ll-issues format-check`
+   owns path / line-range / symbol-location resolution; defer to it instead of
+   re-deriving it, and do not restate its algorithms here. **B8 governs examined
+   occurrences**: where `examined_refs` has an entry for the occurrence and
+   property, B8 decides the mechanical question; your ad-hoc read stands only for
+   unexamined occurrences and for content/premise judgments (what a line says,
+   whether the premise holds), which a range or location check cannot decide.
+   Gap keys, blocking-vs-advisory split and entry schema: `docs/reference/CLI.md`
+   (format-check).
+
+   Call once, **after** your reads, with the current per-issue ID (in batch, the
+   issue being verified; never `$ISSUE_FILE`), and share that result with §E step 3.
+   Re-run only after a §4 edit; never reuse a prior pass's output:
+   ```bash
+   ll-issues format-check "$ID" --format json
+   ```
+   **Consumable = stdout parses to a JSON object whose `examined_refs` is a list** —
+   not the exit code (0 and 1 are both valid; exit 1 also covers non-JSON "not
+   found" errors). Otherwise, an empty list, unknown property/result values, or
+   conflicting entries for one occurrence/property → silent fallback to model
+   judgment, matching B7. Skipped under `--from-evidence`; runs read-only under
+   `--check`; it never repairs citations.
+
+   Two sources. **Blocking** findings come from the top-level blocking gap lists
+   (no occurrence key — a plain path mention has no `examined_refs` entry, so match
+   a model finding by ref string). **`examined_refs`** entries are used for
+   demotion and advisory coverage: match the exact occurrence
+   (`issue_line`, `issue_column`, `ref`) and `property` against the full issue text;
+   never a canonical path alone. If a model finding cannot be located
+   unambiguously, keep model judgment. Count a blocking symbol result found in
+   both sources once.
+
+   | Coverage for the exact occurrence/property | Treatment |
+   |---|---|
+   | `ok` | Demote a conflicting mechanical model finding **of the same property** to an advisory note; no verdict effect |
+   | Blocking gap key | Surface it even if you missed it; deduplicate; a check-1/check-4 `NEEDS_UPDATE` finding under §2C's correctable-scope rule |
+   | Advisory gap key | Report it, and any equivalent model finding, as advisory; neither changes the verdict |
+   | Absent, unsupported, malformed or contradictory | Current model judgment for that occurrence/property |
+
+   **Property-exact demotion.** A pass is evidence only for its own property.
+   `path_resolves: ok` is tracked-index resolution only: demote a "file doesn't
+   exist" objection only if the file also exists on disk. `line_in_range: ok`
+   demotes only a "line is past end of file" objection, never a claim about what
+   the line contains. `symbol_resolves_in: ok` is import-inclusive and never demotes
+   "not defined here" (that needs `symbol_defined_in: ok`). A pass in one
+   occurrence never overrides another; a missing entry means "not examined", not
+   "passed". Report `stale_file_ref` as **untracked**, not "missing".
+
 **Causal / identity claims (method for check 4, unconditional — runs regardless of
 `ll-code` availability or index freshness; not part of §2B.0):** for issue text
 attributing observed state to a named cause, origin, or version — "is the vN
@@ -262,6 +313,9 @@ rewritten issue would be internally consistent), so any finding whose fix
 requires changing Summary, Current Behavior, Expected Behavior, Root Cause,
 Motivation, Steps to Reproduce, or Proposed Solution stays `NON_VALID`, never
 `CLAIMS_OUTDATED`, regardless of how narrow the actual text change looks.
+`## Context` is in neither list above: a finding whose fix touches it (e.g. a
+blocking citation key surfaced by check B8) is an `OUTDATED`/`NEEDS_UPDATE` finding
+outside the correctable scope, so it stays `NON_VALID`.
 `INVALID`, `RESOLVED`, `DECISIONS_VIOLATION`, `REGRESSION_LIKELY`,
 `POSSIBLE_REGRESSION`, and `DEP_ISSUES` are never `CLAIMS_OUTDATED` — they
 always persist as `NON_VALID` (never-auto-correct set). When an issue has
@@ -293,8 +347,9 @@ their type directories, so "in completed" is not a status signal (BUG-3637):
    - Check that the referenced issue has this issue in its `## Blocks` section
    - If missing: flag as MISSING_BACKLINK
 
-3. **Prose dependency claims**: Consume `ll-issues format-check <ID> --format
-   json`'s `stale_prose_dep` / `prose_dep_drift` output (already computed from
+3. **Prose dependency claims**: Consume the `ll-issues format-check <ID> --format
+   json` result already fetched once by check B8 (call it yourself only if B8 was
+   skipped) — its `stale_prose_dep` / `prose_dep_drift` output (already computed from
    issue statuses and already run by `normalize_structure` before every verify
    in `refine-to-ready-issue.yaml`) instead of re-deriving the same judgment by
    reading prose. Prose asserting that a dependency is resolved, satisfied, or
@@ -523,6 +578,7 @@ doing so orphans every entry recorded under the earlier one (BUG-3424).
 
 ## Summary
 - **Graph**: provider=`<provider>` freshness=`<freshness>` (omit this line entirely if the provider was unavailable and §2B.0 fell back silently)
+- **Citations (B8)**: examined N / demoted N / surfaced N / advisory N (omit this line entirely if B8 fell back silently)
 - **Issues checked**: X
 - **Valid**: N
 - **Outdated**: N
