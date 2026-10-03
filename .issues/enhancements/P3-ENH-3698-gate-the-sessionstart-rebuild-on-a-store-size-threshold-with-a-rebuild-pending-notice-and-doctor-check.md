@@ -26,146 +26,198 @@ score_change_surface: 18
 
 ## Summary
 
-Slice 3678b (split from ENH-3678, 2026-10-02). Above a store-size threshold the SessionStart hook must not auto-spawn `backfill_worker --rebuild`; it reports "rebuild pending" (SessionStart feedback and `ll-doctor`) and the user runs `ll-session rebuild` explicitly. **This must land before any `REBUILD_DERIVE_VERSION` bump**: ENH-3678 only changes *when* a rebuild is needed; without this gate a derive bump still forces a full multi-GB rebuild on every store.
+Slice 3678b, split from ENH-3678 on 2026-10-02. Suppress automatic SessionStart replay above a calibrated size threshold, report the deferred rebuild through hook feedback and `ll-doctor`, and recheck eligibility **after ingestion, immediately before replay** in the detached worker. This is a guard-only change: do not bump `REBUILD_DERIVE_VERSION` here.
+
+The gate must land before a future derive-version bump, but it is not the only prerequisite: BUG-3715 must also be fixed before any bump. That bug does not block landing this mitigation, because automatic replay and its summary deletion already exist today.
 
 ## Current Behavior
 
-After ENH-3678 the hook spawns `--rebuild` whenever `rebuild_needed()` is `stale`, regardless of store size. A ~9.6 GB store held the write lock for minutes on such a rebuild and dropped concurrent `ll-*` telemetry rows. No "pending" notice exists, and `ll-doctor` has no rebuild surface.
+- `hooks/session_start.py::handle` appends `--rebuild` whenever `rebuild_needed()` returns `stale`, regardless of size. A roughly 9.6 GB store held the write lock for minutes and dropped concurrent telemetry.
+- `cli/backfill_worker.py::main` delegates to `backfill_incremental(..., also_rebuild=True)`, which ingests raw events **before** calling `rebuild()`. Even a missing or small database can become large between the hook's decision and replay.
+- `rebuild_needed()` resolves default-shaped arguments through environment/config overrides. Statting the original argument afterward can measure a different file, or treat a missing default file as size 0 while the real configured store is large.
+- Committed database growth can reside in the WAL. Main-file size alone is not a conservative bound on replay cost.
+- ENH-3679 has landed: CLI telemetry lock waits are **250 ms**, while other writers retain 5 s. A replay shorter than 5 s can still drop CLI events; the gate reduces exposure and does not guarantee a lock-time bound.
+- `rebuild(db, config=None)` deletes summaries without regenerating them. Manual `ll-session rebuild` loads the project's raw JSON config and can run blocking LLM compaction inside the write transaction. BUG-3715 separately tracks irreversible retention-summary loss.
 
 ## Expected Behavior
 
-- **Size gate.** A module constant (not a config key, to avoid `config-schema.json` / dataclass / `test_config_schema.py` churn; promote to config only if a user asks) of **1 GiB (`2**30` bytes)**, measured as `db_path.stat().st_size` of the **main DB file only**; `-wal` bytes are excluded (transient and checkpoint-dependent). There is no shared size helper today: sites inline `stat().st_size` behind an `exists()` guard, and units disagree (`1024 * 1024` in the retention gate, `1_000_000` in `recompress()`), so state the unit in the constant's name/comment. This constant is distinct from the config-driven `RetentionConfig.min_db_size_mb` (800). **Calibration (Opus review, 2026-10-03):** `rebuild()` is one `BEGIN IMMEDIATE` transaction, so any auto-rebuild longer than the 5 s busy timeout still drops concurrent telemetry rows, even under 1 GiB. 1 GiB is therefore an uncalibrated starting value: time a rebuild on a store near 1 GiB before landing and lower the constant (e.g. 256 MiB) if replay is well over 5 s, or record the accepted drop explicitly. Comment the constant as replay-cost-driven, not "big DB". **Calibrate the hook path as `rebuild(db, config=None)`** (the worker passes no config; the manual `ll-session rebuild` loads the project config, see the compaction warning below). Measure seconds per `raw_events` row and convert to bytes; main-file size tracks row count within ~1.5x on the measured 9.99 GB store (7.09 GB / 4.25M raw rows), so file size stays the proxy (no `MAX(id)` read in the hook). Expect the 5 s limit to push the constant far below 1 GiB (possibly < 100 MiB), so auto-rebuild may cover only new or small stores; state that outcome in the implementation review rather than defending 1 GiB. Main-file `stat()` is lock-free and over-counts, which errs toward pending (safe).
-- **Shared helper.** Put the constant and a single `rebuild_disposition(db) -> RebuildDisposition` helper in `session_store/lifecycle.py` (frozen dataclass: `state: RebuildState`, `size_bytes: int | None`, `outcome: Literal["auto", "pending", "none", "unknown_size"]`), exported via `session_store`, reading the constant at call time (so tests can monkeypatch it). It calls `rebuild_needed` first (remote -> `unknown`/`remote`, so remote never reaches `stat()`) and stats only when `stale`. The hook and `ll-doctor` both call it so the decision cannot diverge.
-- **Hook decision.** `handle` combines `rebuild_needed()` (ENH-3678) with the size check: `stale` and size <= threshold -> spawn `--rebuild` as today; `stale` and size > threshold -> no `--rebuild`, emit the pending notice; `current` or `unknown` -> neither. "Spawn" here means the `--rebuild` flag only: the incremental backfill worker's `Popen` is outside the check and still runs in every case (ENH-3678 review, 2026-10-03). "Pending" is this combination, not a state of `rebuild_needed`.
-- **Unreadable size.** A *missing* DB file (`FileNotFoundError`, i.e. `rebuild_needed` reason `db_missing`) counts as size 0 -> small -> `auto` (ENH-3678's `test_stale_adds_rebuild` uses a nonexistent DB and expects `--rebuild`). Any *other* `OSError` from the size probe is unknown, never zero: outcome `unknown_size` skips auto-rebuild and the actionable pending notice; doctor reports an informational unknown reason without creating/migrating the store. Test a permission/stat failure separately from a missing DB.
-- **Pending notice.** One `[little-loops] ...` line appended to `feedback_lines` (joined into `LLHookResult.feedback`; stdout stays the context payload), stating that a rebuild is pending, the command to run (`ll-session rebuild`), and the consequence: derived tables (sessions, tool/skill events, summaries, corrections, search index) are out of date until rebuilt; raw events and usage tables stay current. **Choose the wording by `state.reason`** (Opus review, 2026-10-03 #2): for `derive_mismatch` the tables are **mixed** (old rows keep the old derivation, rows written afterward by live writers such as `post_tool_use.py`/`writers.py` use the new one); for `no_stamp`/`legacy_below_floor` they may be incomplete or empty, so do not say "mixed". Do not attribute new derived rows to the incremental worker: `backfill_incremental` only ingests into `raw_events` (verify at implementation). The notice must also **warn that `ll-session rebuild` holds the write lock for the whole replay** (run it with no other ll sessions active), since following it blindly reproduces the incident that motivated ENH-3678. **Compaction caveat (Opus review, #1):** `ll-session rebuild` loads the project config (`cli/session.py` ~`:1008-1016`); with `history.compaction.enabled` it re-summarizes every session via blocking host-LLM calls inside the single `BEGIN IMMEDIATE` transaction, so lock hold scales with LLM latency x sessions and one failure rolls everything back. The hook worker passes `config=None` (wipes `summary_nodes`, never regenerates). The notice and doctor text must disclose this when compaction is enabled. No `--force`/`--yes` flag and no throttle; optionally have `ll-session rebuild` print one pre-run line (size, lock-hold warning, compaction/LLM warning). It fires only while the store is `stale` **and** over the size limit, which happens only after a derive bump and is actionable, so **no extra throttle** is added. **Placement:** compute it inside the existing `_backfill_path is not None and not LL_NON_INTERACTIVE` block into a local variable and append it to `feedback_lines` at step 5 (feedback is composed after the spawn block); "pending" means *this hook withheld a rebuild*, so headless/`LL_NON_INTERACTIVE` runs emit nothing — doctor is their surface. The automation-pruning path needs no code: its early return (`session_start.py` ~`:104`) precedes the rebuild block, so no decision or notice runs there.
-- **Doctor check.** A report-only "rebuild pending" check following the doctor shape: `_<x>_data() -> dict` (`status`, `severity`, `note`), `_print_<x>_section()`, and an `@register_check` returning `CheckResult` with `severity="informational"` (a `severity == "error"` + `unsupported` result changes exit codes via `_exit_code_for`); the dict is added to the JSON payload and the print list (`cli/doctor.py` ~`:1742`, `:1860`; precedents `_history_db_data` ~`:503`, `_schema_drift_data` ~`:678`). It calls `rebuild_disposition` (read-only via `connect_readonly`, reusing `_REBUILD_NEEDED_TIMEOUT`), resolves the DB path via `resolve_history_db()` as `_schema_drift_data` does (Opus review #6; makes the `_CALLER_ALLOWLIST` entry unconditional), reports an absent DB as informational ("not yet created") without creating it, and reports "not applicable" for a remote target. It reports one wording per outcome (all informational): current; stale + small ("will auto-rebuild on next SessionStart"); stale + over size ("rebuild pending — run `ll-session rebuild`", with the lock-hold warning); `db_missing` ("not yet created"); `unknown`/`unknown_size` (reason code, e.g. `read_error`); remote ("not applicable"). Known residual: hook (`LL_HISTORY_DB`/hook root) and doctor (`Path.cwd()`) path resolution can still diverge; the shared helper unifies semantics, not paths. **It is the only surface for `unknown`** (ENH-3678 review, 2026-10-03): the SessionStart hook does not log or print `rebuild_needed`'s `unknown` reason (the hook module's `logger` has no handler), so the check reports the `unknown` status and its reason code (`read_error`, e.g. a lock timeout; `remote` maps to "not applicable") as informational.
-- Remote stores never rebuild from a hook (the guard in `session_start.handle` stays ahead of the size `stat()`).
+### Shared decision and size metric
 
-## Motivation
+Put `REBUILD_AUTO_MAX_BYTES`, a frozen `RebuildDisposition`, and `rebuild_disposition()` in `session_store/lifecycle.py`; export them through `session_store/__init__.py`.
 
-A multi-GB rebuild from a hook is the incident that motivated ENH-3678. The gate removes the cause for typical bumps; the size threshold removes the blast radius for the unavoidable ones, at the cost of an explicit user action.
+- Resolve one `HistoryTarget`. Pass that exact typed target to `rebuild_needed()` and use the same `LocalTarget.path` for all size probes. Extend `rebuild_needed()`'s type annotation to accept `HistoryTarget`; its resolver already accepts typed targets at runtime. Never stat the unresolved caller argument.
+- Remote targets return `unknown`/`remote` without a local stat or remote query. Current and unknown states do not require size probes.
+- For a stale local store, measure **main DB bytes + WAL bytes** using filesystem stats. Missing WAL counts as 0; ignore `-shm`. This is a conservative proxy that can overcount overwritten WAL frames or allocated free pages. No checkpoint, SQL row count, or new config key.
+- A known `db_missing` state returns size 0 and `auto`. A `FileNotFoundError` during a later main-file probe also counts as 0; still account for any WAL found. Other `OSError` values from either probe produce `unknown_size`, with `size_bytes=None`, rather than treating unreadable storage as small.
+- Read the constant at call time so tests can monkeypatch it. **1 GiB (`2**30`) is only a provisional ceiling, not the required shipped value.** Select the actual constant from the calibration below and state the byte unit and main-plus-WAL metric in its comment.
+- The helper is report-only, uses the existing read-only metadata probe and `_REBUILD_NEEDED_TIMEOUT`, creates/migrates nothing, and fails softly. Resolution/read failures become `unknown`/`read_error`; size-probe failures become `unknown_size`. Do not include arbitrary exception text or credentials in diagnostic output.
+
+| State / size | Disposition | Size probe |
+| --- | --- | --- |
+| `current` | `none` | None |
+| `unknown` (including remote) | `none` | None |
+| `stale`, `db_missing` | `auto`, size 0 | None |
+| `stale`, size <= calibrated threshold | `auto` | Resolved main + WAL |
+| `stale`, size > calibrated threshold | `pending` | Resolved main + WAL |
+| `stale`, other stat failure | `unknown_size` | Failed; size unknown |
+
+### Hook and worker protocol
+
+- Inside the existing `_backfill_path is not None and not LL_NON_INTERACTIVE` block, the hook calls `rebuild_disposition()`. Keep the remote guard ahead of the decision.
+- `auto` adds a new **hook-only `--auto-rebuild`** flag. `pending` adds no replay flag and stashes a pending notice. `none` and `unknown_size` add no replay flag and no pending notice.
+- The incremental worker's `Popen` remains outside the decision: pending/current/unknown stores still get ingestion when the existing source and interactivity conditions allow it.
+- The worker's `--auto-rebuild` path first calls `backfill_incremental(..., also_rebuild=False)`. **After that commits**, call the shared helper again and invoke `rebuild(db, config=None)` only if its outcome is still `auto`. A backlog that grows the store over the threshold must not cause replay. A store now current or unreadable also skips replay. No new persistent pending marker; doctor and a later eligible SessionStart report deferral.
+- Existing explicit `--rebuild` remains ungated. Reject `--rebuild` combined with `--auto-rebuild` before ingestion using the worker's existing clean-message/exit-1 style. Do not change manual CLI/backfill/refresh semantics.
+- Only a hook-preflight `auto` request can enter the worker's automatic path. A current store must not gain an automatic replay because new data was ingested; `rebuild_needed()` checks version metadata, not raw-row freshness.
+- No single-flight lock or atomic size/replay guarantee is added. Concurrent workers can both pass the final check; data can grow after it. ENH-3699 owns coordination. Raw ingestion and usage-only replay can also hold long write locks independently of this gate.
+
+### Pending notice and safe manual guidance
+
+Append one `[little-loops] ...` line to `feedback_lines` at feedback composition (step 5), leaving stdout as the context payload. Initialize the stashed notice before the guarded block so a failed spawn cannot lose an already-established pending result.
+
+- Explain that derived tables (sessions, tool/skill events, corrections, summaries, search) remain out of date. `derive_mismatch` means historical and live-derived rows may be **mixed**; `no_stamp`/`legacy_below_floor` means tables may be **incomplete**, not necessarily empty. Incremental backfill only ingests raw events; it does not refresh all these tables. Raw ingestion and usage derivation continue independently.
+- Name `ll-session rebuild` as the explicit, deferrable recovery path. Warn that replay holds the write lock throughout; run it with no other ll sessions active.
+- **Until BUG-3715 is fixed, disclose that rebuilding can irreversibly delete retained summaries whose raw sources were pruned.** Present rebuilding as optional/deferrable until that preservation fix is available; do not imply stopping concurrent sessions makes the command safe from data loss. BUG-3715 removes this interim caveat when its fix lands.
+- When the raw project JSON that manual rebuild loads enables `history.compaction.enabled`, also disclose LLM summarization inside the transaction. The manual command currently does not merge `.ll/ll.local.md`; avoid deciding this warning solely from the hook's merged config or doctor's merged `BRConfig`. A failed config read must not break the hook/check; use conservative wording when the setting cannot be established.
+- No throttle, force/yes flag, or new confirmation flow. The notice appears whenever this interactive hook actually withholds replay for a known over-threshold stale store. It does not appear under `LL_NON_INTERACTIVE`, when no source is found, or on the automation-pruning early return. Doctor is the headless diagnostic surface.
+
+### Doctor check
+
+Add `_rebuild_pending_data() -> dict`, `_print_rebuild_pending_section()`, and a no-arg `@register_check` returning `CheckResult(name="rebuild_pending", ..., severity="informational")`. Add the `rebuild_pending` key to `_print_report` and the section to the text print list. Doctor never spawns a worker.
+
+The data function resolves through the target-aware shared helper, rather than introducing another `resolve_history_db()` caller or allowlist exception. Its data includes `status`, `severity`, `note`, `state` (rebuild status), `reason` (rebuild reason), `size_bytes`, `threshold_bytes`, and `outcome`. `unknown_size` is identified by `outcome`; preserve the underlying stale metadata reason separately. Machine consumers must not need to parse the prose notice.
+
+| Result | Doctor status | Informational wording |
+| --- | --- | --- |
+| Current | `full` | Derivation current |
+| Stale + `auto` | `partial` | Eligible for automatic rebuild on an interactive SessionStart with a source; size is rechecked after ingestion |
+| Stale + `pending` | `partial` | Rebuild pending; explicit recovery command with the same lock, retention-loss, and applicable compaction caveats |
+| `db_missing` | `unsupported` | Not yet created; create nothing |
+| `unknown` / `unknown_size` | `unknown` | Could not establish eligibility; include the safe reason code / outcome |
+| Remote | `unsupported` | Not applicable to a remote store |
+
+Every row has informational severity and must leave doctor exit codes unchanged. Remote handling wins over the generic unknown case. Hook root-versus-cwd resolution is an existing separate limitation; this issue guarantees that each decision reads metadata and sizes the **same resolved target**.
+
+### Calibration
+
+Before choosing the shipped constant, time `rebuild(db, config=None)` on representative **copies or synthetic stores**, including a candidate near the provisional 1 GiB ceiling and samples near the resulting threshold. Never replay the live project store for calibration.
+
+Record main/WAL bytes at decision time, raw-row count and representative event mix, replay duration/lock-hold time, and the chosen constant with margin. Seconds per row can help explain the result, but compression and repeated replay passes mean one store's bytes-per-row ratio is not a universal conversion.
+
+Use 5 s as the original operational upper target for automatic replay; lower the threshold if representative replay exceeds it. **CLI telemetry already times out at 250 ms**, so even a replay comfortably below 5 s can drop concurrent CLI events; those drops are counted by ENH-3679. State this accepted residual explicitly instead of claiming the calibration prevents all drops. The gate is a heuristic for limiting expensive automatic replay, not a duration guarantee. Calibration is implementation evidence, not a new timing-sensitive CI test.
 
 ## Scope Boundaries
 
-- **In scope**: the size constant and check, the hook decision, the pending notice, the `ll-doctor` check, tests, and the end-user docs for them.
-- **Out of scope**: `REBUILD_DERIVE_VERSION`/`rebuild_needed` (ENH-3678), the single-flight lock/cooldown/contention report (ENH-3699), restructuring `rebuild()` (ENH-3666), remote stores, gating the explicit rebuild paths (`ll-session rebuild`/`backfill --rebuild`/refresh stay user-run and ungated).
-- **Not covered by this gate**: a `_USAGE_DERIVE_VERSION` mismatch also replays every raw row inside an IMMEDIATE transaction (`_derive_usage_incremental_conn`) and bypasses the size gate.
-- **Second precondition on any `REBUILD_DERIVE_VERSION` bump (separate BUG, does not block this issue)**: `rebuild()` runs an unconditional `DELETE FROM summary_nodes` (only `usage_events` has a predicate), which destroys `kind='retention'` rows from `compact()` whose source `raw_events` `prune()` already deleted, and derived rows for pruned periods are never replayed. The size gate does not make a bump safe on pruned stores; tracked as BUG-3715 (ENH-3666 territory).
-- **Sequencing:** ENH-3679 (drop-count line), ENH-3658 (`ll-doctor --trim` remote guard) and this issue all edit `cli/doctor.py` and the `ll-doctor` check list/count in `docs/reference/CLI.md`. Land them in sequence, never as parallel branches. ENH-3679 is an **ordering note, not a `blocked_by` edge** (no technical dependency; it only edits the same `doctor.py`/`CLI.md` lines) — if it has not landed, rebase onto it or land this first and let ENH-3679 rebase.
+- **In scope:** the shared size decision, hook notice, worker automatic-only post-ingest gate, doctor data/text/registry surfaces, tests, documentation, and preserving the derive-bump safety pin.
+- **Out of scope:** changing derivation semantics/version, fixing summary preservation (BUG-3715), transaction batching/LLM compaction restructuring (ENH-3666), single-flight/cooldown/contention reporting (ENH-3699), remote rebuilding, and gating explicit rebuild paths.
+- `_USAGE_DERIVE_VERSION` changes can replay all raw rows through the usage path and bypass this gate; describe that limitation without expanding this issue.
+- ENH-3678 and ENH-3679 are **done**. ENH-3658 remains a shared-surface sequencing consideration. Rebase onto the current doctor implementation; no `blocked_by` ordering edge is needed merely because files overlap.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/hooks/session_start.py` (`handle`, ~`:189-214`) — replace the inline `rebuild_needed(...).status == "stale"` with `rebuild_disposition(...)`; spawn decision, pending notice stashed in a local and appended to `feedback_lines` at step 5. No pruning-path code needed (early return precedes the block).
-- `scripts/little_loops/cli/doctor.py` — `_rebuild_pending_data`, `_print_rebuild_pending_section`, `@register_check`, and the JSON payload key in `_print_report`; do **not** spawn the worker from `ll-doctor` (`test_enh3184_spawn_site_guard.py` pins `cli/doctor.py` at `(2, 2)`).
-- `scripts/little_loops/session_store/lifecycle.py` + `session_store/__init__.py` — the size constant, `RebuildDisposition`, and `rebuild_disposition()` (decided: lifecycle home; hook and doctor both import it). Also update the stale comment above `REBUILD_DERIVE_VERSION` (~`:1043-1048`, "do NOT bump before ENH-3698").
-- `scripts/little_loops/cli/backfill_worker.py` docstring (~`:11-12`) if it references the pre-gate rebuild behavior.
+- `scripts/little_loops/session_store/lifecycle.py` — constant, frozen disposition/helper, target-aware `rebuild_needed` annotation, and outdated derive-version / automatic-backfill comments. Metadata and size probes must share the resolved target.
+- `scripts/little_loops/session_store/__init__.py` — export the new API.
+- `scripts/little_loops/hooks/session_start.py` — preflight decision, `--auto-rebuild`, and feedback notice appended after the guarded spawn block.
+- `scripts/little_loops/cli/backfill_worker.py` — parse the automatic-only flag, ingest then recheck/replay, flag conflict handling, and docstring. This is a behavior change, not only a documentation edit.
+- `scripts/little_loops/cli/doctor.py` — data helper, section, informational check, JSON key. Do not add a subprocess spawn (`test_enh3184_spawn_site_guard.py` pins doctor at `(2, 2)`).
+- `scripts/tests/test_enh3678_rebuild_derive_gate.py` — retarget hook tests, flag expectations, temporal derive pin and stale messages.
+- `.issues/bugs/P3-BUG-3715-rebuild-unconditionally-wipes-summary_nodes-including-irreplaceable-retention-summaries.md` — preservation fix owns removal of the re-anchored derive pin and interim retention-loss caveat.
 
 ### Tests
 
-- `test_hook_session_start.py::TestSessionStartRebuild` harness (`_setup`, `_FakePopen` argv recorder via `monkeypatch.setattr("little_loops.hooks.session_start.subprocess.Popen", ...)`): stale + small -> spawn; stale + over size (monkeypatch the constant at call time or stub `stat`) -> argv without `--rebuild` and a notice in `feedback_lines`; **size == threshold boundary** (`<=` spawns); missing DB file -> size 0 -> spawns; non-`FileNotFoundError` `OSError` -> `unknown_size`, no spawn, no notice; `current`/`unknown` -> argv without `--rebuild` and no notice (the incremental `Popen` still runs in all cases); WAL bytes do not count.
-- `test_enh3678_rebuild_derive_gate.py` — **retarget** `TestSessionStartGate::test_unknown_spawns_incremental_worker_without_rebuild` / `test_exception_in_rebuild_needed_does_not_block_popen` (~`:274`, `:290`): they patch `little_loops.session_store.rebuild_needed`, which the hook no longer calls directly once it goes through `rebuild_disposition` (patch the helper, or `rebuild_needed` as seen from `lifecycle`). Delete only `TestFrozenLegacyPins::test_lockstep_derive_version_not_bumped_before_enh_3698`; keep `test_frozen_legacy_derive_version_literal`; update the `TestDeriveFingerprint` docstring and the `test_digest_matches_snapshot` assert message ("Before ENH-3698 lands you may not bump it…"), which are wrong once the gate exists.
-- `TestAutomationPruningStayInTurn::test_pruning_gate_injects_stay_in_turn_instruction` (`result.feedback is None`, ~`:603`) — regression check only; the early return already keeps the notice off this path; `TestAmbientAutomationEnvHermeticity::test_suite_passes_with_ambient_ll_automation` re-runs the whole file under `LL_AUTOMATION=1`.
-- Short-circuit `db_missing` to `auto` on `state.reason` instead of `stat` -> `FileNotFoundError` -> 0 (keep a `FileNotFoundError` test for the race). The local ~10 GB store reads `current` (`legacy_floor`), so landing changes nothing there; exercise the stale/over-size paths with a fixture DB, not the live store.
-- `test_remote_hooks.py` — remote stores still never get `--rebuild` and never `stat()` a local path; `TestBackfillWorker::test_a_rebuild_is_refused_with_a_message_and_no_traceback` unchanged.
-- Doctor: data function + `@register_check` with `severity="informational"`; absent-DB case (`test_cli_doctor_install_checks.py::TestHistoryDb` style, `_bootstrap_at(db, version)` helper); remote "not applicable" (`test_remote_doctor.py`); add the new function to `test_remote_doctor.py::TestNoTokenLeaks::test_no_doctor_surface_echoes_the_token`; `test_remote_callers_bug3652.py::_CALLER_ALLOWLIST` (`:97`, plus `test_allowlist_has_no_stale_entries`) needs an entry if the doctor function calls `resolve_history_db()`; `test_stray_ll_regression.py::test_ll_doctor_from_subdirectory_creates_no_stray_ll` must keep passing; `test_history_store_chokepoint_gate.py` (open via `connect_readonly`).
+- Add helper tests in `scripts/tests/test_enh3698_rebuild_size_gate.py` (new file): size below/equal/above threshold; configured path differing from a missing or tiny default; `LL_HISTORY_DB`; deliberate explicit path; typed target; main-small/WAL-large; missing WAL; missing DB and disappearance race; permission/stat failure on either file; current/unknown/remote short-circuit without a stat; no store creation/migration. Patch the constant at call time, not a captured default value. Use tiny fixtures or mocked stats, not the live store or a GiB fixture.
+- Extend the actual hook harness in `test_enh3678_rebuild_derive_gate.py::TestSessionStartGate` (`_setup`/`_FakePopen`): stale + small adds `--auto-rebuild`; pending/current/unknown/stat-error still start incremental ingestion without a replay flag. Pending feedback survives a simulated `Popen` failure. Check reason-specific wording, stdout separation, `LL_NON_INTERACTIVE`, no-source suppression, raw-config versus local-override compaction warning, and the retention-loss caveat.
+- Retarget tests that patch `session_store.rebuild_needed` to the helper or lifecycle import seam. Check `TestAutomationPruningStayInTurn` and `TestAmbientAutomationEnvHermeticity` in `test_hook_session_start.py`; its early return needs no new pruning logic.
+- Add worker tests in `scripts/tests/test_backfill_worker_auto_rebuild.py` (new file): ingest commits before the final decision; missing/small DB becomes over-limit after a backlog and skips replay; still-small stale DB replays once with `config=None`; now-current/unknown skips; a preflight-current hook supplies no auto flag and cannot introduce replay; plain incremental mode never replays; explicit `--rebuild` remains ungated; conflicting flags fail cleanly before ingestion. Verify actual call order, not just the hook argv.
+- Keep `test_remote_hooks.py` remote refusal/no-traceback checks; add expectations for absence of `--auto-rebuild` and ensure automatic worker rechecks cannot replay or stat a remote target. Existing Stop usage-trigger behavior (`test_backfill_worker_usage_trigger.py`) stays unchanged.
+- Doctor: all table rows above; text/JSON/registered-result parity, informational exit behavior, no creation or migration, resolved configured/env paths, remote handling and token redaction. Include the new data/text/check surfaces in `test_remote_doctor.py::TestNoTokenLeaks`.
+- Keep `test_stray_ll_regression.py`, `test_history_store_chokepoint_gate.py`, `test_remote_callers_bug3652.py`, and `test_enh3184_spawn_site_guard.py` passing. The target-aware doctor design needs no new `resolve_history_db` allowlist entry.
+- Re-anchor `TestFrozenLegacyPins::test_lockstep_derive_version_not_bumped_before_enh_3698` to **BUG-3715** (rename/message); keep the equality guard until summary preservation is fixed. Keep the permanent frozen-literal pin and frozen legacy digest unchanged. Update `TestDeriveFingerprint` docstring/assert guidance so it no longer treats landing the size gate alone as permission to bump.
 
-### Documentation (end-user shape; `test_docs_audience_gate.py`)
+### Documentation
 
-- `docs/reference/CLI.md` — `ll-doctor` "always runs 7 default install-surface checks" count and name list (~`:494`) and `--json` key list (~`:497`); `docs/reference/HOST_COMPATIBILITY.md` (~`:885`) and `docs/codex/usage.md` (~`:173`) install-surface check lists (`test_wiring_guides_and_meta.py` pins only the token `install-surface`).
-- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — SessionStart section (`:52` table row, `:153`, `:157` "You see": add the `[little-loops] ... rebuild pending` line).
-- `docs/guides/HISTORY_SESSION_GUIDE.md` — explain what a pending rebuild means (stale derived tables; raw events and usage stay current) and how to run `ll-session rebuild`.
-- `docs/ARCHITECTURE.md` `ll-doctor --json` payload key list (~`:922`) if the doctor surface adds a key.
+- `docs/reference/CLI.md` — add the doctor section/key and recount the **actual registry**, not the stale “7” plus one. Currently 10 default registered checks exist; this adds one. Include the warning/recovery guidance and automatic worker semantics where relevant.
+- `docs/reference/HOST_COMPATIBILITY.md`, `docs/codex/usage.md` — align install-surface lists.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — SessionStart size deferral and feedback example.
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — stale derivation, continued independent ingestion/usage, optional manual recovery and its lock/retention/compaction caveats; clarify main-plus-WAL sizing.
+- `docs/ARCHITECTURE.md` — doctor JSON key list if enumerated.
+- Keep end-user prose compliant with `test_docs_audience_gate.py`; do not expose internal issue IDs as recovery instructions.
 
 ## Program Design
 
 ### Types
 
-- Module constant `REBUILD_AUTO_MAX_BYTES: int = 2**30` in `lifecycle.py` (name indicative; value subject to the replay-duration calibration above) with a comment stating GiB, "main file only, WAL excluded", and "replay-cost-driven".
+- `REBUILD_AUTO_MAX_BYTES: int` — calibrated value in bytes; provisional ceiling `2**30`; no config/schema/dataclass churn for settings.
 - `@dataclass(frozen=True) class RebuildDisposition` — `state: RebuildState`, `size_bytes: int | None`, `outcome: Literal["auto", "pending", "none", "unknown_size"]`.
 
 ### Signatures
 
-- `rebuild_disposition(db: Path | str = DEFAULT_DB_PATH) -> RebuildDisposition` — `lifecycle.py`; calls `rebuild_needed` first, stats only when `stale`; `FileNotFoundError` -> 0, other `OSError` -> `unknown_size`; never raises.
-- `_rebuild_pending_data(db: Path | None) -> dict` — `status`/`severity`/`note`; informational; remote -> not applicable; absent DB -> informational, no creation.
+- `rebuild_disposition(db: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> RebuildDisposition` — resolve once; metadata first; stat the resolved local main and WAL only if stale; fail softly.
+- `rebuild_needed(db: Path | str | HistoryTarget = DEFAULT_DB_PATH) -> RebuildState` — annotation update for the existing typed-target resolver behavior; no new staleness condition.
+- `_rebuild_pending_data() -> dict` — no-arg helper for all three doctor surfaces; target-aware resolution through the shared decision.
 
 ### Call Path
 
-- `handle` (`little_loops.hooks.session_start`) → remote guard → `rebuild_disposition` (wraps `rebuild_needed` from ENH-3678 + size check) → `auto`: spawn `backfill_worker --rebuild`; `pending`: no `--rebuild`, notice stashed then appended to `feedback_lines`; `none`/`unknown_size`: no `--rebuild`, no notice.
-- `ll-doctor` → `_rebuild_pending_data` → `rebuild_disposition` → informational report line.
+- `hooks/session_start.py::handle` → `rebuild_disposition` → `rebuild_needed` → eligible `cli/backfill_worker.py::main` with `--auto-rebuild` → `backfill_incremental(also_rebuild=False)` / commit → `rebuild_disposition` → eligible `rebuild(config=None)`.
+- Doctor data/text/check surfaces → `_rebuild_pending_data` → `rebuild_disposition` → informational result; no worker spawn.
+- Explicit `--rebuild` → existing `backfill_incremental(also_rebuild=True)` → `rebuild`; no size gate.
 
 ## Implementation Steps
 
-1. ENH-3678 has landed (`rebuild_needed`, `REBUILD_DERIVE_VERSION = "enh3678-v1"`). **Calibrate first:** time a `rebuild()` on a store near 1 GiB and set the constant accordingly (see Calibration). **Delete ENH-3678's ordering lockstep test** (`REBUILD_DERIVE_VERSION == _FROZEN_LEGACY_DERIVE_VERSION`, "do not bump before ENH-3698") in the same change that lands the size gate, so a derive bump becomes possible only once the gate exists. **Keep** ENH-3678's permanent frozen-literal pin test (`_FROZEN_LEGACY_DERIVE_VERSION == "<literal>"`); deleting the lockstep test must not remove it, or bumping both constants would silently mark legacy stores current. **Then check for silent-window drift:** if the fingerprint snapshot's `current_digest != frozen_legacy_digest` (derivation changes were regenerated without a bump while the lockstep test forbade bumping), bump `REBUILD_DERIVE_VERSION` in this change so existing stores re-derive (the size gate now protects large stores); if the digests match, no bump. **Checked 2026-10-03: both are `eae23c057b02` — no bump unless that changes before landing; recheck at landing.** Also update the stale "do NOT bump before ENH-3698" comment in `lifecycle.py`, the `TestDeriveFingerprint` docstring, and the `test_digest_matches_snapshot` assert message. The schema-58 digest can also be recomputed from `git show 9cb4467d6:<file>`. Add the size constant, `RebuildDisposition` and `rebuild_disposition()` (main file only, GiB). `rebuild_needed` already opens with a short busy timeout (ENH-3678); the doctor check reports a lock-timeout `unknown` as informational.
-2. Switch `handle` to `rebuild_disposition` for the spawn/pending decision; stash the notice in a local and append at step 5; keep the remote guard first. No pruning-path suppression code (early return).
-3. Add the doctor check and payload key; allowlist/`TestNoTokenLeaks` updates.
-4. Tests per above; docs per above. Sequence the `cli/doctor.py` and `docs/reference/CLI.md` edits with ENH-3679 and ENH-3658.
-5. Run `python -m pytest scripts/tests/`, `ruff check scripts/`, `python -m mypy scripts/little_loops/`.
+1. Recheck the derive fingerprint before work/landing. Current and frozen digests both start `eae23c057b02` (confirmed 2026-10-03). Keep the version unchanged. If drift appears, investigate and resolve it; do **not** automatically bump in this change or bypass BUG-3715.
+2. Calibrate on offline copies/synthetic stores and record the chosen constant and remaining 250 ms telemetry-drop risk. Add the helper and its resolved-target/WAL tests.
+3. Switch the hook to the automatic-only protocol and feedback. Implement and test the worker's post-ingest recheck. Preserve incremental ingestion, explicit rebuilds, remote handling and Stop usage-trigger behavior.
+4. Add the doctor surfaces and deterministic status/JSON mapping, then docs and all relevant tests. Rebase doctor changes onto landed ENH-3679; sequence overlapping work with ENH-3658.
+5. Re-anchor the existing temporal derive-version pin to BUG-3715, retaining the frozen literal/digest pins. Update outdated comments/messages and the related bug's cleanup requirements. No derive bump or summary-preservation implementation in this change.
+6. Run `python -m pytest scripts/tests/`, `ruff check scripts/`, and `python -m mypy scripts/little_loops/`.
 
 ## Impact
 
-- **Priority**: P3 - not needed to unblock FEAT-3561, but required before any derive-version bump
-- **Effort**: Medium - one constant, a hook branch, a doctor check, tests and docs in several files
-- **Risk**: Low-Medium - a wrong threshold could suppress a needed rebuild (accepted: derived tables are documented as mixed and the notice is actionable), or leave an auto-rebuild above the 5 s busy timeout still dropping telemetry rows (mitigated by calibrating the constant)
-- **Breaking Change**: No
+- **Priority:** P3 — mitigation required before future derive-version bumps; BUG-3715 is another prerequisite on bumps.
+- **Effort:** Medium — lifecycle helper, hook/worker protocol, doctor surface, tests and documentation.
+- **Risk:** Medium — stale derived data is explicitly deferred; sizing and calibration are heuristics; raw ingestion, usage replay and concurrent workers can still contend. The gate suppresses existing replay and must add no new trigger.
+- **Breaking Change:** No for explicit rebuild paths; small automatic rebuilds remain subject to the final eligibility check.
 
 ## Acceptance Criteria
 
-- [ ] Above the size threshold (1 GiB, main file only, WAL excluded) a `stale` store spawns no `--rebuild` and surfaces the pending notice via `feedback_lines`; at or below it the hook spawns as before; `current`/`unknown` spawn nothing and print no notice.
-- [ ] The notice explains the mixed-derived-tables consequence and the `ll-session rebuild` command, is not throttled, and does not appear on the automation-pruning path (early return; `TestAutomationPruningStayInTurn` still passes) or under `LL_NON_INTERACTIVE`.
-- [ ] `ll-doctor` reports "rebuild pending" as an informational check (text and JSON), does not change the exit code, reports "not applicable" for a remote target, creates nothing, and is covered by `TestNoTokenLeaks`.
-- [ ] Remote stores never rebuild from a hook and never reach the size `stat()`.
-- [ ] A *missing* DB file counts as size 0 (spawns, as in `test_stale_adds_rebuild`); any other failed size probe (non-`FileNotFoundError` `OSError`) does not auto-spawn, treat the store as small, or claim a known pending state; doctor reports informational unknown. A replay duration measured on a store near the threshold is recorded in the implementation review and the constant is set from it (lowered, e.g. to 256 MiB, if replay is well over the 5 s busy timeout) while ENH-3699's single-flight protection remains deferred.
-- [ ] Hook and `ll-doctor` both go through `rebuild_disposition()`; the size-==-threshold boundary spawns; ENH-3678's `session_store.rebuild_needed` patch-based hook tests are retargeted to the helper.
-- [ ] The notice states the derived tables are *mixed* (not "pre-bump") and warns that `ll-session rebuild` holds the write lock for the whole replay.
-- [ ] `ll-doctor` has distinct informational wording for current, stale+small, stale+over-size, `db_missing`, unknown, and remote.
-- [ ] Stale ENH-3698 references are updated: `lifecycle.py` comment above `REBUILD_DERIVE_VERSION`, `TestDeriveFingerprint` docstring and assert message, `backfill_worker` docs.
-- [ ] No `REBUILD_DERIVE_VERSION` bump lands before this issue (ENH-3678's constant comment names it); ENH-3678's ordering lockstep test is deleted in this issue's change while its permanent frozen-literal pin test stays.
-- [ ] At landing, `current_digest` vs `frozen_legacy_digest` in ENH-3678's fingerprint snapshot is checked: unequal -> `REBUILD_DERIVE_VERSION` bumped in this change; equal -> no bump.
-- [ ] `ll-doctor`'s rebuild-pending check reports `unknown` (with its reason code) as informational; the hook emits nothing for `unknown`.
-- [ ] `stale` + over-size and `unknown` hook cases still spawn the incremental worker without `--rebuild` (test asserts the argv).
-- [ ] Notice wording is chosen by `state.reason` (`derive_mismatch` -> mixed; `no_stamp`/`legacy_below_floor` -> incomplete/empty) and, when `history.compaction.enabled`, the notice and doctor text disclose that `ll-session rebuild` runs LLM summarization inside the write transaction.
-- [ ] The threshold is calibrated with `rebuild(db, config=None)` in seconds per `raw_events` row, and the measured result (including a possibly far-lower-than-1-GiB constant) is recorded.
-- [ ] BUG-3715 (`summary_nodes`/retention data loss) is linked as a precondition on any `REBUILD_DERIVE_VERSION` bump (no bump lands until it is fixed or explicitly accepted).
-- [ ] Docs (`CLI.md` check count/list, `BUILTIN_HOOKS_GUIDE.md`, `HISTORY_SESSION_GUIDE.md`) updated in end-user shape; `python -m pytest scripts/tests/` passes.
+- [ ] Hook, automatic worker, and doctor use the same `rebuild_disposition()` semantics; metadata and size probes operate on the same resolved target, including configured/env overrides.
+- [ ] Size means main plus WAL, with missing WAL = 0 and no `-shm`/checkpoint/row-count probe. Below/equal threshold is eligible; above threshold is pending; unreadable size is unknown, never small.
+- [ ] Missing DB is size 0 without creation; current/unknown/remote skip stats. Remote stores never auto-replay.
+- [ ] The hook adds `--auto-rebuild` only for preflight `auto`; pending/current/unknown still spawn incremental ingestion when the existing source/interactivity conditions permit it.
+- [ ] The worker ingests and commits before rechecking automatic eligibility. A missing/small store that grows over the limit skips replay; still-small stale stores replay; now-current/unknown stores skip. A preflight-current store cannot acquire a new automatic trigger from ingestion.
+- [ ] Explicit `--rebuild` stays ungated; simultaneous manual/auto flags fail cleanly before ingestion; Stop usage-trigger behavior is unchanged.
+- [ ] Pending feedback uses reason-specific mixed/incomplete wording, optional manual recovery, whole-replay lock warning, interim irreversible retention-loss warning, and the compaction/LLM warning based on the config the manual command actually loads.
+- [ ] Pending feedback survives a spawn failure and appears only on the eligible interactive hook path; stdout, no-source/headless suppression and automation-pruning behavior remain correct. No new throttle or confirmation flow.
+- [ ] Doctor text, JSON and registered checks agree on the specified status/outcome/reason/size/threshold data. Every result is informational; exit behavior stays unchanged; missing/remote/unknown are distinct; no creation/migration/spawn or token leakage.
+- [ ] Replay calibration using `config=None` on offline stores is recorded with size, row count/event mix, duration and chosen constant. The shipped value is calibrated, not mandated as 1 GiB; remaining drops past 250 ms and concurrency/ingestion limitations are explicit.
+- [ ] No `REBUILD_DERIVE_VERSION` bump lands here. Fingerprint drift is checked and investigated; the old ENH-3698 temporal pin is re-anchored to BUG-3715, while permanent frozen-literal/digest pins stay intact. BUG-3715 owns removing the temporary pin and retention-loss caveat after preservation is proven.
+- [ ] End-user docs and actual doctor check/key lists are updated; `python -m pytest scripts/tests/`, lint and type checks pass.
 
 ## Related
 
-- ENH-3678 (done; provides `rebuild_needed`), ENH-3699 (single-flight lock; deferred), ENH-3679 and ENH-3658 (edit the same `ll-doctor` surfaces; sequence), ENH-3666, FEAT-3561.
+ENH-3678 (done; metadata decision), ENH-3679 (done; 250 ms CLI waits/drop counting), ENH-3699 (deferred coordination), ENH-3658 (overlapping doctor work), ENH-3666 (transaction restructuring), BUG-3715 (summary preservation before bumps), FEAT-3561.
 
----
+## Pre-Implementation Review — 2026-10-03
 
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): Ordering vs ENH-3679: ENH-3679 lands first (matches `blocked_by: ENH-3679`); this issue then rebases onto its `cli/doctor.py` drop-count line and the `ll-doctor` check list/count in `docs/reference/CLI.md`. "Land them in sequence" means ENH-3679 → ENH-3698. *Superseded 2026-10-03 (Opus review):* ENH-3679 is now an ordering note only, not a `blocked_by` edge; see Scope Boundaries.
+- Temporary configured-path fixture: `rebuild_needed(root/.ll/history.db)` read the configured 573,440-byte store and returned `stale/no_stamp`, while the argument file was absent. This proves an unresolved-argument stat can incorrectly classify the actual store as size 0.
+- Temporary WAL fixture: committed 2 MiB of payload with autocheckpoint disabled while keeping the connection open; main file = 4,096 bytes, WAL = 2,125,952 bytes. Main-only sizing can undercount committed data.
+- Code inspection confirmed ingestion precedes replay, staleness is metadata-based, CLI telemetry now uses 250 ms, and the default doctor registry contains 10 checks.
+- `/ll:advise` with `claude-opus-5-5` endorsed resolved-target sizing, WAL inclusion, the automatic-only post-ingest recheck, and contract cleanup (confidence 0.80). It favored a documented 250 ms residual over a zero-drop requirement; this review adopts that distinction while retaining offline calibration.
+- Follow-up Opus consult withdrew a proposed BUG-3715 implementation blocker after considering the already-existing auto-replay path (confidence 0.82). Adopted conditions: no new trigger/bump, re-anchor the mechanical bump pin to BUG-3715, and disclose the manual command's retention-loss risk. No summary-table guard or new dependency edge is added.
+- Existing baseline: `python -m pytest scripts/tests/test_enh3678_rebuild_derive_gate.py -q` → **42 passed**. This verifies the current metadata/fingerprint behavior; it does not validate the proposed unimplemented gate. Threshold calibration remains implementation work.
 
 ## Status
 
 **Open** | Created: 2026-10-02 | Priority: P3
 
-
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-10-03 (post-advise amendments; supersedes the 2026-10-02 notes, which predated ENH-3678 landing)_
-
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 72/100 → MODERATE
-
-### Concerns
-- Criterion 1 (18/20): `handle` already carries an inline `rebuild_needed(...).status == "stale"` decision (`session_start.py` ~`:189-214`); this replaces it with the new `rebuild_disposition()` helper, so the hook edit extends existing logic and the helper is net-new.
-- Criterion 4 (19/20): the size-threshold value is deliberately open until a ~1 GiB `rebuild()` is timed against the 5 s busy timeout (Implementation Step 1 "Calibrate first").
-- Criterion 5 (19/20): ENH-3679 is an ordering note only (still open; edits the same `cli/doctor.py` / `CLI.md` lines) — rebase onto it or land first.
-
-### Outcome Risk Factors
-- ~12 change sites (lifecycle helper, hook, doctor, 4+ docs, 5+ test files); the `cli/doctor.py` / `CLI.md` edits must be sequenced with ENH-3679 and ENH-3658.
-- Ambiguity (18/25): threshold value pending calibration; a wrong value either drops telemetry on sub-threshold rebuilds or defers needed rebuilds.
-- Existing ENH-3678 hook tests patch `session_store.rebuild_needed` and must be retargeted once the hook calls `rebuild_disposition()`.
-
-All hard-override gates clear: Program Design, Dependencies (no `blocked_by`), Learning Tests (none required), and no claim/decision/structure gaps.
+The frontmatter scores (readiness 95/100, outcome 72/100) are from the 2026-10-03 confidence check **before this review**. Its references to an open ENH-3679, main-only sizing, a hook-only gate, and deleting the bump pin are superseded by this design. Reassess confidence after calibration and before implementation approval; those historical scores are not a validation of the newly specified worker protocol.
 
 ## Session Log
+- `/ll:advise` (Opus, resolved-target/WAL sizing and post-ingest gate critique; follow-up on BUG-3715 sequencing) - 2026-10-03
 - `/ll:confidence-check` - 2026-10-03T17:30:10 - `97ad9d47-f49e-462e-89fd-8370be4b7314.jsonl`
 - `/ll:advise` (Opus, second pre-implementation review: compaction-in-txn, summary_nodes wipe, notice wording) - 2026-10-03
 - `/ll:advise` (Opus, pre-implementation review of ENH-3698) - 2026-10-03

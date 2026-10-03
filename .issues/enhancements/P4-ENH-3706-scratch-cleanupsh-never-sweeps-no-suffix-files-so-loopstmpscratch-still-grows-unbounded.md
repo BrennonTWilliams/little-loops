@@ -13,140 +13,164 @@ relates_to:
 - BUG-3707
 - BUG-2525
 - ENH-3709
-confidence_score: 100
-outcome_confidence: 93
-score_complexity: 18
-score_test_coverage: 25
-score_ambiguity: 25
-score_change_surface: 25
 ---
 
 # ENH-3706: scratch-cleanup.sh never sweeps no-suffix files so .loops/tmp/scratch still grows unbounded
 
 ## Summary
 
-At review time (2026-10-03), 2,766 of the 2,822 files (109 MB) in `.loops/tmp/scratch` had no `-<pid>` suffix. `hooks/scripts/scratch-cleanup.sh` skips them unconditionally (BUG-2525 contract: user-typed files are not owned by the sweep), so the directory grows without bound even though BUG-3705 (done, 87d50cb02) made the pid-file sweep complete.
+At review time (2026-10-03), 2,766 of the 2,822 files (109 MB) in `.loops/tmp/scratch` had no `-<pid>` suffix. `hooks/scripts/scratch-cleanup.sh` skips them unconditionally under the BUG-2525 preservation contract, so they accumulate even after BUG-3705 (done, `87d50cb02`) improved the dead-pid sweep.
 
-Add a second retention tier: a **universal 7-day mtime cap** — any regular file directly in the scratch dir untouched for >7 days is removed, whatever its name or owner pid — without reintroducing the BUG-2525 deletion of files a user, skill, or loop is still reading (`init-verify-*.txt`, `test-results.txt`; fixed names are rewritten every run so their mtime stays fresh).
+Add a **universal 7-day mtime retention tier** for regular files directly in scratch, regardless of name or apparent PID liveness. Also fix the existing pass's newline-filename wrong-file deletion and check its deadline before every record is processed. Cleanup remains best effort: normal completion exits 0, but the host may terminate a slow run at its 5s timeout, leaving already-completed deletions in place for the next invocation to continue.
+
+This deliberately replaces BUG-2525's unconditional preservation of user-written files with finite retention. Modification time measures writes, not reads or ownership; old notes still being read can be removed.
 
 ## Motivation
 
-- File count, not bytes, is the real cost: the sweep's `find` enumerates every file each SessionStart and the 3s `$SECONDS` deadline (BUG-3705) is shared with the delete work, so an ever-growing no-suffix backlog erodes the headroom BUG-3705 just bought.
-- Measured no-suffix backlog by age (2026-10-03): >1d 2,745, >3d 2,743, >7d 2,489, >14d 2,423, >30d 1,820. A 7-day threshold clears ~90% of it; 30 days would leave ~66%.
-- **Pid liveness is meaningless after 7 days, so the cap must not exclude pid-shaped files.** BUG-3707 (writer-side pid fix) is `cancelled`/`wont_fix`: `scratch-pad-redirect.sh` still names files with the exiting hook's own `$$`, so every hook-written file is dead-pid on arrival and the only live-pid matches come from pid recycling. Measured 2026-10-03: 8 pid-shaped files are >24h old and **all 8 have a currently-live pid belonging to an unrelated macOS system daemon** (`cloudphotod`, `rcd`, `contentlinkingd`, ...). Pass 1 never deletes them (`kill -0` succeeds), so a "no-suffix only" pass 2 would leave this leak permanent and growing (macOS pid space ~99,999).
-- Producers of no-suffix files are one-shot model-typed redirects (`enhN-full.txt`, `bugN-tests.txt`, `test-results-enhN.txt`, ...) and skill-documented fixed names (`skills/init/SKILL.md` `init-verify-{test,lint}.txt`, `skills/manage-issue/SKILL.md` `test-results.txt`). Fixed names are rewritten every run so their mtime stays fresh; one-shot names are dead after the turn that read their tail. mtime is the only liveness signal a pid-less file has.
+- The growing file count makes every SessionStart enumeration more expensive. Measured no-suffix backlog by age (2026-10-03): >1d 2,745, >3d 2,743, >7d 2,489, >14d 2,423, >30d 1,820. Seven-day retention makes roughly 90% of that backlog eligible for removal.
+- A filename PID is not proof of writer ownership. `scratch-pad-redirect.sh` embeds the exiting hook's own `$$`; BUG-3707 is cancelled with `closed_reason: wont_fix`. The eight pid-shaped files older than 24h inspected on 2026-10-03 all matched unrelated live macOS daemon PIDs. A no-suffix-only cap would leave those files behind indefinitely.
+- No-suffix files come from one-shot model redirects and skill-documented fixed names, including `init-verify-{test,lint}.txt` and `test-results.txt`. Rewriting a fixed name refreshes its mtime; reading it does not. Their observed producers support an inactivity heuristic, not a guarantee that every old file is unused.
+- Review probes exposed two gaps in the existing tests: a newline-containing old filename deleted a separate fresh file; a delayed, keep-only enumeration ran 6.44s without checking the 3s deadline. Both need explicit regression coverage.
 
 ## Current Behavior
 
-`scratch-cleanup.sh` enumerates `find "$SCRATCH_DIR" -maxdepth 1 -type f -mmin +1440` and, for each file, requires a `.`, a non-empty extension, a `-` in the stem, and an all-digit trailing pid (`case ... continue`). Any file failing that shape — every no-suffix file — is skipped regardless of age. They accumulate forever: after BUG-3705 swept the pid-suffixed backlog, 2,766 of the 2,822 files (98%) left are no-suffix (it was 54% of 5,152 at the original BUG-3705 review).
+The hook finds direct regular files older than 24h with `find "$SCRATCH_DIR" -maxdepth 1 -type f -mmin +1440`, reads newline-separated paths, parses a trailing numeric PID before the final extension, skips live PIDs, and deletes dead-PID files in batches of 500. Names without that suffix are skipped regardless of age.
+
+The newline protocol is unsafe: an old file named `old\nfresh-2147483647.txt` was interpreted as multiple records and caused deletion of a separate fresh `fresh-2147483647.txt`, while the original old file remained. This bypasses the fresh-file age guard.
+
+The `$SECONDS` deadline is checked only after a full deletion batch. Skipped records never check it, and a blocked `find`/read or deletion cannot be interrupted by that check. The existing implementation therefore does not guarantee completion within the configured 5s timeout.
 
 ## Expected Behavior
 
-Any regular file directly in `.loops/tmp/scratch` (dotfiles included, pid-shaped or not, owner alive or not) is removed at SessionStart once its mtime is more than 7 days old (`MAX_AGE_MINUTES=10080`). Files younger than 7 days behave exactly as after BUG-3705 (pid-suffixed: swept after 24h iff owner dead; no-suffix: kept). Subdirectories and symlinks are never swept. The hook still always exits 0 and still finishes inside the 5s hook timeout (3s `$SECONDS` deadline) on a directory of ≥5,000 files.
+- On a successful sweep, direct regular files with mtime older than seven days are removed regardless of filename or apparent PID liveness (`MAX_AGE_MINUTES=10080`). Dotfiles and names containing newlines are eligible.
+- Below seven days, retain the existing policy: no-suffix files are kept; pid-shaped files older than 24h are deleted only when `kill -0` does not succeed; younger pid-shaped files are kept.
+- The existing pass processes complete path records so an old filename cannot select another, younger file. Its 3s deadline is checked before processing every record, including records that will be skipped. It flushes any pending delete batch after a cooperative stop.
+- Subdirectories and symlinks are excluded. A symlinked scratch-directory path must not cause deletion inside its target.
+- Cleanup is best effort and restartable. Normal and cooperative-stop paths exit 0; a host timeout or external termination has no exit-0 guarantee. Completed deletions persist, surviving files remain independently usable, and a later run continues without a cleanup checkpoint.
 
 ## Proposed Solution
 
-_Revised after pre-implementation review (Opus consult via `/ll:advise`, 2026-10-03, confidence 0.85)._
+_Revised after the 2026-10-03 review and `/ll:advise` Opus critique (confidence 0.80). The advisor favored the native deletion pass with an honest best-effort timeout contract; the reproduced wrong-file deletion is a required fix._
 
-1. **Policy: hardcoded universal 7-day mtime cap, no config knob, no env var.** A knob would mean bash parsing JSON (fork/`jq`) inside a 5s hook; scratch is ephemeral by name. One named constant next to `MIN_AGE_MINUTES`: `MAX_AGE_MINUTES=10080`.
-2. **New pass 0, run BEFORE the dead-pid pass, as a single `find -delete`:** `find "$SCRATCH_DIR" -maxdepth 1 -type f -mmin +"$MAX_AGE_MINUTES" -delete 2>/dev/null || true`. No bash parse, no `rm`, no per-file forks. `|| true` is required: concurrent SessionStart sweeps (ll-parallel) race and `find -delete` can exit non-zero on ENOENT. Running it first also shrinks the set pass 1 enumerates. Verified on macOS BSD `find` (Opus consult): deletes old dotfiles and names with newlines; leaves symlinks and subdirectories alone (`-type f`).
-3. **No `scratch_pid_of` refactor.** Pass 0 does not parse names, so pass 1's builtin parse stays untouched and BUG-3705's `test_scratch_cleanup_pid_parsing_matches_legacy_sed` keeps guarding it.
-4. **Deadline:** `find -delete` cannot be interrupted by the `$SECONDS` deadline. Acceptable — at steady state it removes ~one week of files (well under 1s); the only exposure is the first run on a very large backlog (today: 2,489 files). Pass 1 still honors the 3s deadline, and a truncated run exits 0.
-5. **Rename the BUG-2525 contract to "two-tier retention"**: (a) any regular file untouched >7 days is swept regardless of name or owner (pid liveness is unreliable — recycled pids, BUG-3707 wont_fix); (b) pid-suffixed files are swept after 24h once the owner is dead. Update every statement of the old "preserved unconditionally" wording (see Integration Map).
-6. **Do not use ctime (`-cmin`) as an extra guard against mtime-preserving moves.** It is a stronger signal, but tests cannot backdate it (`os.utime` cannot set ctime) and BSD `find -cmin +0` does not match fresh files. Document the limitation instead.
-7. **Leave pass 1's `kill -0` in place** (now near-useless: live-pid matches arise only from pid recycling). Removing it reworks the BUG-3705 contract and tests; the 7-day cap bounds the damage. Candidate follow-up, not this issue.
+1. **Keep the hardcoded universal seven-day mtime policy.** Add `MAX_AGE_MINUTES=10080` next to `MIN_AGE_MINUTES=1440`. No new config key or environment override.
+2. **Run pass 0 before the dead-PID pass:** `find "$SCRATCH_DIR" -maxdepth 1 -type f -mmin +"$MAX_AGE_MINUTES" -delete 2>/dev/null || true`. This performs deletion inside `find`, avoids per-file subprocesses, and tolerates concurrent disappearance. Preserve the default no-follow behavior; do not add a trailing slash to the scratch path or enable link following.
+3. **Fix pass 1's record protocol without changing its PID parsing policy.** Add `-print0` to its `find`, read with `while IFS= read -r -d '' f`, and queue the complete enumerated path (`dead[n]="$f"`). Keep the builtin PID extraction and existing parser edge-case tests. No `scratch_pid_of` refactor is needed.
+4. **Check pass 1's deadline on every record.** Keep `start=$SECONDS` before pass 0, and check elapsed time at the top of the pass-1 loop before parsing or any `continue`. The pending batch is still flushed after the loop. If pass 0 consumed the cooperative budget, pass 1 can stop immediately. This bounds further pass-1 processing once a record is available; it does not interrupt pass 0, a blocked read, or a filesystem operation.
+5. **State the timeout tradeoff explicitly.** Keep the efficient native pass instead of adding a watchdog. A large backlog or slow filesystem can exceed the host's unchanged 5s timeout and produce a timeout notice. Do not describe this as guaranteed completion or require exit 0 after host termination. Test safe rerun after an interrupted sweep separately from cooperative-stop behavior.
+6. **Retain `kill -0` for the 24h tier.** Treat it as a compatibility check against the filename PID, not proof of the actual writer's liveness. It does not exempt files from the universal seven-day tier. Removing it or changing writer naming remains out of scope.
+7. **Update the complete retention contract and misleading ownership comments.** Replace unconditional user-file preservation and writer/PID-liveness guarantees with the two tiers and their limits. Keep `rmdir` of an empty scratch root; producers must recreate the directory with `mkdir -p` before redirecting.
 
-**Accepted behavior to document (docs + script header):**
-- Files moved/copied into scratch with their mtime preserved (`mv`, `cp -p`, `rsync -a`, `tar x`, `git checkout`) are deleted at the next SessionStart if the original mtime is >7d.
-- The "partial progress notes in `.loops/tmp/scratch/`" that `issue_manager.py` and `parallel/worker_pool.py` guillotine/resume prompts point to are lost if a resume happens more than 7d after the kill.
-- A live-pid file idle >7 days is removed (the owner is assumed gone or the pid recycled).
-- Subdirectories, symlinks, and anything not a regular file at depth 1 are never swept.
+**Retention limits to document in the script and guide:**
+- Reading a file does not refresh its mtime. Keep durable progress/resume notes outside scratch, or explicitly refresh retained scratch notes; later reads alone do not preserve them.
+- Files moved or copied in with an already-old mtime, including preserved-mtime copies or archive extraction, may be eligible immediately.
+- The partial-progress scratch notes referenced by `issue_manager.py` and `parallel/worker_pool.py` may be absent on a delayed resume. Neither the 24h tier nor the seven-day cap promises durable resume storage.
+- A matching live PID does not exempt an idle file older than seven days, even if that PID belongs to a real reader or writer.
+- Selection and deletion are not atomic with concurrent rewrites. An old file refreshed or replaced after `find` examines it can still be removed. Age is an inactivity heuristic; ENOENT tolerance is not a reader/writer safety guarantee.
+- Failed or interrupted runs can leave eligible files behind until a subsequent sweep. Seven days is the eligibility threshold, not a guaranteed maximum age on disk.
 
 ## Scope Boundaries
 
-- **In scope**: the universal 7d tier in `scratch-cleanup.sh`; contract wording in the script header, `docs/guides/BUILTIN_HOOKS_GUIDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, `CHANGELOG`; tests for the new tier.
+- **In scope**: the direct-file seven-day tier; pass-1 null-separated path handling and per-record deadline check; regression tests; retention, timeout, ownership, and resume-note wording in the hook and documentation.
 - **Out of scope**:
-  - Writer-side fix so redirect filenames carry the real command pid — BUG-3707 (cancelled, `wont_fix`; this issue's universal cap is the reason it is not needed).
-  - Removing/reworking pass 1's `kill -0` liveness check (candidate follow-up).
-  - Sweeping stray scratch subdirectories (`.ll`, `split`, `head`, `pbuild`, `__pycache__`) — ENH-3709 (the stray `.ll` also shadows `find_project_root()`).
-  - A user-facing retention config knob or env var.
-  - Changing the 24h dead-pid tier or the 3s deadline.
+  - Writer PID naming changes or removing the 24h tier's `kill -0` check (BUG-3707 remains cancelled).
+  - Recursive file deletion or stray-subdirectory pruning. ENH-3709 is deferred pending recurrence evidence and does not block this issue.
+  - A user-facing retention setting, watchdog, or changes to the 24h threshold, 3s cooperative budget, or 5s hook timeout.
+  - Durable resume-note storage or synchronization with concurrent readers/writers.
 
 ## Integration Map
 
 ### Files to Modify
-- `hooks/scripts/scratch-cleanup.sh` — add `MAX_AGE_MINUTES` and the pass-0 `find -delete`, update header comment (lines ~36–40 state the old contract)
+- `hooks/scripts/scratch-cleanup.sh` — universal pass, pass-1 `-print0`/null-record read, complete-path batching, per-record deadline check, and accurate comments throughout the header and loop.
+- `scripts/tests/test_hooks_integration.py` — extend `TestScratchCleanupSessionEnd` using the existing cleanup helpers and shims.
 
 ### Dependent Files (Callers/Importers)
-- `hooks/hooks.json` — SessionStart entry (`timeout: 5`) invokes the script; no change needed
-- `scripts/little_loops/hooks/adapters/codex/hooks.json` / `hooks/adapters/codex/README.md` — mention the scratch dir; confirm no contract wording
+- `hooks/hooks.json` — SessionStart invokes the script with `timeout: 5`; keep the binding and timeout unchanged.
+- `scripts/little_loops/issue_manager.py` and `scripts/little_loops/parallel/worker_pool.py` — resume prompts reference partial progress in scratch; document its limited retention without changing their storage behavior here.
+- `scripts/little_loops/hooks/adapters/codex/hooks.json` and `hooks/adapters/codex/README.md` — inspect references for obsolete contract wording.
+- `skills/init/SKILL.md` and `skills/manage-issue/SKILL.md` — retain their `mkdir -p` before fixed-name redirects.
 
 ### Similar Patterns
-- `hooks/scripts/session-cleanup.sh` `pid_alive()` — liveness fallback; only adopt if it adds no per-file fork
-- `scripts/little_loops/cli/verify_evidence.py` `write_snapshot` — writes `evidence-snapshot-<uuid4>-<pid>.json` (pid-suffixed, stays in tier 1)
+- Existing builtin PID parsing and batched deletion in `scratch-cleanup.sh` — preserve filename-shape policy and the 500-file batching limit.
+- `scripts/little_loops/cli/verify_evidence.py` `write_snapshot` — allocates pid-shaped evidence snapshots in scratch; they remain subject to both tiers. Coordinate any lifecycle wording with BUG-3702, which owns its docstring and fresh-snapshot regression.
 
 ### Tests
-- `scripts/tests/test_hooks_integration.py` `TestScratchCleanupSessionEnd` — reuse `_backdate(path, hours=...)` and `run_scratch_cleanup(project_root, bash_bin, timeout)`; `test_scratch_cleanup_preserves_file_without_pid_suffix` uses a fresh file and still passes; `test_scratch_cleanup_preserves_file_owned_by_live_process` is fresh (not backdated) and still passes — add a sibling backdated 8d. Extend `test_scratch_cleanup_large_dir_within_hook_timeout` to a mixed-tier dir; in `test_scratch_cleanup_hot_path_has_no_per_file_forks` keep its fixtures at 48h (its `1 <= rm <= ceil(n/500)` assertion would fail if pass 0 consumed every file) and add pass 0 to the shimmed tools (`find -delete` must spawn no `rm`/`basename`/`sed`)
+- Reuse `_backdate`, `_scratch_bashes`, and `run_scratch_cleanup` from `scripts/tests/test_hooks_integration.py`.
+- Add the reproduced newline-name case: a 48h-old `old\nfresh-2147483647.txt` must not delete the separate fresh file; the original complete filename must receive normal dead-PID handling.
+- Use age fixtures with margins around thresholds (24h ±1h and 7d ±1h), plus 8d/6d cases. Include pid-shaped live/dead files, fixed names, dotfiles, spaces, and newlines.
+- Use a delayed `find` shim and a small keep-only fixture to prove skipped records check the cooperative deadline; cover pending-batch flushing and normal exit 0 after that stop.
+- Test interruption after deterministic partial progress, then rerun with the real tools to finish. Do not assert exit 0 for the terminated invocation or infer ownership safety from ENOENT handling.
+- Preserve the 48h fixture for the fork-count test so pass 1 still exercises batched `rm`; add pass-0 coverage proving no per-file `rm`, `basename`, `sed`, or `stat` forks.
+- Keep the existing 5,000-file timing check as a local/integration benchmark and extend it to mixed tiers. It is performance evidence for the tested environment, not a universal deadline guarantee. The containing module is integration-marked and excluded from the push unit matrix; new deterministic checks that need automatic GNU/BSD coverage should live in an unmarked unit-test module under `scripts/tests/`, without a new workflow.
+- Cover direct and scratch-root symlinks, unchanged external targets and nested files, and a deterministic concurrent-disappearance/error case.
 
 ### Documentation
-- `docs/guides/BUILTIN_HOOKS_GUIDE.md:55,184` — hook table row and "Scratch-pad cleanup" section ("preserved unconditionally (BUG-2525)"); also the table row at :55 says "Prunes dead-PID scratch files"→ mention the 7d cap
-- `.claude/CLAUDE.md:240` and `AGENTS.md:220` — "`scratch-cleanup.sh` only prunes files this hook created … user-typed scratch files … survive cleanup (BUG-2525)"; **update both together or the mirror gates fail**
-- `CHANGELOG.md` — add under a concrete version section at release prep (not `[Unreleased]`)
-- `docs/development/TROUBLESHOOTING.md:~1066` — references scratch-cleanup timeout; check for contract wording
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` — update the hook table, lifecycle diagram, and scratch-cleanup section, including liveness claims, retention limits, and best-effort timeout behavior.
+- `.claude/CLAUDE.md` and `AGENTS.md` — update the Automation: Scratch Pad contract together to satisfy the mirror gates.
+- `docs/development/TROUBLESHOOTING.md` — replace the unconditional deadline-bounded description with the actual cooperative-stop and host-timeout behavior.
+- `CHANGELOG.md` — explicitly identify removal of the unconditional user-file preservation guarantee under a concrete version at release prep, not `[Unreleased]`.
 
 ### Configuration
-- N/A — deliberately no new config key (`scratch_pad` schema block untouched)
+- No new setting. `scratch_pad`, the hook binding, and configured timeouts remain unchanged.
 
 ## Program Design
 
 ### Types
 
-- N/A — shell hook, no new types
+- Bash path records and the existing `dead` array — records become null-delimited; queued strings retain the full enumerated path. No new Python type or shell parser function.
 
 ### Signatures
 
-- N/A for new functions — pass 0 is an inline `find ... -delete`; no `scratch_pid_of`
-- `run_scratch_cleanup(project_root: Path, bash_bin: str = "bash", timeout: float = 5.0) -> subprocess.CompletedProcess[str]` — existing test helper; runs the hook with the 5s timeout enforced
-- `_backdate(path: Path, hours: float = 48) -> None` — existing test helper; call with `hours=8 * 24` / `hours=6 * 24` for the new tier
+- `run_scratch_cleanup(project_root: Path, bash_bin: str = "bash", timeout: float = 5.0) -> subprocess.CompletedProcess[str]` — existing helper for normal and cooperative-stop cases; use a dedicated subprocess harness for controlled interruption.
+- `_backdate(path: Path, hours: float = 48) -> None` — existing age-fixture helper.
 
 ### Call Path
 
-`run_scratch_cleanup` -> `scratch-cleanup.sh` pass 0 (`find -mmin +10080 -delete`) -> pass 1 (`find -mmin +1440` -> builtin pid parse -> `kill -0` -> chunked `rm -f`)
+`run_scratch_cleanup` -> `scratch-cleanup.sh` (`start=$SECONDS`) -> pass 0 (`find -mmin +10080 -delete`) -> pass 1 (`find -mmin +1440 -print0` -> builtin null-record read -> elapsed-time check -> unchanged builtin PID parse -> `kill -0` -> complete-path batched `rm -f`) -> flush pending batch -> empty-root `rmdir` -> normal `exit 0`.
 
-In production the same script is invoked by the `hooks/hooks.json` SessionStart entry.
+Production invokes the same script through `hooks/hooks.json` SessionStart. Host termination can interrupt this path; no resume checkpoint is introduced.
+
+### Behavior Parity
+
+The 24h threshold, numeric suffix parser, live-PID exemption below seven days, batching limit, direct-file scope, and normal exit-0 behavior are retained. Deliberate changes are the universal seven-day tier, safe path-record handling, per-record cooperative-stop checks, and accurate documentation of interruption and retention limits.
 
 ## Implementation Steps
 
-1. Write tests first (TDD mode is on): fixtures from Acceptance Criteria, run RED.
-2. Add `MAX_AGE_MINUTES=10080` and the pass-0 `find -delete ... || true` before pass 1; leave pass 1 byte-for-byte unchanged.
-3. Update the contract wording in the script header, `BUILTIN_HOOKS_GUIDE.md` (:55 and :184), `.claude/CLAUDE.md:240`, `AGENTS.md:220` (together, mirror gate); add the "accepted behavior" notes.
-4. Add the CHANGELOG entry at release prep; run `python -m pytest scripts/tests/` and verify under both PATH `bash` and macOS `/bin/bash` 3.2.
-5. Stray-subdirectory follow-up is filed as ENH-3709 (out of scope here; note it makes `rmdir` of an emptied scratch dir reachable, so skills must keep `mkdir -p` before redirecting).
+1. Refresh readiness/outcome scoring for the revised scope before implementation, then write regression tests first: newline wrong-file deletion, seven-day retention, skipped-record deadline handling, partial-batch flushing, and interruption/rerun; verify the relevant new cases fail against current code.
+2. Add `MAX_AGE_MINUTES=10080` and pass 0 before the existing pass, preserving `start=$SECONDS` before both passes.
+3. Switch pass 1 to null-separated paths, queue the full path, and check elapsed time before processing each record. Keep PID parsing, liveness compatibility, thresholds, batched deletion, and pending-batch flushing.
+4. Update all contract and ownership wording in the hook, guide, mirrored instruction files, and troubleshooting documentation. Document the behavioral compatibility change and scratch-note lifetime; coordinate snapshot wording with BUG-3702.
+5. Run targeted tests under PATH bash and macOS `/bin/bash` 3.2, verify GNU/BSD behavior through the existing test matrix where deterministic checks are added, and run `python -m pytest scripts/tests/`. Treat the large-directory timing test as integration performance evidence.
+6. Add the CHANGELOG note at release prep.
 
 ## Impact
 
-- **Priority**: P4 - disk growth (109 MB) is minor, but unbounded file count slows `find` and erodes the 3s sweep deadline
-- **Effort**: Small - one extra `find` pass reusing the existing chunked-delete and deadline machinery
-- **Risk**: Low - mtime-only deletion; files moved in with preserved mtime or resume notes older than 7d are lost (documented, accepted); contract wording lives in 4 places and the CLAUDE.md/AGENTS.md copies are mirror-gated
-- **Breaking Change**: No (behavior change limited to files untouched for >7 days)
+- **Priority**: P4 — accumulated scratch files erode cleanup performance; safe path handling is a required correction within this change.
+- **Effort**: Small — one native retention pass, small changes to the existing loop, and focused regression/documentation updates.
+- **Risk**: Medium — older user-written files and resume notes lose a documented preservation guarantee; slow filesystems can still produce a host timeout, and concurrent rewrites are not synchronized.
+- **Breaking Change**: Yes (behavioral) — user-written scratch files older than seven days become eligible for automatic deletion.
 
 ## Acceptance Criteria
 
-- [ ] A no-suffix file with mtime 8 days old is removed at SessionStart; one 6 days old is preserved
-- [ ] A dotfile with mtime 8 days old is removed
-- [ ] A fresh `test-results.txt` (and a re-written fixed-name file) is preserved
-- [ ] A pid-suffixed file 8 days old whose owner pid is alive (e.g. `os.getpid()`) is removed; the same file 6 days old is preserved (pid recycling makes liveness unreliable; BUG-3707 wont_fix)
-- [ ] Dead-pid 24h-tier behavior is unchanged (all existing `TestScratchCleanupSessionEnd` tests pass unmodified apart from deliberate additions)
-- [ ] Subdirectories and symlinks under `.loops/tmp/scratch` are never removed (old or not)
-- [ ] A ≥5,000-file directory mixing both tiers (and >7d files) sweeps within 5s under PATH `bash` and `/bin/bash` 3.2; a truncated run still exits 0 and makes progress
-- [ ] No per-file `basename`/`sed`/`stat` forks and `rm` stays batched (shim-verified); pass 0 spawns no `rm`; a concurrent-sweep ENOENT (file vanishes mid-`find -delete`) still exits 0
-- [ ] Contract wording updated consistently in the script header, `BUILTIN_HOOKS_GUIDE.md`, `.claude/CLAUDE.md`, and `AGENTS.md`; accepted-behavior limits documented
-- [ ] `python -m pytest scripts/tests/` exits 0 (including the CLAUDE.md/AGENTS.md mirror gates)
+- [ ] On a successful sweep, a no-suffix file 8d old is removed and one 6d old is preserved; margin-based cases cover both sides of the seven-day threshold.
+- [ ] Old dotfiles and files with spaces/newlines are removed using complete paths; fresh fixed-name and rewritten files are preserved.
+- [ ] The reproduced 48h-old newline filename is handled as one path and cannot cause deletion of a separate fresh pid-shaped file.
+- [ ] A pid-shaped file 8d old is removed even if its filename PID is alive; the same live-PID fixture 6d old remains. Dead-PID fixtures on either side of 24h preserve the existing tier policy.
+- [ ] Existing PID parser edge cases still pass; existing preservation-test comments are updated to describe the finite two-tier contract.
+- [ ] A delayed keep-only scan stops pass-1 processing after the cooperative deadline is observed, including before a skip; a pending partial deletion batch is flushed and the hook exits 0 normally.
+- [ ] A deliberately interrupted sweep leaves completed deletions in place, preserves unrelated/fresh files, and a subsequent successful invocation finishes the remaining eligible work. No exit-0 assertion is made for external termination.
+- [ ] Subdirectories, nested files, symlinks, and external targets are preserved; a symlink at the scratch-directory path causes no target deletion.
+- [ ] Fork-count checks show no per-file `basename`/`sed`/`stat` and only batched pass-1 `rm`; pass 0 invokes no `rm`. A disappearing-file race does not make normal completion fail.
+- [ ] Mixed-tier large-directory performance is measured under supported bash variants without turning the observed timing into a hard completion guarantee; normal, cooperative-stop, and host-timeout outcomes are distinguished.
+- [ ] The hook header/loop comments, guide, troubleshooting, and mirrored CLAUDE.md/AGENTS.md contracts consistently state the two tiers, behavioral compatibility change, resume-note limits, and best-effort timeout behavior.
+- [ ] `python -m pytest scripts/tests/` exits 0, including mirror gates; supported shell/platform validation is recorded.
+
+## Review Evidence
+
+2026-10-03: 27 existing scratch-cleanup/root-resolution tests passed. Separate temporary-fixture probes reproduced fresh-file deletion from a newline-containing old filename and a 6.44s keep-only scan with no cooperative deadline check. The proposed native seven-day pass was locally checked against old/fresh files, dotfiles, newline names, a symlink to an external target, and a nested file; direct-file scope and target preservation behaved as intended. These observations justify the added regressions but do not prove timing on every filesystem or atomic safety against concurrent rewrites. The prior readiness/outcome scores of 100/93 described the previous design and were removed; they must be reassessed for the revised scope.
 
 ## Status
 
-**Open** | Created: 2026-10-03 | Priority: P4
-
+**Open** | Created: 2026-10-03 | Priority: P4 | Revised after review: 2026-10-03
 
 ## Session Log
 - `/ll:confidence-check` - 2026-10-03T17:44:48 - `32f52444-a659-4ef8-933a-2361ae6c6aff.jsonl`
