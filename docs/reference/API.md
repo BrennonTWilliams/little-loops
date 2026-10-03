@@ -9957,6 +9957,7 @@ from little_loops.session_store import (
     list_retirements,      # return all correction_retirements rows (ENH-2046)
     backfill_raw_events,   # ingest JSONL lines into raw_events only (ENH-2581)
     rebuild,               # wipe+re-derive the JSONL-derived cache tables from raw_events (ENH-2581)
+    rebuild_needed,        # is a rebuild needed under the current derive version? -> RebuildState (ENH-3678)
     compact,               # sweep old raw_events into retention summary_nodes (ENH-2581)
     prune,                 # delete compacted raw_events rows and VACUUM (ENH-2581)
 )
@@ -10155,7 +10156,17 @@ def rebuild(
 ) -> dict[str, int]
 ```
 
-Wipes `tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`, `user_corrections`, `summary_nodes`, `summary_spans`, and the `search_index` rows for `kind in ('tool', 'message', 'skill', 'correction')`, then re-derives them by replaying every `raw_events` row through `_iter_events()`. Idempotent. Updates the `last_rebuild_version` meta key to `SCHEMA_VERSION`. Issue/loop/commit/cli/file/test_run/orchestration tables are outside `raw_events`'s scope and are left untouched — no re-derivation path exists for them.
+Wipes `tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`, `user_corrections`, `summary_nodes`, `summary_spans`, and the `search_index` rows for `kind in ('tool', 'message', 'skill', 'correction')`, then re-derives them by replaying every `raw_events` row through `_iter_events()`. Idempotent. On success, updates the `last_rebuild_version` meta key to `SCHEMA_VERSION` and stamps `rebuild_derive_version` with `REBUILD_DERIVE_VERSION`, in the same transaction as the derived rows. Issue/loop/commit/cli/file/test_run/orchestration tables are outside `raw_events`'s scope and are left untouched — no re-derivation path exists for them.
+
+#### `rebuild_needed`
+
+```python
+def rebuild_needed(db: Path | str = DEFAULT_DB_PATH) -> RebuildState
+```
+
+Decides whether `db` needs a `rebuild()`. The `SessionStart` hook passes `--rebuild` to its background worker only when this returns `status == "stale"`, so a `SCHEMA_VERSION` bump that changes no derivation no longer triggers a full rebuild. The store is opened read-only (never created or migrated, 0.5 s busy timeout).
+
+`RebuildState(status, reason)` is a frozen dataclass. `status` is `"current"`, `"stale"` or `"unknown"`; `reason` is one of `derive_match`, `legacy_floor` (current); `derive_mismatch`, `legacy_below_floor`, `no_stamp`, `db_missing` (stale); `read_error`, `remote` (unknown). `"unknown"` (unreadable or remote store) never rebuilds. A store last rebuilt at schema 58 or later with no `rebuild_derive_version` stamp is treated as current under the derivation it was built with. `REBUILD_DERIVE_VERSION` changes only when what a non-usage `rebuild()` writes changes.
 
 ```python
 def compact(

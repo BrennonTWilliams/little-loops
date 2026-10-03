@@ -3,10 +3,11 @@ id: ENH-3678
 type: ENH
 title: Gate the auto-spawned history rebuild on a derive version instead of SCHEMA_VERSION
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T00:31:00Z'
+completed_at: '2026-10-03T16:36:56Z'
 reconcile_attempted: true
 blocks:
 - FEAT-3561
@@ -170,7 +171,28 @@ New tests (version-gate tests monkeypatch the constant on `lifecycle` and use a 
 **Open** | Created: 2026-09-30 | Priority: P2
 
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-10-03
+- **Status**: Completed
+
+### Changes Made
+- `session_store/lifecycle.py`: `REBUILD_DERIVE_VERSION`, `_LEGACY_REBUILD_FLOOR`, frozen `_FROZEN_LEGACY_DERIVE_VERSION`, `RebuildState`, `rebuild_needed()`; `rebuild()` stamps `rebuild_derive_version` in its transaction via `_stamp_rebuild_derive_version`.
+- `session_store/backend.py`, `libsql.py`: `connect_readonly(timeout=...)` keyword (default 5.0).
+- `hooks/session_start.py`: `--rebuild` only on `rebuild_needed().status == "stale"`; `try/except` + `logger.debug`; `Popen` unchanged.
+- `session_store/__init__.py` re-exports; `rebuild_fingerprint.json` snapshot; `tests/rebuild_fingerprint.py` walk/normalizer; `tests/test_enh3678_rebuild_derive_gate.py`.
+- Docs: `ARCHITECTURE.md`, `reference/API.md`, `guides/HISTORY_SESSION_GUIDE.md`; stale docstrings in `lifecycle.py`/`backfill_worker.py`.
+
+### Verification Results
+- Landing gate: pruned-walk digest at HEAD == digest at `9cb4467d6`; identical on Python 3.11 and 3.12; 23-function set.
+- Tests: PASS for this change (full suite: 27622 passed; 2 failures + 8 errors identical on the pre-change baseline: `test_verify_evidence` repo gate, `test_prose_dep_sweep_gate` (ENH-3706/BUG-3705), `test_libsql_integration::TestLive` live-endpoint setup)
+- Lint: PASS
+- Types: PASS
+
 ## Session Log
+- `/ll:manage-issue` - 2026-10-03T16:36:56 - `b1102a15-11a9-41cf-b61a-ac142c0fadb5.jsonl`
+- `/ll:ready-issue` - 2026-10-03T16:24:11 - `91190cff-8c0d-4cb7-be22-860b777a0c09.jsonl`
 - `/ll:confidence-check` - 2026-10-03T16:21:49 - `f84f4572-8308-43ee-a61e-fcf0f22bc2fe.jsonl`
 - `/ll:advise` (Opus, ENH-3678 second pre-implementation review; edits applied) - 2026-10-03
 - `/ll:confidence-check` - 2026-10-03T03:33:25 - `559f97f2-0fed-4e17-be64-5c3d7a03740e.jsonl`

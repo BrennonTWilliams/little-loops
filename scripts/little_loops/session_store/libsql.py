@@ -270,8 +270,13 @@ class LibsqlBackend:
             self._client(remote, timeout=timeout), config=remote.config, telemetry=True
         )
 
-    def connect_readonly(self, target: Path | HistoryTarget) -> LibsqlConnection:
-        """Read-only connection: writes are refused client-side before any network call."""
+    def connect_readonly(
+        self, target: Path | HistoryTarget, *, timeout: float = 5.0
+    ) -> LibsqlConnection:
+        """Read-only connection: writes are refused client-side before any network call.
+
+        ``timeout`` is accepted for protocol parity and ignored (the client has its own).
+        """
         remote = _remote(target, "connect_readonly")
         return LibsqlConnection(self._client(remote), read_only=True, config=remote.config)
 

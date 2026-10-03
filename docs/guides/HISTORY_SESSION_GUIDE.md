@@ -202,6 +202,10 @@ Reads these sources sequentially:
 > `rebuild` wipes and re-derives those tables from `raw_events`, so running it
 > is safe and repeatable. If a query against `tool_events` or `message_events`
 > comes back empty on a freshly-backfilled database, this is why.
+>
+> The `SessionStart` hook rebuilds automatically only when the derivation
+> itself changed (tracked by a `rebuild_derive_version` stamp), not on every
+> schema upgrade. You can always run `ll-session rebuild` yourself.
 
 Beyond backfill, `issue_events` rows also arrive through two live channels:
 the EventBus-emitted `issue.*` path (`SQLiteTransport.send()`, FSM-loop/

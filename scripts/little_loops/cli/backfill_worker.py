@@ -8,8 +8,8 @@ transcript file or a project folder whose ``*.jsonl`` files are globbed. Runs
 
 ``--rebuild`` (ENH-2581) additionally materializes the JSONL-derived cache
 tables from ``raw_events`` in the same call — passed by the hook only when
-``SCHEMA_VERSION`` has changed since the last rebuild (see
-``session_start.py``). ``--host`` (ENH-3166) names the host whose transcripts
+``rebuild_needed()`` reports the derivation changed since the last rebuild
+(``REBUILD_DERIVE_VERSION``; see ``session_start.py``). ``--host`` (ENH-3166) names the host whose transcripts
 *path* holds, so ``raw_events`` rows are stamped with the ingested host
 instead of the ambient one; an unrecognized host is rejected (ENH-3422 D8).
 This file has no argparse by design (minimal-parsing style); both flags are

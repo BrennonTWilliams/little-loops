@@ -221,7 +221,9 @@ class Backend(Protocol):
     def connect(
         self, target: Path | HistoryTarget, *, check_same_thread: bool = True
     ) -> sqlite3.Connection: ...
-    def connect_readonly(self, target: Path | HistoryTarget) -> sqlite3.Connection: ...
+    def connect_readonly(
+        self, target: Path | HistoryTarget, *, timeout: float = 5.0
+    ) -> sqlite3.Connection: ...
     def ensure_schema(self, target: Path | HistoryTarget) -> None: ...
     def supports(self, capability: str) -> bool: ...
 
@@ -273,11 +275,16 @@ class SqliteBackend:
             raise HistoryUnavailable(f"could not open {path}: {exc}") from exc
         return conn
 
-    def connect_readonly(self, target: Path | HistoryTarget) -> sqlite3.Connection:
-        """Strict read-only open: never creates or migrates the store (D19)."""
+    def connect_readonly(
+        self, target: Path | HistoryTarget, *, timeout: float = 5.0
+    ) -> sqlite3.Connection:
+        """Strict read-only open: never creates or migrates the store (D19).
+
+        *timeout* is sqlite's busy timeout in seconds (default matches sqlite's own).
+        """
         path = _local_path(target, "connect_readonly")
         try:
-            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=timeout)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA query_only = ON")
         except sqlite3.Error as exc:
@@ -355,9 +362,12 @@ def _resolve_once(
     return LocalTarget(Path(target))
 
 
-def connect_readonly(target: Path | str | HistoryTarget | None = None) -> sqlite3.Connection:
+def connect_readonly(
+    target: Path | str | HistoryTarget | None = None, *, timeout: float = 5.0
+) -> sqlite3.Connection:
     """Strict read-only open of the resolved history store (D19: never
     creates or migrates). Raises :class:`HistoryUnavailable` on failure.
+    *timeout* is the sqlite busy timeout in seconds (ignored by remote backends).
 
     An already-absolute *target* is honored verbatim (BUG-3181, see
     :func:`_resolve_once`); ``None`` or a relative *target* resolves via the
@@ -365,7 +375,7 @@ def connect_readonly(target: Path | str | HistoryTarget | None = None) -> sqlite
     :func:`resolve_history_db`).
     """
     resolved = _resolve_once(target)
-    return resolve_backend(resolved.provider).connect_readonly(resolved)
+    return resolve_backend(resolved.provider).connect_readonly(resolved, timeout=timeout)
 
 
 def open_history(

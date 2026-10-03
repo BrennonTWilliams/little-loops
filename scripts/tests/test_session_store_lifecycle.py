@@ -1900,6 +1900,21 @@ class TestRebuild:
             conn.close()
         assert int(row["value"]) == SCHEMA_VERSION
 
+    def test_rebuild_stamps_rebuild_derive_version(self, tmp_path: Path) -> None:
+        from little_loops.session_store import REBUILD_DERIVE_VERSION
+
+        db = tmp_path / "history.db"
+        self._seed_raw_events(tmp_path, db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'rebuild_derive_version'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row["value"] == REBUILD_DERIVE_VERSION
+
     def test_rebuild_does_not_touch_out_of_scope_tables(self, tmp_path: Path) -> None:
         """issue_events/loop_events/commit_events are outside raw_events's scope."""
         db = tmp_path / "history.db"

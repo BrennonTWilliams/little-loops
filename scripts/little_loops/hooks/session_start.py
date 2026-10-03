@@ -186,9 +186,10 @@ def handle(event: LLHookEvent) -> LLHookResult:
                 _backfill_path = str(_pf) if _pf is not None else None
 
             if _backfill_path is not None and not _os.environ.get("LL_NON_INTERACTIVE"):
-                # ENH-2581: pass --rebuild only when SCHEMA_VERSION has advanced past
-                # the last rebuild() run, so the (expensive) cache-table rebuild is
-                # opt-in-on-migration rather than run on every session start.
+                # ENH-2581/ENH-3678: pass --rebuild only when the derivation changed
+                # (rebuild_needed() == stale), so the expensive cache-table rebuild
+                # does not run on every SCHEMA_VERSION bump. `unknown` (unreadable
+                # store) never rebuilds, but the incremental worker still spawns below.
                 _worker_argv = [
                     sys.executable,
                     "-m",
@@ -197,21 +198,15 @@ def handle(event: LLHookEvent) -> LLHookResult:
                     _backfill_path,
                 ]
                 _worker_argv.extend(["--host", _backfill_host])
-                with contextlib.suppress(Exception):
+                try:
                     if _remote_store:
                         raise RuntimeError("remote store: never rebuild from a hook")
-                    from little_loops.session_store import SCHEMA_VERSION, connect
+                    from little_loops.session_store import rebuild_needed
 
-                    _rebuild_conn = connect(_db_path)
-                    try:
-                        _row = _rebuild_conn.execute(
-                            "SELECT value FROM meta WHERE key = 'last_rebuild_version'"
-                        ).fetchone()
-                    finally:
-                        _rebuild_conn.close()
-                    _last_rebuild_version = int(_row[0]) if (_row and _row[0]) else 0
-                    if _last_rebuild_version < SCHEMA_VERSION:
+                    if rebuild_needed(_db_path).status == "stale":
                         _worker_argv.append("--rebuild")
+                except Exception:
+                    logger.debug("rebuild_needed check skipped", exc_info=True)
 
                 subprocess.Popen(
                     _worker_argv,

@@ -26,9 +26,10 @@ import logging
 import sqlite3
 import subprocess
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import little_loops.session_store as _pkg
 from little_loops.host_runner import project_child_env, resolve_host
@@ -38,13 +39,14 @@ from little_loops.session_store.backend import (
     refuse_on_remote,
     translate_sqlite_errors,
 )
-from little_loops.session_store.db import DEFAULT_DB_PATH
+from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_target
 from little_loops.session_store.schema import SCHEMA_VERSION
 from little_loops.session_store.sessions import (
     SessionHandle,
     handles_from_paths,
     iter_events,
 )
+from little_loops.session_store.targets import LocalTarget
 from little_loops.session_store.writers import (
     _backfill_assistant_messages,
     _backfill_commit_events,
@@ -1036,6 +1038,92 @@ _REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction", "usage")
 # A mismatch causes one atomic replay of historical raw rows before tail work.
 _USAGE_DERIVE_VERSION = "enh3651-v1"
 
+# Bump when a non-usage ``rebuild()`` output or selection changes: parser/replay
+# semantics, ``_REBUILD_TABLES`` or search-index derivation, corrections,
+# summaries, or prompt-opt enrichment. Usage-only derivation changes bump
+# ``_USAGE_DERIVE_VERSION`` instead (incremental path), never this constant.
+# A mismatch makes every store rebuild once (a full wipe-and-replay), so do NOT
+# bump before ENH-3698 (size gate) lands. Compared with ``!=`` (an identifier,
+# never ordered). ``test_rebuild_derive_fingerprint.py`` fails when the
+# derivation changes without a bump.
+REBUILD_DERIVE_VERSION = "enh3678-v1"
+
+# Stores last rebuilt at or after this ``SCHEMA_VERSION`` but carrying no
+# ``rebuild_derive_version`` stamp were derived under schema-58 semantics, which
+# ``_FROZEN_LEGACY_DERIVE_VERSION`` names. A floor rather than ``== 58`` so a
+# ``SCHEMA_VERSION`` bump that lands first does not force a rebuild.
+_LEGACY_REBUILD_FLOOR = 58
+# A frozen literal, NEVER an alias of ``REBUILD_DERIVE_VERSION``: an alias would
+# move with every bump and mark unstamped legacy stores current under a newer
+# derivation. Pinned by ``test_frozen_legacy_derive_version_literal``.
+_FROZEN_LEGACY_DERIVE_VERSION = "enh3678-v1"
+
+# Busy timeout for ``rebuild_needed``'s read-only open: well inside the 5 s
+# SessionStart hook budget so a contended store maps to ``unknown`` instead of
+# getting the hook killed before it spawns the incremental worker.
+_REBUILD_NEEDED_TIMEOUT = 0.5
+
+
+@dataclass(frozen=True)
+class RebuildState:
+    """Whether the derived tables need a ``rebuild()`` (see :func:`rebuild_needed`).
+
+    ``reason`` is one of: ``derive_match``, ``legacy_floor`` (both ``current``);
+    ``derive_mismatch``, ``legacy_below_floor``, ``no_stamp``, ``db_missing``
+    (all ``stale``); ``read_error``, ``remote`` (both ``unknown``).
+    """
+
+    status: Literal["current", "stale", "unknown"]
+    reason: str
+
+
+def rebuild_needed(db: Path | str = DEFAULT_DB_PATH) -> RebuildState:
+    """Decide whether *db* needs a ``rebuild()`` under the current derive version.
+
+    Opens the store with the strict read-only ``connect_readonly`` (never creates or
+    migrates, short busy timeout). ``unknown`` means the store could not be read (any
+    open/query failure, a lock timeout) or is remote; callers must not rebuild on it.
+    A missing DB or missing stamp is ``stale``.
+    """
+    try:
+        target = resolve_history_target(db)
+        if not isinstance(target, LocalTarget):
+            return RebuildState("unknown", "remote")
+        if not target.path.exists():
+            return RebuildState("stale", "db_missing")
+        conn = connect_readonly(target, timeout=_REBUILD_NEEDED_TIMEOUT)
+        try:
+            rows = dict(
+                conn.execute(
+                    "SELECT key, value FROM meta "
+                    "WHERE key IN ('rebuild_derive_version', 'last_rebuild_version')"
+                ).fetchall()
+            )
+        finally:
+            conn.close()
+    except Exception:
+        return RebuildState("unknown", "read_error")
+
+    stamped = rows.get("rebuild_derive_version")
+    if stamped is not None and stamped != "":
+        if isinstance(stamped, str):
+            if stamped == REBUILD_DERIVE_VERSION:
+                return RebuildState("current", "derive_match")
+            return RebuildState("stale", "derive_mismatch")
+        return RebuildState("stale", "legacy_below_floor")
+    last = rows.get("last_rebuild_version")
+    if last is None or last == "":
+        return RebuildState("stale", "no_stamp")
+    try:
+        last_version = int(last)
+    except (ValueError, TypeError):
+        return RebuildState("stale", "legacy_below_floor")
+    if last_version < _LEGACY_REBUILD_FLOOR:
+        return RebuildState("stale", "legacy_below_floor")
+    if _FROZEN_LEGACY_DERIVE_VERSION == REBUILD_DERIVE_VERSION:
+        return RebuildState("current", "legacy_floor")
+    return RebuildState("stale", "derive_mismatch")
+
 
 def _usage_raw_cursor(
     conn: sqlite3.Connection, where: str = "", params: tuple = ()
@@ -1484,6 +1572,15 @@ def usage_source_freshness(db: Path | str, source: Path) -> dict[str, int | str 
     return {**base, "status": "fresh", "reason": None}
 
 
+def _stamp_rebuild_derive_version(conn: sqlite3.Connection) -> None:
+    """Record the derive version in the caller's open transaction (not a derivation)."""
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES('rebuild_derive_version', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (REBUILD_DERIVE_VERSION,),
+    )
+
+
 def rebuild(
     db: Path | str = DEFAULT_DB_PATH,
     *,
@@ -1496,8 +1593,10 @@ def rebuild(
     ``_REBUILD_SEARCH_KINDS``, then re-derives them by replaying every
     ``raw_events`` row through the same ``_backfill_*`` parsers the legacy
     JSONL path uses (via :func:`_iter_events`). Idempotent — safe to call
-    repeatedly. Updates the ``last_rebuild_version`` meta key to
-    ``SCHEMA_VERSION`` on success.
+    repeatedly. On success, updates the ``last_rebuild_version`` meta key to
+    ``SCHEMA_VERSION`` and stamps ``rebuild_derive_version`` with
+    ``REBUILD_DERIVE_VERSION`` (what :func:`rebuild_needed` gates on), in the same
+    transaction as the derived rows.
 
     Issue/loop/commit/cli/file/test_run tables are outside ``raw_events``'s
     scope for this issue (ENH-2581) and are left untouched.
@@ -1555,6 +1654,7 @@ def rebuild(
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (str(SCHEMA_VERSION),),
         )
+        _stamp_rebuild_derive_version(conn)
         _set_usage_derive_checkpoint(conn)
         conn.commit()
     except Exception:
@@ -1707,8 +1807,8 @@ def backfill_incremental(
 
     Pass ``also_rebuild=True`` to materialize the JSONL-derived cache tables
     from ``raw_events`` afterward in the same call — used by the
-    ``SessionStart`` hook worker when ``SCHEMA_VERSION`` has changed (see
-    ``cli/backfill_worker.py --rebuild``).
+    ``SessionStart`` hook worker when :func:`rebuild_needed` reports ``stale`` (the
+    derivation changed; see ``cli/backfill_worker.py --rebuild``).
 
     Issues and loop-state JSON are NOT backfilled here; this variant is
     ingest-only and designed for low-latency background use in session hooks.

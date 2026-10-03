@@ -1,0 +1,29 @@
+{
+  "current_digest": "eae23c057b02698ead19573df63fdd52682580a91d634ec016fd5e86e79b8bd4",
+  "frozen_legacy_digest": "eae23c057b02698ead19573df63fdd52682580a91d634ec016fd5e86e79b8bd4",
+  "function_set": [
+    "lifecycle._backfill_sessions",
+    "lifecycle._call_llm_for_summary",
+    "lifecycle._compact_session_conn",
+    "lifecycle._compact_sessions",
+    "lifecycle._estimate_tokens",
+    "lifecycle._maybe_soft_threshold_summary",
+    "lifecycle._summarize_block",
+    "lifecycle.rebuild",
+    "writers._backfill_assistant_messages",
+    "writers._backfill_messages",
+    "writers._backfill_prompt_opt",
+    "writers._backfill_skill_events",
+    "writers._backfill_tool_events",
+    "writers._hash_args",
+    "writers._index",
+    "writers._iter_events",
+    "writers._iter_events_with_host",
+    "writers._normalize_agent_type",
+    "writers._now",
+    "writers._parse_mcp_tool_name",
+    "writers._unpack_payload",
+    "writers.is_correction",
+    "writers.mine_corrections_from_messages"
+  ]
+}
