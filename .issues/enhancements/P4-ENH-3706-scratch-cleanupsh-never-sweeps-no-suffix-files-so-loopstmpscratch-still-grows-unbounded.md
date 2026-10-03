@@ -13,6 +13,12 @@ relates_to:
 - BUG-3707
 - BUG-2525
 - ENH-3709
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3706: scratch-cleanup.sh never sweeps no-suffix files so .loops/tmp/scratch still grows unbounded
@@ -143,4 +149,5 @@ In production the same script is invoked by the `hooks/hooks.json` SessionStart 
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:44:48 - `32f52444-a659-4ef8-933a-2361ae6c6aff.jsonl`
 - `/ll:format-issue` - 2026-10-03T17:29:28 - `782c403d-3c0b-47cc-a461-f433badb1263.jsonl`
