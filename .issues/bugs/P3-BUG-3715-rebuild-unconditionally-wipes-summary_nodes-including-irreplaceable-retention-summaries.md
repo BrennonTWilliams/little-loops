@@ -4,7 +4,7 @@ type: BUG
 title: rebuild() unconditionally wipes summary_nodes including irreplaceable retention
   summaries
 priority: P3
-status: open
+status: done
 relates_to:
 - ENH-3698
 - ENH-3666
@@ -12,6 +12,7 @@ relates_to:
 discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:46:14Z'
+completed_at: '2026-10-03T18:50:37Z'
 verify_verdict: VALID
 confidence_score: 100
 outcome_confidence: 75
@@ -220,7 +221,18 @@ ENH-3698 (size gate and conditional warning cleanup), ENH-3666 (summary/transact
 - `docs/ARCHITECTURE.md` — summary/cache schema contract.
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — session storage and summary tables.
 
+## Resolution
+
+**Fixed** — 2026-10-03
+
+- Added `summary_nodes: "kind IS NOT 'retention'"` to `_REBUILD_TABLE_PREDICATES`; `rebuild()` now preserves all retention nodes (IDs/columns unchanged, raw-event links stay valid). `summary_spans` and leaf/condensed nodes are still fully wiped and regenerated under the existing config gate.
+- `tests/rebuild_fingerprint.py` hashes nonempty non-usage predicates and reads annotated literals; current snapshot regenerated, frozen legacy digest unchanged, no `REBUILD_DERIVE_VERSION` bump (ENH-3698 not landed).
+- Regression tests: `TestRebuildPreservesRetention` (pruned/unpruned/mixed-kind/late-failure rollback) and fingerprint predicate tests. Docs (CLI, API, ARCHITECTURE, HISTORY_SESSION_GUIDE) and `rebuild()` docstring updated. No ENH-3698 retention warnings existed yet to remove.
+- Verification: full suite 27713 passed; 1 failure (`test_verify_evidence::TestRepoGate`, fails identically without these changes) and 8 live-libsql endpoint errors are unrelated.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-10-03T18:50:36 - `a0ca876a-225b-4dbc-a667-93332bc530eb.jsonl`
+- `/ll:ready-issue` - 2026-10-03T18:41:59 - `2264a3a8-3205-4a4c-9914-94e556309cc0.jsonl`
 - `/ll:confidence-check` - 2026-10-03T18:33:39 - `29c0951b-ecba-44fc-9c7a-bae598ad6c00.jsonl`
 - `/ll:ready-issue` - 2026-10-03T18:31:01 - `93d9237c-0107-40d4-8cc6-a4173db603d9.jsonl`
 - `/ll:advise` - 2026-10-03T18:31:01 - `93d9237c-0107-40d4-8cc6-a4173db603d9.jsonl`

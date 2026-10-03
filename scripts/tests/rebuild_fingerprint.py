@@ -132,20 +132,29 @@ def _function_digest(
 
 
 def _literal(tree: ast.Module, name: str) -> Any:
+    """Literal value of module-level ``name`` (plain or annotated assignment)."""
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(t, ast.Name) and t.id == name for t in node.targets
         ):
             return ast.literal_eval(node.value)
-    raise KeyError(name)
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+            and node.value is not None
+        ):
+            return ast.literal_eval(node.value)
+    raise KeyError(f"required constant {name!r} not found as a literal assignment")
 
 
 def compute_fingerprint(sources: dict[str, str], manifest: dict[str, Any]) -> dict[str, Any]:
     """Return ``{"function_set": [...], "digest": "<sha256>"}``.
 
     Hashed: every non-stopped function in the resolved set, ``_REBUILD_TABLES``
-    minus ``usage_events``, ``_REBUILD_SEARCH_KINDS`` minus ``"usage"``, and the
-    manifest DDL of those non-usage rebuild tables.
+    minus ``usage_events``, ``_REBUILD_SEARCH_KINDS`` minus ``"usage"``, the manifest
+    DDL of those non-usage rebuild tables, and (only when nonempty) the non-usage
+    entries of ``_REBUILD_TABLE_PREDICATES``.
     """
     resolved = resolve_function_set(sources)
     trees = {mod: ast.parse(src) for mod, src in sources.items()}
@@ -160,8 +169,14 @@ def compute_fingerprint(sources: dict[str, str], manifest: dict[str, Any]) -> di
         parts.append(f"fn:{mod}.{name}:{_function_digest(lines[mod], fn, extra)}")
     tables = [t for t in _literal(trees["lifecycle"], "_REBUILD_TABLES") if t != "usage_events"]
     kinds = [k for k in _literal(trees["lifecycle"], "_REBUILD_SEARCH_KINDS") if k != "usage"]
+    # Non-usage deletion predicates decide which rows a rebuild keeps (BUG-3715).
+    # Hashed only when nonempty so the legacy usage-only definition keeps its digest.
+    predicates = _literal(trees["lifecycle"], "_REBUILD_TABLE_PREDICATES")
+    kept = {t: p for t, p in sorted(predicates.items()) if t != "usage_events"}
     parts.append("tables:" + ",".join(tables))
     parts.append("kinds:" + ",".join(kinds))
+    if kept:
+        parts.append("predicates:" + json.dumps(kept, sort_keys=True))
     for table in tables:
         ddl = json.dumps(manifest["objects"].get(table), sort_keys=True)
         parts.append(f"ddl:{table}:{ddl}")

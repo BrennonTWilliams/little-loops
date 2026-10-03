@@ -201,7 +201,11 @@ Reads these sources sequentially:
 >
 > `rebuild` wipes and re-derives those tables from `raw_events`, so running it
 > is safe and repeatable. If a query against `tool_events` or `message_events`
-> comes back empty on a freshly-backfilled database, this is why.
+> comes back empty on a freshly-backfilled database, this is why. Retention
+> summaries written by `ll-session compact` are kept as-is, since pruned raw rows
+> can no longer regenerate them. Other summary nodes are regenerated only when
+> `history.compaction.enabled` is true; otherwise they are cleared. Rebuild holds
+> the database write lock for its whole run, including any summarization calls.
 >
 > The `SessionStart` hook rebuilds automatically only when the derivation
 > itself changed (tracked by a `rebuild_derive_version` stamp), not on every

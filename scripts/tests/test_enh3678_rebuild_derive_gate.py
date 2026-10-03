@@ -378,11 +378,15 @@ class TestNormalizerStability:
         '''
     )
 
-    def _digest(self, lifecycle_src: str) -> str:
+    def _digest(
+        self, lifecycle_src: str, predicates: str = "_REBUILD_TABLE_PREDICATES = {}\n"
+    ) -> str:
         sources = {"lifecycle": lifecycle_src, "writers": "def _noop():\n    return 1\n"}
         manifest: dict = {"objects": {}}
         # constants are required by compute_fingerprint
-        sources["lifecycle"] += '\n_REBUILD_TABLES = ("a",)\n_REBUILD_SEARCH_KINDS = ("tool",)\n'
+        sources["lifecycle"] += (
+            '\n_REBUILD_TABLES = ("a",)\n_REBUILD_SEARCH_KINDS = ("tool",)\n' + predicates
+        )
         return compute_fingerprint(sources, manifest)["digest"]
 
     def test_stable_under_comment_docstring_whitespace_edits(self) -> None:
@@ -403,6 +407,34 @@ class TestNormalizerStability:
         edited = self._BASE.replace("x = 1", "x = 2")
         assert self._digest(self._BASE) != self._digest(edited)
 
+    def test_non_usage_predicate_changes_digest(self) -> None:
+        """BUG-3715: a deletion-predicate change is a selection change."""
+        usage = "_REBUILD_TABLE_PREDICATES = {'usage_events': \"channel IS NOT 'live'\"}\n"
+        retention = "'summary_nodes': \"kind IS NOT 'retention'\""
+        added = f"_REBUILD_TABLE_PREDICATES = {{'usage_events': \"channel IS NOT 'live'\", {retention}}}\n"
+        changed = added.replace("'retention'", "'other'")
+        base = self._digest(self._BASE, usage)
+        assert self._digest(self._BASE, added) != base
+        assert self._digest(self._BASE, changed) != self._digest(self._BASE, added)
+
+    def test_usage_only_predicate_does_not_change_digest(self) -> None:
+        empty = self._digest(self._BASE)
+        usage = "_REBUILD_TABLE_PREDICATES = {'usage_events': \"channel IS NOT 'live'\"}\n"
+        other = "_REBUILD_TABLE_PREDICATES = {'usage_events': 'channel = 1'}\n"
+        assert self._digest(self._BASE, usage) == empty
+        assert self._digest(self._BASE, other) == empty
+
+    def test_annotated_predicate_literal_is_supported(self) -> None:
+        plain = "_REBUILD_TABLE_PREDICATES = {'summary_nodes': 'kind IS NOT 1'}\n"
+        annotated = (
+            "_REBUILD_TABLE_PREDICATES: dict[str, str] = {'summary_nodes': 'kind IS NOT 1'}\n"
+        )
+        assert self._digest(self._BASE, plain) == self._digest(self._BASE, annotated)
+
+    def test_missing_predicate_constant_fails_clearly(self) -> None:
+        with pytest.raises(KeyError, match="_REBUILD_TABLE_PREDICATES"):
+            self._digest(self._BASE, "")
+
     def test_walk_prunes_usage_edges(self) -> None:
         src = textwrap.dedent(
             """
@@ -415,6 +447,7 @@ class TestNormalizerStability:
             def _helper(): return 2
             _REBUILD_TABLES = ("a",)
             _REBUILD_SEARCH_KINDS = ("tool",)
+            _REBUILD_TABLE_PREDICATES = {}
             """
         )
         names = [n for _m, n in resolve_function_set({"lifecycle": src, "writers": ""})]

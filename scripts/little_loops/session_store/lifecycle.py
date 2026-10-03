@@ -1018,6 +1018,11 @@ def recompress_raw_events(
 # (record_usage_event, channel = 'live'); it is wiped only for replayable
 # channels ('transcript', ENH-3532 'rollout') via _REBUILD_TABLE_PREDICATES
 # (BUG-3530). run_id/state are NOT valid discriminators: replay derives run_id.
+# summary_nodes likewise keeps ``kind = 'retention'`` rows (BUG-3715): compact()
+# writes them deterministically and prune() then deletes their source raw_events,
+# so replay can neither regenerate them nor would it ever write them. summary_spans
+# stays fully wiped — retention nodes have no spans, and spans reference
+# message_events ids that this rebuild replaces.
 _REBUILD_TABLES = (
     "tool_events",
     "message_events",
@@ -1030,7 +1035,10 @@ _REBUILD_TABLES = (
     "usage_events",
 )
 
-_REBUILD_TABLE_PREDICATES = {"usage_events": "channel IS NOT 'live'"}
+_REBUILD_TABLE_PREDICATES = {
+    "usage_events": "channel IS NOT 'live'",
+    "summary_nodes": "kind IS NOT 'retention'",
+}
 
 _REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction", "usage")
 
@@ -1590,13 +1598,21 @@ def rebuild(
     """Wipe and re-derive the JSONL-sourced cache tables from ``raw_events``.
 
     Wipes ``_REBUILD_TABLES`` plus the ``search_index`` rows for
-    ``_REBUILD_SEARCH_KINDS``, then re-derives them by replaying every
+    ``_REBUILD_SEARCH_KINDS`` (except rows ``_REBUILD_TABLE_PREDICATES`` preserves:
+    ``channel = 'live'`` usage events and ``kind = 'retention'`` summary nodes,
+    which cannot be replayed once their raw rows are pruned), then re-derives them by replaying every
     ``raw_events`` row through the same ``_backfill_*`` parsers the legacy
     JSONL path uses (via :func:`_iter_events`). Idempotent — safe to call
     repeatedly. On success, updates the ``last_rebuild_version`` meta key to
     ``SCHEMA_VERSION`` and stamps ``rebuild_derive_version`` with
     ``REBUILD_DERIVE_VERSION`` (what :func:`rebuild_needed` gates on), in the same
     transaction as the derived rows.
+
+    Leaf/condensed summary nodes and all ``summary_spans`` are wiped and
+    regenerated only when ``config`` enables history compaction; with ``config``
+    omitted they are cleared and not regenerated. The whole replay runs in one
+    ``BEGIN IMMEDIATE`` transaction, so an enabled config can make host
+    summarization calls while the write lock is held.
 
     Issue/loop/commit/cli/file/test_run tables are outside ``raw_events``'s
     scope for this issue (ENH-2581) and are left untouched.

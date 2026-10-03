@@ -4628,7 +4628,7 @@ ll-session backfill --since 2026-01-01          # Incremental JSONL backfill sin
 ll-session refresh --host claude-code --session-id SESSION_ID --rebuild
 ll-session refresh --host claude-code --all --json # Report each available or skipped original
 ll-session backfill --max-sessions 50           # Compact at most 50 sessions this run
-ll-session rebuild                              # Re-derive cache tables from raw_events (ENH-2581)
+ll-session rebuild                              # Re-derive cache tables from raw_events; keeps retention summaries (ENH-2581)
 ll-session compact --and-prune                  # Sweep+summarize old raw_events, then delete (ENH-2581)
 ll-session path <session_id>                    # Resolve JSONL file path for a session ID
 ll-session grep "error"                         # Regex search over messages

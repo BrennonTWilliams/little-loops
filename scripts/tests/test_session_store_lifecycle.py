@@ -2447,6 +2447,148 @@ class TestCompact:
         assert result["summary_nodes"] == 0
 
 
+class TestRebuildPreservesRetention:
+    """rebuild() keeps kind='retention' summary nodes; other summaries are re-derived (BUG-3715)."""
+
+    _CFG = {
+        "analytics": {
+            "retention": {
+                "raw_event_max_age_days": 90,
+                "min_project_age_days": 0,
+                "min_db_size_mb": 0,
+            }
+        }
+    }
+
+    @staticmethod
+    def _raw(conn: sqlite3.Connection, session_id: str | None, line_no: int, ts: str) -> None:
+        conn.execute(
+            "INSERT INTO raw_events"
+            "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
+            " VALUES(?, ?, 'claude-code', ?, ?, 'user', '{}', '{}')",
+            (ts, session_id, f"{session_id}.jsonl", line_no),
+        )
+
+    def _seed(self, db: Path) -> None:
+        conn = connect(db)
+        try:
+            self._raw(conn, "s1", 1, "2020-01-01T00:00:00Z")
+            self._raw(conn, "s1", 2, "2020-02-01T00:00:00Z")
+            self._raw(conn, "s2", 1, "2020-03-01T00:00:00Z")
+            self._raw(conn, None, 1, "2020-04-01T00:00:00Z")
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _rows(db: Path, sql: str) -> list[tuple]:
+        conn = connect(db)
+        try:
+            return [tuple(r) for r in conn.execute(sql).fetchall()]
+        finally:
+            conn.close()
+
+    _RETENTION = "SELECT * FROM summary_nodes WHERE kind = 'retention' ORDER BY id"
+
+    def test_pruned_retention_survives_repeated_rebuilds(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed(db)
+        compact(db, config=self._CFG, and_prune=True)
+        assert self._rows(db, "SELECT COUNT(*) FROM raw_events") == [(0,)]
+        before = self._rows(db, self._RETENTION)
+        assert len(before) >= 3
+
+        rebuild(db)
+        rebuild(db)
+        assert self._rows(db, self._RETENTION) == before
+
+    def test_unpruned_links_and_compact_idempotence_survive(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed(db)
+        compact(db, config=self._CFG, and_prune=False)
+        raw_before = self._rows(db, "SELECT * FROM raw_events ORDER BY id")
+        retention_before = self._rows(db, self._RETENTION)
+
+        rebuild(db)
+
+        assert self._rows(db, "SELECT * FROM raw_events ORDER BY id") == raw_before
+        assert self._rows(db, self._RETENTION) == retention_before
+        dangling = self._rows(
+            db,
+            "SELECT COUNT(*) FROM raw_events WHERE summary_node_id IS NOT NULL "
+            "AND summary_node_id NOT IN (SELECT id FROM summary_nodes)",
+        )
+        assert dangling == [(0,)]
+        result = compact(db, config=self._CFG)
+        assert result["compacted_rows"] == 0
+        assert result["summary_nodes"] == 0
+        assert self._rows(db, self._RETENTION) == retention_before
+
+    def test_only_retention_survives_among_mixed_kinds(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        self._seed(db)
+        compact(db, config=self._CFG)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO summary_nodes(session_id, kind, level, content, created_at) "
+                "VALUES('s1', 'leaf', 0, 'old leaf', '2020-01-01T00:00:00Z')"
+            )
+            leaf_id = conn.execute("SELECT MAX(id) FROM summary_nodes").fetchone()[0]
+            conn.execute(
+                "INSERT INTO summary_nodes(session_id, kind, level, content, created_at) "
+                "VALUES('s1', 'condensed', 1, 'old condensed', '2020-01-01T00:00:00Z')"
+            )
+            conn.execute(
+                "INSERT INTO summary_spans(summary_id, message_event_id) VALUES(?, 999)",
+                (leaf_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        retention_before = self._rows(db, self._RETENTION)
+
+        rebuild(db, config=None)
+
+        assert self._rows(db, self._RETENTION) == retention_before
+        assert self._rows(db, "SELECT COUNT(*) FROM summary_nodes WHERE kind != 'retention'") == [
+            (0,)
+        ]
+        assert self._rows(db, "SELECT COUNT(*) FROM summary_spans") == [(0,)]
+
+    def test_late_failure_rolls_back_wipe_and_metadata(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import lifecycle
+
+        db = tmp_path / "history.db"
+        self._seed(db)
+        compact(db, config=self._CFG)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO summary_nodes(session_id, kind, level, content, created_at) "
+                "VALUES('s1', 'leaf', 0, 'old leaf', '2020-01-01T00:00:00Z')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        snapshot = {
+            t: self._rows(db, f"SELECT * FROM {t} ORDER BY 1")
+            for t in ("summary_nodes", "summary_spans", "raw_events", "meta")
+        }
+
+        def _boom(*_a: object, **_k: object) -> None:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(lifecycle, "_stamp_rebuild_derive_version", _boom)
+        with pytest.raises(RuntimeError):
+            rebuild(db)
+
+        for table, rows in snapshot.items():
+            assert self._rows(db, f"SELECT * FROM {table} ORDER BY 1") == rows
+
+
 class TestFts5LeakFixed:
     """rebuild() re-derives search_index from the current raw_events state (ENH-2581).
 
