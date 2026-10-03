@@ -26,7 +26,7 @@ The `ll-loop run` usage table shows `est_cost` as `n/a` for `claude-sonnet-5-5` 
 
 Run `refine-to-ready-issue-20261002T111524` recorded `claude-sonnet-5-5` on all seven `usage.jsonl` rows and printed `n/a` for all five states.
 
-1. `scripts/little_loops/pricing.py:MODEL_PRICING` contains `claude-sonnet-5` but lacks `claude-sonnet-5-5`. `estimate_cost_usd('claude-sonnet-5-5', 1000, 1000)` returns `None`.
+1. `scripts/little_loops/pricing.py:MODEL_PRICING` contains `claude-sonnet-5` but lacks `claude-sonnet-5-5`. `estimate_cost_usd` returns `None` for model `claude-sonnet-5-5` (probed with 1000 input and 1000 output tokens).
 2. `CostReport.from_usage_jsonl` sets a state's cost to `None` if any row is unpriced. It also skips the estimator entirely for a row with a null token component or a positive `*_missing` count. The existing `has_unknown_model` flag therefore covers both absent prices and incomplete observations; it cannot identify why a row is unpriced.
 3. `PerStateCost.table_row()` renders `n/a`, and `_compute_totals` leaves the run's total cost null. Known-cost subtotals are not presented as complete totals.
 4. New history `usage_events` rows for the absent model also receive null `cost_usd`; already-written null rows are not recomputed when a rate is added.

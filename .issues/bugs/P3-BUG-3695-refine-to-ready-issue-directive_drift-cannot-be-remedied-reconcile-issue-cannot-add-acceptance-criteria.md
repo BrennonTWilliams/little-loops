@@ -196,7 +196,7 @@ Command boundary: `/ll:reconcile-issue ISSUE_ID --from-verify-evidence`. This is
 - [x] VERIFY-before-AC ordering, normal clear topology, HEDGES-only skip and non-drift shared-state eligibility are tested; the existing failed-clear/no-write limitation is documented, not described as impossible.
 - [x] Repaired fixture checkbox ACs pass the actual manual-phrase probe; coverage/quality is tested separately rather than inferred from that probe's exit 0.
 - [x] On budget exhaustion after a flagged reconcile, `record_gate_unmet` output/evidence distinguishes DIRECTIVE_DRIFT non-convergence from other gate failures without adding a `legacy_class`; a stale DIRECTIVE_DRIFT verdict+evidence pair on the shared `ACCEPTANCE_CRITERIA` route without the flag is tested to be inert.
-- [ ] Route table, target 2/shared budget and max_steps stay unchanged; mirrors and relevant documentation match; `python -m pytest scripts/tests/` exits 0. _(Implemented 2026-10-03: mirrors/docs done; suite is 27824 passed with one pre-existing, unrelated failure — `test_no_new_unverifiable_evidence` on a BUG-3696 quote — so this box stays open until that is fixed.)_
+- [x] Route table, target 2/shared budget and max_steps stay unchanged; mirrors and relevant documentation match; `python -m pytest scripts/tests/` exits 0.
 - [ ] ~~Three-run live evaluation~~ → separate follow-up issue (capture when code lands). Original text: three-run live evaluation reports repair/convergence results and remaining limitations on a fresh AC-only fixture, with fixture-only/context-inventory evaluation too; any failed replay is investigated without an automatic budget increase.
 
 ## Secondary Observations

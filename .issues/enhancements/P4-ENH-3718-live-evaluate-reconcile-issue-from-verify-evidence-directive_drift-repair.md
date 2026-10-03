@@ -28,7 +28,7 @@ Investigate any failed replay or file a focused follow-up; never automatically r
 
 ## Current Behavior
 
-BUG-3695's repair path is covered only by scripted FSM tests (routing, evidence lifecycle, one-attempt budget). No run has shown a real model, given `reconcile-issue --from-verify-evidence` and a `DIRECTIVE_DRIFT` finding, adding an entailed AC/Step without inventing requirements, and converging within the one-reconcile budget.
+BUG-3695's repair path is covered only by scripted FSM tests (routing, evidence lifecycle, one-attempt budget). No run has shown a real model, given the `/ll:reconcile-issue` flag `--from-verify-evidence` and a `DIRECTIVE_DRIFT` finding, adding an entailed AC/Step without inventing requirements, and converging within the one-reconcile budget.
 
 ## Expected Behavior
 
