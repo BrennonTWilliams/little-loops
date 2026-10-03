@@ -4,10 +4,11 @@ type: ENH
 title: scratch-cleanup.sh never sweeps no-suffix files so .loops/tmp/scratch still
   grows unbounded
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T16:28:16Z'
+completed_at: '2026-10-03T19:31:59Z'
 relates_to:
 - BUG-3705
 - BUG-3707
@@ -157,28 +158,34 @@ The 24h threshold, numeric suffix parser, live-PID exemption below seven days, b
 
 ## Acceptance Criteria
 
-- [ ] On a successful sweep, a no-suffix file 8d old is removed and one 6d old is preserved; margin-based cases cover both sides of the seven-day threshold.
-- [ ] Old dotfiles and files with spaces/newlines are removed using complete paths; fresh fixed-name and rewritten files are preserved.
-- [ ] The reproduced 48h-old newline filename is handled as one path and cannot cause deletion of a separate fresh pid-shaped file.
-- [ ] A pid-shaped file 8d old is removed even if its filename PID is alive; the same live-PID fixture 6d old remains. Dead-PID fixtures on either side of 24h preserve the existing tier policy.
-- [ ] Existing PID parser edge cases still pass; existing preservation-test comments are updated to describe the finite two-tier contract.
-- [ ] A delayed keep-only scan stops pass-1 processing after the cooperative deadline is observed, including before a skip; a pending partial deletion batch is flushed and the hook exits 0 normally.
-- [ ] A deliberately interrupted sweep leaves completed deletions in place, preserves unrelated/fresh files, and a subsequent successful invocation finishes the remaining eligible work. No exit-0 assertion is made for external termination.
-- [ ] Subdirectories, nested files, symlinks, and external targets are preserved; a symlink at the scratch-directory path causes no target deletion.
-- [ ] Fork-count checks show no per-file `basename`/`sed`/`stat` and only batched pass-1 `rm`; pass 0 invokes no `rm`. A disappearing-file race does not make normal completion fail.
-- [ ] Mixed-tier large-directory performance is measured under supported bash variants without turning the observed timing into a hard completion guarantee; normal, cooperative-stop, and host-timeout outcomes are distinguished.
-- [ ] The hook header/loop comments, guide, troubleshooting, and mirrored CLAUDE.md/AGENTS.md contracts consistently state the two tiers, behavioral compatibility change, resume-note limits, and best-effort timeout behavior.
-- [ ] `python -m pytest scripts/tests/` exits 0, including mirror gates; supported shell/platform validation is recorded.
+- [x] On a successful sweep, a no-suffix file 8d old is removed and one 6d old is preserved; margin-based cases cover both sides of the seven-day threshold.
+- [x] Old dotfiles and files with spaces/newlines are removed using complete paths; fresh fixed-name and rewritten files are preserved.
+- [x] The reproduced 48h-old newline filename is handled as one path and cannot cause deletion of a separate fresh pid-shaped file.
+- [x] A pid-shaped file 8d old is removed even if its filename PID is alive; the same live-PID fixture 6d old remains. Dead-PID fixtures on either side of 24h preserve the existing tier policy.
+- [x] Existing PID parser edge cases still pass; existing preservation-test comments are updated to describe the finite two-tier contract.
+- [x] A delayed keep-only scan stops pass-1 processing after the cooperative deadline is observed, including before a skip; a pending partial deletion batch is flushed and the hook exits 0 normally.
+- [x] A deliberately interrupted sweep leaves completed deletions in place, preserves unrelated/fresh files, and a subsequent successful invocation finishes the remaining eligible work. No exit-0 assertion is made for external termination.
+- [x] Subdirectories, nested files, symlinks, and external targets are preserved; a symlink at the scratch-directory path causes no target deletion.
+- [x] Fork-count checks show no per-file `basename`/`sed`/`stat` and only batched pass-1 `rm`; pass 0 invokes no `rm`. A disappearing-file race does not make normal completion fail.
+- [x] Mixed-tier large-directory performance is measured under supported bash variants without turning the observed timing into a hard completion guarantee; normal, cooperative-stop, and host-timeout outcomes are distinguished.
+- [x] The hook header/loop comments, guide, troubleshooting, and mirrored CLAUDE.md/AGENTS.md contracts consistently state the two tiers, behavioral compatibility change, resume-note limits, and best-effort timeout behavior.
+- [x] `python -m pytest scripts/tests/` exits 0, including mirror gates; supported shell/platform validation is recorded.
 
 ## Review Evidence
 
 2026-10-03: 27 existing scratch-cleanup/root-resolution tests passed. Separate temporary-fixture probes reproduced fresh-file deletion from a newline-containing old filename and a 6.44s keep-only scan with no cooperative deadline check. The proposed native seven-day pass was locally checked against old/fresh files, dotfiles, newline names, a symlink to an external target, and a nested file; direct-file scope and target preservation behaved as intended. These observations justify the added regressions but do not prove timing on every filesystem or atomic safety against concurrent rewrites. The prior readiness/outcome scores of 100/93 described the previous design and were removed; they must be reassessed for the revised scope.
+
+## Resolution
+
+Implemented 2026-10-03. `hooks/scripts/scratch-cleanup.sh` gains a universal 7-day mtime tier (`find -mmin +10080 -delete`, pass 0), NUL-delimited complete-path records in the dead-PID pass (fixes the newline wrong-file deletion), and a cooperative-deadline check before every record with pending-batch flush. Contract comments, `BUILTIN_HOOKS_GUIDE.md`, `TROUBLESHOOTING.md`, and the mirrored `.claude/CLAUDE.md`/`AGENTS.md` now describe the two tiers and retention limits. New unmarked tests in `scripts/tests/test_scratch_cleanup_retention.py` (PATH bash and macOS `/bin/bash` 3.2) cover thresholds, odd names, symlinks, deadline/flush, interrupt-and-rerun, fork counts, and error tolerance; the 5,000-file integration check now mixes tiers. Full suite: 27802 passed; unrelated failures: `test_verify_evidence.py::TestRepoGate` (BUG-3696/BUG-3702 issue-text quotes) and `test_libsql_integration.py::TestLive` (needs a live endpoint). CHANGELOG note deferred to release prep.
 
 ## Status
 
 **Open** | Created: 2026-10-03 | Priority: P4 | Revised after review: 2026-10-03
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-03T19:31:59 - `fce95c90-724f-48de-9ec2-ce1a89436c3f.jsonl`
+- `/ll:ready-issue` - 2026-10-03T19:23:09 - `1643fedb-6464-4d0a-814e-505a21a1f72b.jsonl`
 - `/ll:confidence-check` - 2026-10-03T18:44:58 - `b1c5eb16-ae1a-4e20-9a59-b0f92f518844.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:44:48 - `32f52444-a659-4ef8-933a-2361ae6c6aff.jsonl`
 - `/ll:format-issue` - 2026-10-03T17:29:28 - `782c403d-3c0b-47cc-a461-f433badb1263.jsonl`

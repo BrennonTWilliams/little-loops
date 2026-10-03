@@ -3036,10 +3036,10 @@ class TestScratchCleanupSessionEnd:
     def test_scratch_cleanup_preserves_file_without_pid_suffix(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        """BUG-2525: a scratch file written without the -<pid> suffix convention
-        (e.g. user-typed `> .loops/tmp/scratch/test-results.txt`) must survive
-        the sweep — the cleanup only owns files its sibling
-        scratch-pad-redirect.sh created, identified by the PID-suffix shape."""
+        """BUG-2525 / ENH-3706: a recent scratch file without the -<pid> suffix
+        (e.g. user-typed `> .loops/tmp/scratch/test-results.txt`) survives the
+        sweep. Preservation is finite: the universal 7-day tier removes it once
+        idle that long (see tests/test_scratch_cleanup_retention.py)."""
 
         script = self.REPO_ROOT / "hooks/scripts/scratch-cleanup.sh"
         monkeypatch.chdir(tmp_path)
@@ -3057,7 +3057,8 @@ class TestScratchCleanupSessionEnd:
     def test_scratch_cleanup_preserves_file_owned_by_live_process(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        """A scratch file whose owning PID is still alive must survive cleanup.
+        """A recent scratch file whose filename PID is alive must survive cleanup
+        (a live PID does not exempt it from the 7-day tier, ENH-3706).
 
         Regression test for the cross-process collision: a concurrent
         session's cleanup sweep must not delete another live session's
@@ -3112,8 +3113,9 @@ class TestScratchCleanupSessionEnd:
 
     @pytest.mark.parametrize("bash_bin", _scratch_bashes())
     def test_scratch_cleanup_large_dir_within_hook_timeout(self, tmp_path: Path, bash_bin: str):
-        """BUG-3705: 5,000 stale dead-pid files sweep inside the 5s hook budget,
-        while no-suffix, live-pid, and fresh files survive at scale."""
+        """BUG-3705/ENH-3706: 5,000 stale dead-pid files plus 500 8d-old no-suffix
+        files sweep inside the 5s hook budget, while recent no-suffix, live-pid,
+        and fresh files survive at scale (timing is local evidence, not a guarantee)."""
         scratch = tmp_path / ".loops/tmp/scratch"
         scratch.mkdir(parents=True)
         # 5,003 is not a multiple of the 500-file delete chunk.
@@ -3121,6 +3123,12 @@ class TestScratchCleanupSessionEnd:
         for f in dead:
             f.touch()
             _backdate(f)
+        # ENH-3706: mixed tiers — 8d-old no-suffix files go via the universal pass.
+        for i in range(500):
+            f = scratch / f"note{i}.txt"
+            f.touch()
+            _backdate(f, hours=8 * 24)
+            dead.append(f)
         keep_old = [
             scratch / "test-results.txt",
             scratch / f"live-{os.getpid()}.txt",

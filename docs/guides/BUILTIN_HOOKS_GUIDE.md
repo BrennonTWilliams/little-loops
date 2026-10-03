@@ -52,7 +52,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **SessionStart** | session-start | Loads config + local overrides, injects a 7-day project digest, starts history backfill | — | on |
 | **SessionStart** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **SessionStart** | drift-check | Surfaces throttled `mention`/`route` doc-drift findings (`hooks.doc_drift_throttle_days`, default 7 days); opt out with `LL_DOC_DRIFT_DISABLE` | — | on |
-| **SessionStart** | scratch-cleanup | Prunes dead-PID scratch files from `.loops/tmp/scratch` | — | on |
+| **SessionStart** | scratch-cleanup | Prunes stale files from `.loops/tmp/scratch` (dead-PID >24h, anything idle >7d) | — | on |
 | **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` or `.ll/decisions.d/*.json` fragment from Claude-side Write/Edit | **yes** | on |
@@ -88,7 +88,7 @@ You start a session
   → SessionStart: loads config + local overrides, injects project digest
   → SessionStart (stale refs): reports any open-issue references pointing at issues the previous session marked done
   → SessionStart (drift check): reports throttled mention/route doc-drift findings, at most once per hooks.doc_drift_throttle_days
-  → SessionStart (scratch cleanup): prunes dead-PID scratch files
+  → SessionStart (scratch cleanup): prunes stale scratch files
 
 You submit a prompt
   → UserPromptSubmit: optimizes vague prompts; records skill calls and corrections
@@ -181,7 +181,11 @@ Runs `verify_documentation()` (the same derived checker behind `ll-verify-docs`)
 
 **Hook:** `scratch-cleanup.sh` (bash + `find`)
 
-Prunes stale files from `.loops/tmp/scratch` whose owning PID is no longer alive, leaving untouched any file a still-running concurrent session/`ll-loop`/`ll-auto` process owns. **Only files matching the `${SAFE_NAME}-<pid>.txt` shape produced by `scratch-pad-redirect.sh` are eligible for removal** — user-typed scratch files (no `-<pid>` suffix) are preserved unconditionally (BUG-2525). Runs once at the start of each session — catching files left over from the *previous* session's exit. Originally bound to `SessionEnd`, but that event enforces a hard ~1.5s kill ceiling on any exit path (Ctrl+C, Ctrl+D, `/exit`) regardless of configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577), which could cancel even this fast hook and print a spurious "Hook cancelled" error (BUG-3363). Re-homed to `SessionStart`, where there's no forced-kill deadline — the PID-liveness guard already protects concurrently-active writers regardless of which event triggers the sweep. Only files untouched for 24h are candidates, because a redirect's embedded PID belongs to the already-exiting hook process and is dead on arrival — the age guard keeps a sibling session's in-flight output safe. The sweep uses shell builtins and batched `rm` (no per-file forks) and stops at a ~3s deadline, so it fits the 5s hook timeout even with thousands of files (BUG-3705). Always on.
+Prunes stale files directly in `.loops/tmp/scratch` using two age tiers (ENH-3706): **(1)** any regular file idle for more than **7 days** is removed regardless of name or PID liveness — including user-typed files such as `test-results.txt` and dotfiles; **(2)** files older than 24h whose name ends in `-<pid>` (the `${SAFE_NAME}-<pid>.txt` shape produced by `scratch-pad-redirect.sh`) are removed when that PID is not alive. Younger files, subdirectories, and symlinks are never touched. This replaces the earlier (BUG-2525) guarantee that user-typed files were preserved unconditionally.
+
+**Retention limits:** age is the file's modification time, so reading a file does not keep it — store durable progress/resume notes outside scratch, or rewrite them to refresh the age. A filename PID is a compatibility check, not proof of who wrote the file, and a live PID does not exempt a file idle past 7 days. Files copied in with an old preserved mtime may be eligible immediately. Selection and deletion are not atomic with a concurrent rewrite. Seven days is an eligibility threshold, not a guaranteed maximum age on disk.
+
+Originally bound to `SessionEnd`, but that event enforces a hard ~1.5s kill ceiling on any exit path (Ctrl+C, Ctrl+D, `/exit`) regardless of configured `timeout` (unfixed upstream: anthropics/claude-code#32712, #41577), which could cancel even this fast hook and print a spurious "Hook cancelled" error (BUG-3363). Re-homed to `SessionStart`, where there's no forced-kill deadline — the age tiers protect concurrently-active writers regardless of which event triggers the sweep. The PID tier only considers files untouched for 24h, because a redirect's embedded PID belongs to the already-exiting hook process and is dead on arrival — the age guard keeps a sibling session's in-flight output safe. The sweep uses shell builtins and batched `rm` (no per-file forks) and stops at a ~3s cooperative deadline (checked between files), so it normally fits the 5s hook timeout even with thousands of files (BUG-3705). The deadline cannot interrupt a blocked filesystem call, so a very large backlog or slow disk can still hit the host timeout; cleanup is restartable and the next session continues. Always on.
 
 ---
 
