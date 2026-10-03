@@ -166,10 +166,26 @@ Program Design gate's arming.
    - **Test-fixture invalidation**: does the proposal add a call, branch, or code
      path that an existing test's mock/fixture does not account for (e.g. a second
      call landing on a single-`return_value` mock intended for the first)?
-   - **AC coverage of identified integration points**: do the issue's Acceptance
-     Criteria cover every integration point already listed in its Integration Map
-     (including points `wire_issue` found)? A point with no corresponding AC is a
-     gap this check must surface.
+   - **AC coverage of identified integration points (BUG-3695)**: walk **every
+     actual Integration Map entry** once and classify it `covered`, `uncovered`
+     or `not applicable` (with the applicable directive and a one-line reason).
+     Decide by the entry's **role in the selected mechanism**, not its subsection
+     name:
+
+     | Entry's role in the selected mechanism | Required coverage |
+     |---|---|
+     | Observable behavior, public API or compatibility contract change | An Acceptance Criterion stating the expected outcome and how it is verified |
+     | Required test/mock/fixture update or fixture invalidation | A concrete Implementation Step — do not invent an AC for the fixture itself |
+     | Context-only existing caller, unchanged helper, Similar Pattern, or Tests/Documentation inventory | `not applicable` with a reason — listing a file alone creates no requirement |
+
+     Several entries may share one criterion or step; coverage is not one AC per
+     filename. An entry that describes a real behavior/contract consequence stays
+     applicable even when filed under Tests or Documentation. An AC that merely
+     says a surface "is covered" is not coverage. Collect **all** uncovered
+     applicable points in this one pass — do not stop at the first, and do not
+     narrow scope after a failed replay — because the repair loop gets one
+     reconcile attempt per run. An applicable gap whose fix would change the
+     chosen mechanism is `PROPOSAL_UNSOUND`, not directive drift.
 
    This is judgment over consequences, not a claim to corroborate — read the
    Proposed Solution's diff-shape against the current code the same way an
@@ -293,7 +309,7 @@ verification output.
 | DEP_ISSUES | Dependency references have problems (broken refs, missing backlinks, cycles) |
 | DECISIONS_VIOLATION | Issue violates an active required rule in the decisions log |
 | PROPOSAL_UNSOUND | The Proposed Solution, implemented as written, contradicts the code it names (check B6) and the selected option must change — a claim-verification defect, not a claim, so it is not remedied by `refine_followup` or `reconcile-issue` |
-| DIRECTIVE_DRIFT | Check B6 finding whose fix is confined to Implementation Steps / Acceptance Criteria / Integration Map; the selected mechanism stands (BUG-3574) — remedied by `reconcile-issue` |
+| DIRECTIVE_DRIFT | Check B6 finding whose fix is confined to Implementation Steps / Acceptance Criteria / Integration Map; the selected mechanism stands (BUG-3574) — remedied by `reconcile-issue --from-verify-evidence` (BUG-3695), which reads the persisted `verify_evidence` and may add the entailed AC/Step |
 | EVIDENCE_UNVERIFIED | A quoted evidence span attributed to a named artifact (check B7) exists in no revision of that artifact — outranks `PROPOSAL_UNSOUND` when both apply |
 | CLAIMS_OUTDATED | An `OUTDATED`/`NEEDS_UPDATE` finding (checks 1-4) whose fix is a **factual metadata correction** only (BUG-3637; see correctable-scope rule below) — remedied by `correct_claims`, not `refine_followup` |
 
@@ -432,7 +448,18 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
 - `DIRECTIVE_DRIFT` verdict (BUG-3574, check B6) → `verify_verdict:
   DIRECTIVE_DRIFT` — persisted as its own value so the `VERIFY:DIRECTIVE_DRIFT` route can
   route it to `reconcile_issue`. Non-VALID, `exit 1` in `--check` mode. Ranks
-  below `EVIDENCE_UNVERIFIED` and `PROPOSAL_UNSOUND`.
+  below `EVIDENCE_UNVERIFIED` and `PROPOSAL_UNSOUND`. In the **same frontmatter
+  update** (BUG-3695) also write the **complete current** `verify_evidence:`
+  field — replace any prior value, never append — as a **double-quoted YAML
+  scalar** on a single line (no newlines, `"` and `\` escaped), one item per
+  applicable uncovered point or fixture/compatibility drift found in this pass,
+  `; `-separated, each shaped `<section>: '<specific drift>' -> <entailed
+  correction>`, e.g. `verify_evidence: "Acceptance Criteria: 'no AC covers the
+  ll-doctor rebuild-pending surface' -> add an AC stating the expected
+  notice and how it is verified"`. Do not truncate the list or drop findings.
+  `reconcile-issue --from-verify-evidence` consumes it; `clear_verify_verdict`
+  removes it (value-agnostic) before the next verify. Frontmatter only under
+  `--check`.
 - `CLAIMS_OUTDATED` verdict (BUG-3637): when every `OUTDATED`/`NEEDS_UPDATE`
   finding is in the correctable scope defined in §2C (and no finding from the
   never-auto-correct set below applies) → `verify_verdict: CLAIMS_OUTDATED` —

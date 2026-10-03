@@ -15,11 +15,11 @@ relates_to:
 - BUG-3691
 - ENH-3690
 decision_needed: false
-confidence_score: 75
-outcome_confidence: 64
-score_complexity: 10
+confidence_score: 92
+outcome_confidence: 69
+score_complexity: 13
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 20
 score_change_surface: 18
 ---
 
@@ -173,10 +173,10 @@ Command boundary: `/ll:reconcile-issue ISSUE_ID --from-verify-evidence`. This is
 
 ## Implementation Steps
 
-1. Land BUG-3708 first (`blocked_by` is now declared). Keep its occurrence/property and advisory contracts intact while editing B6/persistence; serialize overlapping ENH-3690 edits too.
+1. BUG-3708 has landed (`45481a2ba`). Keep its occurrence/property and advisory contracts intact while editing B6/persistence; serialize overlapping ENH-3690 edits too.
 2. Update B6 with the applicability table and complete per-entry walk. Persist DIRECTIVE_DRIFT verdict/evidence together using the existing escaped single-line format; update remedy row/cross-references without losing asserted anchors.
 3. Add the caller flag and narrow source extension throughout reconcile's arguments, parsing, findings read, contract, edit workflow and output. Preserve ordinary no-new-requirements, provenance and check-mode rules. Only the shared `reconcile_issue` action receives the flag.
-4. Add scoped prose tests and positive/negative scripted real-FSM cases above; pin unchanged dispatch, counter and max_steps. Test actual AC-checker compatibility separately from semantic coverage expectations.
+4. Add scoped prose tests and positive/negative scripted real-FSM cases above; pin unchanged dispatch, counter and max_steps. Test actual AC-checker compatibility separately from semantic coverage expectations. Add the distinct non-convergence line/evidence note to `record_gate_unmet` (no new `legacy_class`) with a test, plus the stale-verdict-on-`ACCEPTANCE_CRITERIA` inert case.
 5. Update relevant docs, regenerate present host mirrors and run `python -m pytest scripts/tests/`.
 6. **(Split to a follow-up issue — see Review 2026-10-03 callout.)** Evaluate three independent runs from an identical fresh fixture reproducing the AC-only drift (ENH-3678 has since changed), each with fresh run_dir, unchanged code and the current one-reconcile budget. Record findings, AC/Step edits, checker output, verdicts and counts reaching VALID/ready. Also evaluate fixture-only drift and irrelevant Tests/Docs inventories. Live evaluation assesses model compliance; scripted tests prove routing, not convergence. Investigate failures or capture a focused follow-up, never automatically raise the counter.
 
@@ -188,15 +188,15 @@ Command boundary: `/ll:reconcile-issue ISSUE_ID --from-verify-evidence`. This is
 
 ## Acceptance Criteria
 
-- [ ] `reconcile_issue` alone gains `--from-verify-evidence`; `reconcile_revision` and prepare's `run_reconcile` do not. Eligibility additionally requires DIRECTIVE_DRIFT and nonempty evidence; absent/other/empty conditions leave ordinary behavior intact, including read-only `--check`.
-- [ ] DIRECTIVE_DRIFT persistence writes verdict and the complete current evidence together, replacing old evidence, with the existing escaped double-quoted single-line scalar format; tests slice this specific branch.
-- [ ] B6 classifies every map entry as covered/uncovered/not applicable, distinguishes behavior ACs from fixture Steps, records all applicable uncovered points in one pass and does not demand one AC per file/inventory entry.
-- [ ] Added ACs/Steps trace to verify findings and the selected mechanism; every AC states an observable outcome and how to verify it. No map entries or new mechanism requirements are added; output reports additions.
-- [ ] Scripted real-child FSM tests exercise AC-only and fixture-only drift through repair/normalize/clear/fresh verify, assert evidence lifecycle and one attempt, and preserve the negative exhaustion path.
-- [ ] VERIFY-before-AC ordering, normal clear topology, HEDGES-only skip and non-drift shared-state eligibility are tested; the existing failed-clear/no-write limitation is documented, not described as impossible.
-- [ ] Repaired fixture checkbox ACs pass the actual manual-phrase probe; coverage/quality is tested separately rather than inferred from that probe's exit 0.
-- [ ] On budget exhaustion after a flagged reconcile, `record_gate_unmet` output/evidence distinguishes DIRECTIVE_DRIFT non-convergence from other gate failures without adding a `legacy_class`; a stale DIRECTIVE_DRIFT verdict+evidence pair on the shared `ACCEPTANCE_CRITERIA` route without the flag is tested to be inert.
-- [ ] Route table, target 2/shared budget and max_steps stay unchanged; mirrors and relevant documentation match; `python -m pytest scripts/tests/` exits 0.
+- [x] `reconcile_issue` alone gains `--from-verify-evidence`; `reconcile_revision` and prepare's `run_reconcile` do not. Eligibility additionally requires DIRECTIVE_DRIFT and nonempty evidence; absent/other/empty conditions leave ordinary behavior intact, including read-only `--check`.
+- [x] DIRECTIVE_DRIFT persistence writes verdict and the complete current evidence together, replacing old evidence, with the existing escaped double-quoted single-line scalar format; tests slice this specific branch.
+- [x] B6 classifies every map entry as covered/uncovered/not applicable, distinguishes behavior ACs from fixture Steps, records all applicable uncovered points in one pass and does not demand one AC per file/inventory entry.
+- [x] Added ACs/Steps trace to verify findings and the selected mechanism; every AC states an observable outcome and how to verify it. No map entries or new mechanism requirements are added; output reports additions.
+- [x] Scripted real-child FSM tests exercise AC-only and fixture-only drift through repair/normalize/clear/fresh verify, assert evidence lifecycle and one attempt, and preserve the negative exhaustion path.
+- [x] VERIFY-before-AC ordering, normal clear topology, HEDGES-only skip and non-drift shared-state eligibility are tested; the existing failed-clear/no-write limitation is documented, not described as impossible.
+- [x] Repaired fixture checkbox ACs pass the actual manual-phrase probe; coverage/quality is tested separately rather than inferred from that probe's exit 0.
+- [x] On budget exhaustion after a flagged reconcile, `record_gate_unmet` output/evidence distinguishes DIRECTIVE_DRIFT non-convergence from other gate failures without adding a `legacy_class`; a stale DIRECTIVE_DRIFT verdict+evidence pair on the shared `ACCEPTANCE_CRITERIA` route without the flag is tested to be inert.
+- [ ] Route table, target 2/shared budget and max_steps stay unchanged; mirrors and relevant documentation match; `python -m pytest scripts/tests/` exits 0. _(Implemented 2026-10-03: mirrors/docs done; suite is 27824 passed with one pre-existing, unrelated failure — `test_no_new_unverifiable_evidence` on a BUG-3696 quote — so this box stays open until that is fixed.)_
 - [ ] ~~Three-run live evaluation~~ → separate follow-up issue (capture when code lands). Original text: three-run live evaluation reports repair/convergence results and remaining limitations on a fresh AC-only fixture, with fixture-only/context-inventory evaluation too; any failed replay is investigated without an automatic budget increase.
 
 ## Secondary Observations
@@ -214,47 +214,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract corrections)_
+_Added by `/ll:confidence-check` on 2026-10-03 (re-scored after BUG-3708 landed and `blocked_by` was cleared)_
 
-**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies hard override; the criteria sum alone would be PROCEED WITH CAUTION)
-**Outcome Confidence**: 64/100 → MODERATE
-
-### Gaps to Address
-
-- `blocked_by: BUG-3708` is `open`, and BUG-3708 is itself blocked on BUG-3691. The chain is BUG-3691 → BUG-3708 → BUG-3695. Rerun confidence-check once BUG-3708 lands. This is the only blocker; `format-check` is clean and `check-design` passes.
+**Readiness Score**: 92/100 → PROCEED
+**Outcome Confidence**: 69/100 → MODERATE
 
 ### Concerns
 
-- The root-cause anchors check out: `commands/verify-issues.md:263` (DIRECTIVE_DRIFT "remedied by `reconcile-issue`"), `refine-to-ready-issue.yaml:589` (`VERIFY:DIRECTIVE_DRIFT` → `check_reconcile_limit`), `commands/reconcile-issue.md:120` ("do not invent new requirements"), and the `target: 2` counter at `refine-to-ready-issue.yaml:618`. `--from-verify-evidence` is not yet implemented anywhere, so there is no duplicate.
-- `/ll:reconcile-issue` is called from two loop actions in `refine-to-ready-issue.yaml` (`reconcile_issue`, `reconcile_revision`) and one in `prepare-issue.yaml`. The flag must reach only `reconcile_issue`, which the negative-case pins cover.
-- The carve-out is command prose, not an enforced edit filter, so model compliance is live-evaluated rather than proven.
+- Anchors resolve by phrase, not line: `VERIFY:DIRECTIVE_DRIFT` route (`refine-to-ready-issue.yaml:589`), `check_reconcile_limit` (`:797`), `reconcile_issue` (`:822`), `reconcile_revision` (`:712`), `record_gate_unmet` (`:1252`), "do not invent new requirements" (`commands/reconcile-issue.md:120`). `--from-verify-evidence` exists nowhere yet, so no duplicate. `format-check` is clean and `check-design` passes. `.omp` is absent, so no omp mirror.
+- The new-signal AC (distinct non-convergence output from `record_gate_unmet`) had no Implementation Step; step 4 now covers it.
+- The carve-out is command prose, not an enforced edit filter; model compliance is evaluated in the split-out live-evaluation follow-up.
 
 ### Outcome Risk Factors
 
-- Cross-cutting contract change (verify B6 + persistence, reconcile flag/eligibility, loop action, 4 docs, mirrors) with moderate per-site depth.
-- One shared reconcile attempt remains. Incomplete first-pass enumeration or applicability churn can still exhaust it, and no automatic budget fallback masks that defect.
-- The new real-child FSM test must adapt `autodev_harness.py`, which currently stubs the child.
-- A failed clear plus a verify call that writes nothing can retain stale evidence (documented limitation).
-- The command and mirror surface is shared with BUG-3708 and ENH-3690, so edits must be serialized.
-
-### Concerns addressed in this review
-
-- Added `blocked_by: [BUG-3708]`; the required implementation order is no longer only prose.
-- Resolved the route-token choice: keep the smallest flag/verdict/evidence gate. The token is derived from the same persisted data and does not fix failed-clear/no-write staleness.
-- B6 applicability is decided up front, so Tests/Docs inventories do not inflate requirements and fixture repairs do not require invented ACs.
-- Persistence/read/output touchpoints are explicit; the current generic evidence assertion is replaced by a branch-scoped test.
-- The manual-phrase checker and scripted FSM tests have explicit limits; actual model compliance/convergence is evaluated separately.
-
-### Outcome Risk Factors (post-review)
-
+- Cross-cutting contract change (verify B6 + persistence, reconcile flag/eligibility, one loop action, four docs, host mirrors) with moderate per-site depth.
 - One shared reconcile attempt remains; incomplete first-pass enumeration or applicability churn can still exhaust it. No automatic budget fallback masks that defect.
-- The carve-out is command prose rather than an enforced edit filter; live evaluation must inspect actual additions and preserved sections.
-- Failed clear plus a verify call that writes nothing can retain old evidence; a separate infrastructure fix would need to change freshness guarantees.
-- Shared command/mirror surface with BUG-3708 and ENH-3690 requires serialized edits.
-
-_Addendum 2026-10-03: BUG-3708 is `done` (`45481a2ba`) and `blocked_by` is cleared; the readiness cap above no longer applies. Rescore required._
+- The new real-child FSM test must adapt `autodev_harness.py`, which currently stubs the child.
+- Failed clear plus a verify call that writes nothing can retain stale evidence (documented limitation).
+- Shared `commands/verify-issues.md` / mirror surface with other EPIC-3694 children requires serialized edits.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T22:46:43 - `c4c6a704-e666-48df-b6fe-37ff869c1bae.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:52:31 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:18:06 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
 - `/ll:decide-issue` - 2026-10-02T20:01:51 - `c7a25ce4-f603-4faf-97bd-88495061e012.jsonl`

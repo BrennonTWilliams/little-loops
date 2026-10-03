@@ -1,6 +1,6 @@
 ---
 description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose
-argument-hint: "ISSUE_ID"
+argument-hint: "ISSUE_ID [--check] [--from-verify-evidence]"
 allowed-tools:
   - Read
   - Glob
@@ -16,7 +16,7 @@ arguments:
     description: Issue ID to reconcile (e.g., FEAT-2672, BUG-004)
     required: true
   - name: flags
-    description: "Optional flags: --check (report the plateau verdict without writing, for FSM evaluators)"
+    description: "Optional flags: --check (report the plateau verdict without writing, for FSM evaluators); --from-verify-evidence (BUG-3695: also treat the recorded DIRECTIVE_DRIFT verify_evidence as a source, allowing entailed Acceptance Criteria / Implementation Step additions)"
     required: false
 ---
 
@@ -117,8 +117,32 @@ the tree (that is `/ll:ready-issue`'s job).
 exception: a Scope Boundaries claim rewritten into an explicit decision
 directive (step 5's branch 2b) is new imperative prose describing an open scope
 call, not a factual correction, so it is carved out of the tracing requirement.
-Outside that one branch, do not invent new requirements — if a directive bullet
-has no supporting finding, leave it as-is and note it under `## CONCERNS`.
+Outside that one branch (and the `--from-verify-evidence` source extension
+below), do not invent new requirements — if a directive bullet has no supporting
+finding, leave it as-is and note it under `## CONCERNS`.
+
+**Source extension — `--from-verify-evidence` (BUG-3695):** an explicit caller
+flag, never inferred from frontmatter (same pattern as `/ll:verify-issues
+--from-evidence`, BUG-3637). Eligible **only when ALL of**: the flag is passed,
+the issue's `verify_verdict` is `DIRECTIVE_DRIFT`, and `verify_evidence` is
+nonempty. A missing flag, any other verdict, or absent/empty evidence leaves the
+ordinary contract above fully in force. `--check` stays read-only even when
+eligible. When eligible:
+- Treat each `; `-separated item of `verify_evidence`
+  (`<section>: '<specific drift>' -> <entailed correction>`) as an additional
+  recorded source alongside the findings. Every added or rewritten item must
+  trace to one concrete evidence item and be **entailed by the selected
+  mechanism**. If an item would demand a new behavior or option, do not add it —
+  note it under `## CONCERNS` (that finding belongs to `PROPOSAL_UNSOUND`, not a
+  license to invent requirements).
+- You MAY add or rewrite Acceptance Criteria and Implementation Steps, and
+  correct *existing* `## Integration Map` entries. **Never add new Integration Map
+  entries** under this extension — that would create a new coverage obligation.
+- Behavior/API/compatibility drift → an Acceptance Criterion stating the expected
+  outcome and how it is verified (a bare "X is covered" is not coverage).
+  Fixture/mock invalidation drift → a concrete Implementation Step, not an
+  invented AC. Context-only inventory items create no requirement.
+- All other sections stay preserved; provenance/wiring-marker protections hold.
 
 ## Process
 
@@ -128,6 +152,8 @@ has no supporting finding, leave it as-is and note it under `## CONCERNS`.
 FLAGS="${flags:-}"
 CHECK_MODE=false
 if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; fi
+FROM_VERIFY_EVIDENCE=false
+if [[ "$FLAGS" == *"--from-verify-evidence"* ]]; then FROM_VERIFY_EVIDENCE=true; fi
 ```
 
 ### 1. Find Issue File
@@ -160,6 +186,10 @@ Read the full issue file. Extract:
 - The selected option / decision under `### Decision Rationale` (if present) —
   the directive sections must describe the **selected** mechanism, not a
   superseded one.
+- Only when `FROM_VERIFY_EVIDENCE` is true: the frontmatter `verify_verdict`
+  and `verify_evidence`. The extension (see Contract) is active only if the
+  verdict is exactly `DIRECTIVE_DRIFT` and the evidence is nonempty; otherwise
+  ignore both fields and proceed under the ordinary contract.
 
 ### 4. Detect contradictions
 
@@ -186,6 +216,10 @@ contradiction as:
   purpose?") — rewrite as an imperative decision directive instead (step 5,
   branch 2b).
 
+When the `--from-verify-evidence` extension is eligible, a directive section
+that is **missing an entailed criterion or step** named by an evidence item also
+counts as stale for this step (a coverage gap, not only a contradiction).
+
 If **no** section is stale and no Scope Boundaries claim is contradicted
 (directives already match findings), this is a no-op: emit verdict
 `RECONCILED` with an empty `## CORRECTIONS_MADE` (`None`) and stop after the
@@ -204,6 +238,11 @@ per-pass cap is spent.
 
 Using the Edit tool, rewrite only the stale directive sections so they reflect
 the findings. Rules:
+- Under the eligible `--from-verify-evidence` extension, additions are placed in
+  the existing section: a new AC is a `- [ ]` checkbox that states an observable
+  outcome and how it is verified; a new step continues the numbering. Never
+  add an Integration Map entry. Do not edit `verify_verdict`/`verify_evidence`
+  yourself (the loop's `clear_verify_verdict` removes them before re-verifying).
 - Keep the section's heading and overall shape (numbered steps stay numbered;
   AC stays a `- [ ]` checklist; every `## Integration Map` subsection stays a
   bulleted file/pattern list).
@@ -305,8 +344,8 @@ This integrates with FSM `evaluate: type: exit_code` routing.
 [REQUIRED for ALL verdicts — absolute path to the reconciled issue file]
 
 ## SECTIONS_REWRITTEN
-- Implementation Steps: [rewritten | unchanged]
-- Acceptance Criteria: [rewritten | unchanged]
+- Implementation Steps: [rewritten | added | unchanged]
+- Acceptance Criteria: [rewritten | added | unchanged]
 - Files to Modify: [rewritten | unchanged]
 - Dependent Files (Callers/Importers): [rewritten | unchanged]
 - Similar Patterns: [rewritten | unchanged]
@@ -318,6 +357,8 @@ This integrates with FSM `evaluate: type: exit_code` routing.
 - [reconcile] Rewrote Implementation Steps 1-3 to describe the corrected <X>
   mechanism (per Codebase Research Finding: "<short quote>")
 - [reconcile] Updated AC bullet 2 to match the <Y> finding
+- [reconcile] Added AC "<outcome + how verified>" for verify_evidence item "<section: drift>" (--from-verify-evidence)
+- [reconcile] Added Implementation Step <N> for fixture-invalidation evidence item "<drift>" (--from-verify-evidence)
 - [reconcile] Removed superseded "Files to Modify" entry <path> (finding: <…>)
 - [reconcile] Rewrote Scope Boundaries claim to match the <Z> finding (factual mismatch)
 - [reconcile] Rewrote Scope Boundaries claim into a decision directive: "<X> or
@@ -351,6 +392,10 @@ $ARGUMENTS
 - **issue_id** (required): Issue ID to reconcile (e.g., `FEAT-2672`).
 - **flags** (optional): `--check` — report the plateau verdict without writing
   (exit 0 if a reconcilable plateau exists, exit 1 if the body is already clean).
+  `--from-verify-evidence` — (BUG-3695) additionally treat a persisted
+  `DIRECTIVE_DRIFT` `verify_evidence` as a source so entailed Acceptance Criteria
+  / Implementation Steps may be added (never Integration Map entries). Only
+  `refine-to-ready-issue`'s `reconcile_issue` state passes it.
 
 ---
 
@@ -362,6 +407,9 @@ $ARGUMENTS
 
 # Check-only: does a reconcilable plateau exist? (for FSM evaluators)
 /ll:reconcile-issue FEAT-2672 --check
+
+# Repair a DIRECTIVE_DRIFT verify finding (adds entailed ACs / Steps; used by refine-to-ready-issue)
+/ll:reconcile-issue FEAT-2672 --from-verify-evidence
 ```
 
 ---

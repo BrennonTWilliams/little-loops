@@ -1069,3 +1069,116 @@ def run_autodev(
         project=project,
         inner_calls=list(runner.inner_log),
     )
+
+
+class _RecordingRunner(ScriptedRunner):
+    """:class:`ScriptedRunner` that also logs ``(state, interpolated action)``."""
+
+    actions_log: list[tuple[str, str]]
+
+    def run(self, action: str, *args: Any, **kwargs: Any) -> ActionResult:
+        if not hasattr(self, "actions_log"):
+            self.actions_log = []
+        self.actions_log.append((self.tracker.state, action))
+        return super().run(action, *args, **kwargs)
+
+
+@dataclass
+class RefineResult:
+    """What one real-``refine-to-ready-issue`` harness run produced (BUG-3695)."""
+
+    terminated_by: str
+    final_state: str
+    path: list[str]
+    slash_commands: list[str]
+    unscripted: list[str]
+    outputs: dict[str, list[str]]
+    #: ``{state: [action text, ...]}`` as dispatched (post-interpolation).
+    actions: dict[str, list[str]]
+    run_dir: Path
+    project: Path
+    steps: int
+
+
+def run_refine_to_ready(
+    scenario: Scenario,
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> RefineResult:
+    """Run the REAL builtin ``refine-to-ready-issue.yaml`` as the root loop.
+
+    Same scaffolding as :func:`run_autodev` (throwaway git project, ``ll-issues``
+    shims, :class:`ScriptedRunner` for slash commands) but with no autodev /
+    prepare-issue wrapper and no stub child, so every state of the real loop —
+    including shell actions — executes. ``scenario.slash`` scripts the slash
+    commands; their effects on the issue file are the only model behavior.
+    """
+    from little_loops.fsm.executor import FSMExecutor
+    from little_loops.fsm.validation import load_and_validate
+
+    project = _setup_project(tmp_path, scenario)
+    harness_dir = tmp_path / "harness"
+    harness_dir.mkdir(parents=True)
+    bin_dir = harness_dir / "bin"
+    _write_shims(bin_dir, harness_dir)
+    run_dir = project / ".loops" / "runs" / "refine-harness"
+    run_dir.mkdir(parents=True)
+
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    pythonpath = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH", f"{SCRIPTS_DIR}{os.pathsep}{pythonpath}" if pythonpath else str(SCRIPTS_DIR)
+    )
+    for var in ("LL_AUTOMATION", "LL_HOST_CLI", "LL_HOOK_HOST"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(
+        FSMExecutor, "_interruptible_sleep", lambda self, d, on_heartbeat=None: float(d)
+    )
+
+    loop_path = BUILTIN_LOOPS_DIR / "refine-to-ready-issue.yaml"
+    fsm, _ = load_and_validate(loop_path, raise_on_error=False)
+    _seed_context(fsm, scenario, run_dir)
+
+    hctx = HarnessContext(project=project, run_dir=run_dir, harness_dir=harness_dir)
+    tracker = _Tracker()
+    runner = _RecordingRunner(scenario, hctx, tracker, inner_counts={}, slash_counts={})
+    persistence = StatePersistence(
+        "refine-to-ready-issue", harness_dir / "state", instance_id="refine-harness"
+    )
+    ex = PersistentExecutor(
+        fsm,
+        persistence=persistence,
+        loops_dir=BUILTIN_LOOPS_DIR,
+        action_runner=runner,
+        working_dir=project,
+        loop_yaml_path=loop_path,
+    )
+    ex.event_bus.register(tracker)
+    server = _start_cli_server(harness_dir)
+    try:
+        result = ex.run()
+    finally:
+        if server is not None:
+            server.kill()
+            server.wait()
+    enters = [e for e in tracker.events if e.get("event") == "state_enter"]
+    outputs: dict[str, list[str]] = {}
+    actions: dict[str, list[str]] = {}
+    for state_name, act in runner.actions_log:
+        actions.setdefault(state_name, []).append(act)
+    for e in tracker.events:
+        if e.get("event") == "action_complete":
+            outputs.setdefault(str(e.get("state")), []).append(str(e.get("output_preview") or ""))
+    return RefineResult(
+        terminated_by=result.terminated_by,
+        final_state=result.final_state,
+        path=[str(e["state"]) for e in enters if not e.get("depth")],
+        slash_commands=list(runner.slash_log),
+        unscripted=list(runner.unscripted),
+        outputs=outputs,
+        actions=actions,
+        run_dir=run_dir,
+        project=project,
+        steps=runner.step,
+    )

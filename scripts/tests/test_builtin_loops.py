@@ -1818,9 +1818,11 @@ class TestRefineToReadyIssueSubLoop:
         non-fatal, like wire_issue."""
         state = data["states"].get("reconcile_issue", {})
         assert state, "State 'reconcile_issue' not found (ENH-3248)"
-        assert state.get("action") == "/ll:reconcile-issue ${captured.issue_id.output}", (
-            f"reconcile_issue.action mismatch, got {state.get('action')!r}"
-        )
+        # BUG-3695: reconcile_issue alone carries the explicit evidence flag.
+        assert (
+            state.get("action")
+            == "/ll:reconcile-issue ${captured.issue_id.output} --from-verify-evidence"
+        ), f"reconcile_issue.action mismatch, got {state.get('action')!r}"
         assert state.get("action_type") == "slash_command", (
             f"reconcile_issue.action_type should be 'slash_command', got {state.get('action_type')!r}"
         )
@@ -2777,6 +2779,8 @@ class TestRefineToReadyIssueSubLoop:
         assert "rm -f" in check["action"]
         rec = st["reconcile_revision"]
         assert rec["action"].startswith("/ll:reconcile-issue")
+        # BUG-3695: only reconcile_issue gets the verify-evidence source extension.
+        assert "--from-verify-evidence" not in rec["action"]
         assert rec["next"] == "wire_issue" and rec["on_error"] == "wire_issue"
         # reconcile_revision is never reached through check_reconcile_limit
         assert st["check_reconcile_limit"]["on_yes"] == "reconcile_issue"

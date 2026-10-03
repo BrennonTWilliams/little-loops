@@ -829,7 +829,11 @@ states:
     # the host file: run_spike is the one state here that carries them, since
     # it alone can wait out a long spike 429 (ENH-3607); this state does not,
     # unlike autodev.yaml's reconcile_current).
-    action: "/ll:reconcile-issue ${captured.issue_id.output}"
+    # BUG-3695: --from-verify-evidence is passed ONLY here (not reconcile_revision,
+    # not prepare-issue's run_reconcile). The command itself gates it on
+    # verify_verdict == DIRECTIVE_DRIFT + nonempty verify_evidence, so the shared
+    # ACCEPTANCE_CRITERIA route stays on the ordinary no-new-requirements contract.
+    action: "/ll:reconcile-issue ${captured.issue_id.output} --from-verify-evidence"
     action_type: slash_command
     pruning_profile:
       enabled: true
@@ -1255,9 +1259,18 @@ states:
     # record_decision_unresolved) so callers see "not ready, needs a human"
     # rather than a size-review decomposition. autodev's skip_inflight ledgers
     # any non-infra token as refine_failed.
+    # BUG-3695: DIRECTIVE_DRIFT still persisted after the one flagged reconcile
+    # means B6 enumeration or the repair did not converge. Surface that as a
+    # distinct line + evidence ref (no new legacy_class: LEGACY_CLASSES is closed).
     action: |
       echo "[GATE_UNMET]" ${captured.issue_id.output:shell} "- a structure gate (verify verdict, placeholders, Program Design, or acceptance criteria) still fails after this run's refine budget; not decomposing. Fix the gate finding, then re-run."
-      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class gate_unmet || true
+      EV=""
+      RN=$(cat ${context.run_dir}/refine-to-ready-reconcile-attempts 2>/dev/null || echo 0)
+      if [ "$RN" -ge 1 ] && ll-issues check-verify-verdict ${captured.issue_id.output:shell} --directive-drift >/dev/null 2>&1; then
+        echo "[GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE]" ${captured.issue_id.output:shell} "- DIRECTIVE_DRIFT recurred after the flagged reconcile; B6 enumeration or the AC/Step repair was incomplete."
+        EV="directive_drift_nonconvergence"
+      fi
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class gate_unmet --evidence-refs $EV || true
     action_type: shell
     next: failed
     on_error: failed
