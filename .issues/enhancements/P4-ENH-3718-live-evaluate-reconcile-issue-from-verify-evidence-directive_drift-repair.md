@@ -10,6 +10,7 @@ captured_at: '2026-10-03T23:00:17Z'
 parent: EPIC-3694
 relates_to:
 - BUG-3695
+program_design_not_applicable: true
 ---
 
 # ENH-3718: Live-evaluate reconcile-issue --from-verify-evidence DIRECTIVE_DRIFT repair
