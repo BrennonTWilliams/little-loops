@@ -95,7 +95,7 @@ states:
   measure_externally:
     action_type: shell
     action: |
-      python3 -m little_loops.fleet_improve measure \
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve measure \
         --run-dir ${context.run_dir} \
         --sidecar ${context.run_dir}/harvest.json \
         --min-new-runs ${context.min_new_runs:shell}
@@ -109,7 +109,7 @@ states:
   select_target:
     action_type: shell
     action: |
-      python3 -m little_loops.fleet_improve select \
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve select \
         --run-dir ${context.run_dir} \
         --sidecar ${context.run_dir}/harvest.json \
         --threshold ${context.threshold:shell} \
@@ -129,7 +129,7 @@ states:
     action_type: shell
     timeout: 600
     action: |
-      python3 -m little_loops.fleet_improve diagnose --run-dir ${context.run_dir}
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve diagnose --run-dir ${context.run_dir}
     evaluate:
       type: exit_code
     on_yes: propose
@@ -192,7 +192,7 @@ states:
   check_proposal:
     action_type: shell
     action: |
-      python3 -m little_loops.fleet_improve check-proposal --run-dir ${context.run_dir}
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve check-proposal --run-dir ${context.run_dir}
     capture: verdict
     next: route_fix
     on_error: diagnose_failure
@@ -243,7 +243,7 @@ states:
     action_type: shell
     timeout: 1800
     action: |
-      python3 -m little_loops.fleet_improve gate --run-dir ${context.run_dir}
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve gate --run-dir ${context.run_dir}
     evaluate:
       type: exit_code
     on_yes: commit
@@ -266,7 +266,7 @@ states:
       else
         echo "auto_commit=false: fix left uncommitted at $YAML"
       fi
-      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status pending \
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status pending \
         --reason "applied; awaiting fleet re-measure"
     evaluate:
       type: exit_code
@@ -280,7 +280,7 @@ states:
       YAML=$(jq -r .yaml_path ${context.run_dir}/target.json)
       git restore -- "$YAML" || true
       git reset -q -- "$YAML" || true
-      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status rejected \
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status rejected \
         --reason "gate or commit hook rejected the change; reverted"
     next: select_target
     on_error: diagnose_failure
@@ -288,7 +288,7 @@ states:
   dismiss:
     action_type: shell
     action: |
-      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status dismissed \
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status dismissed \
         --reason "specialist verdict: not-a-loop-bug (see artifact)"
     next: select_target
     on_error: diagnose_failure
@@ -296,7 +296,7 @@ states:
   needs_human:
     action_type: shell
     action: |
-      python3 -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status needs-human \
+      $${LL_PYTHON:-python3} -m little_loops.fleet_improve record --run-dir ${context.run_dir} --status needs-human \
         --reason "specialist verdict: needs-human (see artifact)"
       echo "needs-human: review $(jq -r .artifact ${context.run_dir}/target.json)"
     next: select_target

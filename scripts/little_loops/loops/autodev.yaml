@@ -1416,7 +1416,7 @@ states:
     # Exit: 0 -> done, 1 (phantom: staged or in-flight work never verifiably
     # closed) -> failed, 2 (summary could not be written, ENH-2825) -> failed.
     action: |
-      python3 -m little_loops.autodev_summary --run-dir ${context.run_dir} \
+      $${LL_PYTHON:-python3} -m little_loops.autodev_summary --run-dir ${context.run_dir} \
         --quality-gate ${context.quality_gate:shell:default=true}
     fragment: shell_exit
     on_yes: done
@@ -1432,7 +1432,7 @@ states:
     # capped run still promotes verified closures, reports the pending queue,
     # and writes summary.json (verdict max_steps).
     action: |
-      python3 -m little_loops.autodev_summary --run-dir ${context.run_dir} \
+      $${LL_PYTHON:-python3} -m little_loops.autodev_summary --run-dir ${context.run_dir} \
         --quality-gate ${context.quality_gate:shell:default=true} --stop-reason max_steps
     fragment: shell_exit
     on_yes: done

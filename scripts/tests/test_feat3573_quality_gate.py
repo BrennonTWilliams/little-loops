@@ -645,7 +645,7 @@ class TestFinalizeDonePromotion:
         from little_loops import autodev_summary
 
         action = AUTODEV["states"]["finalize_done"]["action"]
-        assert "python3 -m little_loops.autodev_summary" in action
+        assert "$${LL_PYTHON:-python3} -m little_loops.autodev_summary" in action
         assert "--quality-gate ${context.quality_gate:shell:default=true}" in action
         project = run_dir / "project"
         (project / ".ll").mkdir(parents=True, exist_ok=True)

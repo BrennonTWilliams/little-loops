@@ -6410,7 +6410,7 @@ class TestMergeEpicBranchConfigReadShell:
 # pre-existing finalize tests exercise status-only closure, so their harness pins it
 # off; test_feat3573_quality_gate / test_autodev_summary cover the gate-on behavior.
 QUALITY_GATE_REF = "${context.quality_gate:shell:default=true}"
-AUTODEV_SUMMARY_CMD = "python3 -m little_loops.autodev_summary"
+AUTODEV_SUMMARY_CMD = "$${LL_PYTHON:-python3} -m little_loops.autodev_summary"
 
 
 class TestAutodevLoop:
@@ -20228,7 +20228,7 @@ class TestFleetLoopImproveLoop:
         assert states["diagnose_failure"]["next"] == "failed"
 
     def test_shell_states_call_helper_module_not_inline_logic(self, data: dict) -> None:
-        helper = "python3 -m little_loops.fleet_improve"
+        helper = "$${LL_PYTHON:-python3} -m little_loops.fleet_improve"
         for name in (
             "measure_externally",
             "select_target",

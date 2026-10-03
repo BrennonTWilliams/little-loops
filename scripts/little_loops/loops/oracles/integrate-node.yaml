@@ -59,7 +59,7 @@ states:
     action_type: shell
     action: |
       RUN_DIR="${context.run_dir}"
-      python3 -m little_loops.rn_synth_queue try-pop "$RUN_DIR"
+      $${LL_PYTHON:-python3} -m little_loops.rn_synth_queue try-pop "$RUN_DIR"
     capture: popped
     evaluate:
       type: output_contains
@@ -135,7 +135,7 @@ states:
     action: |
       RUN_DIR="${context.run_dir}"
       NODE="${captured.popped.output}"  # ll-lint: mr11-ok(captured.popped.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      python3 -m little_loops.rn_synth_queue mark-complete "$RUN_DIR" "$NODE" || true
+      $${LL_PYTHON:-python3} -m little_loops.rn_synth_queue mark-complete "$RUN_DIR" "$NODE" || true
       RUN_ID=$(basename "$RUN_DIR")
       mkdir -p .loops/diagnostics
       if [ -f "$RUN_DIR/nodes/$NODE/final.md" ]; then
