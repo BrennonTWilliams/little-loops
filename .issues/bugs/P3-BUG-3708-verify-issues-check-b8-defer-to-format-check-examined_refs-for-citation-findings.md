@@ -8,11 +8,10 @@ discovered_by: advise-review
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:05:31Z'
 parent: EPIC-3694
-blocked_by:
-- BUG-3691
 relates_to:
 - ENH-3690
 - BUG-3695
+- BUG-3691
 confidence_score: 77
 outcome_confidence: 72
 score_complexity: 18
@@ -37,13 +36,20 @@ Check **B8**, after check 7, consumes `ll-issues format-check <ID> --format json
 
 | Coverage for the exact citation occurrence/property | Treatment in verify |
 |---|---|
-| `ok` | Demote a conflicting mechanical model finding to an advisory note; no verdict effect from that finding |
-| Existing blocking gap key | Surface the deterministic finding even if the model missed it; deduplicate, then apply existing §2C/§2.5 verdict rules |
+| `ok` | Demote a conflicting mechanical model finding **of the same property** to an advisory note (see "Property-exact demotion" below); no verdict effect from that finding |
+| Existing blocking gap key | Surface the deterministic finding even if the model missed it; deduplicate, then classify as below (check-1/check-4 `NEEDS_UPDATE` finding under §2C's correctable-scope rule) |
 | New advisory gap key | Report it and any equivalent mechanical model finding as advisory; neither independently changes the verdict |
 | Absent, unsupported, malformed or contradictory coverage | Fall back to current model judgment for that occurrence/property |
 | Claimed content or premise consequence | Still verdict-bearing when supported by independent semantic evidence; a range/location check cannot decide it |
 
-An entry proving tracked-index path resolution does not prove disk existence/readability, line range, symbol presence or definition. A `path_resolves: ok` cannot demote a finding that the tracked file is physically missing or unreadable in the working tree. An import-inclusive presence pass does not prove definition. A citation pass in one section does not override another occurrence. Missing findings do not mean passed checks.
+**Verdict mapping for a surfaced blocking key.** A deterministic `stale_file_ref` / `ambiguous_file_ref` / `stale_symbol_ref` / `mislocated_symbol_ref` is a check-1/check-4 `NEEDS_UPDATE` finding, classified by §2C's existing correctable-scope rule — no new verdict. Blocking keys only arise in Summary / Current Behavior / Root Cause / Context, so in practice the result is `NON_VALID` and routes through `refine_followup` unless §2C's scope already covers it. `## Context` is in neither §2C list today; B8 must rule on it explicitly (implementation step 2). `stale_file_ref` means "not git-tracked", so report it as **untracked**, not "missing" — a new, unstaged file would otherwise read as a stale reference.
+
+**Property-exact demotion.** A pass is evidence only for its own property:
+
+- `path_resolves: ok` is tracked-index resolution only. It demotes a "file doesn't exist" objection only if the file also exists on disk; a tracked-but-missing/unreadable file is never demoted.
+- `line_in_range: ok` demotes only a "line is past end of file" objection, never a claim about what the line contains.
+- `symbol_resolves_in: ok` is import-inclusive; it never demotes a "not defined here" finding (that needs `symbol_defined_in: ok`).
+- A pass in one section/occurrence never overrides another occurrence. A missing entry means "not examined", not "passed".
 
 ## Motivation
 
@@ -52,18 +58,21 @@ Without B8, BUG-3691's deterministic checks do not stabilize the mechanical comp
 ## Proposed Solution
 
 1. Add B8 after check 7, invoking format-check by `<ID>`; do not use `$ISSUE_FILE`, which the current §0/§1 examples never assign. In batch verify, use the **current per-issue ID**, not an empty command-level ID.
-2. Match BUG-3691's `{ref, issue_line, issue_column, property, result}` records to the original full issue text. Properties are `path_resolves`, `line_in_range`, `symbol_resolves_in`, `symbol_defined_in`; raw ref keeps complete line/range/symbol forms. Match the exact occurrence and property, never a canonical file path alone. If the model finding cannot be located unambiguously, retain model judgment.
-3. Apply the table above. Existing blocking citation keys are `stale_file_ref`, `ambiguous_file_ref`, `stale_symbol_ref`, `mislocated_symbol_ref`. New advisory keys are `advisory_stale_file_ref`, `advisory_ambiguous_file_ref`, `advisory_stale_symbol_ref`, `advisory_mislocated_symbol_ref`, `stale_line_ref`. An advisory deterministic failure must not regain verdict effect merely because the model reports the same mechanical defect. A content/premise exception must identify independent semantic evidence, not relabel that advisory defect.
-4. **Findings exit status is not invocation failure:** valid single-ID JSON from exits **0 or 1** is consumable. Exit 1 often means unrelated structural gaps or blocking findings, not CLI failure. Unavailable command, no target, malformed JSON, missing/wrong-shaped `examined_refs` or unsupported entries yield silent fallback for unavailable coverage, matching B7's convention. Do not demote from unknown property/result values or conflicting entries for an occurrence/property.
-5. Obtain results after the model's reads and re-run after any issue or cited-code edits before using them. Do not reuse stale metadata from a prior loop pass or from before a rewrite. Preserve `--check` as frontmatter-only persistence; B8 never repairs citations.
-6. Name format-check as the resolution owner; do not restate its algorithms in command prose (EPIC-2938). Keep the existing §2B/§C/persistence/§3 anchors and prose baseline. Do not widen §2C's correction scope; ENH-3690 owns repair eligibility/promotion after this advisory boundary is in place.
-7. Regenerate host mirrors with `ll-adapt --host <host> --apply` for gemini, kimi-code, qwen and codex; also regenerate omp **if its `.omp` mirror root is present**, matching the staleness gate's presence guard. Never hand-edit generated mirrors.
+2. Match BUG-3691's `{ref, issue_line, issue_column, property, result}` records to the original full issue text. Match the exact occurrence and property (names in the CLI contract), never a canonical file path alone. If the model finding cannot be located unambiguously, retain model judgment. **Two sources, two jobs** (the producer-guard probe showed `examined_refs` alone drops blocking findings): *blocking* findings come from the top-level `stale_file_ref` / `ambiguous_file_ref` / `stale_symbol_ref` / `mislocated_symbol_ref` gap lists (they have no occurrence key — a plain stale-path mention with no `:N` or `:symbol` suffix gets a blocking `stale_file_ref` but **no** `examined_refs` entry, so match a model finding to it by ref string only); `examined_refs` is used for **demotion and advisory coverage**, deduplicated on `(issue_line, issue_column, ref, property)`. A blocking symbol result appears in both (same ref/claim) — count it once.
+3. Apply the table above (blocking vs advisory key lists live in `docs/reference/CLI.md`; B8 names them by reference, not a restated list). An advisory deterministic failure must not regain verdict effect merely because the model reports the same mechanical defect. A content/premise exception must identify independent semantic evidence, not relabel that advisory defect. Apply the verdict mapping and property-exact demotion rules from Expected Behavior.
+4. **Consumable = parses, not exit code.** Treat the output as usable only if stdout parses to a JSON object whose `examined_refs` is a list. Exit 0 and 1 are both fine (1 = blocking gaps), but exit 1 also covers not-found / errors with **non-JSON** output (verified: `format-check BUG-99999 --format json` prints `Error: Issue ... not found.` and exits 1), so never decide by exit code. An empty `examined_refs` list means no coverage → model judgment. Unavailable command, no target, non-JSON, malformed JSON, wrong-shaped `examined_refs` or unsupported entries → silent fallback, matching B7. Do not demote from unknown property/result values or conflicting entries for an occurrence/property.
+5. **Freshness / single call.** Run format-check once, **after** the model's reads, and share that one result with §E step 3 (prose-dep keys) instead of calling it twice. Re-run only after a §4 issue edit. Do not reuse metadata from a prior loop pass (`normalize_structure` runs before the issue is edited and verified). Preserve `--check` as frontmatter-only persistence; B8 never repairs citations.
+6. Name format-check as the resolution owner; do not restate its algorithms or producer semantics in command prose (EPIC-2938) — keep B8 to roughly **25 lines** and move any producer detail to `docs/reference/CLI.md`. Keep the existing §2B/§C/persistence/§3 anchors and prose baseline. Do not widen §2C's correction scope; ENH-3690 owns repair eligibility/promotion after this advisory boundary is in place.
+7. **Reconcile checks 1 and 2.** Add a one-line "B8 governs examined occurrences" clause to check 1 ("Check files exist") and check 2 ("Verify line numbers"): where `examined_refs` has an entry for the occurrence/property, B8 decides the mechanical question; the model's ad-hoc read stands only for unexamined occurrences and for content/premise judgments.
+8. **Modes and reporting.** B8 runs under `--check` (read-only, frontmatter persistence unchanged) and under batch (per-issue ID). B8 is **skipped** under `--from-evidence`, which re-checks only listed claims. Add a one-line citation summary to the §5 report (examined / demoted / surfaced / advisory counts). Name verify-issues B8 as a consumer in `docs/reference/CLI.md`'s format-check entry.
+9. Regenerate host mirrors with `ll-adapt --host <host> --apply` for gemini, kimi-code, qwen and codex; also regenerate omp **if its `.omp` mirror root is present** (absent in this checkout), matching the staleness gate's presence guard. Never hand-edit generated mirrors.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `commands/verify-issues.md` — B8 and any cross-reference needed to prevent earlier ad-hoc checks from overriding its mechanical results
+- `commands/verify-issues.md` — B8, the "B8 governs examined occurrences" clause in checks 1 and 2, an explicit `## Context` ruling in §2C, the §5 citation summary line, and `--from-evidence` skip wording
+- `docs/reference/CLI.md` — name verify-issues B8 as an `examined_refs` consumer; keep producer detail here, not in the command
 - Host mirrors of `commands/verify-issues.md` — regenerate via `ll-adapt`
 - `scripts/tests/test_bug3708_verify_issues_b8.py` (new) — scoped producer/consumer prose-contract tests
 
@@ -77,8 +86,9 @@ Without B8, BUG-3691's deterministic checks do not stabilize the mechanical comp
 
 ### Tests
 
-- New B8 tests slice between check 7 and `#### C. Determine Verdict`, assert the invocation, complete identity/property contract, all table rows, advisory handling, exits 0/1 and fallback, batch-ID selection, freshness, tracked-but-missing file availability and content/premise exceptions
-- Cross-check producer property/result names against BUG-3691's implemented schema, rather than asserting unrelated string presence anywhere in the command
+- New B8 tests slice between check 7 and `#### C. Determine Verdict` and assert structure, not wording: the invocation, the occurrence/property identity contract, all table rows, advisory handling, parse-based consumability (not exit code) and fallback, batch-ID selection, single shared call/freshness, `--check`/`--from-evidence` behavior and the checks 1/2 clause. Do not add caveat-string tests that pin prose phrasing.
+- Import the property/result/gap-key constants from `little_loops.issues.citations` and `little_loops.issue_parser` instead of hard-coding strings, so producer drift fails the test.
+- **Producer coverage contract (probed 2026-10-03, scratch fixture):** the guard "every blocking citation gap entry has an `examined_refs` entry" is **false** for plain path mentions. In `## Summary`/`## Context`, a backticked or bare stale path with no suffix raises blocking `stale_file_ref` with an empty `examined_refs` (only `path:N` / `path:symbol()` forms record `path_resolves`). Blocking `stale_symbol_ref` is covered. Pin this in a test (blocking plain-path ⇒ gap list only; blocking symbol ⇒ both) so B8's two-source rule can't silently regress; do not widen the producer here.
 - `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — existing verdict/table/persistence anchors remain valid
 - `scripts/tests/test_verify_skill_prose.py::TestBaselineNeverIncreases`, `scripts/tests/test_docs_audience_gate.py`, `scripts/tests/test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` — retain prose/audience/mirror contracts
 - These are command-contract tests. They do not prove the LLM obeys B8; repeated live evaluation is recorded separately below.
@@ -106,29 +116,31 @@ No new Python types. Consumer metadata contract:
 
 ## Implementation Steps
 
-1. Land BUG-3691 and confirm its exact schema, advisory keys and compatibility tests.
-2. Write B8 and reconcile earlier mechanical-check wording with its authority table. Preserve anchors and keep resolution algorithms in the CLI.
-3. Add scoped contract tests, including valid exit-1 findings and same-file/different-range or different-scope occurrences. Regenerate mirrors using the hosts/presence guard above.
+1. BUG-3691 has landed (`done`, commit `0c9c83ef5`); its schema matches this issue. The producer guard was probed and does **not** hold (plain-path blocking `stale_file_ref` has no `examined_refs` entry), so B8 uses the top-level blocking gap lists for surfacing and `examined_refs` for demotion/advisory only. Optionally file a follow-up to have the producer record `path_resolves` for plain path mentions (candidate under EPIC-3694).
+2. Write B8 (≤ ~25 lines), the checks 1/2 clause, and an explicit §2C ruling for `## Context` (a blocking citation key found there is a check-1/check-4 `NEEDS_UPDATE` finding under the existing correctable-scope rule). Preserve anchors and keep resolution algorithms in the CLI.
+3. Add scoped contract tests, including valid exit-1 JSON, exit-1 non-JSON (not-found) fallback, and same-file/different-range or different-scope occurrences. Update `CLI.md`. Regenerate mirrors using the hosts/presence guard above.
 4. Correct the replay expectations: unsuffixed `runner_spec.py` has no new path coverage and stays model-decidable; a passing `runner_spec.py:N` range demotes only a mechanical path/range objection; definition-shaped `cli/loop/feed.py:terminal_size()` is an **advisory mislocation**, not a passing definition check. A missing/different claimed line content still requires a semantic finding.
-5. Evaluate the same fresh citation fixture in three independent verify runs against a frozen code snapshot; record mechanical findings, whole verdicts and whether advisory results improperly changed them. Include a real existing blocking citation defect that the model initially overlooks. Treat this as live evaluation, not a deterministic pytest proof or a guarantee about all semantic verdicts.
+5. **Non-blocking** live evaluation (does not gate closure; file a follow-up if it exposes drift): run a seeded citation fixture through three independent verify runs against a frozen code snapshot; record mechanical findings, whole verdicts and whether advisory results improperly changed them. Include a real existing blocking defect the model initially overlooks. This is evidence, not a pytest proof or a guarantee about semantic verdicts.
 6. Run `python -m pytest scripts/tests/`. Land before BUG-3695. ENH-3690 should use this exact coverage/severity policy when adding repair eligibility; serialize its overlapping command edits too.
+
+**Known limit:** `examined_refs` coverage is narrow (explicit `path:N` / `path:symbol` citations in a few sections; BUG-3708 itself yields 0 entries), so B8 will often not engage and does not eliminate BUG-3689-style variance for bare names or Proposed Solution citations. Widening producer coverage is a separate decision (candidate follow-up under EPIC-3694).
 
 ## Impact
 
 - **Priority**: P3 — detectors do not stabilize the mechanical component of verify without a consumer
 - **Effort**: Small–Medium — command prose, focused contract tests, mirrors and repeated evaluation
-- **Risk**: Medium — incorrect coverage can mask a defect; injecting existing blocking findings can change verify verdicts that previously missed them
+- **Risk**: Medium — incorrect coverage can mask a defect; injecting existing blocking findings can change verify verdicts that previously missed them (they land in premise sections, so they become `NON_VALID` and can add `refine_followup` cycles in `refine-to-ready-issue`)
 - **Breaking Change**: No new verdict or CLI contract
 
 ## Acceptance Criteria
 
-- [ ] B8 sits between check 7 and `#### C. Determine Verdict`, invokes single-ID format-check for the current issue and names the CLI as resolution owner.
-- [ ] Exact occurrence/property passes demote only matching mechanical findings; missing coverage or another occurrence/property cannot demote them.
-- [ ] Existing blocking deterministic failures are included even when the model misses them; new advisory findings and equivalent model findings have no independent verdict effect until ENH-3690 supplies an explicit policy.
-- [ ] Path resolution, line bounds, import-inclusive presence and definition are distinct; claimed content/premise effects remain supported by independent semantic evidence.
-- [ ] Valid JSON at exits 0/1 is consumed; failed/unavailable/malformed/unsupported coverage falls back; no stale pre-edit result is used.
-- [ ] Scoped producer/consumer tests, existing anchors, prose baseline, audience gate and regenerated mirror checks pass; `python -m pytest scripts/tests/` exits 0.
-- [ ] Three-run live evaluation records the mechanical findings and verdicts, including imported-only advisory mislocation, passing ranges, unexamined bare names and an existing blocking defect; limitations or failures are documented rather than hidden by contract-only tests.
+- [ ] B8 (≈25 lines) sits between check 7 and `#### C. Determine Verdict`, invokes single-ID format-check for the current issue, names the CLI as resolution owner, and checks 1/2 carry the "B8 governs examined occurrences" clause.
+- [ ] Demotion is property-exact (path ok needs disk existence; line ok demotes only past-EOF; symbol-resolves never demotes "not defined"); missing coverage or another occurrence/property cannot demote.
+- [ ] A surfaced blocking key is a check-1/check-4 `NEEDS_UPDATE` finding under §2C's correctable-scope rule, with an explicit `## Context` ruling and `stale_file_ref` reported as "untracked"; advisory findings and equivalent model findings have no independent verdict effect until ENH-3690.
+- [ ] Consumability is decided by parseable JSON with a list-typed `examined_refs`, not exit code; non-JSON exit 1 (not-found), empty list, malformed or unsupported coverage falls back; one post-reads call is shared with §E step 3 and re-run only after §4 edits.
+- [ ] `--check` runs B8 read-only, `--from-evidence` skips it, §5 report has a citation summary line, and `CLI.md` names verify-issues B8 as a consumer.
+- [ ] Producer coverage-contract test passes (plain-path blocking ⇒ gap list only; blocking symbol ⇒ gap list and `examined_refs`); scoped tests import schema constants; existing anchors, prose baseline, audience gate and regenerated mirror checks pass; `python -m pytest scripts/tests/` exits 0.
+- [ ] (Non-blocking) Live seeded-fixture evaluation recorded, or a follow-up filed; limitations are documented rather than hidden by contract-only tests.
 
 ## Related Key Documentation
 
@@ -143,7 +155,8 @@ _Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract cor
 
 ### Gaps to Address
 
-- `blocked_by: BUG-3691` is `open`. B8 consumes the `examined_refs` payload that BUG-3691 defines and has not yet built (`examined_refs` and `advisory_*` keys appear nowhere in `scripts/little_loops`). Land BUG-3691 first, then rerun confidence-check. This is the only blocker; `format-check` is clean and `check-design` passes.
+- ~~`blocked_by: BUG-3691` is `open`.~~ **Resolved 2026-10-03:** BUG-3691 is `done` (commit `0c9c83ef5`); `examined_refs` and the `advisory_*` keys now exist in `scripts/little_loops` and match this issue's schema. `blocked_by` removed (BUG-3691 kept under `relates_to`). **Re-run `/ll:confidence-check`** to refresh the scores, which still reflect the stale blocker.
+- Advisor review (opus, 2026-10-03) added: verdict mapping for blocking keys, parse-based consumability (not-found exits 1 with non-JSON), property-exact demotion, single shared format-check call, producer guard test, checks 1/2 clause, mode, report and CLI-reference wiring, a ~25-line prose budget, and a non-blocking live evaluation.
 
 ### Concerns
 
