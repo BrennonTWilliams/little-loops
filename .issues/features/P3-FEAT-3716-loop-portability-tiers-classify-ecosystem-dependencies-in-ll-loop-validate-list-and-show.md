@@ -32,7 +32,7 @@ Captured 2026-10-03 from a portability review (ll-product hub session) of making
 - The runtime already supports standalone runs. `ll-loop run <path>` works in a bare `git init` repo with no `ll-init` and no plugin (`fsm/loop_paths.py:46-48` explicit-path resolution; `.loops/` and `.ll/` created on demand at `cli/loop/run.py:390` and `session_store/schema.py:1722`). `import:` fragments fall back to the wheel's built-in library (`fsm/fragments.py:99-110`).
 - `LL_PYTHON` is injected unconditionally into every shell-action env as `sys.executable` (`fsm/runners.py:333`, `runner_spec.py:335`). So `$${LL_PYTHON:-python3} -m little_loops.<mod>` always reaches the wheel's interpreter, and a bare `python3 -m little_loops.<mod>` reaches whatever `python3` is on PATH.
 - **The coupling is invisible.** Census at `8baa8a471` (`grep -lE '/ll:|ll-issues|\.issues/'`): **39 of 97** top-level built-in loops reference `/ll:*` commands, the `ll-issues` CLI, or `.issues/` paths. Three `lib/` fragments (`cli.yaml`, `policy-router.yaml`, `prompt-fragments.yaml`) and three oracles (`oracle-capture-issue`, `resolve-decision`, `verify-confidence-scores`) do too. Nobody can tell which loops are portable without reading them.
-- **Latent bug the check would catch on day one.** Three shipped loops call package modules through a bare interpreter: `fleet-loop-improve.yaml` (10 sites, `little_loops.fleet_improve`), `autodev.yaml:1419,1435` (`autodev_summary`), `oracles/integrate-node.yaml:62,138` (`rn_synth_queue`). Under `uvx`, `pipx`, or any venv where PATH `python3` is not the wheel's interpreter, these fail with `ModuleNotFoundError`.
+- **The interpreter bug this rule guards against has already happened once (fixed in `21583aae3`).** Three shipped loops called package modules through a bare interpreter: `fleet-loop-improve.yaml` (9 shell sites, `little_loops.fleet_improve`), `autodev.yaml` `finalize_done` / `finalize_step_capped` (`autodev_summary`), and `oracles/integrate-node.yaml` `try-pop` / `mark-complete` (`rn_synth_queue`). Under `uvx`, `pipx`, or any venv where PATH `python3` is not the wheel's interpreter, they failed with `ModuleNotFoundError`. The author's setup hid the bug, because a `.pth` lets system `python3` import the checkout. `21583aae3` converted all 13 sites to `$${LL_PYTHON:-python3}` and proved the fix with an executor run from a bare repo with a broken PATH `python3`. The catalog now has zero bare calls, and this issue adds the warning that keeps it that way.
 
 Strategy tie-in (hub): B1 is "give away the loops, sell the trust", and the catalog sits on the open side of the open-core line (hub ENH-039, decided 2026-09-05). Today that is only partly true, because ~40% of the catalog needs the plugin and issue system. The hub's on-the-stack analysis names `ll-loops` (catalog extraction) as a candidate repo split. A tier stored as loop metadata survives that split; a tier that only exists in `validate` output does not.
 
@@ -40,7 +40,7 @@ Strategy tie-in (hub): B1 is "give away the loops, sell the trust", and the cata
 
 - `ll-loop validate` checks structure, evaluators, reachability and shell safety (`fsm/validation/`). It does not classify external dependencies. The nearest check is the `/ll:<skill>` regex (`fsm/validation/_base.py:192`), which is used only for `tools:` allowlist consistency (`evaluator_rules.py:259-350`).
 - `ll-loop list` entries carry `name, path, builtin, description, category, labels, visibility` (`cli/loop/info.py:395-403`). They have no dependency or portability field.
-- Bare `python3 -m little_loops.*` passes validation silently.
+- Bare `python3 -m little_loops.*` passes validation silently. The catalog is clean as of `21583aae3`, but nothing stops a new loop from reintroducing it.
 
 ## Expected Behavior
 
@@ -63,7 +63,7 @@ Each loop resolves to one tier. The tier is computed over the loop **after** fra
 - Makes the decoupling rule enforceable. Today it depends on reviewers remembering a memory entry.
 - Gives users a visible answer to "which loops can I run in my repo without adopting the issue system?"
 - It is a prerequisite for `ll-loop export` (FEAT-3717), which has to know what it can bundle cleanly.
-- It catches a real interpreter bug in three shipped loops.
+- It keeps out a class of interpreter bug that has already shipped once (three loops, fixed in `21583aae3`) and that the author's own environment hides.
 
 ## Proposed Solution
 
@@ -78,7 +78,6 @@ New rule module `fsm/validation/portability_rules.py` with `classify_portability
 - `scripts/little_loops/cli/loop/config_cmds.py`: `cmd_validate` output and `--json`
 - `scripts/little_loops/cli/loop/info.py`: catalog entry field (~:395-403), `list` column and `--portability` filter, `show` evidence
 - `scripts/little_loops/cli/loop/__init__.py`: `--portability` flag on `list`
-- `scripts/little_loops/loops/fleet-loop-improve.yaml`, `autodev.yaml`, `oracles/integrate-node.yaml`: bare `python3 -m little_loops.*` → `$${LL_PYTHON:-python3}`
 - `scripts/little_loops/loops/brainstorm.yaml`: `adapter: true` on `sink_issue` / `sink_decision` (coordinate with FEAT-3582)
 
 ### Dependent Files (Callers/Importers)
@@ -103,13 +102,13 @@ New rule module `fsm/validation/portability_rules.py` with `classify_portability
 ## Implementation Steps
 
 1. Classifier + schema fields + fixtures (no CLI wiring); confirm census reproduces (39/97 top-level).
-2. Interpreter warning; convert the three bare-interpreter loops in the same commit.
+2. Interpreter warning, with a regression fixture taken from the pre-`21583aae3` form of `fleet-loop-improve`'s `measure_externally` action.
 3. Wire into `validate` / `list` / `show`; mark brainstorm adapter states.
 4. Corpus CI check; docs.
 
 ## Impact
 
-- **Priority**: P3. Small, protects an existing invariant, and fixes a latent bug. Sequence it after the EPIC-3581 core chain (FEAT-3667 → FEAT-3582) so the brainstorm adapter marker lands with the rewrite rather than against the old loop.
+- **Priority**: P3. Small, and protects an existing invariant. The latent interpreter bug it would have caught has been fixed directly (`21583aae3`), so nothing here is urgent. Sequence it after the EPIC-3581 core chain (FEAT-3667 → FEAT-3582) so the brainstorm adapter marker lands with the rewrite rather than against the old loop.
 - **Effort**: Small–medium. Most of it reuses fragment resolution and the existing regex.
 - **Risk**: Low. Info-level for undeclared loops, so nothing existing breaks.
 - **Breaking Change**: No.
@@ -123,7 +122,7 @@ A developer browsing `ll-loop list` wants a loop they can run in a client repo t
 - [ ] `ll-loop validate <loop>` prints `Portability: <tier>` (plus adapter tier when present); `--json` includes `portability` with evidence.
 - [ ] Declared `portability: portable` on a loop that references `/ll:capture-issue` in a non-adapter state → validation error naming the state and match.
 - [ ] Tier accounts for imported fragments, `from:` inheritance and sub-loops (fixture: a portable-looking loop whose imported fragment calls `ll-issues` → `requires-issues`).
-- [ ] Bare `python3 -m little_loops.X` in a shell action → warning with fix hint. `fleet-loop-improve.yaml`, `autodev.yaml` and `oracles/integrate-node.yaml` are converted to `$${LL_PYTHON:-python3}` in the same change.
+- [ ] Bare `python3 -m little_loops.X` in a shell action → warning with fix hint. A corpus test asserts zero such warnings across shipped loops (true since `21583aae3`).
 - [ ] Brainstorm's `sink_issue` / `sink_decision` marked `adapter: true`. `ll-loop validate brainstorm` reports `portable (adapters: requires-plugin)`. Coordinate the marker with FEAT-3582 so the rewritten loop keeps it.
 - [ ] `ll-loop list` shows the tier column and supports `--portability`. `ll-loop show` lists evidence lines.
 - [ ] CI corpus test asserts that every loop with a declared tier validates, and records the tier distribution.
