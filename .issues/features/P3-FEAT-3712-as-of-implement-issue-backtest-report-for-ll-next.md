@@ -8,6 +8,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:45:16Z'
 parent: EPIC-3710
+blocked_by:
+- FEAT-3561
 ---
 
 # FEAT-3712: As-of implement-issue backtest report for ll-next
@@ -42,9 +44,29 @@ The scorer is only trustworthy if it is compared against the existing recommende
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Measure ll-auto vs `next-issue` top-1 agreement on a sample and record it for the report header.
+2. Implement pure as-of reconstruction helpers and the deterministic SHA sampler; test against a synthetic git repo for leakage.
+3. Run `ll-next`'s `implement-issue` scorer, `next-issue` and the priority-only baseline per state; compute top-3 hit and MRR per stratum.
+4. Document how to run the report.
+
+## Use Case
+
+A maintainer changes the `implement-issue` default weights and reruns the report to see whether top-3 hit rate on manual-session picks moved relative to `next-issue`, without being fooled by ll-auto's own ordering.
+
+## Program Design
+
+### Types
+
+- `BacktestSample(sha, as_of, started_issue, origin)` is a typed record; `origin` is `manual` or `orchestrated`.
+
+### Signatures
+
+- `reconstruct_state(repo: Path, sha: str, *, as_of: datetime) -> ProjectState` — rebuilds issue files from git at `sha` and keeps only history events with `ts <= as_of`.
+- `score_backtest(samples: list[BacktestSample], rankers: dict[str, Ranker]) -> BacktestReport` — returns top-3 hit rate and MRR per ranker and per origin stratum with sample counts.
+
+### Call Path
+
+Report entry point → deterministic SHA sampler → `reconstruct_state` → `generate_candidates` / `find_issues` rankers → `score_backtest` → rendered report.
 
 ## Impact
 

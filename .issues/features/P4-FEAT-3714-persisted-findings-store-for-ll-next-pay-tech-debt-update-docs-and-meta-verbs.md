@@ -3,10 +3,15 @@ id: FEAT-3714
 type: FEAT
 title: Persisted findings store for ll-next pay-tech-debt, update-docs and meta verbs
 priority: P4
-status: open
+status: deferred
 discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:45:17Z'
+relates_to:
+- EPIC-3710
+- FEAT-3561
+deferred_by: human
+deferred_date: '2026-10-03T17:45:43Z'
 ---
 
 # FEAT-3714: Persisted findings store for ll-next pay-tech-debt, update-docs and meta verbs
@@ -33,29 +38,19 @@ Out of scope until revived; decide store location (history.db table vs `.ll/` fi
 
 ## Integration Map
 
-### Files to Modify
-- TBD - requires codebase analysis
-
-### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
-
-### Similar Patterns
-- TBD - search for consistency
-
-### Tests
-- TBD - identify test files to update
-
-### Documentation
-- TBD - docs that need updates
-
-### Configuration
-- N/A or list config files
+Deferred. Files, tests and docs to be determined when the issue is revived; candidate touch points are `audit-architecture`, the docs-drift check, the harness audit and the `ll-next` generators.
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+Deferred. Decide store location and producers on revival, then follow the EPIC-3710 generator pattern (explicit empty-source behavior, named acceptance producer).
+
+## Use Case
+
+After revival, `ll-next` recommends `update-docs` only because a persisted docs-drift finding names the drifted file.
+
+## Acceptance Criteria
+
+- [ ] Deferred; acceptance criteria are written when the issue is revived (store location, producers, empty-source behavior per verb).
 
 ## Impact
 

@@ -8,6 +8,10 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:45:16Z'
 parent: EPIC-3710
+blocked_by:
+- FEAT-3561
+relates_to:
+- FEAT-3713
 ---
 
 # FEAT-3711: ll-next recommendation_events, derived acceptance and time-based bucket pressure
@@ -49,13 +53,33 @@ Pressure makes neglected action types surface without learned weights, but only 
 
 ### Files to Modify
 
-- `scripts/little_loops/session_store/schema.py`, `remote_schema.py`, `schema_manifest.json`, `writers.py`, `queries.py`; `scripts/little_loops/cli/next.py` (FEAT-3561) for recording, `accept` and `--no-record`; selection module for pressure; `docs/reference/CLI.md`, `API.md`.
+- `scripts/little_loops/session_store/schema.py`, `remote_schema.py`, `schema_manifest.json`, `writers.py`, `queries.py`; `little_loops.cli.next` (FEAT-3561) for recording, `accept` and `--no-record`; selection module for pressure; `docs/reference/CLI.md`, `API.md`.
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Land FEAT-3561; write the per-verb producer table with tests before enabling automatic acceptance.
+2. Add `recommendation_events` to local and remote schema, `schema_manifest.json`, writers and queries; make the rebuild-membership decision and confirm the ENH-3678 fingerprint test.
+3. Implement query-time acceptance derivation and as-of pressure; replace round-robin fill in `select_candidates`; add `ll-next accept` and `--no-record`.
+4. Fixed-clock fixtures for acceptance states and pressure (including repeated-run and `--type` invariance), remote persistence tests, docs.
+
+## Use Case
+
+A user who always accepts implement recommendations and never refines sees `refine-issue` rise in the `--top 3` list as its bucket's last accepted evidence ages, while re-running `ll-next --json` in a script changes nothing.
+
+## Program Design
+
+### Types
+
+- `RecommendationEvent(rec_id, ts, session_id, kind, rank, action_type, target)` is a typed record; `kind` is `shown` or `accepted_explicit`. Acceptance state is a derived value, never a stored field.
+
+### Signatures
+
+- `derive_acceptance(events: list[RecommendationEvent], producers: ProducerTable, *, as_of: datetime, window: timedelta) -> dict[str, AcceptanceState]` — maps each recommendation ID to `accepted`, `ignored` or `unknown` using only producer events with `ts <= as_of`.
+- `bucket_pressure(acceptance: dict[str, AcceptanceState], *, as_of: datetime) -> dict[str, float]` — returns days since each bucket's last accepted evidence, capped, in wall-clock units.
+
+### Call Path
+
+Existing `find_issues` source path → `cmd_next` → `generate_candidates` → `bucket_pressure` → `select_candidates` (pressure-ordered fill) → rendering → `record_shown` (skipped under `--no-record`/`--explain`). `ll-next accept` calls `record_accepted`.
 
 ## Impact
 

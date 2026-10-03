@@ -8,6 +8,10 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:45:16Z'
 parent: EPIC-3710
+blocked_by:
+- FEAT-3561
+relates_to:
+- FEAT-3711
 ---
 
 # FEAT-3713: ll-next capture-issues and run-sprint generators
@@ -42,9 +46,29 @@ Two independently testable generator functions plus entries in the axes × verbs
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Land FEAT-3561; add the two verbs' axes, applicability and default weights to the matrix and keyed `next` config.
+2. Implement `generate_run_sprint_candidates` and `generate_capture_candidates` as independently testable functions with explicit empty-source cases.
+3. Register acceptance producers in FEAT-3711's table, or leave the verbs `unknown`.
+4. Fixed-clock fixtures, docs.
+
+## Use Case
+
+A user with a ready, unblocked sprint definition and a scan that is three weeks stale sees both a `run-sprint` and a `capture-issues` recommendation, each naming the concrete sprint or scan scope.
+
+## Program Design
+
+### Types
+
+- Reuses FEAT-3561's `AxisScore` and `Candidate`; no new record types.
+
+### Signatures
+
+- `generate_run_sprint_candidates(state: ProjectState) -> list[Candidate]` — returns one candidate per existing `.sprints/*.yaml` with remaining open issues, else none.
+- `generate_capture_candidates(state: ProjectState) -> list[Candidate]` — returns a candidate only when a scan scope is configured and the last scan is stale.
+
+### Call Path
+
+Existing `find_issues` / `cmd_next_loop` source paths → `generate_candidates` (FEAT-3561) dispatches to both generators → FEAT-3681's utility scorer → `select_candidates`.
 
 ## Impact
 

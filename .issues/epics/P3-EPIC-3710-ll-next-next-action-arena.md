@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:44:30Z'
+relates_to:
+- FEAT-3714
 ---
 
 # EPIC-3710: ll-next: next-action arena
