@@ -18,7 +18,7 @@ blocks:
 
 ## Summary
 
-The `ll-loop run` usage table shows `est_cost` as `n/a` for `claude-sonnet-5-5` because its exact ID is absent from `MODEL_PRICING`. Add the verified price and a footer naming unknown model IDs, including IDs on rows that also have incomplete tokens. The estimate uses published API list prices regardless of subscription/API billing; it is not the user's billed amount.
+The `ll-loop run` usage table shows `est_cost` as `n/a` for `claude-sonnet-5-5` because its exact ID is absent from `MODEL_PRICING`. Add the verified price and a footer naming unknown model IDs, including IDs on rows that also have incomplete tokens. **Ships in phases (2026-10-03 review):** phase 1 (price + `LIVE_RATES`/identity/batch tests) lands first because it unblocks BUG-3701; phase 2 is the footer and `unpriced_models`; phase 3 is the docs corrections. The estimate uses published API list prices regardless of subscription/API billing; it is not the user's billed amount.
 
 **Scope:** exact pricing and human-readable diagnostics only. No family-prefix fallback, invented rate, stable-JSON change, cost-ceiling change, or history backfill. ENH-3703 owns the optional approximate fallback; BUG-3701 owns the alias/rank correction; BUG-3704 owns effective context windows.
 
@@ -52,9 +52,10 @@ New host-reported model IDs can silently erase state/run cost visibility and lea
 
 1. Add `claude-sonnet-5-5` at **$2 input / $10 output / $0.20 cache read / $2.50 five-minute cache creation per million tokens**. All four values were confirmed on the live [Anthropic pricing page](https://platform.claude.com/docs/en/about-claude/pricing) and [Sonnet 5.5 specifications](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) on 2026-10-02. The pricing page also confirms identical Sonnet 5 rates, so share a `_SONNET_5` dict following the existing `_HAIKU_4_5` pattern. The rates are standard; `INTRO_PRICING` is currently empty and this fix adds no introductory entry. Keep the repo's aggregate cache-creation convention; one-hour TTL pricing is outside scope.
 2. Add `CostReport.unpriced_models: list[str] = field(default_factory=list)`, populated as sorted, de-duplicated IDs. Check exact membership in the same imported `MODEL_PRICING` table used by the estimator, independently of the token-completeness branch. Do not infer missing prices from `cost is None` or `has_unknown_model`, and do not change token normalization or cost aggregation.
-3. Append `unpriced: <comma-separated IDs> — add to little_loops.pricing.MODEL_PRICING` in `table()` only when the list is non-empty. Do not serialize the list. `read_json` defaults it to empty because the locked JSON contains no model IDs; test that limitation with a genuinely unknown-model report.
+3. Append `unpriced models (cost excluded): <comma-separated IDs> — upgrade little-loops or report the model ID` in `table()` only when the list is non-empty. The footer is shown to end users of a pip-installed `ll-loop`, so it must not tell them to edit a Python module (docs-audience rule applies equally to the CLI/observability text in step 5). Do not serialize the list. `read_json` defaults it to empty because the locked JSON contains no model IDs; test that limitation with a genuinely unknown-model report.
 4. Add coverage for `set(MODEL_ALIASES.values()) | set(MODEL_RANKS['claude-code']) <= set(MODEL_PRICING)`. All current alias/rank IDs, including Opus 5 and Fable 5, already have prices, so it passes before BUG-3701 lands. Explain in the test that this alone would not have caught BUG-3696: Sonnet 5.5 is currently absent from both selection tables. Do not include context-window keys: real legacy models can need context sizing without pricing support.
-5. Correct stale CLI/observability documentation about `~$` fallback, `0.0` unknown costs, a printed `TOTAL` row, and thousands separators. State that costs remain exact-ID estimates, state/run costs become null if any contributor is unpriced, and stored null history costs are not back-filled.
+5. Update the `pricing.py` module header's "as of" date and add `claude-sonnet-5-5` to its source note. Do **not** guess a `claude-sonnet-4-5` rate: add it only if the new footer shows it in real history. Record the known gap that lookup is exact-match, so dated, `anthropic.`-prefixed or `[1m]` model IDs stay unpriced and the footer will now name them.
+6. Correct stale CLI/observability documentation about `~$` fallback, `0.0` unknown costs, a printed `TOTAL` row, and thousands separators. State that costs remain exact-ID estimates, state/run costs become null if any contributor is unpriced, and stored null history costs are not back-filled.
 
 ## Integration Map
 
@@ -106,16 +107,16 @@ New host-reported model IDs can silently erase state/run cost visibility and lea
 
 ## Implementation Steps
 
-1. Add the verified exact rates and corresponding `LIVE_RATES`, identity, standard-date and batch tests.
-2. Add the independent unpriced-ID collection and conditional footer; implement the four-way completeness test matrix and mixed-model cases.
+1. **Phase 1 (ship first; unblocks BUG-3701):** add the verified exact rates, the `pricing.py` header date, and the corresponding `LIVE_RATES`, identity, standard-date and batch tests; run `python -m pytest scripts/tests/test_pricing.py`.
+2. **Phase 2:** add the independent unpriced-ID collection and conditional footer (end-user wording); implement the four-way completeness test matrix and mixed-model cases.
 3. Add alias/rank coverage and the explicit JSON diagnostic-loss regression test.
-4. Correct the listed reference/observability docs and examples; retain current cost-ceiling and history-coverage behavior.
+4. **Phase 3:** correct the listed reference/observability docs and examples (reader-facing wording only); retain current cost-ceiling and history-coverage behavior; record the exact-match known gap.
 5. Run `python -m pytest scripts/tests/`. Optionally re-render the original seven-row run if its transient directory still exists; use a committed fixture for the gate.
 
 ## Impact
 
 - **Priority**: P3 — cost visibility and history coverage are missing for a current model; this also reaches consumers of run costs
-- **Effort**: Small
+- **Effort**: Small for phase 1 (price + tests); Medium overall (footer matrix + four-doc sweep)
 - **Risk**: Low — exact rate addition and diagnostics, no fallback or aggregation change
 
 ## Acceptance Criteria
@@ -126,6 +127,7 @@ New host-reported model IDs can silently erase state/run cost visibility and lea
 - [ ] Mixed known/unknown contributors preserve null state/run cost semantics; all-priced tables remain byte-identical
 - [ ] Alias targets and all `MODEL_RANKS['claude-code']` keys have prices; the test states the host-emitted-ID limitation and excludes independent context-window coverage
 - [ ] Stable JSON keys are unchanged; an unknown-model report round-trips with null costs and intentionally loses its footer metadata
+- [ ] The footer wording is end-user-facing (no instruction to edit `little_loops.pricing`) and the module header date is updated
 - [ ] CLI/API/observability docs match actual `n/a`/null behavior, distinguish per-state flags from `totals.has_unknown_model`, describe the footer, and state the no-backfill limitation
 - [ ] `python -m pytest scripts/tests/` exits 0
 
@@ -148,6 +150,7 @@ New host-reported model IDs can silently erase state/run cost visibility and lea
 
 ## Session Log
 
+- Pre-implementation review 2 - 2026-10-03 - `/ll:advise` with Opus (confidence 0.82): rates re-confirmed; phased delivery (price first), end-user footer wording, header date, no guessed `claude-sonnet-4-5` rate, exact-match known gap.
 - Pre-implementation review - 2026-10-02 - `/ll:advise` with Opus (confidence 0.80): confirmed live prices, fixed unknown+incomplete diagnostic scope, expanded regression cases, and moved context-window work to BUG-3704. Existing shared rate-dict precedent retained; no speculative equality contract or new price-lookup API added.
 - `/ll:confidence-check` - 2026-10-02T19:45:19 - `9a15ba2c-4c77-475b-8d6d-2e5aa8b1186f.jsonl`
 - `/ll:wire-issue` - 2026-10-02T19:42:58 - `4830feb2-90ba-4747-9939-6d60a5df22df.jsonl`

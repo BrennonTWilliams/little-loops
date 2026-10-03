@@ -16,6 +16,7 @@ relates_to:
 - ENH-3680
 blocks:
 - ENH-3683
+- ENH-3698
 
 ---
 
@@ -106,6 +107,17 @@ Prior 90/79 scores were cleared: per-step timeout resets and a blocking counter 
 
 _Revised 2026-10-03 after a pre-implementation review with an Opus second opinion (`/ll:advise`, confidence 0.82)._ Changes: exit phase re-issues the busy-timeout pragma; counter moved from a one-byte count to a 12-byte timestamped, kind-tagged record (the ENH-3683 decision needs a windowed rate, not a lifetime count); explicit drop definition (lock errors only); lock drops log at `debug`; timing window pinned to [200 ms, 1000 ms]; sidecar path derived from the resolved store (fixes the `LL_HISTORY_DB` divergence) and renamed without `.lock`; doctor line folded into `_history_db_check`. Opus's dissent: a one-byte count is defensible if a human compares two snapshots, so the timestamped record is cheap insurance rather than strictly required. Rejected: skipping migrations on the telemetry path (breaks fresh-db creation).
 
+## Verification Notes
+
+_Verified 2026-10-03 by `/ll:verify-issues --auto`._
+
+Verdict at time of check: **DEP_ISSUES** (the backlink fix below was applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- **Fixed:** ENH-3698 lists ENH-3679 in `blocked_by` (and the Scope Boundary note states that edge), but this issue's `blocks:` frontmatter listed only ENH-3683. Added `ENH-3698` (MISSING_BACKLINK).
+- **Informational:** ENH-3678 is `done` (satisfied edge). ENH-3683 is `deferred` and still correctly blocked by this issue. ENH-3680 is `cancelled`, so the "independent remote hook spool" references in Scope Boundaries and Related are historical, not a live sibling.
+- **Verified accurate:** `_configure_connection` hard-codes `_BUSY_TIMEOUT_MS` (`schema.py:1525-1538`); `schema.connect` takes no `busy_timeout_ms` yet; `_apply_migrations` steady-state fast path takes no write lock; `cli_event_context` enter/exit warning text (`writers.py:617`, `:647`) and the pinning tests (`test_session_store_writers.py:562`/`:595`, `test_cli_queue.py:517`); `_history_db_data` reads `Path.cwd() / DEFAULT_DB_PATH` (`doctor.py:520`); `_history_db_check` exists (`doctor.py:556`); `.ll/*.lock` in `.gitignore:114` and `init/writers.py:108`; chokepoint gate test and `libsql.py` `warn_once` exist; `Backend.connect` protocol has no timeout kwarg; `HistorySuppressed` exists (`backend.py:64`); `ll-verify-evidence` clean. No decisions-log conflicts found; proposal-vs-code trace (B6) found no unsound mechanism.
+- **Graph:** `ll-code` provider=`codegraph`, freshness=`fresh` (status only; no graph query was needed).
+
 ## Status
 
 **Open** | Created: 2026-09-30 | Priority: P3
@@ -117,5 +129,6 @@ _Revised 2026-10-03 after a pre-implementation review with an Opus second opinio
 **Note** (added by `/ll:audit-issue-conflicts`): Ordering vs ENH-3698: ENH-3679 lands before ENH-3698 (ENH-3698 is `blocked_by` this issue). The "after or with ENH-3698" wording is superseded for ENH-3698 — "with" is impossible under the `blocked_by` edge. Sequencing against ENH-3658 is unchanged.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-10-03T17:10:47 - `aa9ffd51-8240-4480-856c-316b8f27306a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:01 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:59 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

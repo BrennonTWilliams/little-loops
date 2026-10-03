@@ -10,6 +10,7 @@ discovered_date: '2026-10-01'
 captured_at: '2026-10-01T22:03:25Z'
 relates_to:
 - BUG-3691
+- BUG-3708
 - BUG-3695
 blocked_by:
 - BUG-3691
@@ -252,6 +253,8 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 - A run whose only verify findings are wrong path/symbol citations — each backed by a deterministic `ll-issues format-check` ref key — is repaired in-loop via the existing `VERIFY:CLAIMS_OUTDATED` route (with `verify_evidence` written) instead of ending `GATE_UNMET`.
 - Premise-changing findings, findings not backed by a `format-check` key, and any mix of the two still persist as `NON_VALID`; the never-auto-correct set is unchanged.
+- **Promotion of the BUG-3691 keys to blocking (added 2026-10-03):** BUG-3691 ships its new-rule and widened-scope format-check findings (defined-in vs imported-in, bare-filename resolution, widened scope, `stale_line_ref`) **advisory**. This issue's repair route must work from advisory keys (it reads them directly from `ll-issues format-check --format json`); promoting any of them to blocking (`has_blocking_gaps` / exit code) is allowed only once (a) this route exists and (b) a before/after run of `ll-issues format-check --all` over `.issues/` records the false-positive rate and the set of newly failing issues, with no unexplained rise in `rn-remediate` format-issue routing. Record the decision per key.
+- **Only `examined_refs`-backed findings qualify:** a finding is "backed by a format-check key" only for citations present in BUG-3691's `examined_refs`; a model finding about an unexamined citation stays `NON_VALID`.
 - Covered by prose pins in `test_enh3250_verify_issues_proposal_vs_code.py::TestClaimsOutdatedVerdict` (relaxed §2C wording, key-gating, `NON_VALID`-wins, §4 carve-out); the `test_builtin_loops.py` route table (`PRE_TABLE`) is unchanged and stays green — Option B′ adds no route, so no new route test is required.
 
 ## Related Key Documentation
