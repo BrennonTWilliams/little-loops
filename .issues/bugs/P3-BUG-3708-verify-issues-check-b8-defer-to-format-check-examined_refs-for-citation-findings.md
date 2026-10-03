@@ -12,9 +12,9 @@ relates_to:
 - ENH-3690
 - BUG-3695
 - BUG-3691
-confidence_score: 77
-outcome_confidence: 72
-score_complexity: 18
+confidence_score: 95
+outcome_confidence: 68
+score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
@@ -148,28 +148,23 @@ No new Python types. Consumer metadata contract:
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract corrections)_
+_Added by `/ll:confidence-check` on 2026-10-03 (re-scored after BUG-3691 landed)_
 
-**Readiness Score**: 77/100 → STOP — ADDRESS GAPS (Dependencies hard override; the criteria sum alone would be PROCEED WITH CAUTION)
-**Outcome Confidence**: 72/100 → MODERATE
-
-### Gaps to Address
-
-- ~~`blocked_by: BUG-3691` is `open`.~~ **Resolved 2026-10-03:** BUG-3691 is `done` (commit `0c9c83ef5`); `examined_refs` and the `advisory_*` keys now exist in `scripts/little_loops` and match this issue's schema. `blocked_by` removed (BUG-3691 kept under `relates_to`). **Re-run `/ll:confidence-check`** to refresh the scores, which still reflect the stale blocker.
-- Advisor review (opus, 2026-10-03) added: verdict mapping for blocking keys, parse-based consumability (not-found exits 1 with non-JSON), property-exact demotion, single shared format-check call, producer guard test, checks 1/2 clause, mode, report and CLI-reference wiring, a ~25-line prose budget, and a non-blocking live evaluation.
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 68/100 → MODERATE
 
 ### Concerns
 
-- No B8 exists in `commands/verify-issues.md`, so there is no duplicate. The insertion point (after check 7, before `#### C. Determine Verdict` at line 249) is correct.
+- The earlier `blocked_by: BUG-3691` gap is resolved: BUG-3691 is `done` (commit `0c9c83ef5`), `examined_refs` and the `advisory_*` keys exist in `scripts/little_loops`, and `ll-issues format-check BUG-3708` / `check-design` report no gaps.
+- No B8 exists in `commands/verify-issues.md`; the insertion point (after check 7, before `#### C. Determine Verdict` at line 249) is correct. `scripts/tests/test_bug3708_verify_issues_b8.py` does not exist yet (expected).
+- The ~25-line budget is tight for the two-source rule, the table and the mode/freshness clauses; the `## Context` ruling in §2C must be authored without widening the correctable scope.
 - Prose tests cannot prove the model obeys B8. Mechanical determinism and whole-verdict repeatability must not be conflated.
 
 ### Outcome Risk Factors
 
-- Broad contract reuse: the consumer table must match BUG-3691's final schema exactly, and any producer drift forces a rewrite.
-- The coverage-table semantics (demote / surface / advisory / fallback) are subtle prose. They are guarded by command-contract tests only, plus the three-run live evaluation.
-- The change surface also includes four host mirrors regenerated via `ll-adapt`; there is no `.omp` root in this checkout.
-
-The occurrence schema, property mapping, advisory policy, exit-1 handling and replay contradiction are now specified rather than left for the implementer. Remaining risk: prose tests cannot prove model compliance; mechanical determinism and whole semantic-verdict repeatability must not be conflated.
+- Moderate breadth: command prose, `CLI.md`, four regenerated host mirrors (no `.omp` root in this checkout) and a new test file — about 7 change sites, each subtle prose rather than mechanical.
+- The coverage-table semantics (demote / surface / advisory / fallback) are guarded by command-contract tests only, plus the non-blocking three-run live evaluation.
+- Broad contract reuse: the consumer table must match BUG-3691's schema exactly (import constants from `little_loops.issues.citations`), and any producer drift forces a rewrite.
 
 ## Status
 
@@ -177,6 +172,7 @@ The occurrence schema, property mapping, advisory policy, exit-1 handling and re
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T18:39:57 - `026897e5-79d3-46c5-82b4-0205c55bab40.jsonl`
 - `/ll:verify-issues` - 2026-10-03T17:56:21 - `b5e6edc5-35e7-47c8-bd8f-3ec9a6ef2ef2.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:52:30 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:18:05 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
