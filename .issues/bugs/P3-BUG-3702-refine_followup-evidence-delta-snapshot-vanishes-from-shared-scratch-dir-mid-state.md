@@ -56,6 +56,20 @@ A snapshot used by a correctness check must not be deletable by unrelated hooks 
 - New hook-level survival test: run `hooks/scripts/scratch-cleanup.sh` against a project containing an allocated snapshot and assert it survives; also assert the allocated name never matches the hook's `-([0-9]+)\.[^.]+$` extraction
 - New GC test: snapshot older than the cutoff is pruned on the next allocation; a younger one and an explicit-`PATH` snapshot are not
 
+## Program Design
+
+### Types
+
+- `EvidenceSnapshot` — existing dataclass in `little_loops.cli.verify_evidence`; unchanged
+
+### Signatures
+
+- `write_snapshot(base_dir: Path, snapshot: EvidenceSnapshot, dest: Path | None) -> Path` — when `dest` is `None`, allocates `.loops/tmp/evidence-snapshots/evidence-snapshot-<uuid4>.json` (no pid suffix) and prunes snapshots older than the GC cutoff; an explicit `dest` is written as-is
+
+### Call Path
+
+`main_verify_evidence` -> `write_snapshot` -> `atomic_write_json`; the returned `snapshot_path` is read back by the `--delta-from` run via `load_snapshot`
+
 ## Implementation Steps
 
 1. Change `SNAPSHOT_DIR` and the allocated name in `write_snapshot`; fix the docstring.
