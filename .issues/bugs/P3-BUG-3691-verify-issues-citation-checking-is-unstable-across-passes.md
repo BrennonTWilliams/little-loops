@@ -10,6 +10,9 @@ captured_at: '2026-10-01T22:03:31Z'
 reconcile_attempted: true
 relates_to:
 - ENH-3690
+- BUG-3708
+blocks:
+- BUG-3708
 parent: EPIC-3694
 epic: EPIC-3694
 ---
@@ -36,16 +39,19 @@ A citation defect that surfaces only on a late pass lands after the loop's repai
 
 ## Proposed Solution
 
-Make citation findings deterministic **by extending `ll-issues format-check`** and making `verify-issues` consume its keys as ground truth; the model keeps only semantic claims.
+Make citation findings deterministic **by extending `ll-issues format-check`**; `verify-issues` then consumes its keys as ground truth (check B8, now **BUG-3708**); the model keeps only semantic claims.
+
+> **Split 2026-10-03 (pre-implementation review, Opus second opinion).** This issue is now the **detector half**: new format-check rules plus an `examined_refs` payload. The `verify-issues` B8 prose is **BUG-3708** (`blocked_by` this issue). ENH-3690 depends only on this half. Two review findings shape the scope below: (1) format-check emitted only gap lists, so B8 could not tell "examined and passed" from "never looked at" and would have demoted true model findings about unexamined citations: this issue must emit `examined_refs`; (2) bare-filename resolution, the defined-in rule and the scope widening all extend keys that already feed `has_blocking_gaps` / the exit code, so they would start failing issues that pass today: **every new-rule and widened-scope finding ships advisory** and promotion to blocking is an ENH-3690 acceptance criterion.
 
 > **Rescoped 2026-10-02 (EPIC-3694 review, Opus second opinion).** The original plan — a brand-new `ll-verify-citations` CLI — is dropped. It duplicated `ll-issues format-check` (which already runs `stale_file_ref` / `ambiguous_file_ref` / `stale_symbol_ref` / `mislocated_symbol_ref` right before `verify_issue` and which `verify-issues` ignores), carried ~20 registration touchpoints, and still would not have caught the real defect (a symbol cited via its *importing* module: `symbol_exists_in_file` is satisfied by the import at `feed.py:44`). Pre-rescope research about a new CLI (registration surface, `extract_citations`, exit-code contract) was pruned on 2026-10-02; the findings kept below are post-rescope only.
 
-1. **Defined-in vs imported-in rule** (`symbol_claims`): a symbol claimed in file F that F only *imports* (no `def`/`class`/assignment) while exactly one other tracked module defines it → `mislocated_symbol_ref` (use `symbol_resolves_elsewhere` for the target). Be conservative to avoid false positives where citing the importer is the intended usage-site claim: trigger only on definition-shaped claims (`file:symbol`, "defined in", `symbol()` as owner), and honor the existing `<!-- ll-prose-ok -->` suppression marker.
+0. **`examined_refs` payload (new, required by BUG-3708):** `check_format_gaps` / `ll-issues format-check --format json` gains an `examined_refs` list: one entry per citation the checks actually examined, as `{ref, property, result}` where `property` is `path_exists` | `line_in_range` | `symbol_defined_in` and `result` is `ok` | the gap key raised. Unexamined citations (unsuffixed bare names, sections outside the check's scope, `unresolvable_form`) are simply absent. Entries need an explicit total sort key (byte-identical JSON). Fail-open for consumers: an absent field means "nothing examined".
+1. **Defined-in vs imported-in rule** (`symbol_claims`): a symbol claimed in file F that F only *imports* (no `def`/`class`/assignment) while exactly one other tracked module defines it → `mislocated_symbol_ref` (use `symbol_resolves_elsewhere` for the target). Be conservative to avoid false positives where citing the importer is the intended usage-site claim: trigger only on definition-shaped claims (`file:symbol`, "defined in", `symbol()` as owner), and honor the existing `<!-- ll-prose-ok -->` suppression marker. **Advisory:** this rule's findings must not reach `has_blocking_gaps` (separate advisory key or an advisory marker on the finding; the existing `mislocated_symbol_ref` behavior in its current scope is unchanged). Citing an importing file for a call-site is often intentional, so expect false positives; measure before promotion.
 2. **Line past end of file**: new gap key `stale_line_ref` for a cited `path:N[-M]` whose line exceeds the file length; `anchors.resolve_anchor` clamps today, so this needs its own check relative to the project root, not process cwd. **Advisory**: add it to `issue_parser._ADVISORY_GAP_CLASSES` (report-only, no repair, no exit-code effect) so it cannot turn into a gate on its own.
-3. **Bare-filename citations**: resolve slash-less refs (BUG-3689's `runner_spec.py:335`) through `text_utils.suffix_match_candidates` — 0 / 1 / >1 tracked paths → `stale_file_ref` / ok / `ambiguous_file_ref`, candidates sorted; report mirror-only matches distinctly; honor `(new)` planned-new markers. **Restrict to citation-shaped forms** — `name.ext:N` and `name.py:symbol()` — and leave unsuffixed bare names unchecked (as today). The 2026-10-02 Opus review measured 222 zero-match false `stale_file_ref` findings across 58 open issues for unsuffixed bare names (mostly artifact/loop names), versus 0 zero-match and 5 ambiguous for line-suffixed ones; re-measure when implementing (step 1 baseline).
-4. **Scope**: widen the symbol/line checks beyond `_symbol_claim_scope_text` (Summary / Current Behavior / Root Cause / Context) to cover Integration Map, Tests and Wiring Phase — the BUG-3689 pass-3 defect sat in Tests/Wiring Phase — keeping fenced-block skipping (`text_utils.fence_spans`).
-5. **`verify-issues` wiring**: new check **B8** (after check 7) reads `ll-issues format-check <ID> --format json` and treats its ref keys as authoritative **only for the properties format-check actually decides**: path existence/ambiguity, line-in-range, and symbol definition location. The model must not raise a finding of those kinds that format-check does not back up (demote it to an advisory note that does not affect the verdict). A cited line whose claimed *content* is absent or different, and any premise-changing citation finding, stays verdict-bearing: format-check cannot express it, and demoting it would make format-check a single point of failure that silently hides real defects. Fail-open wording matches B7: invocation failure → silent fallback.
-6. **Routing (ENH-3690 is the repair route)**: pass-1 detection only pays off if the finding is repairable. §2C's `CLAIMS_OUTDATED` correctable scope covers Integration Map / Tests citations but not Wiring Phase, Summary or Root Cause, so a defect found there on pass 1 still ends `NON_VALID` → `GATE_UNMET` unless ENH-3690's route exists. This issue does **not** widen §2C (BUG-3637 deliberately limited auto-rewrite scope); ENH-3690 is the route for those cases.
+3. **Bare-filename citations**: resolve slash-less refs (BUG-3689's `runner_spec.py:335`) through `text_utils.suffix_match_candidates` — 0 / 1 / >1 tracked paths → `stale_file_ref` / ok / `ambiguous_file_ref`, candidates sorted; report mirror-only matches distinctly; honor `(new)` planned-new markers. **Advisory** like the other new rules (new keys or advisory marker; existing `stale_file_ref` / `ambiguous_file_ref` semantics for slash-qualified paths unchanged). **Restrict to citation-shaped forms** — `name.ext:N` and `name.py:symbol()` — and leave unsuffixed bare names unchecked (as today). The 2026-10-02 Opus review measured 222 zero-match false `stale_file_ref` findings across 58 open issues for unsuffixed bare names (mostly artifact/loop names), versus 0 zero-match and 5 ambiguous for line-suffixed ones; re-measure when implementing (step 1 baseline).
+4. **Scope**: widen the symbol/line checks beyond `_symbol_claim_scope_text` (Summary / Current Behavior / Root Cause / Context) to cover Integration Map, Tests and Wiring Phase — the BUG-3689 pass-3 defect sat in Tests/Wiring Phase — keeping fenced-block skipping (`text_utils.fence_spans`). Findings in the *newly covered* scope are advisory even when the same key is blocking in the original scope.
+5. **`verify-issues` wiring — moved to BUG-3708.** B8 consumes `examined_refs`; this issue only guarantees the payload and the determinism of its contents.
+6. **Routing (ENH-3690 is the repair route)**: pass-1 detection only pays off if the finding is repairable. §2C's `CLAIMS_OUTDATED` correctable scope covers Integration Map / Tests citations but not Wiring Phase, Summary or Root Cause, so a defect found there on pass 1 still ends `NON_VALID` → `GATE_UNMET` unless ENH-3690's route exists. Keeping the new keys advisory here means this issue cannot increase `GATE_UNMET` on its own; **promotion of the new keys to blocking is an ENH-3690 acceptance criterion**, gated on its repair route existing and a measured before/after false-positive rate over `.issues/`. This issue does **not** widen §2C (BUG-3637 deliberately limited auto-rewrite scope).
 
 ## Integration Map
 
@@ -53,9 +59,8 @@ Make citation findings deterministic **by extending `ll-issues format-check`** a
 - `scripts/little_loops/issues/symbol_claims.py` — defined-in vs imported-in rule (`symbol_exists_in_file` / `symbol_resolves_elsewhere` callers)
 - `scripts/little_loops/issue_parser.py` — `check_format_gaps` (add `stale_line_ref`; bare-filename resolution; widened scope next to `_symbol_claim_scope_text`) and the gap dataclass
 - `scripts/little_loops/text_utils.py` — slash-less ref handling in `classify_file_ref` (or a sibling resolver using `suffix_match_candidates`); sorted candidates
-- `scripts/little_loops/cli/issues/format_check.py` — report/`--format json` surface for the new key(s)
-- `commands/verify-issues.md` — new check **B8** after §2B check 7; keep the `test_enh3250` anchors (`#### B. Verify Against Codebase`, `#### C. Determine Verdict`, `Persist the verdict to frontmatter`, `### 3. Request User Approval`) present and in order; `Bash(ll-issues:*)` is already granted
-- Host mirrors of `commands/verify-issues.md` — regenerate with `ll-adapt --host <gemini|qwen|kimi-code|codex> --apply` (never hand-edit)
+- `scripts/little_loops/cli/issues/format_check.py` — report/`--format json` surface for the new key(s) and the `examined_refs` payload
+- `commands/verify-issues.md` and its host mirrors — **no edit here**; B8 moved to BUG-3708
 
 No new CLI: nothing to change in `scripts/pyproject.toml`, `cli/__init__.py`, `init/writers.py` (`_LL_PERMISSIONS`), `skills/configure/areas.md`, or `docs/reference/CLI.md` entry-point coverage.
 
@@ -77,11 +82,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 - `scripts/tests/test_symbol_claims.py` / `test_issue_parser.py` / `test_format_check*.py` (locate the existing `stale_symbol_ref` / `stale_file_ref` suites): importing-module claim → `mislocated_symbol_ref`; defining-module claim → clean; line past EOF; bare filename 0/1/>1 matches with sorted candidates; mirror-only match; `(new)` planned file not flagged; `ll-prose-ok` suppression
 - Determinism: run `check_format_gaps` / `format-check --format json` twice over an unchanged fixture issue (`tmp_path` git repo; helpers in `test_verify_evidence.py` style) and assert byte-identical output
-- `scripts/tests/test_bug3691_verify_issues_citations.py` (new) — B8 present between check 7 and `#### C. Determine Verdict`; consumes `ll-issues format-check`; modelled on `test_enh3126_verify_issues_graph_seeding.py`
-- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — slices on the §2B/§C/§3 anchors via `body.index(...)`; must stay green
-- `scripts/tests/test_verify_skill_prose.py::TestBaselineNeverIncreases` (`BASELINE_COUNT = 17`) — B8 prose must not add `python3 -c` / union-find wording; name the CLI as owner, do not describe the resolution steps (EPIC-2938 invariant)
-- `scripts/tests/test_docs_audience_gate.py` — B8 prose must not cite `scripts/` paths (use `little_loops.<module>`)
-- `scripts/tests/test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` — fails until mirrors are regenerated
+- `examined_refs` tests (in the format-check/`check_format_gaps` suites): a cited slash path, a line-suffixed bare name and a `file:symbol` claim each appear with the right property/result; an unsuffixed bare name and a ref in an unscanned section do not appear; entries are sorted; two runs are byte-identical
+- Advisory tests: new-rule and widened-scope findings do not set `has_blocking_gaps` and leave the `ll-issues format-check` exit code unchanged; existing-scope `stale_file_ref` / `mislocated_symbol_ref` still block
+- Backlog regression: `ll-issues format-check --all` exit status / blocking-gap set over the committed `.issues/` is unchanged before vs after (record the diff in this issue)
+- B8 prose tests, `test_enh3250` anchors, the prose baseline, the docs-audience gate and the host-mirror staleness test moved to BUG-3708
 
 ### Documentation
 - `docs/reference/CLI.md` — the `ll-issues format-check` section: new gap key(s) and bare-filename behavior
@@ -105,7 +109,9 @@ _Pruned to post-rescope content on 2026-10-02 (the pre-rescope new-CLI findings 
 
 ### Types
 
-- `FormatGaps.stale_line_ref: list[str]` — new gap key (cited `path:N` beyond end of file), added to `_ADVISORY_GAP_CLASSES`; existing `stale_file_ref`, `ambiguous_file_ref`, `stale_symbol_ref`, `mislocated_symbol_ref` reused
+- `FormatGaps.stale_line_ref: list[str]` — new gap key (cited `path:N` beyond end of file), added to `_ADVISORY_GAP_CLASSES`; existing `stale_file_ref`, `ambiguous_file_ref`, `stale_symbol_ref`, `mislocated_symbol_ref` reused for existing scope
+- `FormatGaps.examined_refs: list[dict[str, str]]` — `{ref, property, result}` per citation actually examined, sorted; serialized in `--format json`
+- Advisory counterparts (keys or marker, chosen at implementation) for defined-in, bare-filename and widened-scope findings
 
 ### Signatures
 
@@ -114,25 +120,24 @@ _Pruned to post-rescope content on 2026-10-02 (the pre-rescope new-CLI findings 
 
 ### Call Path
 
-`verify-issues` check B8 -> `ll-issues format-check <ID> --format json` -> `check_format_gaps` -> `symbol_claims` / `text_utils.suffix_match_candidates`
+`ll-issues format-check <ID> --format json` -> `check_format_gaps` -> `symbol_claims` / `text_utils.suffix_match_candidates` -> `examined_refs`; consumed by `verify-issues` check B8 (BUG-3708)
 
 ## Implementation Steps
 
 1. **Baseline first:** run `ll-issues format-check --all --format json` and record per-key counts (`stale_file_ref`, `ambiguous_file_ref`, `stale_symbol_ref`, `mislocated_symbol_ref`) in this issue, so the later delta is measurable and the Opus-reported flood figures (222 false stale refs for unsuffixed bare names) can be re-checked.
 2. Add the defined-in vs imported-in rule in `symbol_claims` (`symbol_defined_in_file`), routed to `mislocated_symbol_ref` (definition-shaped claims only; honor `ll-prose-ok`).
-3. Add `stale_line_ref` (advisory, via `_ADVISORY_GAP_CLASSES`) and line-suffixed bare-filename resolution (0/1/>1, sorted candidates, mirror-only distinct, `(new)` markers skipped, unsuffixed bare names left unchecked) in `check_format_gaps` / `text_utils`; widen scope to Integration Map, Tests and Wiring Phase with fence skipping.
-4. Surface the new key(s) in `ll-issues format-check` text/JSON output.
-5. Add check B8 to `commands/verify-issues.md` (format-check keys authoritative only for existence/line-range/definition-location; content and premise findings stay verdict-bearing; fail-open; name format-check as owner); regenerate host mirrors.
-6. Tests per the Tests section, including the run-twice byte-identical determinism test; run `python -m pytest scripts/tests/`.
-7. **After:** re-run the `--all` per-key counts, record the before/after delta here, and confirm `rn-remediate.yaml`'s format-check exit-code gate and confidence-check CLAIM_GAP do not regress materially.
-8. Replay the BUG-3689 case: a fixture with `runner_spec.py:335` (bare, line-suffixed) and `cli/loop/feed.py:terminal_size()` must surface on pass 1.
-9. **Sequencing:** land before BUG-3695 (both edit `commands/verify-issues.md`, host mirrors and the prose baseline; serialize them). Wiring Phase / Root Cause citation defects surfaced on pass 1 are repaired only via ENH-3690's route (see Proposed Solution item 6).
+3. Add `stale_line_ref` (advisory) and line-suffixed bare-filename resolution (0/1/>1, sorted candidates, mirror-only distinct, `(new)` markers skipped, unsuffixed bare names left unchecked) in `check_format_gaps` / `text_utils`, advisory; widen scope to Integration Map, Tests and Wiring Phase with fence skipping, advisory in the new scope.
+4. Add `examined_refs` and surface it plus the new key(s) in `ll-issues format-check` text/JSON output.
+5. Tests per the Tests section, including run-twice byte-identical, `examined_refs` coverage and the advisory/exit-code-unchanged tests; run `python -m pytest scripts/tests/`.
+6. **After:** re-run the `--all` per-key counts and blocking-gap set, record the before/after delta here, and confirm `rn-remediate.yaml`'s format-check exit-code gate and confidence-check CLAIM_GAP do not regress.
+7. Replay the BUG-3689 case: a fixture with `runner_spec.py:335` (bare, line-suffixed) and `cli/loop/feed.py:terminal_size()` must surface (advisory) on pass 1 and appear in `examined_refs`.
+8. **Sequencing:** land before BUG-3708 (B8) and ENH-3690; BUG-3695 follows BUG-3708 (both edit `commands/verify-issues.md`, host mirrors and the prose baseline). Run `/ll:confidence-check` after this re-scope.
 
 ## Impact
 
 - **Priority**: P3 - causes a late-pass `GATE_UNMET` run end, but only when a citation defect exists
-- **Effort**: Medium–Large - extend format-check (3 rules + scope widening), one verify-issues check, a before/after backlog measurement, mirrors and tests (no new CLI)
-- **Risk**: Medium - the defined-in rule can false-positive on usage-site citations (mitigated by conservative trigger + suppression marker); widened scope and bare-name resolution can flood existing issues with new stale refs (mitigated by suffix-only resolution and the baseline/delta step); demoting unbacked model findings is limited to format-check-decidable properties so content/premise defects stay verdict-bearing
+- **Effort**: Medium - extend format-check (3 rules + scope widening + `examined_refs`), a before/after backlog measurement and tests (no new CLI; the verify-issues check and mirrors are BUG-3708)
+- **Risk**: Medium - the defined-in rule can false-positive on usage-site citations (mitigated by conservative trigger, suppression marker and advisory classification); widened scope and bare-name resolution can flood existing issues with new stale refs (mitigated by suffix-only resolution, advisory classification and the baseline/delta step)
 - **Breaking Change**: No
 
 ## Steps to Reproduce
@@ -146,15 +151,16 @@ Citation verification is performed by the model with ad-hoc reads/greps (the pas
 
 ## Acceptance Criteria
 
-- Repeated `--check` passes over an unchanged issue yield the same citation findings (byte-identical `format-check --format json` across two runs; `verify-issues` raises no citation finding that format-check does not back up).
+- Repeated `ll-issues format-check --format json` runs over an unchanged issue are byte-identical, including `examined_refs` (the `verify-issues` consumption is BUG-3708).
+- `examined_refs` lists exactly the citations examined, each with its property and result; unsuffixed bare names and refs in unscanned sections are absent.
+- All new-rule and widened-scope findings are advisory: `has_blocking_gaps` and the `ll-issues format-check` exit code are unchanged for every issue in the committed `.issues/` corpus before vs after (diff recorded).
 - A bare filename citation is resolved by search (0 / 1 / >1 tracked paths), never reported as a different path.
 - A symbol cited via a module that only imports it (BUG-3689's `cli/loop/feed.py:terminal_size()`) is reported `mislocated_symbol_ref` on pass 1, including in Tests / Wiring Phase sections.
 - A cited line beyond end of file is reported as `stale_line_ref` (advisory: no exit-code or gate effect).
 - Planned-new (`(new)`) files are not reported stale.
 - Unsuffixed bare names (no `:N` / `:symbol()`) are not newly flagged; a line-suffixed bare name resolving to 0 / 1 / >1 tracked paths is reported stale / ok / ambiguous with sorted candidates.
-- B8 treats format-check as authoritative only for existence, line-in-range and definition location; a citation finding about claimed line *content* or a premise stays verdict-bearing.
 - The per-key `ll-issues format-check --all` counts before and after the change are recorded in this issue, with no unexplained rise in `rn-remediate` format-issue routing.
-- Pass-1 citation defects in Wiring Phase / Root Cause are explicitly routed via ENH-3690 (routing recorded), not silently left to end the run `NON_VALID`.
+- Pass-1 citation defects in Wiring Phase / Root Cause are explicitly routed via ENH-3690 (routing recorded), and promotion of the new keys to blocking is recorded as an ENH-3690 acceptance criterion.
 
 ## Related Key Documentation
 
@@ -171,6 +177,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Note** (added by `/ll:audit-issue-conflicts`): Scope vs ENH-3690: B8 governs only a path/line/symbol-location finding that `ll-issues format-check` does not back up — it is demoted to an advisory note and does not affect the verdict. Format-check-backed findings feed ENH-3690's repair route; premise-changing non-citation findings stay `NON_VALID` (ENH-3690).
 
 **Note** (2026-10-02 advisor review): B8's demotion covers only format-check-decidable properties (existence, line-in-range, definition location). Citation findings about claimed line content stay verdict-bearing. This issue does not widen §2C's correctable scope; repair of pass-1 Wiring Phase / Root Cause defects is ENH-3690's route.
+
+**Note** (2026-10-03 review): split into this detector half and BUG-3708 (B8). B8 keys its demotion on `examined_refs` (emitted here), not on mere absence of a format-check finding; the new keys stay advisory until ENH-3690 promotes them.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:00 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
