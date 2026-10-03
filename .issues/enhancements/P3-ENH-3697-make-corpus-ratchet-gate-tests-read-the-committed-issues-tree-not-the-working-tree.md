@@ -18,6 +18,16 @@ relates_to:
 
 # ENH-3697: Make corpus-ratchet gate tests read the committed .issues tree, not the working tree
 
+> **Re-scoped 2026-10-03 (EPIC-3694 children review, Opus second opinion, confidence 0.7).**
+>
+> - **Premise check first.** `<ID>.base-dirty` records pre-existing dirt in the *shared checkout* when autodev started, not necessarily autodev's own mutation — confirm which before coding, since it decides whether HEAD-only reads or a clean-checkout gate is the right fix.
+> - **Narrow to the prose-dependency sweep.** `test_no_prose_dependency_drift_in_repo` needs only issue text + statuses (`find_issues(config, status_filter=...)`, `check_format_gaps(path, ..., issue_statuses=...)`): read these from `HEAD` in memory with `git cat-file --batch` (no tmp export, no file churn). Beware: `check_format_gaps` resolves tracked-file refs and project root from the config, so verify path/ref checks still resolve against the real checkout, not the blob text.
+> - **Defer `TestRepoGate::test_no_new_unverifiable_evidence`.** It shells out to `ll-verify-evidence --all --json -C <root>`, which walks git history and loads `.ll/evidence-baseline.json` relative to root; a `.issues`-only tmp export breaks both. If it is later needed, give the CLI an `--at-ref HEAD` blob-read mode rather than exporting files.
+> - **Do not change contributor semantics.** HEAD mode is enabled by an env flag set *inside* `code-run-gate` (BUG-3689 scrubs inherited env, so it must be set after the scrub); contributors keep working-tree behavior and their pre-commit corpus signal.
+> - **Class, not instance.** Other tests are also dirty-tree sensitive (host-mirror staleness, docs-audience gate, README loop count). A clean-worktree / clean-checkout `code-run-gate` may be the better single fix and would make this issue redundant; decide that first and record it.
+> - **Coverage tradeoff to state explicitly:** if the gate runs before the implementation commit, HEAD-only reads never see the implementation's own `.issues/` edits. Either accept that as intended or have the gate run post-commit.
+> - Missing sections to add after the decision: Integration Map, Implementation Steps, Tests; then `/ll:confidence-check`.
+
 ## Summary
 
 Make the two repo-wide corpus-ratchet tests read the **committed** `.issues/` tree (`HEAD` / `git ls-files`) instead of the live working tree, so in-flight autodev edits to `.issues/` cannot turn them red. Supersedes ENH-3692 (baseline-aware gate), which was closed won't-do after review of EPIC-3694.

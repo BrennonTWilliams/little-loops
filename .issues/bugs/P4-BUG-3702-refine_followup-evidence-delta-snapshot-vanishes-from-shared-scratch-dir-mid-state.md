@@ -15,6 +15,8 @@ relates_to:
 
 # BUG-3702: refine_followup evidence-delta snapshot vanishes from shared scratch dir mid-state
 
+> **Re-scoped again 2026-10-03 (EPIC-3694 children review, Opus second opinion):** the "new test" is mostly already there. `test_scratch_cleanup_preserves_fresh_dead_pid_file` (generic fresh dead-pid file survives) and `test_scratch_cleanup_pid_parsing_matches_legacy_sed` (already has an `evidence-snapshot-<uuid>-<deadpid>.json` case, backdated 48h → swept) exist in `scripts/tests/test_hooks_integration.py`. Add a single `evidence-snapshot-…` fresh-survives case (or parametrize the existing fresh test) rather than a new test. ENH-3706 (`08c4dda9e`) also added a universal 7-day idle prune, so the `write_snapshot` docstring must state **both tiers** — dead-pid files after 24h idle, any file after 7 days idle — and that reading a snapshot does not refresh its mtime (a `--delta-from` run >24h after the save can lose it). Effort: ~10 minutes; do it with the next scratch-hook touch and close.
+
 > **Re-scoped 2026-10-03 (pre-implementation review, Opus second opinion).** The original fix (move snapshots to an unswept `.loops/tmp/evidence-snapshots/` dir with its own 7-day GC) is **dropped**. BUG-3705 (commit `87d50cb02`) added a 24h mtime guard to `scratch-cleanup.sh`, so a fresh snapshot can no longer be swept during a refine pass, and that age sweep is already the GC this issue asked for. What remains is a regression test that pins the guard and a docstring fix; close once they land.
 
 ## Summary
@@ -36,7 +38,7 @@ History (confirmed 2026-10-02): pid-suffixed name + `scratch-cleanup.sh` dead-pi
 ## Proposed Solution
 
 - Add a hook-level test next to the BUG-3705 tests in `scripts/tests/test_hooks_integration.py` (helpers `_backdate`, `run_scratch_cleanup`, `_SCRATCH_DEAD_PID` already exist): an `evidence-snapshot-<uuid>-<deadpid>.json` younger than 24h survives `scratch-cleanup.sh`. Add the contrast case, the same file backdated past the guard (`_backdate`) is pruned, so the test is not vacuous.
-- Fix the `write_snapshot` docstring: "eligible for prune" becomes "pruned once untouched for the scratch-cleanup age guard (24h)".
+- Fix the `write_snapshot` docstring: "eligible for prune" becomes a two-tier statement: pruned after 24h idle when the pid suffix is dead, and after 7 days idle regardless (ENH-3706); reading does not refresh mtime.
 - Leave `scripts/tests/test_verify_evidence.py:1147-1149` as is: the pid suffix and scratch location are now intended.
 - Rejected: moving to a dedicated unswept dir with a 7-day GC. It adds a second cleanup mechanism for a risk the age sweep already covers. Revisit only if `MIN_AGE_MINUTES` is expected to shrink below a refine pass's lifetime.
 
@@ -85,7 +87,7 @@ History (confirmed 2026-10-02): pid-suffixed name + `scratch-cleanup.sh` dead-pi
 ## Acceptance Criteria
 
 - [ ] A hook-level test shows `scratch-cleanup.sh` leaves a recent (<24h) `evidence-snapshot-<uuid>-<deadpid>.json` in place and prunes the same file once backdated past the guard
-- [ ] The `write_snapshot` docstring describes the 24h age-guard lifecycle, not immediate prune eligibility
+- [ ] The `write_snapshot` docstring describes the two-tier lifecycle (24h dead-pid guard, 7-day universal idle prune), not immediate prune eligibility
 - [ ] `python -m pytest scripts/tests/` exits 0
 
 ## Related

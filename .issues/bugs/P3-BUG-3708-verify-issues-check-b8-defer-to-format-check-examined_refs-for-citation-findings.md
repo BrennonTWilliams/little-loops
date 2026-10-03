@@ -4,6 +4,8 @@ type: BUG
 title: 'verify-issues check B8: defer to format-check examined_refs for citation findings'
 priority: P3
 status: done
+supersedes:
+- ENH-3690
 discovered_by: advise-review
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:05:31Z'

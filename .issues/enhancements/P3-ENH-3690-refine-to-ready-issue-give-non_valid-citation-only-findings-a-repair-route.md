@@ -3,7 +3,7 @@ id: ENH-3690
 type: ENH
 title: 'refine-to-ready-issue: give NON_VALID citation-only findings a repair route'
 priority: P3
-status: open
+status: cancelled
 decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-10-01'
@@ -12,14 +12,21 @@ relates_to:
 - BUG-3691
 - BUG-3708
 - BUG-3695
-blocked_by:
-- BUG-3691
-- BUG-3708
+blocked_by: []
 parent: EPIC-3694
 epic: EPIC-3694
+closed_reason: superseded
 ---
 
 # ENH-3690: refine-to-ready-issue: give NON_VALID citation-only findings a repair route
+
+> **Re-scoped 2026-10-03 (EPIC-3694 children review, Opus second opinion, confidence 0.7).** BUG-3691 and BUG-3708 have landed, and they change this issue's premise:
+>
+> - **Replay (2026-10-03, `ll-issues format-check --format json` on a fixture carrying the two BUG-3689 mis-citations):** the bare `runner_spec.py:335` yields `path_resolves: ok` + `line_in_range: ok`, so B8 demotes a "file doesn't exist" objection to an advisory note; `cli/loop/feed.py:terminal_size()` yields `symbol_defined_in: advisory_mislocated_symbol_ref` (advisory, no verdict effect). **Both original triggers are verdict-neutral under B8** — provided the model follows the property-exact demotion rule. **Live replay run 2026-10-03** (`/ll:verify-issues --check` procedure applied to BUG-3689's pre-fix text, commit `868c36818`, as a throwaway fixture issue): `runner_spec.py:335` (`path_resolves ok`, `line_in_range ok`, resolves on disk to `scripts/little_loops/runner_spec.py`, line 335 holds the `LL_PYTHON` export) → any under-qualified-path objection is demoted, no verdict effect; both `cli/loop/feed.py:terminal_size()` occurrences → `symbol_defined_in: advisory_mislocated_symbol_ref` + `symbol_resolves_in: ok` → advisory only. **Neither citation contributes a non-VALID finding, so the BUG-3689 `GATE_UNMET` does not recur.** (The fixture still carries unrelated premise staleness — e.g. 'code-run-gate does not unset `LL_PYTHON`' is now fixed — so an end-to-end VALID was not demonstrable; only the citation outcome was.) No *blocking* citation key in a premise section has been observed in any run. **Recommendation: cancel as superseded by BUG-3708**, or defer until such an occurrence is observed.
+> - **What remains** is narrower: a *blocking* citation key (`stale_file_ref`, `ambiguous_file_ref`, blocking `mislocated_symbol_ref`/`stale_symbol_ref`, `stale_line_ref` once promoted) whose fix sits in a premise section (or `## Context`, see `commands/verify-issues.md` "`## Context` is in neither list") still yields `NON_VALID` with no repair route. Implement only if the live replay (or a fresh occurrence) still ends `GATE_UNMET`; otherwise close as superseded by BUG-3708.
+> - **Eligibility must be mechanical, not prose-matched.** B′ as written says a finding qualifies when "backed by a format-check key", but B8 matches blocking keys to model findings by ref string (blocking gap lists carry no occurrence identity) and demotes/neutralizes advisory ones. Add a `correction_target` field (path / line bound / defining file for the symbol) to the existing `examined_refs` JSON from `ll-issues format-check` (no new CLI), and let only entries with a non-null target qualify. That also yields a deterministic golden test.
+> - **Per-key eligibility (decide before coding):** `mislocated_symbol_ref` → eligible (target = defining file); `stale_line_ref` → eligible only if the claim is a bare line number/range and the target is the symbol's current line (else drop to `NON_VALID`); uniquely resolved bare filename → eligible; `ambiguous_file_ref` and `stale_file_ref` (untracked/deleted) → **not eligible** (no unique target). Record the final table in this issue.
+> - **Line anchors below are stale** (BUG-3708 added ~50 lines to `commands/verify-issues.md`). Locate by heading/phrase, not number: the DIRECTIVE_DRIFT/CLAIMS_OUTDATED rows of the §2C verdict table, "**Correctable scope for `CLAIMS_OUTDATED`**", the §2.5 `CLAIMS_OUTDATED` verdict bullet and "Any other verdict" bullet, "**In-place claim correction (BUG-3637).**" in §4, the §4.1 wording that depends on §2C, and the `--from-evidence` flag description under Arguments. Host-mirror line numbers are equally stale; regenerate with `ll-adapt`.
 
 ## Summary
 
@@ -111,15 +118,15 @@ Revises the `/ll:decide-issue` choice above; Option B's *mechanism* (reuse the `
 - `scripts/little_loops/cli/issues/check_verify_verdict.py` - only if a new verdict value or evidence discriminator is added
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `commands/verify-issues.md:265` — verdict-table row in `§2C` calls `CLAIMS_OUTDATED` "a **factual metadata correction** only"; reword so a path / symbol-location fix in a premise section qualifies [Agent 2 finding]
-- `commands/verify-issues.md:279` — "stays `NON_VALID`" sentence naming the seven premise sections in `Correctable scope for CLAIMS_OUTDATED`; carve out the path / symbol-location case [Agent 2 finding]
-- `commands/verify-issues.md:277` — rationale that auto-rewriting a premise is unsafe because an independent `--check` re-pass cannot catch it, in `Correctable scope for CLAIMS_OUTDATED`; the relaxation must reconcile with this [Agent 2 finding]
-- `commands/verify-issues.md:400-423` — `§2.5` "CLAIMS_OUTDATED verdict" and "Any other verdict" bullets state "every finding is in the correctable scope defined in §2C" and the never-auto-correct list; keep consistent with the relaxed §2C [Agent 2 finding]
-- `commands/verify-issues.md:464-471` — second copy of the seven-section premise list in `In-place claim correction (BUG-3637)` (§4); must change in the same edit as §2C [Agent 2 finding]
-- `commands/verify-issues.md:511-515` — `§4.1 Frontmatter sync` says `CLAIMS_OUTDATED` holds "when the residual findings are still all in the correctable scope"; depends on the §2C definition [Agent 2 finding]
-- `commands/verify-issues.md:612-614` — `--from-evidence` flag description in `Arguments`; "correct only the claims it lists" wording named in this issue's scope [Agent 2 finding]
-- `.gemini/commands/verify-issues.toml:249` — git-tracked full-body host mirror of `Correctable scope for CLAIMS_OUTDATED`; regenerate with `ll-adapt --host gemini --apply` after the command edit [Agent 1 + Agent 2 finding]
-- `.qwen/commands/ll/verify-issues.md:250` — git-tracked full-body host mirror; regenerate with `ll-adapt --host qwen --apply` [Agent 1 + Agent 2 finding]
+- `commands/verify-issues.md` §2C verdict-table `CLAIMS_OUTDATED` row calls `CLAIMS_OUTDATED` "a **factual metadata correction** only"; reword so a path / symbol-location fix in a premise section qualifies [Agent 2 finding]
+- `commands/verify-issues.md` §2C — "stays `NON_VALID`" sentence naming the seven premise sections in `Correctable scope for CLAIMS_OUTDATED`; carve out the path / symbol-location case [Agent 2 finding]
+- `commands/verify-issues.md` §2C — rationale that auto-rewriting a premise is unsafe because an independent `--check` re-pass cannot catch it, in `Correctable scope for CLAIMS_OUTDATED`; the relaxation must reconcile with this [Agent 2 finding]
+- `commands/verify-issues.md` §2.5 —  "CLAIMS_OUTDATED verdict" and "Any other verdict" bullets state "every finding is in the correctable scope defined in §2C" and the never-auto-correct list; keep consistent with the relaxed §2C [Agent 2 finding]
+- `commands/verify-issues.md` §4 "In-place claim correction" — second copy of the seven-section premise list in `In-place claim correction (BUG-3637)` (§4); must change in the same edit as §2C [Agent 2 finding]
+- `commands/verify-issues.md` §4.1 — text that says `CLAIMS_OUTDATED` holds "when the residual findings are still all in the correctable scope"; depends on the §2C definition [Agent 2 finding]
+- `commands/verify-issues.md` Arguments — `--from-evidence` flag description in `Arguments`; "correct only the claims it lists" wording named in this issue's scope [Agent 2 finding]
+- `.gemini/commands/verify-issues.toml` — git-tracked full-body host mirror of `Correctable scope for CLAIMS_OUTDATED`; regenerate with `ll-adapt --host gemini --apply` after the command edit [Agent 1 + Agent 2 finding]
+- `.qwen/commands/ll/verify-issues.md` — git-tracked full-body host mirror; regenerate with `ll-adapt --host qwen --apply` [Agent 1 + Agent 2 finding]
 - `.kimi-code/skills/ll-verify-issues/SKILL.md` — git-tracked full-body host mirror (one `Correctable scope` hit); regenerate with `ll-adapt --host kimi-code --apply` [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
@@ -182,20 +189,19 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Option B′ (see Decision Rationale § Revision): change §2C / §2.5 / §4 of `commands/verify-issues.md` so a finding qualifies for `CLAIMS_OUTDATED` only when backed by a deterministic `format-check` ref key; the verdict contract gains no new value.
-   > ⚠ Superseded — Options 1/3 also need verify_evidence persistence and §2C scope change
-2. Implement the route in `refine-to-ready-issue.yaml` (or the §2C rule) so citation-only findings reach a claims-correction attempt with its own counter, never `check_gate_refine_limit`.
-   > ⚠ Superseded — Option B selected; no YAML route or counter change
-3. Add a `test_builtin_loops.py` test for the new route and a regression test that premise-changing `NON_VALID` still reaches `record_gate_unmet`.
-   > ⚠ Superseded — Option B adds no route; pin in test_enh3250 instead
-4. Update `docs/guides/LOOPS_REFERENCE.md`; run `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` (the route table is unchanged; no YAML edit, so no `ll-loop validate` step).
+0. **Gate:** run a live `/ll:verify-issues BUG-3689 --check` replay over the pre-fix issue text (or reproduce a fresh `GATE_UNMET` from a blocking citation key in a premise section). If B8 already yields a repairable/neutral verdict, close this issue as superseded by BUG-3708; otherwise continue.
+1. Add `correction_target` to the `examined_refs` entries emitted by `ll-issues format-check --format json` (`scripts/little_loops/issues/citations.py` `CitationCheck`), with a golden-fixture test per eligible key; settle and record the per-key eligibility table (see Re-scope callout).
+2. Option B′: change `commands/verify-issues.md` §2C / §2.5 / §4 so a finding qualifies for `CLAIMS_OUTDATED` only when its occurrence has a non-null `correction_target`; the verdict contract gains no new value; persist one `<section>: '<stale text>' -> <correction_target>` item per qualifying finding in the existing evidence frontmatter field (§2.5 shape). Mixed-scope still yields `NON_VALID`.
+3. Pin the rule in `test_enh3250_verify_issues_proposal_vs_code.py::TestClaimsOutdatedVerdict`; the `PRE_TABLE` route map in `test_builtin_loops.py` is unchanged (no YAML edit, so no `ll-loop validate` step).
+4. Promotion measurement: before/after `ll-issues format-check --all` over `.issues/` per BUG-3691 key (false-positive rate, newly failing issues); record the per-key decision.
+5. Update `docs/guides/LOOPS_REFERENCE.md`, regenerate host mirrors, and run `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py scripts/tests/test_wiring_skills_and_commands.py scripts/tests/test_docs_audience_gate.py`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `commands/verify-issues.md` §2C (verdict-table row at `:265`, `Correctable scope for CLAIMS_OUTDATED` at `:267-285`) and §4 `In-place claim correction` (`:464-471`) in one edit so both copies of the premise-section list agree; keep the literal phrases `Correctable scope for \`CLAIMS_OUTDATED\``, `In-place claim correction`, `does not count as a correction`, `--from-evidence` and the seven section names
-- Update `commands/verify-issues.md` §2.5 (`:400-432`), §4.1 (`:511-515`) and the `--from-evidence` flag description (`:612-614`) to match; keep the six never-auto-correct names, the `<section>: '<stale text>' -> <current truth>` item shape and the `NON_VALID` > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` precedence verbatim
+- Update `commands/verify-issues.md` §2C (verdict-table row, `Correctable scope for CLAIMS_OUTDATED`) and §4 `In-place claim correction` in one edit so both copies of the premise-section list agree; keep the literal phrases `Correctable scope for \`CLAIMS_OUTDATED\``, `In-place claim correction`, `does not count as a correction`, `--from-evidence` and the seven section names
+- Update `commands/verify-issues.md` §2.5, §4.1 and the `--from-evidence` flag description (`:612-614`) to match; keep the six never-auto-correct names, the `<section>: '<stale text>' -> <current truth>` item shape and the `NON_VALID` > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` precedence verbatim
 - Update `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — add `TestClaimsOutdatedVerdict` pins for the path / symbol-location carve-out, "both scopes present means `NON_VALID` wins", and the §4 carve-out; tighten `test_correctable_scope_rule_excludes_premise_sections`
 - Regenerate host mirrors after the command edit: `ll-adapt --host gemini --apply`, `ll-adapt --host qwen --apply`, `ll-adapt --host kimi-code --apply`, then re-run `test_host_artifacts_are_not_stale` in `scripts/tests/test_wiring_skills_and_commands.py`; stage the three mirrors (`.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md`)
 - Update `docs/guides/LOOPS_REFERENCE.md` (`VERIFY:CLAIMS_OUTDATED` row, `Claim-verification gate chain`) and check `docs/reference/CLI.md` (`next-obligation` `CLAIMS_OUTDATED` description); keep new `commands/` prose free of `scripts/tests/` and `scripts/little_loops/` paths (`test_docs_audience_gate.py`)
@@ -256,6 +262,8 @@ _Added by `/ll:refine-issue` — 2026-10-01 — based on codebase analysis:_
 - Premise-changing findings, findings not backed by a `format-check` key, and any mix of the two still persist as `NON_VALID`; the never-auto-correct set is unchanged.
 - **Promotion of the BUG-3691 keys to blocking (added 2026-10-03):** BUG-3691 ships its new-rule and widened-scope format-check findings (defined-in vs imported-in, bare-filename resolution, widened scope, `stale_line_ref`) **advisory**. This issue's repair route must work from advisory keys (it reads them directly from `ll-issues format-check --format json`); promoting any of them to blocking (`has_blocking_gaps` / exit code) is allowed only once (a) this route exists and (b) a before/after run of `ll-issues format-check --all` over `.issues/` records the false-positive rate and the set of newly failing issues, with no unexplained rise in `rn-remediate` format-issue routing. Record the decision per key.
 - **Only `examined_refs`-backed findings qualify:** a finding is "backed by a format-check key" only for citations present in BUG-3691's `examined_refs`; a model finding about an unexamined citation stays `NON_VALID`.
+- **Replay gate (added 2026-10-03):** this issue is implemented only if a live `verify-issues --check` replay of the BUG-3689 trigger (or a fresh occurrence) still yields `NON_VALID` under B8; otherwise it is closed as superseded by BUG-3708 with the replay recorded.
+- **Mechanical eligibility (added 2026-10-03):** repair eligibility derives from a non-null `correction_target` on the matching `examined_refs` entry; `ambiguous_file_ref` and untracked/deleted `stale_file_ref` never qualify.
 - Covered by prose pins in `test_enh3250_verify_issues_proposal_vs_code.py::TestClaimsOutdatedVerdict` (relaxed §2C wording, key-gating, `NON_VALID`-wins, §4 carve-out); the `test_builtin_loops.py` route table (`PRE_TABLE`) is unchanged and stays green — Option B′ adds no route, so no new route test is required.
 
 ## Related Key Documentation

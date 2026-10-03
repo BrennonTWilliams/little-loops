@@ -9,9 +9,9 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:46:29Z'
 parent: EPIC-3694
-blocked_by:
-- BUG-3708
+blocked_by: []
 relates_to:
+- BUG-3708
 - BUG-3691
 - ENH-3690
 decision_needed: false
@@ -25,6 +25,15 @@ score_change_surface: 18
 
 # BUG-3695: refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria
 
+> **Review 2026-10-03 (EPIC-3694 children review, Opus second opinion, confidence 0.7).**
+>
+> - **Unblocked:** BUG-3708 landed (`45481a2ba`); the "Gaps to Address" blocker in § Confidence Check Notes is resolved. Rerun `/ll:confidence-check` before implementing.
+> - **Anchors are stale** (BUG-3708 added ~50 lines to `commands/verify-issues.md`; `refine-to-ready-issue.yaml` has also shifted — `check_reconcile_limit` now starts near line 797, `VERIFY:DIRECTIVE_DRIFT` route at 589). Locate by phrase: the `DIRECTIVE_DRIFT` row of the §2C verdict table, §2.5 "`DIRECTIVE_DRIFT` verdict (BUG-3574, check B6)" bullet, and the state names in the loop YAML.
+> - **Split the live evaluation.** The three-run live-evaluation AC and Implementation Step 6 become a separate follow-up (capture it when the code lands) so the code ACs are not gated on three LLM runs. Scripted FSM tests still prove routing only.
+> - **Distinct non-convergence signal, no budget fallback.** Keep `check_reconcile_limit` at `target: 2`, but when `DIRECTIVE_DRIFT` recurs after the flagged reconcile and the budget is exhausted, make that visible (e.g. a distinct `echo` line / run-record evidence note from `record_gate_unmet`) so incomplete B6 enumeration is distinguishable from other gate failures. Do **not** add a new `--legacy-class`: `LEGACY_CLASSES` in `run_record.py` is a closed tuple with consumers in `autodev_summary.py`, `preparation_policy.py` and `deferred_triage.py`.
+> - **Stale-verdict window:** `clear_verify_verdict` runs only on the post-repair path before `verify_issue`. Reconcile reached via a non-VERIFY route (shared `ACCEPTANCE_CRITERIA`) can see an old `DIRECTIVE_DRIFT` verdict + evidence; the flag's eligibility check already requires the verdict, but add a test where a stale verdict/evidence pair is present on the `ACCEPTANCE_CRITERIA` route and the flag is absent/ignored.
+> - **Evidence lifecycle with ENH-3690:** both issues write the evidence frontmatter field from different verdict branches. Per §2.5 precedence (`NON_VALID` > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` > `DIRECTIVE_DRIFT`), a pass that returns `CLAIMS_OUTDATED` replaces the evidence with claim items and drops the drift list until the next pass; pin that `--from-evidence` (correct_claims) and `arm_proposal_revision` can never consume drift evidence (they route only on their own verdicts).
+
 ## Summary
 
 `refine-to-ready-issue` routes a `DIRECTIVE_DRIFT` verify verdict to `reconcile_issue`, but `/ll:reconcile-issue` is forbidden from adding Acceptance Criteria, so the one remedy the verdict promises cannot clear the finding. The loop then exhausts its budgets and ends `GATE_UNMET`, even though the fix is small and fully specified by the verify finding.
@@ -34,7 +43,7 @@ score_change_surface: 18
 Observed in run `refine-to-ready-issue-20261002T111524` on ENH-3678 (history run `2026-10-02T171524-refine-to-ready-issue`, 33 iterations, 24m39s, `failed`):
 
 1. `verify_issue` returned `DIRECTIVE_DRIFT` on iterations 14, 20 and 29. Every claim about current code held; the only finding was a check B6 AC-coverage gap — the Integration Map lists a `ll-doctor` "rebuild pending" surface (`cli/doctor.py`) with no Acceptance Criterion. Later passes added further uncovered points: notice suppression on the automation-pruning path, the replay-duration measurement, and the `session_store/__init__.py` re-export.
-2. `commands/verify-issues.md:263` defines `DIRECTIVE_DRIFT` as "remedied by `reconcile-issue`", and the loop routes `VERIFY:DIRECTIVE_DRIFT` -> `check_reconcile_limit` -> `reconcile_issue` (`refine-to-ready-issue.yaml:589`).
+2. the `DIRECTIVE_DRIFT` row of `commands/verify-issues.md`'s §2C verdict table (was `:263`) defines `DIRECTIVE_DRIFT` as "remedied by `reconcile-issue`", and the loop routes `VERIFY:DIRECTIVE_DRIFT` -> `check_reconcile_limit` -> `reconcile_issue` (`refine-to-ready-issue.yaml`, `"VERIFY:DIRECTIVE_DRIFT"` route entry).
 3. `reconcile_issue` ran once (iteration 17) and reported `RECONCILED` with "Acceptance Criteria: unchanged". Its CONCERNS said adding the AC "would be a new requirement rather than a correction". That follows `commands/reconcile-issue.md:120`: "do not invent new requirements" — it only rewrites directive text contradicted by the issue's own findings.
 4. `check_reconcile_limit` (counter increments on every entry, `target: 2`) allows one reconcile per run. The second `DIRECTIVE_DRIFT` fell to `check_gate_refine_limit` -> `refine_followup`, which is research-only and additive (`commands/refine-issue.md` §5c) and cannot add ACs; it appended more findings instead.
 5. The third `DIRECTIVE_DRIFT` found both budgets exhausted -> `record_gate_unmet` -> `failed`.
@@ -169,7 +178,7 @@ Command boundary: `/ll:reconcile-issue ISSUE_ID --from-verify-evidence`. This is
 3. Add the caller flag and narrow source extension throughout reconcile's arguments, parsing, findings read, contract, edit workflow and output. Preserve ordinary no-new-requirements, provenance and check-mode rules. Only the shared `reconcile_issue` action receives the flag.
 4. Add scoped prose tests and positive/negative scripted real-FSM cases above; pin unchanged dispatch, counter and max_steps. Test actual AC-checker compatibility separately from semantic coverage expectations.
 5. Update relevant docs, regenerate present host mirrors and run `python -m pytest scripts/tests/`.
-6. Evaluate three independent runs from an identical fresh fixture reproducing the AC-only drift (ENH-3678 has since changed), each with fresh run_dir, unchanged code and the current one-reconcile budget. Record findings, AC/Step edits, checker output, verdicts and counts reaching VALID/ready. Also evaluate fixture-only drift and irrelevant Tests/Docs inventories. Live evaluation assesses model compliance; scripted tests prove routing, not convergence. Investigate failures or capture a focused follow-up, never automatically raise the counter.
+6. **(Split to a follow-up issue — see Review 2026-10-03 callout.)** Evaluate three independent runs from an identical fresh fixture reproducing the AC-only drift (ENH-3678 has since changed), each with fresh run_dir, unchanged code and the current one-reconcile budget. Record findings, AC/Step edits, checker output, verdicts and counts reaching VALID/ready. Also evaluate fixture-only drift and irrelevant Tests/Docs inventories. Live evaluation assesses model compliance; scripted tests prove routing, not convergence. Investigate failures or capture a focused follow-up, never automatically raise the counter.
 
 ## Impact
 
@@ -186,8 +195,9 @@ Command boundary: `/ll:reconcile-issue ISSUE_ID --from-verify-evidence`. This is
 - [ ] Scripted real-child FSM tests exercise AC-only and fixture-only drift through repair/normalize/clear/fresh verify, assert evidence lifecycle and one attempt, and preserve the negative exhaustion path.
 - [ ] VERIFY-before-AC ordering, normal clear topology, HEDGES-only skip and non-drift shared-state eligibility are tested; the existing failed-clear/no-write limitation is documented, not described as impossible.
 - [ ] Repaired fixture checkbox ACs pass the actual manual-phrase probe; coverage/quality is tested separately rather than inferred from that probe's exit 0.
+- [ ] On budget exhaustion after a flagged reconcile, `record_gate_unmet` output/evidence distinguishes DIRECTIVE_DRIFT non-convergence from other gate failures without adding a `legacy_class`; a stale DIRECTIVE_DRIFT verdict+evidence pair on the shared `ACCEPTANCE_CRITERIA` route without the flag is tested to be inert.
 - [ ] Route table, target 2/shared budget and max_steps stay unchanged; mirrors and relevant documentation match; `python -m pytest scripts/tests/` exits 0.
-- [ ] Three-run live evaluation reports repair/convergence results and remaining limitations on a fresh AC-only fixture, with fixture-only/context-inventory evaluation too; any failed replay is investigated without an automatic budget increase.
+- [ ] ~~Three-run live evaluation~~ → separate follow-up issue (capture when code lands). Original text: three-run live evaluation reports repair/convergence results and remaining limitations on a fresh AC-only fixture, with fixture-only/context-inventory evaluation too; any failed replay is investigated without an automatic budget increase.
 
 ## Secondary Observations
 
@@ -235,12 +245,14 @@ _Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract cor
 - Persistence/read/output touchpoints are explicit; the current generic evidence assertion is replaced by a branch-scoped test.
 - The manual-phrase checker and scripted FSM tests have explicit limits; actual model compliance/convergence is evaluated separately.
 
-### Outcome Risk Factors
+### Outcome Risk Factors (post-review)
 
 - One shared reconcile attempt remains; incomplete first-pass enumeration or applicability churn can still exhaust it. No automatic budget fallback masks that defect.
 - The carve-out is command prose rather than an enforced edit filter; live evaluation must inspect actual additions and preserved sections.
 - Failed clear plus a verify call that writes nothing can retain old evidence; a separate infrastructure fix would need to change freshness guarantees.
 - Shared command/mirror surface with BUG-3708 and ENH-3690 requires serialized edits.
+
+_Addendum 2026-10-03: BUG-3708 is `done` (`45481a2ba`) and `blocked_by` is cleared; the readiness cap above no longer applies. Rescore required._
 
 ## Session Log
 - `/ll:confidence-check` - 2026-10-03T17:52:31 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
