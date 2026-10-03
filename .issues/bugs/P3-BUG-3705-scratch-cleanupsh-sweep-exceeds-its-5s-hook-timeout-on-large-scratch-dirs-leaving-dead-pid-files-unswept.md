@@ -190,7 +190,19 @@ _Added by `/ll:refine-issue` — 2026-10-03 — based on codebase analysis:_
 - **Consequence for liveness**: in `scratch-pad-redirect.sh`, `$$` is the PreToolUse hook process's own pid, which exits right after emitting its JSON — so redirect files are dead-pid on arrival and the live-pid guard only ever protects via pid recycling. `write_snapshot` files likewise carry the already-exiting `ll-verify-evidence` pid. This is why every such file is immediately sweep-eligible and why accumulation is purely a throughput problem. (Same eligibility is the root of BUG-3702; relation recorded in frontmatter.)
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-03_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 89/100 → HIGH CONFIDENCE
+
+### Concerns
+- Implementation Steps still carry pre-review wording (step 1 "fails against current script/passes after" with no age guard; "existing tests pass unmodified") that the Pre-Implementation Review Amendments supersede — implement from the amendments, not the stale steps.
+- Open minor question: whether to adopt `session-cleanup.sh`'s `pid_alive()` EPERM fallback (must add no per-file fork and keep the literal `kill -0`).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T16:34:34 - `73abd026-8e65-41fa-bd86-4deebefea3e5.jsonl`
 - `/ll:confidence-check` - 2026-10-03T08:32:12 - `bb60645b-4c2c-4059-9593-4feaa83c6070.jsonl`
 - `/ll:wire-issue` - 2026-10-03T08:30:04 - `b1db8e5c-4be0-4d16-bc71-7a863a1daa3f.jsonl`
 - `/ll:refine-issue` - 2026-10-03T08:24:06 - `7c0a7319-78e5-4f96-858b-d6064cc6aba9.jsonl`
