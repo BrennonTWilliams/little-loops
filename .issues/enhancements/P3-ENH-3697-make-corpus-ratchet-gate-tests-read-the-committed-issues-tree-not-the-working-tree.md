@@ -14,6 +14,12 @@ supersedes:
 relates_to:
 - BUG-3689
 - ENH-3639
+confidence_score: 90
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3697: Make corpus-ratchet gate tests read the committed .issues tree, not the working tree
@@ -128,6 +134,20 @@ A false `quality_failed` verdict blocks an otherwise-correct implementation and 
 
 Out of scope: `test_no_new_unverifiable_evidence` (deferred, see Decision); baseline-aware gating of `code-run-gate` (ENH-3692, cancelled); env/hermeticity fixes (BUG-3689); a clean-checkout gate (rejected, see Decision).
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-03_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Concerns
+- The Proposed Solution's claim that `name`, `read_text`, `read_bytes` are "the only members `check_format_gaps` uses on its path argument" does not hold. `.ll/program-design-cutover.json` is stamped in this repo, so `program_design_gate_active` → `find_project_root(issue_path)` (`scripts/little_loops/paths.py`) calls `start.resolve()` and walks `.parents`; `grade_issue_section` does the same. `_warn_deprecated_key` calls `issue_path.resolve()`, and `IssueParser._parse_type_and_id` reads `issue_path.parent.name`. A bare `BlobPath(name, content)` raises `AttributeError` on the first active issue. Make `BlobPath` carry the real working-tree `Path` (delegating `resolve`/`parent`/`parents`) and override only `read_text`/`read_bytes`. Avoid subclassing `pathlib.Path` directly: 3.11 and 3.12 differ here, and `pip` and `python` resolve to different interpreters on this machine. Add a test that exercises a stamped repo and a deprecated-key issue.
+
 ## Status
 
 **Open** | Created: 2026-10-02 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-10-03T23:32:27 - `2f69ad0b-f097-47bb-9746-348f11dd833c.jsonl`
