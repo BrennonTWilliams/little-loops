@@ -28,7 +28,7 @@ Evidence: this checkout's local settings select `sonnet`, and run `refine-to-rea
 ## Current Behavior
 
 - **Default-path divergence.** On the CLI request path, `sonnet` passes through verbatim and the host binary resolves it according to its provider/settings. With the first-party built-in default that is Sonnet 5.5. On the `sdk` / `batch` path, `resolve_model_alias("sonnet")` returns `claude-sonnet-5` (`host_runner.py:112`; used by hint resolution, API request construction, and `fsm/executor.py:_resolve_model`). The same declaration therefore selects an older model on the direct API path under the default configuration.
-- **Unranked model.** `advisor.rank_model("claude-code", "claude-sonnet-5-5")` returns `None`, so advisor capability-floor comparisons treat the model that most runs actually use as unranked.
+- **Unranked model.** `advisor.rank_model("claude-code", "claude-sonnet-5-5")` returns `None`, so advisor capability-floor comparisons treat this current, observed model as unranked.
 - **Floor behavior.** `check_floor('claude-code', 'opus', 'claude-code', 'claude-sonnet-5-5')` currently returns `unknown`, despite the existing ordinal Sonnet < Opus convention.
 
 ## Steps to Reproduce
@@ -46,7 +46,7 @@ Evidence: this checkout's local settings select `sonnet`, and run `refine-to-rea
 
 ## Motivation
 
-The SDK path silently runs an older model than the CLI path for the same YAML, and the advisor floor cannot rank the most-used model. Split out of BUG-3696 (advisor review, 2026-10-02): this is an alias and ranking defect, not a pricing defect.
+Under first-party built-in defaults, the SDK path silently runs an older model than the CLI path for the same declaration, and the advisor floor cannot rank Sonnet 5.5. Split out of BUG-3696 (advisor review, 2026-10-02): this issue owns alias selection and ordinal ranking.
 
 ## Proposed Solution
 
@@ -111,7 +111,7 @@ The SDK path silently runs an older model than the CLI path for the same YAML, a
 
 ## Impact
 
-- **Priority**: P3 - the SDK path runs an older model for `sonnet`, and the advisor floor cannot rank the most-used model. The default CLI path is unaffected
+- **Priority**: P3 - the SDK path runs an older model for `sonnet`, and the advisor floor cannot rank Sonnet 5.5. The CLI dispatch behavior is unaffected
 - **Effort**: Small - two model tables, targeted regression tests, doc examples
 - **Risk**: Low-Medium - model behavior and task token usage change for SDK/batch consumers using `sonnet` / built-in `coding`; verified per-token rates are identical
 - **Breaking Change**: Behavioral, for `request_path: sdk|batch` consumers using `sonnet` / `coding` (changelog note); no API or schema change
@@ -130,7 +130,9 @@ The SDK path silently runs an older model than the CLI path for the same YAML, a
 ## Related
 
 - BUG-3696: adds the `claude-sonnet-5-5` price and the alias/rank price-coverage test. Hard dependency: `test_every_alias_target_is_ranked_and_priced` fails without that price.
+
 - BUG-3704: owns all context-window cleanup and native-1M sizing with host caps and automated Python/shell parity; independent of this alias/rank correction
+
 - ENH-3703: optional pricing fallback (unrelated to this issue's tables)
 
 ## Related Key Documentation

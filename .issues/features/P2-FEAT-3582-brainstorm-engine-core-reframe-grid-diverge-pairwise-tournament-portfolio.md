@@ -547,6 +547,7 @@ _Added by `/ll:confidence-check` on 2026-10-02 (re-scored after the FEAT-3667 sp
 **Note** (added by `/ll:audit-issue-conflicts`): Profile data vs FEAT-3667: the four preset JSONs (`artifact`, `visual`, `functional`, `business`) ship in FEAT-3667 with unbuilt knobs off; this issue owns only the state wiring that calls `resolve_profile`. "Ships with the built-in `artifact` profile only" is superseded; brief 2's `mode=functional` merge gate depends on the FEAT-3667 presets.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T03:33:35 - `7cd57e8e-71e0-4299-a1a4-ccd6bda98ee6.jsonl`
 - `/ll:advise` (Opus, ENH-3678/FEAT-3667 review follow-up: PairVerdict.pair, classify-route test) - 2026-10-02
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:03 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:09 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`

@@ -89,11 +89,20 @@ New host-reported model IDs can silently erase state/run cost visibility and lea
 
 ## Program Design
 
+### Types
+
 - `_SONNET_5: dict[str, float]` — shared standard rate dict for the two exact Sonnet IDs, following the existing shared Haiku pattern
 - `CostReport.unpriced_models: list[str]` — diagnostic-only, default empty; sorted and de-duplicated by `from_usage_jsonl`; absent from stable JSON
+
+### Signatures
+
 - `estimate_cost_usd(...) -> float | None` — existing signature and exact-ID/complete-token semantics unchanged
 - `CostReport.from_usage_jsonl(path)` — adds independent model-price membership tracking before the incomplete-token pricing shortcut
 - `CostReport.table()` — optional footer, otherwise identical output
+
+### Call Path
+
+`cli/loop/summary.py:_print_usage_summary` -> `CostReport.from_usage_jsonl` -> membership in `pricing.MODEL_PRICING` for diagnostics and `estimate_cost_usd` for complete observations -> `CostReport.table` for the footer. `CostReport.write_json` -> `to_dict` retains the locked JSON; `CostReport.read_json` constructs a report with the diagnostic list's empty default.
 
 ## Implementation Steps
 
