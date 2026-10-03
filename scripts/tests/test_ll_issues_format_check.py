@@ -384,10 +384,18 @@ class TestFormatCheckJsonOutput:
             "orphaned_session_log_entries": [],
             # ENH-3555: invisible / control characters in the raw file.
             "invisible_chars": [],
+            # BUG-3691: advisory citation classes (report-only, never blocking).
+            "advisory_stale_file_ref": [],
+            "advisory_ambiguous_file_ref": [],
+            "advisory_stale_symbol_ref": [],
+            "advisory_mislocated_symbol_ref": [],
+            "stale_line_ref": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
             "directive_gaps": [],
+            # BUG-3691: citation coverage metadata, a sibling key outside FormatGaps.
+            "examined_refs": [],
         }
 
     def test_gapped_issue_json_output(
@@ -3540,3 +3548,163 @@ class TestDirectiveGapsAndStatusFixer:
         from little_loops.cli.issues.format_check import _SWEEP_SAFE_REPAIRS
 
         assert "missing" not in _SWEEP_SAFE_REPAIRS
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckCitationCoverage (BUG-3691)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckCitationCoverage:
+    """Advisory citation findings and the single-ID ``examined_refs`` sibling key."""
+
+    def _project(self, format_check_dir: Path, temp_project_dir: Path, tests_line: str) -> None:
+        pkg = temp_project_dir / "pkg"
+        pkg.mkdir()
+        (pkg / "term.py").write_text("def terminal_size():\n    return 1\n")
+        (pkg / "feed.py").write_text(
+            "from pkg.term import terminal_size\n\n\ndef run():\n    return terminal_size()\n"
+        )
+        subprocess.run(["git", "init", "-q"], cwd=temp_project_dir, check=True)
+        subprocess.run(["git", "add", "pkg"], cwd=temp_project_dir, check=True)
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9120").replace(
+            "## Status\nopen",
+            f"## Integration Map\n\n### Tests\n- {tests_line}\n\n## Status\nopen",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9120-test-bug.md", body)
+
+    def _json(
+        self, temp_project_dir: Path, capsys: pytest.CaptureFixture[str], *extra: str
+    ) -> tuple[int, Any]:
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                *extra,
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+        return result, json.loads(out)
+
+    def test_metadata_only_issue_is_compliant_with_exit_zero(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._project(format_check_dir, temp_project_dir, "`pkg/term.py:1`")
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9120", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+        assert result == 0
+        assert "structurally compliant" in out
+
+        result, data = self._json(temp_project_dir, capsys, "BUG-9120")
+        assert result == 0
+        assert [(c["property"], c["result"]) for c in data["examined_refs"]] == [
+            ("line_in_range", "ok"),  # same occurrence: sorted by property name
+            ("path_resolves", "ok"),
+        ]
+        assert list(data["examined_refs"][0]) == [
+            "ref",
+            "issue_line",
+            "issue_column",
+            "property",
+            "result",
+        ]
+        assert data["directive_gaps"] == []
+
+    def test_advisory_findings_render_but_do_not_fail_exit_code(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._project(format_check_dir, temp_project_dir, "`pkg/feed.py:terminal_size()`")
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9120", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+        assert result == 0
+        assert "advisory_mislocated_symbol_ref: terminal_size" in out
+
+        result, data = self._json(temp_project_dir, capsys, "BUG-9120")
+        assert result == 0
+        assert data["advisory_mislocated_symbol_ref"]
+        assert data["directive_gaps"] == []
+
+    def test_all_sweep_has_no_citation_metadata_and_no_compliant_rows(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._project(format_check_dir, temp_project_dir, "`pkg/term.py:1`")
+        result, data = self._json(temp_project_dir, capsys, "--all")
+        assert result == 0
+        assert data == {}  # metadata alone adds no row
+
+        self._project_second_issue(format_check_dir)
+        result, data = self._json(temp_project_dir, capsys, "--all")
+        assert result == 0
+        assert set(data) == {"BUG-9121"}
+        assert "examined_refs" not in data["BUG-9121"]
+        assert data["BUG-9121"]["stale_line_ref"]
+
+    def _project_second_issue(self, format_check_dir: Path) -> None:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9121").replace(
+            "## Status\nopen",
+            "## Integration Map\n\n### Tests\n- `pkg/term.py:99`\n\n## Status\nopen",
+        )
+        _write_issue(format_check_dir, "P3-BUG-9121-test-bug.md", body)
+
+    def test_fix_apply_leaves_citation_text_untouched(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._project(format_check_dir, temp_project_dir, "`pkg/term.py:99`")
+        path = format_check_dir / "bugs" / "P3-BUG-9120-test-bug.md"
+        before = path.read_text()
+        result = _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9120",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        capsys.readouterr()
+        assert result == 0
+        assert path.read_text() == before
+
+    def test_json_output_is_byte_identical_across_runs(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._project(format_check_dir, temp_project_dir, "`pkg/term.py:1` `pkg/term.py:99`")
+        argv = [
+            "ll-issues",
+            "format-check",
+            "BUG-9120",
+            "--format",
+            "json",
+            "--config",
+            str(temp_project_dir),
+        ]
+        _invoke(argv)
+        first, _ = capsys.readouterr()
+        _invoke(argv)
+        second, _ = capsys.readouterr()
+        assert first == second

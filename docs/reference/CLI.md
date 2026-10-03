@@ -2895,6 +2895,42 @@ same merge `append_session_log_entry()` now runs before every insert.
 handler, since the remedy needs a human decision about where the entry
 belongs.
 
+Also reports five advisory citation classes (BUG-3691), so citation checks do not
+vary from pass to pass over an unchanged issue: `advisory_stale_file_ref`,
+`advisory_ambiguous_file_ref`, `advisory_stale_symbol_ref`,
+`advisory_mislocated_symbol_ref`, and `stale_line_ref`. They cover
+`name.ext:N[-M]` and `name.py:symbol()` citations (bare filenames are resolved
+by tracked-file search — zero, one, or several candidates, with a sorted
+candidate list when ambiguous), line ranges that violate
+`1 <= N <= M <= line_count` (read relative to the project root, never the
+working directory), and definition-shaped symbol claims (`file:symbol`,
+"defined in") whose cited file only imports the symbol while exactly one other
+tracked file defines it. Symbol and line checks run over `## Integration Map`
+(including its `### Tests`), standalone `Tests`, and `Wiring Phase` in addition
+to the sections the existing `stale_symbol_ref`/`mislocated_symbol_ref` rules
+read. All five are advisory (non-blocking, report-only, no `--fix`): they print
+and set `has_gaps`, but never change `has_blocking_gaps` or the exit code, and
+an occurrence an existing blocking rule already reported is not repeated.
+Planned-new (`(new)`), untracked-by-design, suppressed
+(`<!-- ll-prose-ok: reason -->`), unreadable and unsupported-language citations
+are left unexamined.
+
+A single-ID `--format json` run additionally emits `examined_refs`, a sibling
+key of `directive_gaps` and `superseded_marker_count` — coverage metadata, not a
+gap, so it never affects `has_gaps` or the exit code and is absent from `--all`
+output. Each entry is `{"ref", "issue_line", "issue_column", "property",
+"result"}`: `ref` is the complete cited form (backticks removed; for an
+attributed symbol the whole attribution span), `issue_line`/`issue_column` are
+1-based positions in the full issue file (frontmatter included), `property` is
+`path_resolves` | `line_in_range` | `symbol_resolves_in` | `symbol_defined_in`,
+and `result` is `ok` or the exact gap key raised. `path_resolves` means uniquely
+resolvable in the tracked-file index (not disk existence); `symbol_resolves_in`
+counts an imported binding as present, while `symbol_defined_in` is the stricter
+definition claim. An entry exists only for a property that was actually checked
+— a missing entry means "not examined", never "passed". Entries are sorted by
+`(issue_line, issue_column, ref, property, result)`, so repeated runs over an
+unchanged issue and code snapshot are byte-identical.
+
 Also reports `template_placeholders` (ENH-3244) — a literal unfilled template
 placeholder (e.g. `TBD - requires codebase analysis`, `[Major phase 1]`)
 still present in the section whose `creation_template` emits it, formatted
@@ -2951,7 +2987,7 @@ radius reviewable.
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
                                                # stderr: "(N other issue(s) have deprecated frontmatter keys — run `ll-issues format-check` to list)" when applicable
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "ambiguous_file_ref": [...], "missing_behavior_parity": [...], "soft_dep_hard_edge": [...], "malformed_dep_id": [...], "stale_symbol_ref": [...], "mislocated_symbol_ref": [...], "stale_cli_flag": [...], "duplicate_heading": [...], "empty_provenance_stub": [...], "template_placeholders": [...], "unapplied_decision": [...], "priority_drift": [...], "duplicate_session_log": [...], "orphaned_session_log_entries": [...], "superseded_marker_count": 0}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "ambiguous_file_ref": [...], "missing_behavior_parity": [...], "soft_dep_hard_edge": [...], "malformed_dep_id": [...], "stale_symbol_ref": [...], "mislocated_symbol_ref": [...], "stale_cli_flag": [...], "duplicate_heading": [...], "empty_provenance_stub": [...], "template_placeholders": [...], "unapplied_decision": [...], "priority_drift": [...], "duplicate_session_log": [...], "orphaned_session_log_entries": [...], "advisory_stale_file_ref": [...], "advisory_ambiguous_file_ref": [...], "advisory_stale_symbol_ref": [...], "advisory_mislocated_symbol_ref": [...], "stale_line_ref": [...], "superseded_marker_count": 0, "directive_gaps": [...], "examined_refs": [...]}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ll-issues format-check ENH-2426 --fix --apply # single-issue: also collapses duplicate headings/findings blocks, deletes empty provenance stubs, and fills frontmatter-derivable template placeholders

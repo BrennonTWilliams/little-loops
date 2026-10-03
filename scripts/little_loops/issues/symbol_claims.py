@@ -154,6 +154,15 @@ _SENTENCE_BOUNDARY_RE = re.compile(
 _SUPPRESS_RE = re.compile(r"<!--\s*ll-prose-ok:\s*(.+?)\s*-->")
 
 
+# BUG-3691: a same-sentence ("bare symbol + file path") attribution is only a
+# *definition-shaped* claim when the sentence says the file owns the symbol; a
+# usage-site mention ("calls `foo()` in `a/b.py`") must not be read as one.
+_DEFINITION_PHRASE_RE = re.compile(
+    r"\b(?:defined|declared|implemented)\s+(?:in|at)\b|\blives\s+in\b|\bowned\s+by\b",
+    re.IGNORECASE,
+)
+
+
 @dataclass(frozen=True)
 class SymbolClaim:
     """One attributed symbol claim extracted from an issue body."""
@@ -161,6 +170,24 @@ class SymbolClaim:
     symbol: str
     file: str  # resolved, tracked repo-relative path
     raw: str  # original backticked text, for gap-message reporting
+
+
+@dataclass(frozen=True)
+class SymbolClaimOccurrence:
+    """One source occurrence of a :class:`SymbolClaim` (BUG-3691).
+
+    ``start``/``end`` are offsets into the scanned body covering ``ref`` — the
+    complete attribution span with backticks removed. For the same-sentence
+    form that span runs from the first to the last of the two backtick spans,
+    so ``ref`` is the whole ``foo() in a/b.py`` attribution, not the bare name.
+    """
+
+    claim: SymbolClaim
+    start: int
+    end: int
+    ref: str
+    form: str  # "explicit" | "dotted" | "bare"
+    definition_shaped: bool
 
 
 def _in_fence(start: int, end: int, fence_spans: list[tuple[int, int]]) -> bool:
@@ -216,11 +243,32 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
         falsy/empty, or when no backticked span matches one of the three
         pinned grammar forms.
     """
-    if not body or ref_index is None:
-        return set()
+    return {occ.claim for occ in iter_symbol_claim_occurrences(body, ref_index)}
 
-    fence_spans = [(m.start(), m.end()) for m in _CODE_FENCE.finditer(body)]
-    claims: set[SymbolClaim] = set()
+
+def iter_symbol_claim_occurrences(
+    body: str,
+    ref_index: RefIndex,
+    *,
+    fences: list[tuple[int, int]] | None = None,
+) -> list[SymbolClaimOccurrence]:
+    """Every source occurrence of every claim :func:`extract_symbol_claims` would find.
+
+    Same grammar, fence and suppression handling as the set-returning
+    wrapper (which is defined in terms of this), but each hit keeps its span
+    so callers can publish occurrence-specific coverage (BUG-3691).
+
+    *fences*, when given, replaces the legacy ``_CODE_FENCE`` spans with
+    caller-supplied spans in *body* coordinates (used to apply the
+    line-anchored ``text_utils.fence_spans`` semantics to a section slice).
+    """
+    if not body or ref_index is None:
+        return []
+
+    fence_spans = (
+        fences if fences is not None else [(m.start(), m.end()) for m in _CODE_FENCE.finditer(body)]
+    )
+    occurrences: list[SymbolClaimOccurrence] = []
 
     for m in _BACKTICK_SPAN_RE.finditer(body):
         if _in_fence(m.start(), m.end(), fence_spans):
@@ -234,7 +282,16 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
             file_ref, symbol = explicit.group(1), explicit.group(2)
             resolved = resolve_ref_path(file_ref, ref_index)
             if resolved:
-                claims.add(SymbolClaim(symbol=symbol, file=resolved, raw=text))
+                occurrences.append(
+                    SymbolClaimOccurrence(
+                        claim=SymbolClaim(symbol=symbol, file=resolved, raw=text),
+                        start=m.start(1),
+                        end=m.end(1),
+                        ref=text,
+                        form="explicit",
+                        definition_shaped=True,
+                    )
+                )
             continue
 
         dotted = _DOTTED_RE.match(text)
@@ -246,7 +303,16 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
                 continue
             resolved = _resolve_module_prefix(module_prefix, ref_index)
             if resolved:
-                claims.add(SymbolClaim(symbol=symbol, file=resolved, raw=text))
+                occurrences.append(
+                    SymbolClaimOccurrence(
+                        claim=SymbolClaim(symbol=symbol, file=resolved, raw=text),
+                        start=m.start(1),
+                        end=m.end(1),
+                        ref=text,
+                        form="dotted",
+                        definition_shaped=False,
+                    )
+                )
             continue
 
         bare = _BARE_SYMBOL_RE.match(text)
@@ -257,7 +323,7 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
             sent_start, sent_end = _sentence_span(body, m.start())
             sentence = body[sent_start:sent_end]
             rel_pos = m.start() - sent_start
-            best: tuple[int, str] | None = None
+            best: tuple[int, str, int, int] | None = None
             for path_m in _BACKTICK_SPAN_RE.finditer(sentence):
                 candidate = path_m.group(1)
                 if candidate == text or "/" not in candidate:
@@ -268,13 +334,24 @@ def extract_symbol_claims(body: str, ref_index: RefIndex) -> set[SymbolClaim]:
                 if distance > _MAX_ATTRIBUTION_DISTANCE:
                     continue
                 if best is None or distance < best[0]:
-                    best = (distance, candidate)
+                    best = (distance, candidate, path_m.start(), path_m.end())
             if best is not None:
                 resolved = resolve_ref_path(best[1], ref_index)
                 if resolved:
-                    claims.add(SymbolClaim(symbol=symbol, file=resolved, raw=text))
+                    span_start = min(m.start(), sent_start + best[2])
+                    span_end = max(m.end(), sent_start + best[3])
+                    occurrences.append(
+                        SymbolClaimOccurrence(
+                            claim=SymbolClaim(symbol=symbol, file=resolved, raw=text),
+                            start=span_start,
+                            end=span_end,
+                            ref=body[span_start:span_end].replace("`", ""),
+                            form="bare",
+                            definition_shaped=bool(_DEFINITION_PHRASE_RE.search(sentence)),
+                        )
+                    )
 
-    return claims
+    return occurrences
 
 
 def _import_bindings(clause: str) -> set[str]:
@@ -495,3 +572,45 @@ def claim_breadth_exceeds_cap(
     :func:`symbol_exists_in_file`/:func:`symbol_resolves_elsewhere` (BUG-3194).
     """
     return len(index.files_with_symbol(symbol) - {file}) > cap
+
+
+def classify_symbol_claim(index: SymbolIndex, claim: SymbolClaim) -> str | None:
+    """Existence verdict for *claim*: ``"ok"``, ``"stale"``, ``"mislocated"`` or ``None``.
+
+    Single owner of the breadth-cap / exists / elsewhere decision the
+    current-state ``stale_symbol_ref`` / ``mislocated_symbol_ref`` rules and the
+    widened-scope advisory rules share (BUG-3691), so the two scopes cannot
+    drift. ``None`` means the claim was not examined (breadth-capped, or the
+    cited file is unsupported/unreadable) — it carries no coverage.
+    """
+    if claim_breadth_exceeds_cap(index, claim.file, claim.symbol):
+        return None
+    exists = symbol_exists_in_file(index, claim.file, claim.symbol)
+    if exists is None:
+        return None
+    if exists:
+        return "ok"
+    return "mislocated" if symbol_resolves_elsewhere(index, claim.file, claim.symbol) else "stale"
+
+
+def classify_symbol_definition(
+    index: SymbolIndex, claim: SymbolClaim
+) -> tuple[str, str | None] | None:
+    """Definition-shaped verdict for a claim whose import-inclusive check passed (BUG-3691).
+
+    Returns ``("ok", None)`` when *claim.file* itself defines the symbol,
+    ``("mislocated", target)`` when it merely binds the name and exactly one
+    other tracked file defines it, else ``None`` (unknown: empty reverse index,
+    or zero/several alternative definitions — no guessed target, no ``ok``).
+    Uses the eager definition-only reverse index, never the import-inclusive
+    per-file cache, so an imported name cannot become definition proof.
+    """
+    if not index._reverse:
+        return None
+    definers = index.files_with_symbol(claim.symbol)
+    if claim.file in definers:
+        return ("ok", None)
+    others = definers - {claim.file}
+    if len(others) == 1:
+        return ("mislocated", next(iter(others)))
+    return None

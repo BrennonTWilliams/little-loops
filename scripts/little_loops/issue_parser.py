@@ -22,8 +22,9 @@ from little_loops.text_utils import fence_spans, in_fence
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.issues.citations import CitationCheck
     from little_loops.issues.cli_surface import CliSurfaceIndex
-    from little_loops.issues.symbol_claims import SymbolIndex
+    from little_loops.issues.symbol_claims import SymbolClaim, SymbolIndex
     from little_loops.text_utils import RefIndex
 
 
@@ -512,8 +513,22 @@ def _normalize_whitespace(text: str) -> str:
 # (BUG-3424) is report-only by design (Proposed Solution (f)): the orphan
 # count is a heuristic scan, not a repair target, so it must never fail the
 # exit code on its own either.
+#
+# BUG-3691: the five citation classes below are advisory by construction —
+# the new rules (bare-filename resolution, line bounds, definition-vs-import,
+# widened section scope) ship report-only until measured precision and a repair
+# route justify promoting any of them (ENH-3690).
 _ADVISORY_GAP_CLASSES: frozenset[str] = frozenset(
-    {"testable", "unapplied_decision_detail", "orphaned_session_log_entries"}
+    {
+        "testable",
+        "unapplied_decision_detail",
+        "orphaned_session_log_entries",
+        "advisory_stale_file_ref",
+        "advisory_ambiguous_file_ref",
+        "advisory_stale_symbol_ref",
+        "advisory_mislocated_symbol_ref",
+        "stale_line_ref",
+    }
 )
 
 
@@ -563,6 +578,13 @@ class FormatGaps:
     # ENH-3555: invisible / control characters anywhere in the raw file. Blocking,
     # report-only (no --fix: the intended text cannot be recovered mechanically).
     invisible_chars: list[str] = field(default_factory=list)
+    # BUG-3691: advisory citation findings (see _ADVISORY_GAP_CLASSES). Report-only,
+    # no --fix. The `examined_refs` coverage metadata is deliberately *not* a field.
+    advisory_stale_file_ref: list[str] = field(default_factory=list)
+    advisory_ambiguous_file_ref: list[str] = field(default_factory=list)
+    advisory_stale_symbol_ref: list[str] = field(default_factory=list)
+    advisory_mislocated_symbol_ref: list[str] = field(default_factory=list)
+    stale_line_ref: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -598,6 +620,11 @@ class FormatGaps:
             or self.duplicate_session_log
             or self.orphaned_session_log_entries
             or self.invisible_chars
+            or self.advisory_stale_file_ref
+            or self.advisory_ambiguous_file_ref
+            or self.advisory_stale_symbol_ref
+            or self.advisory_mislocated_symbol_ref
+            or self.stale_line_ref
         )
 
     @property
@@ -646,6 +673,11 @@ class FormatGaps:
             "duplicate_session_log": self.duplicate_session_log,
             "orphaned_session_log_entries": self.orphaned_session_log_entries,
             "invisible_chars": self.invisible_chars,
+            "advisory_stale_file_ref": self.advisory_stale_file_ref,
+            "advisory_ambiguous_file_ref": self.advisory_ambiguous_file_ref,
+            "advisory_stale_symbol_ref": self.advisory_stale_symbol_ref,
+            "advisory_mislocated_symbol_ref": self.advisory_mislocated_symbol_ref,
+            "stale_line_ref": self.stale_line_ref,
         }
 
 
@@ -771,6 +803,9 @@ def check_format_gaps(
     ref_index: RefIndex | None = None,
     symbol_index: SymbolIndex | None = None,
     cli_index: CliSurfaceIndex | None = None,
+    *,
+    examined_refs: list[CitationCheck] | None = None,
+    project_root: Path | None = None,
 ) -> FormatGaps:
     """Grade an issue's structural format gaps against its type template.
 
@@ -1011,6 +1046,14 @@ def check_format_gaps(
             for every registered tool), so a body naming no ``ll-*`` command
             triggers no subprocess at all. When absent, no
             ``stale_cli_flag`` gaps are reported.
+        examined_refs: Optional keyword-only collector (BUG-3691). When given,
+            it is extended with one :class:`~little_loops.issues.citations.CitationCheck`
+            per (citation occurrence, property) actually examined, sorted by
+            ``(issue_line, issue_column, ref, property, result)``. Coverage
+            metadata, not a gap: it never feeds ``has_gaps``.
+        project_root: Optional explicit root for reading cited files (line
+            bounds). Falls back to ``symbol_index.root``; with neither, line
+            bounds stay unexamined. Never the process cwd.
 
     Returns:
         A FormatGaps instance. Fails open (empty FormatGaps, no gaps) when the
@@ -1228,7 +1271,8 @@ def check_format_gaps(
             suffix_match_candidates,
         )
 
-        for ref, status in sorted(classify_issue_refs(content, ref_index).items()):
+        legacy_ref_status = classify_issue_refs(content, ref_index)
+        for ref, status in sorted(legacy_ref_status.items()):
             if status == "stale":
                 gaps.stale_file_ref.append(ref)
             elif status == "ambiguous":
@@ -1261,27 +1305,42 @@ def check_format_gaps(
                 if classify_file_ref(ref, ref_index, line=replacement_line) == "resolved":
                     gaps.missing_behavior_parity.append(ref)
 
+        legacy_symbol_outcomes: dict[SymbolClaim, str | None] = {}
         if symbol_index is not None:
             from little_loops.issues.symbol_claims import (
-                claim_breadth_exceeds_cap,
+                classify_symbol_claim,
                 extract_symbol_claims,
-                symbol_exists_in_file,
-                symbol_resolves_elsewhere,
             )
 
             scoped_content = _symbol_claim_scope_text(content)
             for claim in sorted(
                 extract_symbol_claims(scoped_content, ref_index), key=lambda c: (c.file, c.symbol)
             ):
-                if claim_breadth_exceeds_cap(symbol_index, claim.file, claim.symbol):
-                    continue
-                if symbol_exists_in_file(symbol_index, claim.file, claim.symbol) is False:
-                    if symbol_resolves_elsewhere(symbol_index, claim.file, claim.symbol):
-                        gaps.mislocated_symbol_ref.append(
-                            f"{claim.symbol} (claimed in {claim.file})"
-                        )
-                    else:
-                        gaps.stale_symbol_ref.append(f"{claim.symbol} (claimed in {claim.file})")
+                outcome = classify_symbol_claim(symbol_index, claim)
+                legacy_symbol_outcomes[claim] = outcome
+                if outcome == "mislocated":
+                    gaps.mislocated_symbol_ref.append(f"{claim.symbol} (claimed in {claim.file})")
+                elif outcome == "stale":
+                    gaps.stale_symbol_ref.append(f"{claim.symbol} (claimed in {claim.file})")
+
+        # BUG-3691: occurrence-aware citation checks (advisory) + coverage metadata.
+        from little_loops.issues.citations import check_citations
+
+        citation_report = check_citations(
+            content,
+            ref_index=ref_index,
+            symbol_index=symbol_index,
+            project_root=project_root,
+            legacy_path_status=legacy_ref_status,
+            legacy_symbol_outcomes=legacy_symbol_outcomes,
+        )
+        gaps.advisory_stale_file_ref = citation_report.advisory_stale_file_ref
+        gaps.advisory_ambiguous_file_ref = citation_report.advisory_ambiguous_file_ref
+        gaps.advisory_stale_symbol_ref = citation_report.advisory_stale_symbol_ref
+        gaps.advisory_mislocated_symbol_ref = citation_report.advisory_mislocated_symbol_ref
+        gaps.stale_line_ref = citation_report.stale_line_ref
+        if examined_refs is not None:
+            examined_refs.extend(citation_report.checks)
 
     if cli_index is not None:
         from little_loops.issues.cli_claims import extract_cli_flag_claims

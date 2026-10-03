@@ -893,6 +893,9 @@ def check_format_gaps(
     ref_index: RefIndex | None = None,
     symbol_index: SymbolIndex | None = None,
     cli_index: CliSurfaceIndex | None = None,
+    *,
+    examined_refs: list[CitationCheck] | None = None,
+    project_root: Path | None = None,
 ) -> FormatGaps
 ```
 
@@ -927,6 +930,7 @@ Reports twenty-eight gap classes on the returned `FormatGaps` dataclass (`missin
 - **priority_drift** (BUG-3286) — the filename's `P<n>-` prefix and the frontmatter `priority:` key are both present and disagree. Scoped to the file's own name and frontmatter — no cross-file comparison — and silent when either source is absent (an absent frontmatter `priority:` is the normal state for most of a corpus, not drift). The filename prefix is authoritative (`resolve_priority()`); the remedy is `ll-issues prioritize --apply`, which reconciles both sources in one operation.
 - **duplicate_session_log** (BUG-3424) — more than one non-fenced, line-anchored `## Session Log` H2 heading exists in the file. H2-scoped, parallel to `duplicate_heading` (H3-scoped) but not built on it. Blocking; `--fix --apply` repairs it via `little_loops.session_log.merge_session_log_blocks()`.
 - **orphaned_session_log_entries** (BUG-3424) — an entry-shaped bullet line (`` - `/ll:cmd` - YYYY-MM-DD... ``) sits outside any non-fenced `## Session Log` section, including before the first H2. Advisory-only (`_ADVISORY_GAP_CLASSES`): report-only, no `--fix` handler — the remedy needs a human decision about where the entry belongs.
+- **advisory_stale_file_ref / advisory_ambiguous_file_ref / advisory_stale_symbol_ref / advisory_mislocated_symbol_ref / stale_line_ref** (BUG-3691) — advisory citation findings (`_ADVISORY_GAP_CLASSES`: report-only, no `--fix`, never blocking). Bare-filename `name.ext:N[-M]` / `name.py:symbol()` resolution, `1 <= N <= M <= line_count` line bounds, definition-vs-import symbol claims, and symbol/line checks widened to Integration Map, Tests and Wiring Phase. Occurrence-level coverage is returned through the keyword-only `examined_refs` collector (a list of `little_loops.issues.citations.CitationCheck`), not as a `FormatGaps` field; `project_root` supplies the root for line reads (falling back to `symbol_index.root`).
 
 **Parameters:**
 - `issue_path` - Path to the issue markdown file
@@ -935,6 +939,8 @@ Reports twenty-eight gap classes on the returned `FormatGaps` dataclass (`missin
 - `ref_index` - Optional `little_loops.text_utils.RefIndex` (built once per invocation via `build_ref_index()`) used to resolve file path references cited in the body. When `None` (default), no `stale_file_ref`/`ambiguous_file_ref`/`missing_behavior_parity` gaps are reported.
 - `symbol_index` - Optional `little_loops.issues.symbol_claims.SymbolIndex` (built once per invocation via `build_symbol_index()`, which also eagerly builds the BUG-3063 C reverse index) used to resolve symbol claims. When `None` (default), no `stale_symbol_ref`/`mislocated_symbol_ref` gaps are reported.
 - `cli_index` - Optional `little_loops.issues.cli_surface.CliSurfaceIndex` (built once per invocation via `build_cli_surface_index()`) used to resolve CLI-flag claims. When `None` (default), no `stale_cli_flag` gaps are reported.
+- `examined_refs` - Optional keyword-only collector (BUG-3691). When given, extended with one `CitationCheck` per citation occurrence/property actually examined, sorted by `(issue_line, issue_column, ref, property, result)`. Coverage metadata only — never a gap and never read by `has_gaps`.
+- `project_root` - Optional keyword-only root used to read cited files for line bounds (BUG-3691). Falls back to `symbol_index.root`; with neither, line bounds are left unexamined. Never the process working directory.
 
 **Returns:** A `FormatGaps` instance. Fails open (no gaps reported) when the file is unreadable, its type cannot be determined, or its template cannot be loaded — mirroring `is_formatted()`'s fail-open behavior.
 

@@ -3,10 +3,11 @@ id: BUG-3691
 type: BUG
 title: verify-issues citation checking is unstable across passes
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-01'
 captured_at: '2026-10-01T22:03:31Z'
+completed_at: '2026-10-03T18:23:36Z'
 reconcile_attempted: true
 relates_to:
 - ENH-3690
@@ -146,24 +147,39 @@ Citation verification is performed by the model with ad-hoc reads/greps (the pas
 
 ## Acceptance Criteria
 
-- [ ] Single-ID JSON emits the exact occurrence/property schema above; metadata alone leaves `has_gaps` and `has_blocking_gaps` false, exit code 0 and compliant text output unchanged; sparse `--all` output does not gain compliant issues.
-- [ ] Repeated format-check calls over an unchanged issue and code/index snapshot are byte-identical, including sorted metadata and candidate lists.
-- [ ] Coverage is honest: import-inclusive presence cannot become definition proof; planned-new, untracked, suppressed, unsupported, unreadable and otherwise unexamined properties never receive `ok`.
-- [ ] Same-file different-range refs and repeated refs across current-state/advisory scope keep distinct identities and results; a pass cannot demote a finding about another occurrence/property.
-- [ ] New bare-filename citations resolve zero/one/multiple matches deterministically; ambiguous and mirror-only results retain their candidates; unsuffixed bare filenames are not newly checked.
-- [ ] The imported-only definition claim `cli/loop/feed.py:terminal_size()` produces `advisory_mislocated_symbol_ref` in Tests/Wiring Phase; intentional usage-site claims remain eligible for import-inclusive presence without false definition coverage.
-- [ ] Line range validity is `1 <= N <= M <= line_count`, rooted at the project rather than cwd; invalid ranges report advisory `stale_line_ref`, with boundary/fail-open tests.
-- [ ] All five new advisory keys render without changing the existing blocking set/exit status, `directive_gaps`, obligation selection or `rn-remediate` routing; `--fix --apply` does not repair citations.
-- [ ] The fixed-snapshot before/after counts and blocking-set diff, plus labelled new-rule findings, are recorded; later promotion/repair remains ENH-3690's responsibility.
-- [ ] `python -m pytest scripts/tests/` exits 0; BUG-3708 receives the implemented payload contract.
+- [x] Single-ID JSON emits the exact occurrence/property schema above; metadata alone leaves `has_gaps` and `has_blocking_gaps` false, exit code 0 and compliant text output unchanged; sparse `--all` output does not gain compliant issues.
+- [x] Repeated format-check calls over an unchanged issue and code/index snapshot are byte-identical, including sorted metadata and candidate lists.
+- [x] Coverage is honest: import-inclusive presence cannot become definition proof; planned-new, untracked, suppressed, unsupported, unreadable and otherwise unexamined properties never receive `ok`.
+- [x] Same-file different-range refs and repeated refs across current-state/advisory scope keep distinct identities and results; a pass cannot demote a finding about another occurrence/property.
+- [x] New bare-filename citations resolve zero/one/multiple matches deterministically; ambiguous and mirror-only results retain their candidates; unsuffixed bare filenames are not newly checked.
+- [x] The imported-only definition claim `cli/loop/feed.py:terminal_size()` produces `advisory_mislocated_symbol_ref` in Tests/Wiring Phase; intentional usage-site claims remain eligible for import-inclusive presence without false definition coverage.
+- [x] Line range validity is `1 <= N <= M <= line_count`, rooted at the project rather than cwd; invalid ranges report advisory `stale_line_ref`, with boundary/fail-open tests.
+- [x] All five new advisory keys render without changing the existing blocking set/exit status, `directive_gaps`, obligation selection or `rn-remediate` routing; `--fix --apply` does not repair citations.
+- [x] The fixed-snapshot before/after counts and blocking-set diff, plus labelled new-rule findings, are recorded; later promotion/repair remains ENH-3690's responsibility.
+- [x] `python -m pytest scripts/tests/` exits 0; BUG-3708 receives the implemented payload contract.
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Fixed** | 2026-10-03
+
+- New `scripts/little_loops/issues/citations.py`: `CitationCheck` / `check_citations` scan Summary / Current Behavior / Root Cause / Context (existing scope) plus Integration Map (incl. nested Tests), standalone Tests and Wiring Phase (new scope) in place, preserving original full-file line/column positions through section selection and `text_utils.fence_spans`.
+- `symbol_claims.py`: span-retaining `iter_symbol_claim_occurrences` (`extract_symbol_claims` is now defined in terms of it, behavior unchanged), shared `classify_symbol_claim` (also used by the blocking rules, so the scopes cannot drift) and `classify_symbol_definition` (definition-only reverse index; imported-only symbol with exactly one other definer -> target).
+- `FormatGaps` gains `advisory_stale_file_ref`, `advisory_ambiguous_file_ref`, `advisory_stale_symbol_ref`, `advisory_mislocated_symbol_ref`, `stale_line_ref` (all in `_ADVISORY_GAP_CLASSES`; rendered in text/JSON; no `--fix`). `check_format_gaps` takes keyword-only `examined_refs` / `project_root`; `examined_refs` is a sibling key of single-ID JSON only (not a field, absent from `--all`).
+- Docs: `docs/reference/CLI.md`, `docs/reference/API.md`.
+
+**Fixed-snapshot corpus measurement** (clean HEAD `28aedb484`, `format-check --all`, baseline = same HEAD via worktree without this change): blocking set identical (25 issues, same keys/values); issues with any gap 25 -> 30 (advisory-only additions); new advisory counts: `stale_line_ref=2`, `advisory_ambiguous_file_ref=1`, `advisory_mislocated_symbol_ref=4`, `advisory_stale_symbol_ref=6`, `advisory_stale_file_ref=0`. Labelled: true positives — `ENH-3690` `terminal_size` (imported in `cli/loop/feed.py`, defined in `cli/output.py`), `ENH-3700` `decisions.py:596` (2 candidates), `FEAT-3589` `test_builtin_loops.py:21025/21088` (file has 20291 lines). False/noisy — the `advisory_stale_symbol_ref` set is mostly proposed symbols and non-Python names in Files-to-Modify/Tests bullets (e.g. `route_pre_score_obligation`, `_SONNET_5`, `sink_decision` — YAML states / planned code attributed to a `.py` file by the same-sentence heuristic), and `BUG-3691` `FormatGaps` ("`preparation_policy.py` and other `FormatGaps` consumers") is a usage mention. This is why every new finding stays advisory; promotion belongs to ENH-3690 after precision work (e.g. a planned-symbol marker).
+
+**Hand-off (BUG-3708 / ENH-3690):** payload is `examined_refs: [{ref, issue_line, issue_column, property, result}]` with `property` in `path_resolves|line_in_range|symbol_resolves_in|symbol_defined_in` and `result` = `ok` or the exact raised key (current-state occurrences keep the blocking `stale_file_ref`/`stale_symbol_ref`/`mislocated_symbol_ref` keys; new-scope/new-rule results use the five advisory keys). Absence of an entry means "not examined".
+
+**Verification**: full `python -m pytest scripts/tests/` = 27,705 passed; 9 non-related failures/errors (libsql live-endpoint integration x8 "remote schema changed unexpectedly", and `test_verify_evidence` repo gate on BUG-3696/BUG-3702 issue text). Lint/format clean on touched files; mypy clean apart from the pre-existing `ruamel` stub errors.
+
 ## Status
 
-**Open** | Created: 2026-10-01 | Priority: P3
+**Done** | Created: 2026-10-01 | Completed: 2026-10-03 | Priority: P3
 
 ---
 
@@ -198,13 +214,15 @@ _Added by `/ll:confidence-check` on 2026-10-03 (re-scored after the contract cor
 - Definition-only parsing already exists in the eager reverse index; no second cache is needed. Readability/unsupported checks remain fail-open.
 - Existing set extraction loses line suffixes, original positions and scope; the new helper must retain them rather than incorrectly claiming full coverage.
 
-### Outcome Risk Factors
+### Outcome Risk Factors (post-review)
 
 - Definition-shaped attribution can still be ambiguous, especially import usage vs ownership; advisory rollout and labelled findings are required.
 - Original-span coverage adds a small extractor surface. Retain existing index, suppression, breadth-cap and fence contracts; unknown spans must not get `ok`.
 - Backlog count parity proves no new blocking gates, not citation precision or repeatability of semantic LLM verdicts.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-03T18:23:36 - `a0f7675a-2cc9-4a8f-8d68-49b6264454fb.jsonl`
+- `/ll:ready-issue` - 2026-10-03T18:00:46 - `32597b30-1e69-4992-9059-f2024b7fb3ce.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:57:55 - `b8bc46ce-2f87-4826-95ef-ef7770318d3f.jsonl`
 - `/ll:verify-issues` - 2026-10-03T17:54:47 - `b960fc9d-9d8d-4d1b-ad1f-b081c2ac3b43.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:52:29 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from little_loops.config import BRConfig
     from little_loops.issue_parser import FormatGaps
+    from little_loops.issues.citations import CitationCheck
 
 
 @contextmanager
@@ -69,7 +70,9 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
         "stale_cli_flag/duplicate_heading/empty_provenance_stub/"
         "template_placeholders/unapplied_decision/priority_drift/"
-        "duplicate_session_log/orphaned_session_log_entries/invisible_chars)",
+        "duplicate_session_log/orphaned_session_log_entries/invisible_chars; advisory "
+        "citation classes: advisory_stale_file_ref/advisory_ambiguous_file_ref/"
+        "advisory_stale_symbol_ref/advisory_mislocated_symbol_ref/stale_line_ref)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -556,6 +559,28 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  orphaned_session_log_entries: {entry} (report-only; no --fix)")
     for entry in gaps.invisible_chars:
         print(f"  invisible_chars: {entry} (report-only; no --fix, replace with visible text)")
+    for entry in gaps.advisory_stale_file_ref:
+        print(
+            f"  advisory_stale_file_ref: {entry} (no tracked file matches; advisory, "
+            "report-only; no --fix)"
+        )
+    for entry in gaps.advisory_ambiguous_file_ref:
+        print(
+            f"  advisory_ambiguous_file_ref: {entry} (several tracked files match; "
+            "advisory, report-only; no --fix)"
+        )
+    for entry in gaps.advisory_stale_symbol_ref:
+        print(f"  advisory_stale_symbol_ref: {entry} (advisory, report-only; no --fix)")
+    for entry in gaps.advisory_mislocated_symbol_ref:
+        print(
+            f"  advisory_mislocated_symbol_ref: {entry} (advisory: the cited file does not "
+            "define the symbol; report-only; no --fix)"
+        )
+    for entry in gaps.stale_line_ref:
+        print(
+            f"  stale_line_ref: {entry} (line range outside the cited file; advisory, "
+            "report-only; no --fix)"
+        )
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -568,7 +593,10 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
     stale_cli_flag/duplicate_heading/empty_provenance_stub/
     template_placeholders/unapplied_decision/priority_drift/
-    duplicate_session_log/orphaned_session_log_entries/invisible_chars.
+    duplicate_session_log/orphaned_session_log_entries/invisible_chars, plus the
+    advisory citation classes (BUG-3691) advisory_stale_file_ref/
+    advisory_ambiguous_file_ref/advisory_stale_symbol_ref/
+    advisory_mislocated_symbol_ref/stale_line_ref.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered
@@ -672,6 +700,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                     ref_index=ref_index,
                     symbol_index=symbol_index,
                     cli_index=cli_index,
+                    project_root=config.project_root,
                 )
             except OSError as exc:
                 print(f"Warning: skipping {info.path}: {exc}", file=sys.stderr)
@@ -688,6 +717,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                         ref_index=ref_index,
                         symbol_index=symbol_index,
                         cli_index=cli_index,
+                        project_root=config.project_root,
                     )
             if gaps.has_gaps:
                 results[info.issue_id] = gaps
@@ -726,6 +756,9 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     assert issue_id is not None
     assert path is not None
 
+    # BUG-3691: coverage metadata is collected for the single-issue payload only;
+    # the --all sweep stays a sparse issue_id -> gaps mapping without it.
+    examined_refs: list[CitationCheck] = []
     gaps = check_format_gaps(
         path,
         templates_dir=templates_dir,
@@ -733,6 +766,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         ref_index=ref_index,
         symbol_index=symbol_index,
         cli_index=cli_index,
+        examined_refs=examined_refs,
+        project_root=config.project_root,
     )
 
     if fix:
@@ -740,6 +775,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         source_id = resolved.issue_id if resolved is not None else issue_id
         ran = _apply_fix_dispatch(config, source_id, path, gaps, apply=apply_fix, sweep=False)
         if ran and apply_fix:
+            examined_refs = []
             gaps = check_format_gaps(
                 path,
                 templates_dir=templates_dir,
@@ -747,6 +783,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
                 ref_index=ref_index,
                 symbol_index=symbol_index,
                 cli_index=cli_index,
+                examined_refs=examined_refs,
+                project_root=config.project_root,
             )
 
     if suppressed:
@@ -776,6 +814,10 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         # ENH-3576: directive-section projection for refine-to-ready-issue and
         # confidence-check Phase 1.8; not a FormatGaps field (exit code unchanged).
         payload["directive_gaps"] = directive_gaps(gaps)
+        # BUG-3691: per-occurrence citation coverage for verify-issues check B8.
+        # A sibling key like the two above: metadata is never a gap and never
+        # moves has_gaps / the exit code.
+        payload["examined_refs"] = [check.to_dict() for check in examined_refs]
         print_json(payload)
         return 1 if gaps.has_blocking_gaps else 0
 
