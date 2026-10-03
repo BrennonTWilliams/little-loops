@@ -11,6 +11,8 @@ captured_at: '2026-10-03T01:30:35Z'
 verify_verdict: VALID
 relates_to:
 - BUG-3702
+- ENH-3706
+- BUG-3707
 confidence_score: 95
 outcome_confidence: 89
 score_complexity: 21
@@ -35,7 +37,17 @@ The sweep completes within the timeout regardless of directory size (or makes mo
 
 ## Proposed Solution
 
-Replace the per-file subprocess spawns with shell-builtin parsing (parameter expansion instead of `basename`/`sed`) and/or a single `find`-based pass; optionally bound runtime and sweep oldest-first so partial runs still make progress. Add a test with a few thousand synthetic dead-pid files asserting the hook finishes under the timeout and removes them.
+_Revised after pre-implementation review (Opus consult via `/ll:advise`, 2026-10-03):_
+
+1. **Age guard (in scope).** Enumerate candidates with `find "$SCRATCH_DIR" -maxdepth 1 -type f -mmin +1440` (24h, one named constant) instead of the bare glob. Without it, a fast sweep deletes every sibling session's in-flight redirect output on each SessionStart (see Root Cause: pid files are dead-on-arrival), reintroducing the BUG-2420 race that the 5s timeout currently masks. 60 minutes was rejected as too short for silent long-running writers and files a long session reads later. Must not break `/bin/bash` 3.2 / BSD `find` (`-maxdepth` before `-type`; no `-delete`/`-print0`/`xargs`).
+2. **Replace per-file forks with builtins.** `base=${f##*/}`; require `base` to contain a `.` and a non-empty extension; `stem=${base%.*}`; require `stem` to contain a `-`; `pid=${stem##*-}`; skip unless `pid` is all digits (`case "$pid" in ''|*[!0-9]*) continue ;; esac`). The dash and non-empty-extension guards are required: without them `123.txt` and `foo-123.` diverge from the old `sed -nE 's/.*-([0-9]+)\.[^.]+$/\1/p'`. Keep the literal `kill -0`.
+3. **Batch deletes.** Collect dead-pid paths (rebuilt as `"$SCRATCH_DIR/$base"`) into an array and `rm -f -- "${arr[@]}"` in chunks of ~500; skip `rm` when the array is empty. One giant `rm` is rejected: ~200KB at 5k files is under macOS `ARG_MAX`, but an overflow would fail silently under `|| true` and delete nothing.
+4. **Bound runtime.** Check `$SECONDS` against a ~3s deadline once per chunk and stop cleanly (still `exit 0`), so a slow host leaves the next session strictly further along.
+5. **Tests.** Deterministic PATH-shim test first (see Tests / Implementation Steps); wall-clock `elapsed < 5.0` only as a loose secondary check. Backdate all fixtures with `os.utime`.
+
+**Accepted behavior to document:** `kill -0` still reads pid 1 and other users' pids as dead (EPERM; consider `session-cleanup.sh`'s `pid_alive()` fallback only if it adds no per-file fork); model-chosen names with numeric suffixes (e.g. `test-results-3516.txt`) are still swept after 24h.
+
+**Out of scope — filed as follow-ups (ENH-3706, BUG-3707):** (a) ENH-3706: no-suffix file cleanup — 2,764 of 5,152 files (54%) at review time have no `-<pid>` suffix and are never swept, so the directory still grows after this fix; (b) BUG-3707: writer-side fix in `scratch-pad-redirect.sh` — use the real command pid (runtime `\$\$` in the rewritten command) instead of the exiting hook's `$$` (unverified that each Bash call gets its own shell process for the command's lifetime).
 
 ## Steps to Reproduce
 
@@ -110,13 +122,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
+### Pre-Implementation Review Amendments
+
+_Added after Opus review via `/ll:advise` — 2026-10-03; supersedes conflicting steps below:_
+
+- Step 1 below gains the **24h age guard** (`find -mmin +1440`) and fixtures must be backdated with `os.utime`; step 3's "five existing tests pass unmodified" is **no longer true** — `..._removes_file_owned_by_dead_process` (and any other deletion-expecting fixture) must backdate its file, and a new test must assert a *fresh* dead-pid file is preserved.
+- Step 2 gains a **table-driven parity test** comparing the new parser to the old `sed` on: `x-123.tar.gz`, `foo-123`, `foo-123.`, `123.txt`, `a-1-2.txt`, `-123.txt`, `foo.bar-123.txt`, `evidence-snapshot-<uuid4>-<pid>.json`.
+- Deletion is **chunked (~500)** with a **`$SECONDS` deadline (~3s)** — see Proposed Solution; add a test where the file count is not a multiple of the chunk size.
+- Primary perf test is **deterministic**: `basename`/`sed`/`rm` shims on `PATH` log each call; assert zero `basename`/`sed` calls and `rm` calls ≤ ceil(n/chunk). Fixture ~1,200 files. Wall-clock `elapsed < 5.0` (5,000 files) is a loose secondary assertion only — the suite runs under xdist `-n logical`.
+- Add an **acceptance step**: `cp -pR` the live 5,152-file `.loops/tmp/scratch` (preserves mtimes, which the age guard needs) to a temp project and time the new script under `/bin/bash`.
+- Coordinate with **BUG-3702**: its snapshot-survival test must backdate the snapshot (or assert fresh files survive) now that the age guard exists.
+- Out-of-scope follow-ups already filed and linked via `relates_to`: ENH-3706 (no-suffix cleanup), BUG-3707 (writer-side real-pid fix).
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-10-03 — based on codebase analysis:_
 
 1. A 5,000-file dead-pid directory is swept to empty well inside the 5s hook budget under `/bin/bash` 3.2 as well as PATH `bash`; verified by a new `TestScratchCleanupSessionEnd` case (fixture generated in-test, `elapsed < 5.0`) that fails against the current script (~24s measured) and passes after the change.
 2. Per-file process spawns are gone from the hot path — pid extraction yields the same result as `sed -nE 's/.*-([0-9]+)\.[^.]+$/\1/p'` for the shapes in Root Cause (including the non-match cases `x-123.tar.gz` and `foo-123`), and deletion no longer costs one `rm` fork per file.
-3. The BUG-2525 contract holds at scale: no-suffix files and live-pid files survive a 5,000-file sweep (add a handful of each to the large fixture); the five existing `TestScratchCleanupSessionEnd` tests, including the static `kill -0` / no-`rm -rf`-on-scratch text check, pass unmodified.
+3. The BUG-2525 contract holds at scale: no-suffix files and live-pid files survive a 5,000-file sweep (add a handful of each to the large fixture); the existing `TestScratchCleanupSessionEnd` tests, including the static `kill -0` / no-`rm -rf`-on-scratch text check, still pass (deletion-expecting fixtures now backdate via `os.utime` — see Pre-Implementation Review Amendments).
 4. If a runtime bound or oldest-first ordering is added (optional per Proposed Solution), a killed or truncated run still leaves the next session strictly further along than the prior one; note the script has no cross-run state today, and `test_portability_gate.py` forbids bash-4-only constructs.
 5. `python -m pytest scripts/tests/test_hooks_integration.py scripts/tests/test_portability_gate.py -v` passes, then the full `python -m pytest scripts/tests/`.
 
@@ -136,12 +160,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P3 - unbounded scratch growth; also made BUG-3702's snapshot loss intermittent
 - **Effort**: Small
-- **Risk**: Low - must keep the BUG-2525 contract (files without a `-<pid>` suffix and live-pid files are preserved)
+- **Risk**: Low-Medium - must keep the BUG-2525 contract (files without a `-<pid>` suffix and live-pid files are preserved); the age guard changes sweep semantics (fresh dead-pid files now survive up to 24h) and existing deletion tests need backdated fixtures
 
 ## Acceptance Criteria
 
-- [ ] `scratch-cleanup.sh` removes all dead-pid files from a 5,000-file directory within the hook timeout
+- [ ] `scratch-cleanup.sh` removes all dead-pid files older than the age threshold (24h) from a 5,000-file directory within the hook timeout, under both `/bin/bash` 3.2 and PATH `bash`
+- [ ] Dead-pid files newer than the age threshold are preserved (in-flight sibling-session output)
 - [ ] Files without a `-<pid>` suffix and files owned by a live pid are still preserved
+- [ ] No `basename`/`sed` forks in the hot path and `rm` is batched (shim-verified); a `$SECONDS` deadline bounds runtime and a truncated run still progresses
+- [ ] New pid parser matches the old `sed` on the pinned edge shapes (including `123.txt` and `foo-123.`)
+- [ ] The live 5,152-file directory (copied with `cp -pR`) sweeps within 5s
+- [x] Follow-up issues filed for no-suffix cleanup (ENH-3706) and the writer-side real-pid fix (BUG-3707)
 - [ ] `python -m pytest scripts/tests/` exits 0
 
 ## Status
