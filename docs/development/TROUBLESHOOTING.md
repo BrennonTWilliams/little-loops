@@ -1063,7 +1063,7 @@ there's nothing to record there.
 
 **Symptom**: "Hook exceeded timeout" or hook execution aborted
 
-**Cause**: Lock acquisition timeout or slow file operations
+**Cause**: Lock acquisition timeout or slow file operations (for the SessionStart `scratch-cleanup.sh`: an oversized `.loops/tmp/scratch` with per-file forks — fixed by BUG-3705; the sweep is now batched and deadline-bounded)
 
 **Solution**:
 1. Check for stale lock files:

@@ -42,19 +42,51 @@
 # Runs relative to CWD, which should be the project root.
 SCRATCH_DIR=".loops/tmp/scratch"
 
+# BUG-3705: the sweep must finish inside the 5s hook timeout (hooks/hooks.json)
+# even with thousands of files, so it uses shell builtins for pid extraction
+# (no per-file basename/sed forks), batches deletes, and stops at a deadline —
+# a truncated run leaves the next session strictly further along.
+#
+# Age guard: scratch-pad-redirect.sh embeds the exiting hook's own $$, so its
+# pid is dead on arrival — liveness alone cannot protect an in-flight sibling
+# session's output once the sweep is fast enough to actually reach it. Only
+# files untouched for MIN_AGE_MINUTES are candidates (24h: long-running writers
+# and files a long session reads back later stay safe).
+MIN_AGE_MINUTES=1440
+CHUNK_SIZE=500
+DEADLINE_SECONDS=3
+
 if [ -d "$SCRATCH_DIR" ]; then
-    for f in "$SCRATCH_DIR"/*; do
-        [ -e "$f" ] || continue
-        base=$(basename "$f")
-        pid=$(echo "$base" | sed -nE 's/.*-([0-9]+)\.[^.]+$/\1/p')
-        # User-typed files have no -<pid> suffix — skip unconditionally (BUG-2525).
-        [ -n "$pid" ] || continue
+    start=$SECONDS
+    dead=()
+    n=0
+    while IFS= read -r f; do
+        base=${f##*/}
+        # Pid is the last -<digits> run directly before the final dot
+        # (equivalent to sed -nE 's/.*-([0-9]+)\.[^.]+$/\1/p'). User-typed
+        # files have no -<pid> suffix — skip unconditionally (BUG-2525).
+        case "$base" in *.*) ;; *) continue ;; esac
+        [ -n "${base##*.}" ] || continue
+        stem=${base%.*}
+        case "$stem" in *-*) ;; *) continue ;; esac
+        pid=${stem##*-}
+        case "$pid" in '' | *[!0-9]*) continue ;; esac
         if kill -0 "$pid" 2>/dev/null; then
             # Owning process is still alive — leave its scratch file alone.
             continue
         fi
-        rm -f "$f" 2>/dev/null || true
-    done
+        dead[n]="$SCRATCH_DIR/$base"
+        n=$((n + 1))
+        if [ "$n" -ge "$CHUNK_SIZE" ]; then
+            rm -f -- "${dead[@]}" 2>/dev/null || true
+            dead=()
+            n=0
+            [ $((SECONDS - start)) -ge "$DEADLINE_SECONDS" ] && break
+        fi
+    done < <(find "$SCRATCH_DIR" -maxdepth 1 -type f -mmin +"$MIN_AGE_MINUTES" 2>/dev/null)
+    if [ "$n" -gt 0 ]; then
+        rm -f -- "${dead[@]}" 2>/dev/null || true
+    fi
     # Only remove the directory itself once nothing owned by a live process
     # remains in it; rmdir is a no-op (via || true) if files are still present.
     rmdir "$SCRATCH_DIR" 2>/dev/null || true

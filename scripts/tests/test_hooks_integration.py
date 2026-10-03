@@ -5,8 +5,12 @@ Tests concurrent access, special character handling, and race conditions.
 
 import itertools
 import json
+import os
 import re
+import shutil
 import subprocess
+import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -2945,6 +2949,39 @@ class TestScratchPadRedirectBug2420:
         )
 
 
+_SCRATCH_DEAD_PID = 2147483647  # 2**31-1: not a valid/alive process on any real system
+
+
+def _backdate(path: Path, hours: float = 48) -> None:
+    """Age a scratch fixture past scratch-cleanup.sh's 24h age guard (BUG-3705)."""
+    ts = time.time() - hours * 3600
+    os.utime(path, (ts, ts))
+
+
+def _scratch_bashes() -> list[str]:
+    """Distinct bash interpreters: PATH ``bash`` plus darwin ``/bin/bash`` (3.2)."""
+    found = [shutil.which("bash") or "bash"]
+    if sys.platform == "darwin" and Path("/bin/bash").exists():
+        if Path("/bin/bash").resolve() != Path(found[0]).resolve():
+            found.append("/bin/bash")
+    return found
+
+
+def run_scratch_cleanup(
+    project_root: Path, bash_bin: str = "bash", timeout: float = 5.0
+) -> "subprocess.CompletedProcess[str]":
+    """Run scratch-cleanup.sh against ``project_root`` with the hook timeout enforced."""
+    script = Path(__file__).parent.parent.parent / "hooks/scripts/scratch-cleanup.sh"
+    return subprocess.run(
+        [bash_bin, str(script)],
+        input="{}",
+        capture_output=True,
+        text=True,
+        cwd=str(project_root),
+        timeout=timeout,
+    )
+
+
 class TestScratchCleanupSessionEnd:
     """BUG-2420: scratch cleanup moved off the racing `Stop` hook onto a
     dedicated, correctly-wired binding — originally `SessionEnd`; re-homed to
@@ -3054,12 +3091,125 @@ class TestScratchCleanupSessionEnd:
         # PID 2**31-1 is not a valid/alive process on any real system.
         dead = scratch / "pytest-2147483647.txt"
         dead.write_text("stale")
+        _backdate(dead)
         result = subprocess.run(
             [str(script)], input="{}", capture_output=True, text=True, timeout=5
         )
         assert result.returncode == 0
         assert not dead.exists(), "file owned by a dead PID must be pruned"
         assert not scratch.exists(), "dir should be removed once empty"
+
+    def test_scratch_cleanup_preserves_fresh_dead_pid_file(self, tmp_path: Path):
+        """BUG-3705: a dead-pid file younger than the age guard is an in-flight
+        sibling session's output (redirect pids are dead on arrival) — keep it."""
+        scratch = tmp_path / ".loops/tmp/scratch"
+        scratch.mkdir(parents=True)
+        fresh = scratch / f"pytest-{_SCRATCH_DEAD_PID}.txt"
+        fresh.write_text("in flight")
+        result = run_scratch_cleanup(tmp_path)
+        assert result.returncode == 0
+        assert fresh.exists(), "dead-pid file newer than 24h must survive"
+
+    @pytest.mark.parametrize("bash_bin", _scratch_bashes())
+    def test_scratch_cleanup_large_dir_within_hook_timeout(self, tmp_path: Path, bash_bin: str):
+        """BUG-3705: 5,000 stale dead-pid files sweep inside the 5s hook budget,
+        while no-suffix, live-pid, and fresh files survive at scale."""
+        scratch = tmp_path / ".loops/tmp/scratch"
+        scratch.mkdir(parents=True)
+        # 5,003 is not a multiple of the 500-file delete chunk.
+        dead = [scratch / f"cmd{i}-{_SCRATCH_DEAD_PID}.txt" for i in range(5003)]
+        for f in dead:
+            f.touch()
+            _backdate(f)
+        keep_old = [
+            scratch / "test-results.txt",
+            scratch / f"live-{os.getpid()}.txt",
+            scratch / f"snap-{_SCRATCH_DEAD_PID}.tar.gz",
+            scratch / f"nodot-{_SCRATCH_DEAD_PID}",
+        ]
+        for f in keep_old:
+            f.touch()
+            _backdate(f)
+        fresh = scratch / f"fresh-{_SCRATCH_DEAD_PID}.txt"
+        fresh.touch()
+
+        start = time.monotonic()
+        result = run_scratch_cleanup(tmp_path, bash_bin=bash_bin)
+        elapsed = time.monotonic() - start
+
+        assert result.returncode == 0
+        assert elapsed < 5.0, f"sweep took {elapsed:.1f}s, over the 5s hook timeout"
+        assert not any(f.exists() for f in dead), "all stale dead-pid files must be swept"
+        for f in [*keep_old, fresh]:
+            assert f.exists(), f"{f.name} must be preserved"
+
+    def test_scratch_cleanup_hot_path_has_no_per_file_forks(self, tmp_path: Path):
+        """BUG-3705: deterministic perf check — basename/sed are never spawned and
+        rm is batched (shims on PATH log every call)."""
+        scratch = tmp_path / ".loops/tmp/scratch"
+        scratch.mkdir(parents=True)
+        n = 1203
+        for i in range(n):
+            f = scratch / f"cmd{i}-{_SCRATCH_DEAD_PID}.txt"
+            f.touch()
+            _backdate(f)
+        shims = tmp_path / "shims"
+        shims.mkdir()
+        log = tmp_path / "calls.log"
+        for tool in ("basename", "sed", "rm"):
+            real = shutil.which(tool)
+            shim = shims / tool
+            shim.write_text(f'#!/bin/bash\necho {tool} >> "{log}"\nexec {real} "$@"\n')
+            shim.chmod(0o755)
+        script = Path(__file__).parent.parent.parent / "hooks/scripts/scratch-cleanup.sh"
+        env = {**os.environ, "PATH": f"{shims}{os.pathsep}{os.environ['PATH']}"}
+        result = subprocess.run(
+            ["bash", str(script)],
+            input="{}",
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+            env=env,
+            timeout=30,
+        )
+        assert result.returncode == 0
+        calls = log.read_text().split() if log.exists() else []
+        assert "basename" not in calls and "sed" not in calls
+        assert 1 <= calls.count("rm") <= -(-n // 500)
+        assert not scratch.exists(), "dir removed once empty"
+
+    @pytest.mark.parametrize(
+        ("name", "swept"),
+        [
+            ("x-2147483647.tar.gz", False),
+            ("foo-2147483647", False),
+            ("foo-2147483647.", False),
+            ("foo.-2147483647.", False),
+            ("2147483647.txt", False),
+            ("a-.txt", False),
+            ("a-1-2147483647.txt", True),
+            ("-2147483647.txt", True),
+            ("foo.bar-2147483647.txt", True),
+            ("evidence-snapshot-0a1b2c3d-1111-4222-8333-444455556666-2147483647.json", True),
+        ],
+    )
+    def test_scratch_cleanup_pid_parsing_matches_legacy_sed(
+        self, tmp_path: Path, name: str, swept: bool
+    ):
+        """BUG-3705: builtin pid extraction agrees with the old
+        ``sed -nE 's/.*-([0-9]+)\\.[^.]+$/\\1/p'`` on edge shapes. All pids
+        are 2**31-1, certainly dead."""
+        scratch = tmp_path / ".loops/tmp/scratch"
+        scratch.mkdir(parents=True)
+        f = scratch / name
+        f.touch()
+        _backdate(f)
+        # Keep the dir non-empty so rmdir cannot mask a surviving file.
+        sentinel = scratch / "keep.txt"
+        sentinel.touch()
+        result = run_scratch_cleanup(tmp_path)
+        assert result.returncode == 0
+        assert f.exists() is (not swept), f"{name}: swept={swept} expected"
 
     def test_hooks_json_registers_scratch_cleanup_under_session_start(self):
         """hooks/hooks.json registers a SessionStart block bound to scratch-cleanup.sh.

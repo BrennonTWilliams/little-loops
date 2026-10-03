@@ -4,10 +4,11 @@ type: BUG
 title: scratch-cleanup.sh sweep exceeds its 5s hook timeout on large scratch dirs,
   leaving dead-pid files unswept
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T01:30:35Z'
+completed_at: '2026-10-03T16:50:58Z'
 verify_verdict: VALID
 relates_to:
 - BUG-3702
@@ -201,7 +202,13 @@ _Added by `/ll:confidence-check` on 2026-10-03_
 - Implementation Steps still carry pre-review wording (step 1 "fails against current script/passes after" with no age guard; "existing tests pass unmodified") that the Pre-Implementation Review Amendments supersede — implement from the amendments, not the stale steps.
 - Open minor question: whether to adopt `session-cleanup.sh`'s `pid_alive()` EPERM fallback (must add no per-file fork and keep the literal `kill -0`).
 
+## Resolution
+
+**Completed** — `hooks/scripts/scratch-cleanup.sh` rewritten: `find -mmin +1440` age guard (24h), builtin pid parsing (no `basename`/`sed` forks; parity-tested against the old `sed`), `rm -f` batched in chunks of 500, `$SECONDS` 3s deadline. Live 5,156-file scratch copy now sweeps in 0.3s under `/bin/bash` 3.2 (was ~20s). Tests added to `TestScratchCleanupSessionEnd` (fresh-file survival, 5k-file timeout on both bashes, shim-verified no per-file forks, parser parity table); dead-process fixture backdated. Docs updated (BUILTIN_HOOKS_GUIDE, TROUBLESHOOTING). Full suite: 27,636 passed; 2 failures (`test_no_new_unverifiable_evidence` on BUG-3696/BUG-3702 spans, `test_no_prose_dependency_drift_in_repo`) and 8 `test_libsql_integration` live-endpoint errors are in untouched areas.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-10-03T16:50:58 - `e7b98695-6a3e-4a66-8d55-6c085a0d42b6.jsonl`
+- `/ll:ready-issue` - 2026-10-03T16:40:47 - `f7bf7efa-db3d-4117-841d-79f84b28af2d.jsonl`
 - `/ll:confidence-check` - 2026-10-03T16:34:34 - `73abd026-8e65-41fa-bd86-4deebefea3e5.jsonl`
 - `/ll:confidence-check` - 2026-10-03T08:32:12 - `bb60645b-4c2c-4059-9593-4feaa83c6070.jsonl`
 - `/ll:wire-issue` - 2026-10-03T08:30:04 - `b1db8e5c-4be0-4d16-bc71-7a863a1daa3f.jsonl`
