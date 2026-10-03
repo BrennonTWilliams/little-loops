@@ -28,6 +28,26 @@ The sweep completes within the timeout regardless of directory size (or makes mo
 
 Replace the per-file subprocess spawns with shell-builtin parsing (parameter expansion instead of `basename`/`sed`) and/or a single `find`-based pass; optionally bound runtime and sweep oldest-first so partial runs still make progress. Add a test with a few thousand synthetic dead-pid files asserting the hook finishes under the timeout and removes them.
 
+## Steps to Reproduce
+
+1. Populate `.loops/tmp/scratch` with a few thousand dead-pid files (`<name>-<dead pid>.txt`).
+2. Run `time bash hooks/scripts/scratch-cleanup.sh` (or start a session; the hook has `timeout: 5`).
+3. Observe the sweep exceed 5s / be killed, leaving dead-pid files late in the sort order in place.
+
+## Program Design
+
+### Types
+
+- N/A — shell hook, no new types
+
+### Signatures
+
+- `run_scratch_cleanup(project_root: Path, timeout: float = 5.0) -> subprocess.CompletedProcess[str]` — new test helper that runs `hooks/scripts/scratch-cleanup.sh` against a synthetic scratch dir and enforces the hook timeout; the hook's own contract (BUG-2525: preserve files without a `-<pid>` suffix and files owned by a live pid) is unchanged
+
+### Call Path
+
+`hooks/hooks.json` SessionStart entry -> `scratch-cleanup.sh` sweeps the files that `write_snapshot` and `scratch-pad-redirect.sh` leave in `.loops/tmp/scratch` -> per-file pid extraction -> `kill -0` -> `rm -f`
+
 ## Impact
 
 - **Priority**: P3 - unbounded scratch growth; also made BUG-3702's snapshot loss intermittent
