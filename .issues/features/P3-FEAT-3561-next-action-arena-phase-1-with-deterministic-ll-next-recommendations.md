@@ -42,6 +42,8 @@ A user deciding what to do next needs a legible choice across implementation, re
 
 Each generator specifies its target and a copyable action; it yields no candidate when its source is absent and never invents required arguments. Candidate identity is `(action_type, target_key)`, where `target_key` is namespaced (`issue:FEAT-123`, `loop:NAME`; follow-ups add `sprint:NAME` and `scan:SCOPE_HASH`). `target` remains the readable issue ID/name. A display command is copyable text, **not** a shell string executed by `ll-next`. Store the exact intended operation in `action_key` (e.g. `format-issue`, `confidence-check`, or `manage-issue:implement`) for subsequent acceptance attribution.
 
+Keep target deduplication separate from invocation matching. Preserve a typed action specification (slash arguments or shell argv) and an `action_fingerprint` from canonical semantic arguments, including a loop's resolved input/context. Exclude display quoting, ephemeral run IDs and timestamps from that fingerprint. FEAT-3711 can match an offer only when evidence proves the required arguments; running the same loop name with different or unrecorded inputs is not exact acceptance. No new execution telemetry is required by this core.
+
 | Verb | Candidate source / required action |
 |---|---|
 | `implement-issue` | Ready, unblocked leaf issue; emit all required `/ll:manage-issue TYPE ACTION ID` arguments (`BUG` → `bug fix`, `FEAT` → `feature implement`, `ENH` → `enhancement improve`). |
@@ -73,6 +75,8 @@ A prose `.ll/ll-goals.md` is **not** parsed as an EPIC map until a syntax and pa
 
 Capture one timezone-aware UTC `as_of` and load project state once. `ProjectState` contains parsed issue content/frontmatter, the full dependency graph, validated loop definitions, filesystem loop history, effective merged config and source diagnostics. Generators/scorers accept this state without reading the clock, cwd, live files or database themselves. This same seam permits FEAT-3712 to supply historical content. Avoid helpers such as the current autodev resolver that reload cwd/config or `is_formatted(path)` unless adapted to the injected content.
 
+Assess each source-valid target once before filtering eligibility. An assessment retains gates, unresolved inputs and exclusion reasons, even when no runnable action can be constructed. Normal selection projects only eligible, fully resolved candidates; `--explain` renders the same assessment, including a source-valid loop with missing inputs or a rejected implementation gate. Do not discard rejected targets during generation and then implement a separate explain policy. A nonexistent target remains distinct from an existing but excluded target; explain may have `display_command=null`, while every selected recommendation must have a complete command.
+
 The geometric helper in FEAT-3681 accepts only finite scores in `[0, 1]`. Its legacy next-loop curves are uncapped; **do not pass their values directly to the geometric scorer or change the old command to fix the arena**. Pin these arena-only defaults:
 
 | Axis | Raw value and bounded curve |
@@ -97,7 +101,7 @@ Dates must have a documented UTC normalization (date-only capture/Session Log va
 - Eligibility is explicit: issue action targets are `open` or `blocked` leaf issues; exclude `done`, `cancelled`, `deferred`, `in_progress` and EPIC containers. Build dependencies from **all** nonterminal statuses, including deferred, and resolve edges only against known `done`/`cancelled` issues. Unknown dependency IDs fail closed here, even though `DependencyGraph.from_issues` currently warns and drops them. Cycles yield diagnostics rather than an invented root blocker.
 - Required gate results are `pass`, `fail` or `missing`, separate from numeric axes. `implement-issue` requires satisfied hard blockers **and** `depends_on`, and valid readiness/outcome scores against the effective merged confidence thresholds (defaults `85/65`); honor `outcome_gate_waived` for the outcome comparison only. Both score fields must still be present. This is the conservative arena policy, aligned with `check-readiness --honor-waiver`, not the readiness-only manage-issue/ll-auto gate. `commands.confidence_gate.enabled: false` does not make an unassessed issue ready for the arena. `resolve-blocker` requires satisfied dependencies; its displayed implementation step also requires these readiness checks. Non-negotiable eligibility/input checks cannot be disabled by weight `0` or a gate override.
 - An explicit `status: blocked` independently vetoes implementation even if no dependency edge remains; expose that status instead of assuming its unspecified blocker vanished. A blocked issue can still be refined. A root-blocker implementation with this status is rejected until its blocking reason/status is resolved.
-- Coverage stores `resolved_axes` and `applicable_axes` as integers plus a display string; count only applicable **positive-weight nongate** axes. Within each verb, order scored candidates by `selection_score = utility × coverage`, then valid priority (where applicable), then `target_key` ascending. `utility` is unmodified. An all-zero effective weight set is a config error, not cold start.
+- Coverage stores `resolved_axes` and `applicable_axes` as integers plus a display string; count only applicable **positive-weight nongate** axes. The numeric coverage multiplier is `resolved_axes / applicable_axes`; effective positive-weight applicability must be nonempty after config validation. Within each verb, order scored candidates by `selection_score = utility × coverage`, then valid priority (where applicable, missing/invalid after valid priorities), then `target_key` ascending. `utility` is unmodified. An all-zero effective weight set is a config error, not cold start.
 - Cold start is **per verb**: gate-passing candidates with no resolved scoring axes have `utility=null` and `selection_score=null`, sort after scored candidates in their bucket, and use priority/target-key fallback. This allows never-run loops even when issue buckets have data. Gates run first and are never bypassed by fallback. Exit 1 means no eligible candidate across the requested buckets, with distinct empty-source, gate-failed and gate-missing diagnostics.
 
 ### Cross-type fill (stateless)
@@ -110,11 +114,13 @@ When `--top` is omitted, N is the number of requested buckets with eligible cand
 
 - `ll-next [--json] [--top N] [--type VERB ...] [--explain VERB TARGET]` (default N=available requested buckets). Validate positive explicit N and caps, known verbs, and incompatible explain/top/type combinations at the CLI boundary. Explain evaluates the named source even if gates reject it; absent target exits 1 with a diagnostic. No `--execute`.
 - Exit 0: recommendations/fallback or an existing candidate explanation emitted; exit 1: no eligible candidate or absent explain target; exit 2: config/usage error (concise stderr, empty stdout, no traceback). JSON is an envelope with `schema_version`, `as_of`, `selection_policy`, `recommendations`, and structured `diagnostics`; valid empty results still validate against the schema.
-- Candidate fields: `action_type`, `action_key`, `target`, `target_key`, `display_command`, `axes` (raw, curve, score, source, missing reason), `gates`, `utility`, `selection_score`, `bucket_rank`, `pressure` (null), `selection_reason`, `resolved_axes`, `applicable_axes`, alternate actions. Missing values serialize as `null`, never NaN/Infinity. The existing `ll-generate-schemas` flow only handles event schemas, so maintain a dedicated generated JSON Schema file with a drift test and package it for installed users.
+- Candidate fields: `action_type`, `action_key`, `action_fingerprint`, typed action specification, `target`, `target_key`, `display_command`, `axes` (raw, curve, score, source, missing reason), `gates`, `utility`, `selection_score`, `bucket_rank`, `pressure` (null), `selection_reason`, `resolved_axes`, `applicable_axes`, alternate actions. Explain also exposes eligibility and exclusion reasons. Missing values serialize as `null`, never NaN/Infinity. The existing `ll-generate-schemas` flow only handles event schemas, so maintain a dedicated generated JSON Schema file with a drift test and package it for installed users.
 - Render shell CLI actions from argv with `shlex.join`; render slash actions with their declared argument syntax. Do not copy next-loop's `json.dumps`/unquoted-context shell builder. Test spaces, quotes, dollar signs and backticks in targets/inputs as literal arguments.
 - Add the CLI entry point, CLI reference, and permission/registry wiring. Every emitted loop action has its required arguments resolved or is excluded; test that invariant rather than assuming `ll-loop run NAME` is always runnable.
 - This slice must avoid `cli_event_context`, write-capable history helpers and constructors that create directories. `--help`, text, JSON, explain and error paths perform no history access and no project writes. Read-only means no incidental telemetry or initialization.
 - Extend FEAT-3681's deferred config resolver, typed config/property/export/serialization wiring and schema together for consumed `next.verbs`/selection settings. Unknown keys, nonfinite/negative/bool weights, invalid caps or all-zero effective weights exit 2 at the consumer; unrelated CLIs still construct config successfully. Preserve keyed local merges and leaf-null reset semantics.
+
+Pin the consumed shape: `next.verbs.<verb>.weights.<axis>` uses the matrix above, `next.verbs.<verb>.cap=2` is a positive integer, and `next.verbs.refine-issue.refine_cap=5` is a positive integer also used for root-blocker refinement. Hard gates are fixed policy; readiness/outcome thresholds come from effective merged `commands.confidence_gate` and must be valid integers in `0..100`, excluding booleans. Do not add unspecified per-verb gate-disable switches. The legacy `next.loop_history.weights` remains independent. FEAT-3711/3713 extend this keyed shape only when their settings have consumers.
 
 ## Scope Boundaries
 
@@ -140,11 +146,12 @@ When `--top` is omitted, N is the number of requested buckets with eligible cand
 ### Types
 
 - Immutable `ProjectState(as_of, config, issues, issue_contents, graph, loop_definitions, loop_history, diagnostics)`; no live I/O hidden in scoring/generation.
-- `AxisScore(raw, curve, score, source, missing_reason)`, `GateResult(status, reason, source)` and `Candidate` with the exact fields in the CLI contract above are typed records with deterministic JSON serialization.
+- `AxisScore(raw, curve, score, source, missing_reason)`, `GateResult(status, reason, source)`, typed action specifications, target assessments and `Candidate` with the exact fields in the CLI contract above are typed records with deterministic JSON serialization.
 
 ### Signatures
 
-- `generate_candidates(state: ProjectState) -> list[Candidate]` — returns only candidates with a named source and copyable action.
+- `assess_candidates(state: ProjectState) -> list[CandidateAssessment]` — retains source-valid targets and their gate/input/exclusion evidence for both selection and explain.
+- `generate_candidates(state: ProjectState) -> list[Candidate]` — projects eligible, fully resolved assessments; does not duplicate assessment logic.
 - `select_candidates(candidates: list[Candidate], *, top: int | None, bucket_order: Sequence[str], caps: Mapping[str, int]) -> list[Candidate]` — applies gates, coverage ordering, omitted-top policy and round-robin fill without cross-type utility comparison; later pressure changes only `bucket_order`.
 
 ### Call Path
@@ -178,6 +185,7 @@ A user runs `ll-next` and each available action bucket gets a first-round opport
 - [ ] Round-robin fill follows the canonical verb order with the per-type cap and at-most-once-per-target rule; no cross-verb utility comparison.
 - [ ] Namespaced dedup refills past duplicates without spending caps; alternate actions/blocker reasons survive. Injected snapshots, shuffled source order and a fixed UTC clock yield deterministic ranks/output in live and reconstructed states.
 - [ ] Human/JSON/explain/empty/error modes, installed output Schema (with drift test), config root/export/merge/reset/serialization, registry/permissions and docs pass focused tests. All paths perform no `history.db` access and no writes, including incidental CLI telemetry.
+- [ ] Explain uses the shared assessment path for rejected gates, unresolved loop inputs and capped refinement; selected recommendations always have complete actions. Typed action/fingerprint tests distinguish parameter changes from display-quoting changes, and pin consumed caps/refinement limits/threshold validation.
 - [ ] Fixed-clock missing-gate/zero-score/mixed-bucket cold-start fixtures and the quantified scaled performance gate pass without network access.
 - [ ] The four existing `next-*` CLIs remain behavior-identical; `python -m pytest scripts/tests/` passes.
 
@@ -188,6 +196,7 @@ A user runs `ll-next` and each available action bucket gets a first-round opport
 ## Review Notes
 
 - 2026-10-03: Pre-implementation review corrected the `next-action` source contract, bounded all arena curves, separated gates from axes, defined snapshot/target/action identity, per-bucket cold start, exact invocations and read-only/config/performance gates. Kept the advisory four-verb slice and legacy CLI compatibility.
+- 2026-10-03: Follow-up review separated source assessment from eligibility so explain retains rejected targets, pinned argument-aware action identity and the numeric coverage multiplier, and specified consumed cap/refinement settings without an unused gate-disable framework.
 
 ## Status
 
