@@ -17,7 +17,12 @@ relates_to:
 blocks:
 - ENH-3683
 - ENH-3698
-
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3679: Bound cli_event_context lock waits with a short busy timeout and a drop counter
@@ -101,9 +106,20 @@ Make `cli_event_context` resilient to a held local SQLite write lock: use a shor
 
 ## Confidence Check Notes
 
-_Updated 2026-10-02 after the EPIC-3693 pre-implementation review._
+_Re-scored 2026-10-03 by `/ll:confidence-check` on the revised scope (replaces the 2026-10-02 clearing note)._
 
-Prior 90/79 scores were cleared: per-step timeout resets and a blocking counter lock undermined the intended bound. The revised plan uses two independent cumulative phase budgets and an append-only counter. Re-run `/ll:confidence-check` on this scope before implementation; planned lock-holder/concurrent-counter tests are verification requirements, not completed evidence.
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE (below `outcome_threshold` 65)
+
+### Concerns
+- `connect()` is specified to "own an internal deadline", but the local path goes through `ensure_db`, which opens its own `sqlite3.connect(str(db_path))` (default 5 s timeout, `schema.py:1716`) and calls `_configure_connection` (`PRAGMA busy_timeout` + `PRAGMA journal_mode = WAL`) and `_apply_migrations`. The issue says the deadline is *not* threaded through `ensure_db`, yet the steady-state setup connection lives inside it. Decide up front whether `connect()` inlines a bounded variant of that setup or `ensure_db` takes a keyword; otherwise the 250 ms setup budget is not actually enforced on that connection.
+- `PRAGMA journal_mode = WAL` is a lock-taking statement; it must sit inside the bounded pragma sequence or be skipped once the budget is spent.
+- `sqlite_errorcode` classification needs Python 3.11+ (project minimum, fine) — extended codes must be masked with `& 0xFF`, as the issue states.
+
+### Outcome Risk Factors
+- Moderate per-site complexity: a shared monotonic deadline spans `connect` → `ensure_db` → `_configure_connection` → insert/commit, plus a second budget re-armed on the open connection at exit.
+- Broad surface across ~8-10 sites (`schema.py`, `writers.py`, `doctor.py`, new counter helper, `.gitignore`, `init/writers.py`, 2-3 test files, 2 docs). `cli_event_context` wraps every `ll-*` entry point, so a mistake in the bound or the new `debug` log level is visible everywhere; mitigated by the additive, default-preserving `busy_timeout_ms=None` kwarg.
+- Timing tests ([200 ms, 1000 ms] windows with a real lock holder) are the only proof of the bound and can be scheduler-sensitive; the lower-bound check also depends on the SQLite build having `HAVE_USLEEP`.
 
 _Revised 2026-10-03 after a pre-implementation review with an Opus second opinion (`/ll:advise`, confidence 0.82)._ Changes: exit phase re-issues the busy-timeout pragma; counter moved from a one-byte count to a 12-byte timestamped, kind-tagged record (the ENH-3683 decision needs a windowed rate, not a lifetime count); explicit drop definition (lock errors only); lock drops log at `debug`; timing window pinned to [200 ms, 1000 ms]; sidecar path derived from the resolved store (fixes the `LL_HISTORY_DB` divergence) and renamed without `.lock`; doctor line folded into `_history_db_check`. Opus's dissent: a one-byte count is defensible if a human compares two snapshots, so the timestamped record is cheap insurance rather than strictly required. Rejected: skipping migrations on the telemetry path (breaks fresh-db creation).
 
@@ -129,6 +145,7 @@ Verdict at time of check: **DEP_ISSUES** (the backlink fix below was applied in 
 **Note** (added by `/ll:audit-issue-conflicts`): Ordering vs ENH-3698: ENH-3679 lands before ENH-3698 (ENH-3698 is `blocked_by` this issue). The "after or with ENH-3698" wording is superseded for ENH-3698 — "with" is impossible under the `blocked_by` edge. Sequencing against ENH-3658 is unchanged.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-03T17:15:02 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`
 - `/ll:verify-issues` - 2026-10-03T17:10:47 - `aa9ffd51-8240-4480-856c-316b8f27306a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:01 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:59 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`
