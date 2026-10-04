@@ -4243,13 +4243,16 @@ class IssueParser:
             frontmatter.get("implementation_order_risk")
         )
 
+        # An explicit empty value is "proven empty — no external deps" (``[]``), which
+        # must stay distinct from an absent field (``None``) so it suppresses JIT
+        # extraction in ``resolve_learning_targets``.
         learning_tests_raw = frontmatter.get("learning_tests_required")
         if isinstance(learning_tests_raw, str):
             learning_tests_required_value: list[str] | None = [
                 t.strip() for t in learning_tests_raw.split(",") if t.strip()
-            ] or None
+            ]
         elif isinstance(learning_tests_raw, list):
-            learning_tests_required_value = [str(t) for t in learning_tests_raw] or None
+            learning_tests_required_value = [str(t) for t in learning_tests_raw]
         else:
             learning_tests_required_value = None
 

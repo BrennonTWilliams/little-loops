@@ -3076,6 +3076,30 @@ class TestIssueInfoLearningTestsRequired:
 
         assert info.learning_tests_required is None
 
+    def test_parse_file_learning_tests_required_empty_is_proven_empty(self, tmp_path: Path) -> None:
+        """An explicit ``[]`` parses to [] ("no external deps"), not None.
+
+        ``None`` triggers JIT LLM extraction in ``resolve_learning_targets``; ``[]`` must
+        suppress it so authors can declare an issue dependency-free.
+        """
+        import json
+
+        from little_loops.config import BRConfig
+
+        config_path = tmp_path / ".ll" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}, "project": {"src_dir": "scripts/"}})
+        )
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = bugs_dir / "P3-BUG-1287-empty-targets.md"
+        issue_file.write_text("---\nlearning_tests_required: []\n---\n# BUG-1287: Empty\n")
+
+        info = IssueParser(BRConfig(tmp_path)).parse_file(issue_file)
+
+        assert info.learning_tests_required == []
+
 
 class TestIssueInfoMissingArtifacts:
     """Tests for IssueInfo.missing_artifacts field."""
