@@ -27,7 +27,8 @@ The `ll-loop run` usage table shows `est_cost` as `n/a` for `claude-sonnet-5-5` 
 
 Run `refine-to-ready-issue-20261002T111524` recorded `claude-sonnet-5-5` on all seven `usage.jsonl` rows and printed `n/a` for all five states. Re-read on 2026-10-03: every row still has that exact ID, without a provider prefix, date or `[1m]` suffix. The first row has 14 input, 5748 output, 433686 cache-read and 70335 cache-creation tokens; at the verified standard rates its estimate is $0.3200827, rendered `$0.3201`.
 
-1. `scripts/little_loops/pricing.py:MODEL_PRICING` contains `claude-sonnet-5` but lacks `claude-sonnet-5-5`. `estimate_cost_usd('claude-sonnet-5-5', 1000, 1000)` returns `None`.
+1. `scripts/little_loops/pricing.py:MODEL_PRICING` contains `claude-sonnet-5` but lacks `claude-sonnet-5-5`, so a call such as `estimate_cost_usd('claude-sonnet-5-5', 1000, 1000)` returns `None` (see Steps to Reproduce). <!-- ll-evidence-ok: call-site example, not a verbatim source quote -->
+
 2. `CostReport.from_usage_jsonl` therefore sets the state cost to `None`, `PerStateCost.table_row()` renders `n/a`, and `_compute_totals` leaves the run total null.
 3. New history `usage_events` rows for the absent model also receive null `cost_usd`; already-written null rows are not recomputed when a rate is added.
 
