@@ -113,6 +113,8 @@ Standalone **ENH-3649** (reader isolation and diagnostics) is done and remains o
 - **BUG-3696** — ll-loop usage table est_cost n/a: claude-sonnet-5-5 missing from MODEL_PRICING, no approximate fallback (open)
 - **BUG-3701** — Stale model tables: MODEL_ALIASES sonnet and MODEL_RANKS lack claude-sonnet-5-5 (open)
 - **ENH-3703** — Optional family-prefix pricing fallback with approximate cost flag (open)
+- **ENH-3719** — Unpriced-model footer and cost-table docs correction for ll-loop usage report (open)
+
 
 
 
