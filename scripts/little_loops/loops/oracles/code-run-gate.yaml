@@ -347,6 +347,9 @@ states:
       # suite sees a bare-terminal env. Explicit assignments inside test_cmd
       # still win. Keep in sync with worktree_utils.HERMETIC_ENV_VARS.
       unset LL_PYTHON COLUMNS LINES
+      # ENH-3697: repo-wide issue-corpus ratchets read committed HEAD, not another
+      # session's uncommitted .issues/ edits. Set after the scrub above.
+      export LL_CORPUS_GATE_AT_HEAD=1
       bash -c "$TEST_CMD" > "$${ABS_DIR}/test-results.txt" 2>&1
       RC=$?
       if [ -f "$${ABS_DIR}/pytest.json" ]; then

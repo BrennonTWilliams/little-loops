@@ -4,10 +4,11 @@ type: ENH
 title: Make corpus-ratchet gate tests read the committed .issues tree, not the working
   tree
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:48:04Z'
+completed_at: '2026-10-04T00:02:37Z'
 parent: EPIC-3694
 supersedes:
 - ENH-3692
@@ -117,12 +118,12 @@ A false `quality_failed` verdict blocks an otherwise-correct implementation and 
 
 ## Acceptance Criteria
 
-- [ ] With the flag set and uncommitted edits to `.issues/*.md` that introduce prose-dependency drift, `test_no_prose_dependency_drift_in_repo` passes.
-- [ ] With the flag set, the same drift committed to `HEAD` makes it fail.
-- [ ] With the flag unset, behavior is unchanged: uncommitted drift fails the test.
-- [ ] `code-run-gate`'s test-run state sets the flag after the env scrub; pinned in `test_builtin_loops.py`.
-- [ ] Both paths pass on a clean `main` under `python -m pytest -n 0` within the existing timeouts.
-- [ ] No new third-party dependencies and no production-module changes outside `code-run-gate.yaml`.
+- [x] With the flag set and uncommitted edits to `.issues/*.md` that introduce prose-dependency drift, `test_no_prose_dependency_drift_in_repo` passes.
+- [x] With the flag set, the same drift committed to `HEAD` makes it fail.
+- [x] With the flag unset, behavior is unchanged: uncommitted drift fails the test.
+- [x] `code-run-gate`'s test-run state sets the flag after the env scrub; pinned in `test_builtin_loops.py`.
+- [x] Both paths pass on a clean `main` under `python -m pytest -n 0` within the existing timeouts.
+- [x] No new third-party dependencies and no production-module changes outside `code-run-gate.yaml`.
 
 ## Risks
 
@@ -146,8 +147,16 @@ _Added by `/ll:confidence-check` on 2026-10-03_
 
 ## Status
 
-**Open** | Created: 2026-10-02 | Priority: P3
+**Done** | Created: 2026-10-02 | Priority: P3
 
+
+## Resolution
+
+Implemented 2026-10-03. `scripts/tests/head_corpus.py` reads tracked `.issues` blobs at `HEAD` in one `git cat-file --batch` pass; `test_no_prose_dependency_drift_in_repo` uses it when `LL_CORPUS_GATE_AT_HEAD` is truthy and falls back to the working tree when there is no `HEAD`. `code-run-gate.yaml` `run_test` exports the flag after the env scrub; pinned in `test_builtin_loops.py`. `BlobPath` carries the real working-tree path (delegating `resolve`/`parent`) per the confidence-check concern, overriding only `read_text`/`read_bytes`. Documented in `docs/reference/loops.md`.
+
+Verification: ruff and mypy clean; full suite 27842 passed, with 8 pre-existing `test_libsql_integration.py::TestLive` errors (live endpoint; reproduce without these changes).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-04T00:02:37 - `db85c994-e19c-401b-bdc1-757ef2ed173a.jsonl`
+- `/ll:ready-issue` - 2026-10-03T23:52:14 - `0132fc72-11c6-446d-834e-0d8ab2f06ff9.jsonl`
 - `/ll:confidence-check` - 2026-10-03T23:32:27 - `2f69ad0b-f097-47bb-9746-348f11dd833c.jsonl`

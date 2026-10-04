@@ -631,6 +631,18 @@ class TestCodeRunGateOptionalParams:
         assert 'BUILD_CMD="make build"' in rendered
 
 
+class TestCodeRunGateCorpusAtHead:
+    """ENH-3697: run_test exports LL_CORPUS_GATE_AT_HEAD after the BUG-3689 env scrub."""
+
+    def test_run_test_sets_flag_after_scrub(self) -> None:
+        fsm, _ = load_and_validate(BUILTIN_LOOPS_DIR / "oracles" / "code-run-gate.yaml")
+        action = fsm.states["run_test"].action
+        scrub = action.index("unset LL_PYTHON COLUMNS LINES")
+        flag = action.index("export LL_CORPUS_GATE_AT_HEAD=1")
+        run = action.index('bash -c "$TEST_CMD"')
+        assert scrub < flag < run
+
+
 class TestPrePatchCheckReachability:
     """ENH-2997: the pre-patch check must actually be reachable from the `rn-*`
     family's green-suite transitions, and must get there via a *key line* on
