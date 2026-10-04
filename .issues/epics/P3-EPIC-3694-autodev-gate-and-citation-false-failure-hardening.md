@@ -29,6 +29,8 @@ Recommended order (re-reviewed 2026-10-03 with an Opus second opinion): **replay
 - ~~**ENH-3692**~~ — baseline-aware code-run-gate (**cancelled**, won't-do): the two motivating "pre-existing" failures pass on a clean `main` and only went red from uncommitted `.issues/` working-tree state, so the mechanism could not have rescued them and carried High masking risk; superseded by ENH-3697.
 - **BUG-3702** — refine_followup evidence-delta snapshot vanishes from shared scratch dir mid-state (open, P4) — largely fixed by BUG-3705's 24h age guard; re-scoped to one parametrize case + two-tier docstring (~10 min), then close
 - **ENH-3718** — Live-evaluate reconcile-issue --from-verify-evidence DIRECTIVE_DRIFT repair (open) — three isolated AC-only loop trials plus direct flagged-reconcile calls (fixture-only, context-only, VALID-with-stale-evidence); pins the model-executed command source to a snapshot at or after `8dbd00703` via a trial-only shim (the installed plugin cache predates the carve-out), restores pristine fixtures between trials
+- **BUG-3726** — reconcile-issue --from-verify-evidence adds ACs for context-only inventory evidence (open)
+
 
 
 
