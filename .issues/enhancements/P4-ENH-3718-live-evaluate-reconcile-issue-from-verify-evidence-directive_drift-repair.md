@@ -3,13 +3,15 @@ id: ENH-3718
 type: ENH
 title: Live-evaluate reconcile-issue --from-verify-evidence DIRECTIVE_DRIFT repair
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T23:00:17Z'
+completed_at: '2026-10-04T01:58:37Z'
 parent: EPIC-3694
 relates_to:
 - BUG-3695
+- BUG-3726
 program_design_not_applicable: true
 verify_verdict: VALID
 confidence_score: 95
@@ -165,26 +167,61 @@ Caveats: n=3 same-fixture, one model family, B6 judgment-based.
 
 ## Acceptance Criteria
 
-- [ ] Command-source preflight passes and every trial's shim log shows the post-`8dbd00703` snapshot hash; main-tree HEAD/porcelain unchanged across the batch
-- [ ] Three validity-gated live AC-only runs recorded with verdicts, edits, iteration counts and attributed convergence (no `refine_followup` after the reconcile), judged under the pre-registered decision rule
-- [ ] Fixture-only direct calls add a Step and no invented AC; context-only direct calls add no requirement
-- [ ] Live flagged reconcile with VALID and stale drift evidence leaves ACs/Steps/Integration Map unchanged
-- [ ] Any failed or invalid replay is classified by mechanism, investigated or given a focused follow-up; the reconcile budget is not raised
+- [x] Command-source preflight passes and every trial's shim log shows the post-`8dbd00703` snapshot hash; main-tree HEAD/porcelain unchanged across the batch (HEAD unchanged; porcelain differed only by a concurrent session's `.issues/` edits — see Results)
+- [x] Three validity-gated live AC-only runs recorded with verdicts, edits, iteration counts and attributed convergence (no `refine_followup` after the reconcile), judged under the pre-registered decision rule
+- [x] Fixture-only direct calls add a Step and no invented AC; context-only direct calls add no requirement (measured: fixture-only passed; context-only FAILED on D3/D4 — BUG-3726)
+- [x] Live flagged reconcile with VALID and stale drift evidence leaves ACs/Steps/Integration Map unchanged
+- [x] Any failed or invalid replay is classified by mechanism, investigated or given a focused follow-up; the reconcile budget is not raised
 
 ## Scope Boundaries
 
 - Out of scope: changing `check_reconcile_limit`, adding a fallback budget, a fail-closed clear/write protocol, any `host_runner` change, and modifying the shared plugin cache.
 - Known infrastructure limitation: `clear_verify_verdict` suppresses failures with `|| true`; if it fails and verify writes nothing, stale verdict/evidence can survive. N1–N2 test the model's non-drift eligibility boundary, not that path. ENH-3718 records the limitation only; if live evaluation reproduces stale-evidence consumption after a failed clear, capture a focused freshness bug with its run evidence rather than absorbing the repair here or into BUG-3695.
 
+## Results
+
+### Results — 2026-10-04 (batch SHA d960240d4, host claude 2.1.284, model claude-sonnet-5-5, command source reconcile-issue.md sha256 b5a8f1a4…)
+Verdict: **fail under the zero-tolerance rule** — L1–L3 pass (3/3 attributed convergence), N1–N2 pass, D1–D2 pass, D3–D4 fail (invented requirement). Follow-up: BUG-3726. Invalid replays discarded: 0 (two fixture-design iterations before any trial counted; see Notes).
+
+| Run | Fixture hash | First-verify evidence kind | Reconcile edits | Re-verify verdict | refine_followup after reconcile | Final state / iterations | Marker fired |
+|-----|--------------|----------------------------|-----------------|-------------------|--------------------------------|--------------------------|--------------|
+| L1 | 1b40aee2… | AC (opt-out contract + CLI output) | +2 ACs, both entailed | VALID | no | done / 27 | no |
+| L2 | 1b40aee2… | AC (opt-out contract + CLI output) | +2 ACs, both entailed | VALID | no | done / 27 | no |
+| L3 | 1b40aee2… | AC (opt-out contract + CLI output) | +2 ACs, both entailed | VALID | no | done / 27 | no |
+
+Direct flagged calls (frozen input, one spawn each, before/after issue snapshots from the shim):
+
+| Run | Input | Result |
+|-----|-------|--------|
+| D1, D2 | fixture-only, real frozen evidence (`e8868eba…`) | PASS — one Implementation Step inserted before the test-run step, no AC, no Integration Map change |
+| D3, D4 | context-only inventory, **synthetic** evidence (`2ec8b12f…`) | **FAIL** — both added three ACs derived from the Tests/Documentation inventory (e.g. "`README.md` is unchanged") |
+| N1, N2 | `verify_verdict: VALID` + stale real evidence (`ee7c9a0b…`) | PASS — only the `reconcile_attempted` guard flag and the session-log line changed; ACs, Steps and Integration Map byte-identical |
+
+Caveats: n=3 same-fixture, one model family, B6 judgment-based.
+- **Command source**: preflight loaded the snapshot (post-`8dbd00703` marker present, no `plugins/cache/little-loops` path in the transcript); every spawn in all 9 trials logged `b5a8f1a4…`. The cached `ll@little-loops` 1.166.0 has 0 `--from-verify-evidence` hits against 11 in the snapshot.
+- **L validity gate**: every run's first verify persisted `DIRECTIVE_DRIFT` with AC evidence; the pre-verify Acceptance Criteria section was byte-identical to the fixture in all three (in the L1 diff, refine and wire added only Integration Map/Step wiring text; L2/L3 were checked on the AC section only); the refine counter was 0 at reconcile. The first verify after `reconcile_issue` returned `VALID` and no `refine_followup` ran, so convergence is attributable to the reconcile. Iteration count is the global step count (`max_steps: 113`, parent loop only).
+- **D3/D4 input is synthetic.** A real B6 pass returned `VALID` on the context-only fixture (ENH-8803), so no real false-positive evidence exists to freeze; I authored an evidence line that names the inventory entries and says "add an AC for each". This measures reconcile's resistance to a B6 false positive, not an observed loop failure, and the model did follow evidence that asked for it. Classification: model over-application (not B6 enumeration, churn or infrastructure). Per the decision rule it is a FAIL regardless.
+- **Fixture-design iterations (not trials).** First verify of the AC fixture returned `EVIDENCE_UNVERIFIED` because a backticked signature paraphrased the code, and the fixture-only fixture returned `VALID` because an `exists()` guard skipped the mock-hit call; both were fixed and re-verified before any L/D/N trial. B6 is judgment-based, so a different draw could have declined.
+- **N fixture** is the AC fixture with the two entailed ACs already present plus the real stale evidence from its first verify, authored by hand rather than produced by a prior loop run.
+- **Main-tree stability**: HEAD stayed `81e65b885` for the batch and the four pins (`max_steps == 113`, `check_reconcile_limit` `target: 2`, flag only on `reconcile_issue`) plus the BUG-3695 scripted suite passed 54/54 before and after. `git status` was not byte-identical: a concurrent session staged and edited `.issues/` files and wrote `.ll/decisions.d/` during the batch. No source, command, loop or skill file changed (`git diff --name-only` since batch start lists `.issues/` only).
+- Throwaway projects, shim, fixtures, run dirs, issue snapshots and `out.json` transcripts are in `postmortems/ENH-3718-live-eval-20261003/`.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+- **Action**: improve (live evaluation, no production code)
+- **Completed**: 2026-10-04
+- **Outcome**: L1–L3 converged 3/3 because of the reconcile; fixture-only and VALID-with-stale-evidence boundaries held; context-only boundary failed (D3/D4) and is tracked in BUG-3726. `check_reconcile_limit` unchanged.
+
 ## Status
 
-**Open** | Created: 2026-10-03 | Priority: P4
+**Done** | Created: 2026-10-03 | Completed: 2026-10-04 | Priority: P4
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-04T01:58:37 - `7ac1ad38-c74f-402b-a14d-5845cde7ff55.jsonl`
 - `/ll:ready-issue` - 2026-10-04T01:22:45 - `f2e174fa-5ec3-4454-9200-0aad0174f7ba.jsonl`
 - `/ll:confidence-check` - 2026-10-04T01:15:00 - `1c366066-f38d-406f-a03b-834e727c34ea.jsonl`
 - Review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.80): NO-GO as written, GO after doc-only edits. Added the command-source shim/snapshot recipe with preflight, attributed-convergence success definition and pre-registered decision rule, three-part validity gate with replay cap, direct-call redesign of fixture-only/context-only/stale-evidence cases, launch/fixture hygiene; consolidated the stacked research/wiring blocks (kept wiring corrections for history DB and postmortems paths; dropped the stale `.running` claim, which is `completed`), narrowed the BUG-3695 handoff, effort Small -> Medium.
