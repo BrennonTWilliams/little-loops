@@ -58,13 +58,29 @@ def _kill_group_if_alive(proc: subprocess.Popen[str]) -> None:
     for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(proc.pid, sig)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
+            # ESRCH: group empty. macOS reports EPERM instead when the only
+            # members left are unreaped zombies — equally nothing to kill.
             return
         try:
             proc.wait(timeout=5)
-            return
         except subprocess.TimeoutExpired:
             continue
+        # The leader exiting on SIGTERM says nothing about its descendants: one
+        # that traps/ignores TERM would survive, so always follow with the
+        # SIGKILL sweep (it raises ProcessLookupError once the group is empty).
+
+
+def _is_dead(pid: int) -> bool:
+    """True if ``pid`` is gone or an unreaped zombie."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    stat = subprocess.run(
+        ["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    return stat == "" or stat.startswith("Z")
 
 
 def _run_inner_once(repo_root: Path, timeout: float) -> _Attempt:
@@ -238,8 +254,12 @@ class TestKillGroupIfAlive:
 
             _kill_group_if_alive(proc)
 
-            with pytest.raises(ProcessLookupError):
-                os.kill(grandchild_pid, 0)
+            # Signal delivery is asynchronous and the orphaned grandchild stays
+            # a zombie until init reaps it, so poll rather than assert at once.
+            deadline = time.monotonic() + 5
+            while not _is_dead(grandchild_pid):
+                assert time.monotonic() < deadline, "grandchild survived group kill"
+                time.sleep(0.05)
         finally:
             if proc.poll() is None:
                 proc.kill()
