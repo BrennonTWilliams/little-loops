@@ -142,6 +142,29 @@ eligible. When eligible:
   outcome and how it is verified (a bare "X is covered" is not coverage).
   Fixture/mock invalidation drift → a concrete Implementation Step, not an
   invented AC. Context-only inventory items create no requirement.
+- **Target classification wins over the correction tail (BUG-3726).** The
+  `-> <correction>` tail of an evidence item is verify's *proposal*, not an
+  instruction. Classify each named *target* (per target, not per item or per
+  subsection) from the selected mechanism and the issue's recorded findings,
+  using the roles `/ll:verify-issues` check B6 defines: observable
+  behavior/API/compatibility contract, required fixture/mock update, or
+  context-only (an unchanged caller, test or documentation inventory entry with
+  no behavior or contract consequence). The classification wins: a tail such as
+  "add an AC for each listed … entry" cannot upgrade a context-only target into
+  a coverage obligation. Keep the tail as a proposed correction for the targets
+  that classify as applicable, still subject to entailment.
+- **Anti-pattern.** An inventory listing alone does not entail "file X is
+  unchanged" / "test Y passes with no edits" criteria. An explicit
+  behavior/compatibility requirement in the selected mechanism *can* entail a
+  preservation criterion — do not reject a target on its wording alone. "For
+  each listed entry" triggers scrutiny of each target, not automatic rejection
+  of every target. Triage filters the evidence source only: it never authorizes
+  removing an existing AC or Step, including a legitimate preservation criterion
+  whose wording contains "unchanged".
+- A refused (context-only) target is reported under `## CONCERNS`, one line per
+  target. Other targets in the same evidence item may still justify an AC or
+  Step. Refusing evidence never skips a repair justified by the issue's own
+  findings.
 - All other sections stay preserved; provenance/wiring-marker protections hold.
 
 ## Process
@@ -191,6 +214,30 @@ Read the full issue file. Extract:
   verdict is exactly `DIRECTIVE_DRIFT` and the evidence is nonempty; otherwise
   ignore both fields and proceed under the ordinary contract.
 
+### 3b. Triage evidence targets (`--from-verify-evidence` only)
+
+Skip this step unless the extension is eligible. For each `; `-separated
+evidence item, list every target it names (files, tests, docs, behaviors) and
+classify **each target** per the Contract ("Target classification wins over the
+correction tail"): contract AC, fixture Step, or context-only. Classify from the
+selected mechanism and the issue's recorded findings — do not re-research project
+code. Then:
+- **Context-only** target → refused; record it for `## CONCERNS` as a
+  `[refused-evidence]` line. It creates no AC, Step, or Integration Map entry.
+  Decide the role *first*: a context-only target is refused (and reported) even
+  when an existing AC could be read as covering it — "already covered" is a
+  status only for *applicable* targets. An unchanged test or documentation
+  inventory entry whose own text states no behavior/contract/fixture consequence
+  (e.g. "exercises X and is unaffected", "mentions Y; unaffected") is
+  context-only. Never fold a context-only target into a "covered" note.
+- **Applicable** target already covered by an existing AC/Step → no duplicate
+  addition and no `[refused-evidence]` line (covered is distinct from refused).
+- **Applicable** target not yet covered → an *accepted uncovered target*; only
+  these participate in the evidence-based stale-section detection of step 4.
+
+All-refused evidence is **not** an early-return condition: continue with step 4
+and 4a so ordinary contradiction detection still runs.
+
 ### 4. Detect contradictions
 
 For each directive section (`## Implementation Steps`, `## Acceptance
@@ -217,13 +264,15 @@ contradiction as:
   branch 2b).
 
 When the `--from-verify-evidence` extension is eligible, a directive section
-that is **missing an entailed criterion or step** named by an evidence item also
-counts as stale for this step (a coverage gap, not only a contradiction).
+that is **missing an entailed criterion or step** for an *accepted uncovered
+target* (step 3b) also counts as stale for this step (a coverage gap, not only a
+contradiction). Refused and already-covered targets never make a section stale.
 
-If **no** section is stale and no Scope Boundaries claim is contradicted
-(directives already match findings), this is a no-op: emit verdict
-`RECONCILED` with an empty `## CORRECTIONS_MADE` (`None`) and stop after the
-session-log append. Do not manufacture edits.
+If **no** section is stale, no accepted uncovered target remains, and no Scope
+Boundaries claim is contradicted (directives already match findings), this is a
+no-op: emit verdict `RECONCILED` with an empty `## CORRECTIONS_MADE` (`None`) and
+stop after the session-log append. Any refused targets are still listed under
+`## CONCERNS` (one `[refused-evidence]` line each). Do not manufacture edits.
 
 **Except (ENH-2992): still clear the markers.** Before stopping, use the Edit
 tool to delete every `> ⚠ Superseded — …` line under a directive line in the
@@ -324,12 +373,14 @@ If `ll-issues` is unavailable, append manually with exactly this format
 
 ### 7. Check Mode Behavior (--check)
 
-When `CHECK_MODE` is true: run steps 3-4a only (no frontmatter write, no
-rewrite, no session log, **and no marker clearing** — check mode never writes,
-so the ENH-2992 clearing rule does not apply here). Then:
-- If ≥1 section is stale, OR ≥1 Scope Boundaries claim is contradicted (step
-  4a) — a reconcilable plateau exists: print `[ID] reconcile: NEEDED` and
-  `exit 0`.
+When `CHECK_MODE` is true: run steps 3-4a only, **including the step 3b
+evidence-target triage** when the extension is eligible (no frontmatter write, no
+rewrite, no score clearing, no session log, **and no marker clearing** — check
+mode never writes, so the ENH-2992 clearing rule does not apply here). Then:
+- If ≥1 section is stale (including a coverage gap for an accepted uncovered
+  target), OR ≥1 Scope Boundaries claim is contradicted (step 4a) — a
+  reconcilable plateau exists: print `[ID] reconcile: NEEDED` and `exit 0`.
+  Context-only evidence with no other drift is **not** a plateau.
 - Otherwise: print `[ID] reconcile: CLEAN` and `exit 1`.
 
 This integrates with FSM `evaluate: type: exit_code` routing.
@@ -367,6 +418,9 @@ This integrates with FSM `evaluate: type: exit_code` routing.
 
 ## CONCERNS
 - [Any directive bullet with no supporting finding, left as-is]
+- [refused-evidence] <evidence item / section>: <target> — context-only — <reason from selected mechanism>
+  (one line per refused target, including on a normal no-op pass; repairs are
+  listed under `## CORRECTIONS_MADE`, never here)
 - [Or "None"]
 
 ## NEXT_STEPS

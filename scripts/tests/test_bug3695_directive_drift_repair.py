@@ -334,6 +334,75 @@ class TestReconcileFlagContract:
         assert "Acceptance Criteria: [rewritten | added | unchanged]" in out
 
 
+class TestBug3726ContextOnlyTriage:
+    """BUG-3726: per-target triage; a context-only target is refused, not turned into an AC."""
+
+    def _text(self) -> str:
+        return RECONCILE_CMD.read_text()
+
+    def _contract(self) -> str:
+        return " ".join(
+            _slice(self._text(), "## Contract (read this first", "\n## Process").split()
+        )
+
+    def test_contract_target_wins_over_tail(self) -> None:
+        c = self._contract()
+        assert "Target classification wins over the correction tail" in c
+        assert "verify's *proposal*, not an instruction" in c
+        assert "per target, not per item or per subsection" in c
+        assert "cannot upgrade a context-only target into a coverage obligation" in c
+        assert "/ll:verify-issues` check B6" in c
+
+    def test_contract_anti_pattern_is_narrow(self) -> None:
+        c = self._contract()
+        assert "An inventory listing alone does not entail" in c
+        assert "can* entail a preservation criterion" in c
+        assert "never authorizes removing an existing AC or Step" in c
+        assert "never skips a repair justified by the issue's own findings" in c
+
+    def test_triage_step_precedes_stale_detection(self) -> None:
+        text = self._text()
+        i3 = text.index("### 3b. Triage evidence targets")
+        i4 = text.index("### 4. Detect contradictions")
+        assert text.index("### 3. Read the issue and its findings") < i3 < i4
+        triage = " ".join(text[i3:i4].split())
+        assert "classify **each target**" in triage
+        assert "`[refused-evidence]`" in triage
+        assert "accepted uncovered target" in triage
+        assert "All-refused evidence is **not** an early-return condition" in triage
+        assert "do not re-research project code" in triage
+
+    def test_stale_detection_uses_only_accepted_targets_and_keeps_ordinary_repair(self) -> None:
+        text = self._text()
+        step4 = " ".join(
+            _slice(text, "### 4a. Detect contradicted Scope Boundaries", "### 5. Rewrite").split()
+        )
+        assert "*accepted uncovered target* (step 3b)" in step4
+        assert "Refused and already-covered targets never make a section stale" in step4
+        assert "no accepted uncovered target remains" in step4
+        assert "`## CONCERNS` (one `[refused-evidence]` line each)" in step4
+        assert "still clear the markers" in step4
+
+    def test_check_mode_includes_triage(self) -> None:
+        step7 = " ".join(
+            _slice(self._text(), "### 7. Check Mode Behavior", "## Output Format").split()
+        )
+        assert "step 3b" in step7
+        assert "no score clearing" in step7
+        assert "Context-only evidence with no other drift is **not** a plateau" in step7
+
+    def test_output_template_has_refused_evidence_line(self) -> None:
+        out = _slice(self._text(), "## CONCERNS", "## NEXT_STEPS")
+        flat = " ".join(out.split())
+        assert (
+            "[refused-evidence] <evidence item / section>: <target> — context-only — "
+            "<reason from selected mechanism>" in flat
+        )
+        assert "one line per refused target" in flat
+        # not a new issue-body section
+        assert "[refused-evidence]" not in _slice(self._text(), "### 5. Rewrite", "### 5b.")
+
+
 class TestVerifyIssuesB6AndPersistence:
     def _text(self) -> str:
         return " ".join(VERIFY_CMD.read_text().split())

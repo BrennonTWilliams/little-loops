@@ -4,11 +4,12 @@ type: BUG
 title: reconcile-issue --from-verify-evidence adds ACs for context-only inventory
   evidence
 priority: P3
-status: open
+status: done
 program_design_not_applicable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-10-04'
 captured_at: '2026-10-04T01:57:03Z'
+completed_at: '2026-10-04T17:49:18Z'
 parent: EPIC-3694
 learning_tests_required: []
 relates_to:
@@ -89,15 +90,15 @@ Notes (from Opus second opinion, 2026-10-04):
 
 ## Acceptance Criteria
 
-- [ ] Section-scoped deterministic checks enforce target-over-tail precedence, the inventory-only anti-pattern (with legitimate compatibility/preservation coverage permitted), triage before stale detection, continued ordinary repair, triage in `--check`, and `[refused-evidence]` under the output `## CONCERNS` template. Existing flag eligibility, fixture→Step mapping and preservation checks pass.
-- [ ] Five live direct calls on a pristine copy of `postmortems/ENH-3718-live-eval-20261003/fixtures/D3.ENH-8803.md` pass (zero tolerance, 5/5) with the candidate command proven loaded. ACs, Steps, the entire Integration Map and protected body are byte-identical, including the existing "tests still pass unchanged" AC; frontmatter is unchanged except `reconcile_attempted: true` and the only body addition is Session Log. Stdout returns `RECONCILED`, `## CORRECTIONS_MADE` is `None`, and `## CONCERNS` has exactly three `[refused-evidence]` lines naming the two test targets and README target with their context-only reasons. A silent no-op fails. Use section/frontmatter-aware comparisons, not `analyze.py`'s whole-file `bodychg` as the no-op oracle.
-- [ ] Regression controls D1/D2 each add the entailed fixture-update Step without an AC or Integration Map addition; N1/N2 (VALID plus stale evidence) preserve ACs/Steps/Integration Map and protected body, with only normal guard/log writes. On every normal trial `verify_verdict` and `verify_evidence` remain unchanged; no-op trials preserve any existing six score fields and confidence notes.
-- [ ] P1 is N1 with exactly the opt-out AC removed, `verify_verdict: DIRECTIVE_DRIFT`, and evidence restricted to the uncovered `skip_stopwords=False` contract. One matching AC is added, verifying `top_words("the cat the dog", 1, skip_stopwords=False)` returns `[("the", 2)]`; existing ACs remain unchanged and no context-only refusal is reported. This tests preservation of the old ranking as an explicit compatibility contract.
-- [ ] P2 is unmodified N1 with `verify_verdict: DIRECTIVE_DRIFT` and its stale evidence retained. Already-covered targets add no duplicate AC/Step, produce no `[refused-evidence]` line, and return a no-op with only guard/log writes. Covered applicable evidence is distinct from refused context-only evidence.
-- [ ] M1 starts with one missing CLI-output AC and one context-only inventory entry. A **single** evidence item names both targets and proposes an AC "for each listed entry". The real consequence is stated in a Tests or Documentation entry, so subsection name cannot determine its role. Reconcile adds only the entailed CLI-output AC, reports exactly one `[refused-evidence]` line for the context-only target, and preserves all other directives/Integration Map entries. Separate-item classification alone does not satisfy this control.
-- [ ] R1 combines D3's context-only evidence with an existing Implementation Step contradicted by a recorded Codebase Research Finding. Reconcile refuses the three inventory targets but still rewrites the stale Step from that finding; it does not add an AC or short-circuit into a no-op. Normal rewrite score-clearing rules still apply.
-- [ ] Check-mode controls run with `--check --from-verify-evidence`: D3 returns `CLEAN` / exit 1; P1 returns `NEEDED` / exit 0. Full issue-file hashes remain unchanged in both, including guard, scores, markers and Session Log. The check-mode sequence includes triage and ordinary contradiction detection.
-- [ ] All required live cases are recorded with the resolved model, pristine fixture hashes, candidate command hash and before/after/stdout evidence; no required trial is discarded solely because it failed. The local test suite passes, and retry limits/routing remain unchanged.
+- [x] Section-scoped deterministic checks enforce target-over-tail precedence, the inventory-only anti-pattern (with legitimate compatibility/preservation coverage permitted), triage before stale detection, continued ordinary repair, triage in `--check`, and `[refused-evidence]` under the output `## CONCERNS` template. Existing flag eligibility, fixture→Step mapping and preservation checks pass.
+- [x] Five live direct calls on a pristine copy of `postmortems/ENH-3718-live-eval-20261003/fixtures/D3.ENH-8803.md` pass (zero tolerance, 5/5) with the candidate command proven loaded. ACs, Steps, the entire Integration Map and protected body are byte-identical, including the existing "tests still pass unchanged" AC; frontmatter is unchanged except `reconcile_attempted: true` and the only body addition is Session Log. Stdout returns `RECONCILED`, `## CORRECTIONS_MADE` is `None`, and `## CONCERNS` has exactly three `[refused-evidence]` lines naming the two test targets and README target with their context-only reasons. A silent no-op fails. Use section/frontmatter-aware comparisons, not `analyze.py`'s whole-file `bodychg` as the no-op oracle.
+- [x] Regression controls D1/D2 each add the entailed fixture-update Step without an AC or Integration Map addition; N1/N2 (VALID plus stale evidence) preserve ACs/Steps/Integration Map and protected body, with only normal guard/log writes. On every normal trial `verify_verdict` and `verify_evidence` remain unchanged; no-op trials preserve any existing six score fields and confidence notes.
+- [x] P1 is N1 with exactly the opt-out AC removed, `verify_verdict: DIRECTIVE_DRIFT`, and evidence restricted to the uncovered `skip_stopwords=False` contract. One matching AC is added, verifying `top_words("the cat the dog", 1, skip_stopwords=False)` returns `[("the", 2)]`; existing ACs remain unchanged and no context-only refusal is reported. This tests preservation of the old ranking as an explicit compatibility contract.
+- [x] P2 is unmodified N1 with `verify_verdict: DIRECTIVE_DRIFT` and its stale evidence retained. Already-covered targets add no duplicate AC/Step, produce no `[refused-evidence]` line, and return a no-op with only guard/log writes. Covered applicable evidence is distinct from refused context-only evidence.
+- [x] M1 starts with one missing CLI-output AC and one context-only inventory entry. A **single** evidence item names both targets and proposes an AC "for each listed entry". The real consequence is stated in a Tests or Documentation entry, so subsection name cannot determine its role. Reconcile adds only the entailed CLI-output AC, reports exactly one `[refused-evidence]` line for the context-only target, and preserves all other directives/Integration Map entries. Separate-item classification alone does not satisfy this control.
+- [x] R1 combines D3's context-only evidence with an existing Implementation Step contradicted by a recorded Codebase Research Finding. Reconcile refuses the three inventory targets but still rewrites the stale Step from that finding; it does not add an AC or short-circuit into a no-op. Normal rewrite score-clearing rules still apply.
+- [x] Check-mode controls run with `--check --from-verify-evidence`: D3 returns `CLEAN` / exit 1; P1 returns `NEEDED` / exit 0. Full issue-file hashes remain unchanged in both, including guard, scores, markers and Session Log. The check-mode sequence includes triage and ordinary contradiction detection.
+- [x] All required live cases are recorded with the resolved model, pristine fixture hashes, candidate command hash and before/after/stdout evidence; no required trial is discarded solely because it failed. The local test suite passes, and retry limits/routing remain unchanged.
 
 ## Impact
 
@@ -117,11 +118,29 @@ The evidence is synthetic: a real B6 pass returned `VALID` on this fixture, so t
 
 `reconcile-issue`, `directive-drift`, `epic-3694`
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-04
+- **Status**: Completed
+
+### Changes Made
+- `commands/reconcile-issue.md`: Contract now states target classification wins over the evidence `-> correction` tail, names the narrow inventory-only anti-pattern (preservation ACs still allowed), new Step 3b triages each evidence target (role decided first; refused / covered / accepted-uncovered), Step 4 stale detection and no-op use only accepted uncovered targets (all-refused is not an early return), Step 7 `--check` includes triage, and the `## CONCERNS` template gains `[refused-evidence]`.
+- `scripts/tests/test_bug3695_directive_drift_repair.py`: `TestBug3726ContextOnlyTriage` section-scoped contract assertions.
+- `postmortems/BUG-3726-live-eval-20261004/` (private): portable launcher, candidate snapshot shim, section-aware oracle, fixtures P1/P2/M1/R1, results and `RESULTS.md`.
+
+### Verification
+- Live (claude-sonnet-5-5, candidate proven loaded via transcript marker): 15/15 required trials pass the oracle — D3 x5, D1 x2, N1 x2, P1, P2, M1, R1, check-clean-D3, check-needed-P1. Five D3 passes are a smoke test, not a reliability estimate.
+- Recorded non-clean events: first candidate text refused only README (tests folded into a "covered" note) → added "decide the role first" to Step 3b; oracle strictness bugs and a harness flag-splitting defect (check trials) were fixed and rerun, invalid runs kept.
+- Focused suites 57 passed. Full suite: 27848 passed; failures unrelated to this change — `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` (BUG-3696 file quote vs `pricing.py`) and 8 `test_libsql_integration.py::TestLive` errors (no live endpoint); the latter fail identically with this change stashed. Ruff clean.
+
 ## Status
 
-**Open** | Created: 2026-10-04 | Priority: P3
+**Completed** | Created: 2026-10-04 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-04T17:48:58 - `9fc9c631-6fa5-49fc-b42f-887aa38e1bf9.jsonl`
+- `/ll:ready-issue` - 2026-10-04T17:35:08 - `b970e509-7d69-406a-af5f-a9beada13c52.jsonl`
 - `/ll:ready-issue` - 2026-10-04T17:23:31 - `44b0fc74-7bed-48d3-bb6f-bfd73dcfe916.jsonl`
 - `/ll:confidence-check` - 2026-10-04T17:20:47 - `8a3efb4e-00d3-4735-b344-4003dc6dc953.jsonl`
