@@ -13,6 +13,12 @@ parent: EPIC-3694
 relates_to:
 - ENH-3718
 - BUG-3695
+confidence_score: 90
+outcome_confidence: 72
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3726: reconcile-issue --from-verify-evidence adds ACs for context-only inventory evidence
@@ -113,3 +119,7 @@ The evidence is synthetic: a real B6 pass returned `VALID` on this fixture, so t
 ## Status
 
 **Open** | Created: 2026-10-04 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-10-04T17:20:47 - `8a3efb4e-00d3-4735-b344-4003dc6dc953.jsonl`
