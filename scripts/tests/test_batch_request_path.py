@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -67,6 +68,38 @@ class TestBuildBatchRequest:
         result = build_batch_request(custom_id="req-2", **kwargs)  # repeat
         params = result["requests"][0]["params"]
         assert params["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+    @staticmethod
+    def _system_only_kwargs(model: str, store: FragmentStore) -> dict[str, Any]:
+        # ENH-3725: 2048 chars == 512 estimated tokens at the actual marked
+        # prefix (empty skill body, no tools), so only the Sonnet 5.5 floor
+        # (512) — not the 1024 family floor — makes it eligible.
+        return {
+            "skill_body": "",
+            "system_prompt": "x" * 2048,
+            "tools": None,
+            "messages": [{"role": "user", "content": "hi"}],
+            "model": model,
+            "fragment_store": store,
+        }
+
+    def test_sonnet_5_5_first_unmarked_repeat_marked(self) -> None:
+        store = FragmentStore()
+        kwargs = self._system_only_kwargs("claude-sonnet-5-5", store)
+        first = build_batch_request(custom_id="a", **kwargs)["requests"][0]["params"]
+        repeat = build_batch_request(custom_id="b", **kwargs)["requests"][0]["params"]
+        assert first["model"] == "claude-sonnet-5-5"
+        assert "cache_control" not in first["system"][0]
+        assert repeat["model"] == "claude-sonnet-5-5"
+        assert repeat["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_older_sonnet_twin_stays_unmarked(self) -> None:
+        store = FragmentStore()
+        kwargs = self._system_only_kwargs("claude-sonnet-4-5", store)
+        build_batch_request(custom_id="a", **kwargs)
+        repeat = build_batch_request(custom_id="b", **kwargs)["requests"][0]["params"]
+        assert repeat["model"] == "claude-sonnet-4-5"
+        assert "cache_control" not in repeat["system"][0]
 
 
 class TestBatchTracker:

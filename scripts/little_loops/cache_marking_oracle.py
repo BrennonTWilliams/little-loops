@@ -9,10 +9,15 @@ the unamortized 1.25x write premium (Anthropic prompt caching: writes cost
 Two independent gates must both pass before a block is marked:
 
 1. **Cacheable-prefix minimum** — the provider ignores ``cache_control``
-   below a per-model token floor (Anthropic: 1024 tokens for the Sonnet
-   family, 4096 tokens for Opus; confirmed current as of the
-   ``.ll/learning-tests/anthropic.md`` proof date). Unknown model names use
-   the conservative (higher) Opus floor rather than guessing low.
+   below a per-model token floor. Lookup order: an exact verified model ID
+   (``_MODEL_PREFIX_MINIMUMS``, currently ``claude-sonnet-5-5`` at 512
+   tokens), then the family default (1024 tokens for Sonnet, 4096 for Opus),
+   then the conservative (higher) Opus floor for unknown model names rather
+   than guessing low. Floors are documented vendor constants with no runtime
+   verification, taken from the Anthropic model overview and prompt-caching
+   docs (reverified 2026-10-04); ``.ll/learning-tests/anthropic.md`` proves
+   only SDK Usage fields and client-side acceptance of a ``cache_control``
+   dict, not these floors.
 2. **Reuse-stability signal** — sourced from FEAT-2671's
    :class:`~little_loops.prompts.fragment_store.FragmentStore`, which tracks
    only membership (has this exact fragment key been seen before?), not a
@@ -48,6 +53,15 @@ CACHEABLE_PREFIX_MINIMUMS: dict[str, int] = {
     "opus": 4096,
 }
 
+# Exact concrete-model overrides, checked before the family defaults. Only IDs
+# whose vendor minimum is verified belong here; dated/provider-prefixed
+# spellings are deliberately not inferred and keep the family floor.
+# Source: https://platform.claude.com/docs/en/models/sonnet-5-5/overview
+# (512-token minimum), reverified 2026-10-04.
+_MODEL_PREFIX_MINIMUMS: dict[str, int] = {
+    "claude-sonnet-5-5": 512,
+}
+
 # Conservative fallback for unrecognized model names: the higher of the two
 # known floors, so an unmatched model never gets marked too eagerly.
 _DEFAULT_MINIMUM = max(CACHEABLE_PREFIX_MINIMUMS.values())
@@ -67,8 +81,11 @@ class CacheMarkingDecision:
 
 
 def _prefix_minimum_for(model: str) -> int:
+    normalized = model.lower()
+    if normalized in _MODEL_PREFIX_MINIMUMS:
+        return _MODEL_PREFIX_MINIMUMS[normalized]
     for family, minimum in CACHEABLE_PREFIX_MINIMUMS.items():
-        if family in model.lower():
+        if family in normalized:
             return minimum
     return _DEFAULT_MINIMUM
 

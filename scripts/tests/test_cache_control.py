@@ -322,6 +322,101 @@ class TestDefaultBehaviorUnchanged:
         assert config.require_repeat is True
 
 
+SONNET_5_5 = "claude-sonnet-5-5"
+
+
+def _decide(model: str, tokens: int, *, repeat: bool = True, require_repeat: bool = True) -> bool:
+    text = "x" * (tokens * 4)  # len(text) // 4 == tokens
+    store = FragmentStore()
+    key = fragment_key(text, None, None)
+    if repeat:
+        store.put(key)
+    return decide_cache_marking(
+        block_text=text,
+        fragment_key=key,
+        fragment_store=store,
+        model=model,
+        require_repeat=require_repeat,
+    ).should_mark
+
+
+class TestModelSpecificPrefixMinimum:
+    """ENH-3725: exact verified model override before the family default."""
+
+    @pytest.mark.parametrize(("tokens", "expected"), [(511, False), (512, True), (1023, True)])
+    def test_sonnet_5_5_floor_is_512(self, tokens: int, expected: bool) -> None:
+        assert _decide(SONNET_5_5, tokens) is expected
+
+    def test_sonnet_5_5_lookup_is_case_insensitive(self) -> None:
+        assert _decide("Claude-Sonnet-5-5", 512) is True
+        assert _decide("Claude-Sonnet-5-5", 511) is False
+
+    def test_size_eligibility_does_not_bypass_repeat_gate(self) -> None:
+        assert _decide(SONNET_5_5, 512, repeat=False) is False
+        assert _decide(SONNET_5_5, 512, repeat=False, require_repeat=False) is True
+
+    def test_below_minimum_rejected_even_without_repeat_gate(self) -> None:
+        assert _decide(SONNET_5_5, 511, require_repeat=False) is False
+
+    @pytest.mark.parametrize(("tokens", "expected"), [(1023, False), (1024, True)])
+    @pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-sonnet-4-5", "sonnet"])
+    def test_older_sonnet_keeps_1024_floor(self, model: str, tokens: int, expected: bool) -> None:
+        assert _decide(model, tokens) is expected
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5-5-20260101",
+            "anthropic.claude-sonnet-5-5",
+            "us.anthropic.claude-sonnet-5-5-v1:0",
+        ],
+    )
+    def test_unverified_sonnet_5_5_spellings_keep_family_floor(self, model: str) -> None:
+        assert _decide(model, 512) is False
+        assert _decide(model, 1023) is False
+        assert _decide(model, 1024) is True
+
+    @pytest.mark.parametrize(("tokens", "expected"), [(4095, False), (4096, True)])
+    def test_unknown_model_keeps_4096_floor(self, tokens: int, expected: bool) -> None:
+        assert _decide("some-future-model", tokens) is expected
+
+
+class TestSonnet55RequestShape:
+    """ENH-3725: the override reaches the real request marker at the system breakpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _no_oauth_identity_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for var in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+            monkeypatch.delenv(var, raising=False)
+
+    @staticmethod
+    def _kwargs(model: str, store: FragmentStore) -> dict[str, Any]:
+        return {
+            "skill_body": "",
+            "system_prompt": "x" * 2048,  # 512 estimated tokens; no tools
+            "tools": None,
+            "messages": [{"role": "user", "content": "hi"}],
+            "model": model,
+            "fragment_store": store,
+        }
+
+    def test_sdk_sonnet_5_5_first_unmarked_repeat_marked(self) -> None:
+        store = FragmentStore()
+        first = build_anthropic_request(**self._kwargs(SONNET_5_5, store))
+        repeat = build_anthropic_request(**self._kwargs(SONNET_5_5, store))
+        assert first["model"] == SONNET_5_5
+        assert "cache_control" not in first["system"][0]
+        assert repeat["model"] == SONNET_5_5
+        assert repeat["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_sdk_older_sonnet_twin_stays_unmarked(self) -> None:
+        store = FragmentStore()
+        build_anthropic_request(**self._kwargs("claude-sonnet-4-5", store))
+        repeat = build_anthropic_request(**self._kwargs("claude-sonnet-4-5", store))
+        assert repeat["model"] == "claude-sonnet-4-5"
+        assert "cache_control" not in repeat["system"][0]
+
+
 @pytest.mark.parametrize("model", ["sonnet", "opus"])
 def test_cacheable_prefix_minimums_match_documented_values(model: str) -> None:
     # Anthropic documented minimums as of the FEAT-2673 issue (confirm at

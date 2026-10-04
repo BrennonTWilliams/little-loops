@@ -9882,7 +9882,7 @@ Executor string adapter. Resolves the context window from `model` via `context_w
 
 ## little_loops.cache_marking_oracle
 
-Cache-marking cost oracle (FEAT-2673, EPIC-2456 F1 — Goal #3). Decides which stable prompt blocks (system / tool / stable-skill) are safe to mark with `cache_control: {"type": "ephemeral", ...}` without risking the unamortized 1.25x write premium (Anthropic prompt caching: writes cost 1.25x, reads cost 0.1x — marking a block that's never reused is a pure 1.25x loss). Two independent gates must both pass: (1) a per-model **cacheable-prefix minimum** (1024 tokens for Sonnet, 4096 for Opus; unknown models fall back to the conservative Opus floor), and (2) a **reuse-stability signal** from `little_loops.prompts.fragment_store.FragmentStore` (FEAT-2671) — a block is only marked once its content-hash key has already been observed at least once, so the oracle never pays the write premium on a fragment that's never reused. `require_repeat=False` disables gate 2 for callers with a stronger external stability signal.
+Cache-marking cost oracle (FEAT-2673, EPIC-2456 F1 — Goal #3). Decides which stable prompt blocks (system / tool / stable-skill) are safe to mark with `cache_control: {"type": "ephemeral", ...}` without risking the unamortized 1.25x write premium (Anthropic prompt caching: writes cost 1.25x, reads cost 0.1x — marking a block that's never reused is a pure 1.25x loss). Two independent gates must both pass: (1) a per-model **cacheable-prefix minimum** (lookup order: exact verified model ID — `claude-sonnet-5-5` is 512 tokens — then family default, 1024 for Sonnet and 4096 for Opus, then the conservative Opus floor for unknown models; dated or provider-prefixed Sonnet 5.5 spellings are not inferred and keep the 1024 family floor), and (2) a **reuse-stability signal** from `little_loops.prompts.fragment_store.FragmentStore` (FEAT-2671) — a block is only marked once its content-hash key has already been observed at least once, so the oracle never pays the write premium on a fragment that's never reused. `require_repeat=False` disables gate 2 for callers with a stronger external stability signal.
 
 ```python
 from little_loops.cache_marking_oracle import (
@@ -9901,7 +9901,7 @@ def decide_cache_marking(
 ) -> CacheMarkingDecision: ...
 ```
 
-`fragment_store` is consulted read-only via `.get()` — it does not record an observation; callers own the `put()` lifecycle. Token estimation uses the project-wide `len(text) // 4` convention (no BPE tokenizer in the codebase). Never raises.
+`fragment_store` is consulted read-only via `.get()` — it does not record an observation; callers own the `put()` lifecycle. Token estimation uses the project-wide `len(text) // 4` convention (no BPE tokenizer in the codebase). The floors are documented vendor constants with no runtime verification (Anthropic [Sonnet 5.5 overview](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) and [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), reverified 2026-10-04); they are distinct from the approximate estimator. The `sonnet` alias currently resolves to `claude-sonnet-5`, so the 512-token floor applies only to requests that name `claude-sonnet-5-5` explicitly. Never raises.
 
 ---
 

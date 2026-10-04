@@ -3,10 +3,11 @@ id: ENH-3725
 type: ENH
 title: Model-specific cacheable prefix minimum for Sonnet 5.5
 priority: P3
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-10-03'
 captured_at: '2026-10-04T01:44:09Z'
+completed_at: '2026-10-04T19:54:21Z'
 testable: true
 relates_to:
 - EPIC-2456
@@ -142,5 +143,16 @@ SDK/batch request builder → `build_anthropic_request` → `decide_cache_markin
 Revised 2026-10-04 after code review and `/ll:advise` with Opus. The exact override remains independently shippable; differential tests now prove the new interval at an actual system breakpoint, and the source and alias limitations are explicit.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-04T19:54:20 - `0faec551-cc94-46ef-ba4c-d1070de99343.jsonl`
+- `/ll:ready-issue` - 2026-10-04T19:43:10 - `66b8d17a-8c59-466e-b40a-8e4940d650d1.jsonl`
 - `/ll:confidence-check` - 2026-10-04T19:40:37 - `f268a55b-7429-41df-a3c5-3bf77154c17c.jsonl`
 - `/ll:capture-issue` - 2026-10-04T01:51:02 - `7ac1ad38-c74f-402b-a14d-5845cde7ff55.jsonl`
+
+## Resolution
+
+**Completed** 2026-10-04
+
+- Added exact-ID override `_MODEL_PREFIX_MINIMUMS = {"claude-sonnet-5-5": 512}` checked before the family defaults in `_prefix_minimum_for` (`scripts/little_loops/cache_marking_oracle.py`); family floors, unknown-model 4096 fallback and the repeat gate are unchanged.
+- Oracle docstring now cites the vendor docs (reverified 2026-10-04) and no longer attributes the floors to the SDK learning proof; `docs/reference/API.md` documents lookup order and the BUG-3701 alias limitation.
+- Tests: boundaries 511/512/1023, case-insensitivity, repeat-gate independence, older-Sonnet/unknown/unverified-spelling floors (`test_cache_control.py`); SDK and batch differential system-only fixtures (`test_cache_control.py`, `test_batch_request_path.py`).
+- Full suite: 27876 passed, 293 skipped, 8 errors — all in `test_libsql_integration.py::TestLive` (live remote endpoint, "remote schema changed unexpectedly"), unrelated to this change.
