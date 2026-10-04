@@ -12,8 +12,10 @@ blocks:
 - FEAT-3711
 - FEAT-3712
 - FEAT-3713
+- FEAT-3721
 relates_to:
 - FEAT-3714
+- FEAT-3722
 - ENH-3678
 parent: EPIC-3710
 ---
@@ -55,21 +57,20 @@ Keep target deduplication separate from invocation matching. Preserve a typed ac
 
 ### Axes × verbs matrix (initial defaults)
 
-Weights are initial defaults pinned by fixtures and overridable only through keyed `next` config (FEAT-3681 owns the config foundation; this issue adds consumed per-verb entries). They need not sum to 1: the geometric aggregate renormalizes present weights, including the implement column's intentional `0.95` total. `—` means inapplicable, excluded from that verb's coverage denominator.
+Weights are initial defaults pinned by fixtures and overridable only through keyed `next` config (FEAT-3681 owns the config foundation; this issue adds consumed per-verb entries). Each verb's default weights **sum to 1.0** (the geometric aggregate still renormalizes present weights when an axis is missing). `—` means inapplicable.
 
 | Axis (source) | implement-issue | refine-issue | resolve-blocker | run-loop |
 |---|---|---|---|---|
 | priority (frontmatter) | 0.30 | 0.30 | 0.25 | — |
-| confidence / outcome (frontmatter scores) | 0.25 | — | — | — |
-| readiness-gap (frontmatter scores vs `commands.confidence_gate`) | — | 0.25 | — | — |
-| leverage / fan-out (dependency graph) | 0.15 | 0.15 | 0.45 | — |
-| effort, inverse (frontmatter) | 0.10 | — | 0.15 | — |
+| confidence / outcome (frontmatter scores) | 0.30 | — | — | — |
+| readiness-gap (frontmatter scores vs `commands.confidence_gate`) | — | 0.30 | — | — |
+| leverage / fan-out (dependency graph) | 0.20 | 0.15 | 0.50 | — |
+| effort, inverse (Impact-section `**Effort**:` field, strict map) | 0.10 | — | 0.15 | — |
 | staleness (capture date) | — | 0.15 | 0.05 | — |
 | momentum (Session Log timestamps in the issue file) | 0.10 | 0.10 | 0.05 | — |
-| goal-alignment (explicit frontmatter override only) | 0.05 | 0.05 | 0.05 | — |
 | frequency / recency / success (`next-loop` history) | — | — | — | 0.50 / 0.30 / 0.20 |
 
-A prose `.ll/ll-goals.md` is **not** parsed as an EPIC map until a syntax and parser exist, so `goal-alignment` is missing (excluded, weights renormalized) without a frontmatter override. The decision-rule compliance gate and the decisions-based historical-signal axis are **out of scope**: decision rules carry only issue-scoped structure today, so compliance cannot be evaluated deterministically. Revisit once rules have machine-evaluable scope.
+**No goal-alignment axis in v1.** A repo scan (2026-10-03) found `next_goal_alignment` in 0 of 3622 issues and a prose `.ll/ll-goals.md` has no parser, so the axis would be missing for every candidate. Do not add the `next_goal_alignment` frontmatter field; revisit when a goals/EPIC-map syntax and parser exist. The decision-rule compliance gate and the decisions-based historical-signal axis are **out of scope**: decision rules carry only issue-scoped structure today, so compliance cannot be evaluated deterministically. Revisit once rules have machine-evaluable scope.
 
 ### Snapshot and axis adapters
 
@@ -79,19 +80,22 @@ Assess each source-valid target once before filtering eligibility. An assessment
 
 The geometric helper in FEAT-3681 accepts only finite scores in `[0, 1]`. Its legacy next-loop curves are uncapped; **do not pass their values directly to the geometric scorer or change the old command to fix the arena**. Pin these arena-only defaults:
 
+**Lower-bounded curves (Opus review, 2026-10-03).** The geometric mean floors a zero axis at `1e-6`, so a raw curve that reaches 0 acts as a near-veto: with the old curves a leaf with no dependents took a 6.6× penalty on leverage (`1e-6^0.15 = 0.126` vs `0.83` at one dependent), P5 took `0.016` vs P4 `0.617`, and a fresh issue took `0.126` on staleness. Every non-gate curve below is therefore mapped into `[lo, 1]` (`lerp(lo, 1, x)` = `lo + (1 - lo)·x`) so a worst-case value never collapses the score; the `1e-6` floor remains only a guard for degenerate input. **Policy:** for every non-gate axis with weight `w`, `(score_at_worst / score_at_best)^w ≥ 0.6`; pin this with a property test over the default weights, and record the `lo` values. If P5 should be excluded from recommendations, that must be an explicit gate, not a curve side effect.
+
 | Axis | Raw value and bounded curve |
 |---|---|
-| priority | `P0..P5` → `(5 - priority_int) / 5`; invalid/missing priority stays missing. |
-| confidence / outcome | `outcome_confidence / 100` for a valid `0..100` value. `confidence_score` is the separate readiness gate, not an interchangeable score. |
-| readiness-gap | Maximum normalized shortfall against readiness and outcome thresholds, each `max(0, (threshold - score) / max(threshold, 1))`; both valid scores required, otherwise missing. A valid outcome waiver removes the outcome shortfall. |
-| leverage / fan-out | Number of distinct downstream `open`/`blocked` leaf issues through `blocked_by`, one-sided `blocks` and `depends_on`; `min(1, log1p(count) / log1p(10))`. Count each dependent once; report cycle/missing-node diagnostics separately. |
-| effort, inverse | Explicit effort `1/2/3` → `1 / effort`; absent/invalid is missing. Do not infer effort from priority. |
-| staleness | `min(1, age_days / 30)` from `captured_at`, then `discovered_date`, then git introduction time at the snapshot; never checkout mtime. |
-| momentum | `exp(-log(2) * age_days / 7)` from the latest valid Session Log timestamp at/before `as_of`. |
-| goal-alignment | New explicit numeric `next_goal_alignment` frontmatter override in `[0,1]`. Existing `product_impact.goal_alignment`/`goal_alignment` is a strategic-priority **string ID** and must not be coerced into this score. |
-| loop frequency | `min(1, log1p(run_count) / log1p(50))` from valid filesystem run records. |
-| loop recency | `exp(-log(2) * age_days / 7)` for the latest valid run start at/before `as_of`. |
-| loop success | Fraction of recognized terminal runs (`completed`, `failed`, `timed_out`) with `status == completed`; unknown/in-flight/resumable (`interrupted`, `awaiting_continuation`) statuses do not count as failures. No recognized terminal runs means missing. |
+| priority | `x = (5 - priority_int) / 5` for `P0..P5`; score `lerp(0.2, 1, x)`. Invalid/missing priority stays missing. |
+| confidence / outcome | `x = outcome_confidence / 100` for a valid `0..100` value; score `lerp(0.2, 1, x)`. `confidence_score` is the separate readiness gate, not an interchangeable score. |
+| readiness-gap | `x` = maximum normalized shortfall against readiness and outcome thresholds, each `max(0, (threshold - score) / max(threshold, 1))`; score `lerp(0.2, 1, x)`. Both valid scores required, otherwise missing. A valid outcome waiver removes the outcome shortfall. |
+| leverage / fan-out | `x = min(1, log1p(count) / log1p(10))` over distinct downstream `open`/`blocked` leaf issues through `blocked_by`, one-sided `blocks` and `depends_on`; score `lerp(0.5, 1, x)`. Count each dependent once; report cycle/missing-node diagnostics separately. Zero dependents is a valid present value (score 0.5), not missing. |
+| effort, inverse | Parse the Impact-section `- **Effort**:` field (present in ~2742 of 3622 issues; the numeric/`effort` frontmatter is effectively absent) by a **strict leading-token map**, case-insensitive: `trivial`/`small`/`low`/`s` → 1, `medium`/`m` → 2, `large`/`high`/`l` → 3 (a range such as `small-medium` or `Medium–Large` takes its first token; anything else is missing, with the raw text retained as the missing reason). Score `1 / effort`. Never infer effort from priority, and do not use `IssueInfo.effort`'s priority-inferred fallback. If the adapter proves unreliable in fixtures, cut the axis rather than widen the map. |
+| staleness | `x = min(1, age_days / 30)` from `captured_at`, then `discovered_date`, then git introduction time at the snapshot; never checkout mtime. Score `lerp(0.3, 1, x)`. |
+| momentum | `x = exp(-log(2) * age_days / 7)` from the latest valid Session Log timestamp at/before `as_of`; score `lerp(0.3, 1, x)`. |
+| loop frequency | `x = min(1, log1p(run_count) / log1p(50))` from valid filesystem run records; score `lerp(0.2, 1, x)`. A loop with no valid run records has **all three loop axes missing** (cold start), never a present zero. |
+| loop recency | `x = exp(-log(2) * age_days / 7)` for the latest valid run start at/before `as_of`; score `lerp(0.2, 1, x)`. |
+| loop success | `x` = fraction of recognized terminal runs (`completed`, `failed`, `timed_out`) with `status == completed`; score `lerp(0.2, 1, x)`. Unknown/in-flight/resumable (`interrupted`, `awaiting_continuation`) statuses do not count as failures. No recognized terminal runs means missing. |
+
+The run-loop verb **reuses FEAT-3681's extracted next-loop curves/aggregation inputs** (run counts, latest valid run, terminal-status fraction) as a thin adapter, then applies the bounded mapping above; it must not become a second independent loop scorer.
 
 Dates must have a documented UTC normalization (date-only capture/Session Log values mean midnight UTC; timestamp values without an offset use documented UTC interpretation with provenance). Malformed/future-only dates and absent history remain missing, with their reason; no fake zero recency or success `1.0` for unseen loops. Curves are fixed defaults in this slice; expose consumed per-verb weights/caps and the existing confidence thresholds, not unused configurable-curve/gate frameworks.
 
@@ -101,12 +105,12 @@ Dates must have a documented UTC normalization (date-only capture/Session Log va
 - Eligibility is explicit: issue action targets are `open` or `blocked` leaf issues; exclude `done`, `cancelled`, `deferred`, `in_progress` and EPIC containers. Build dependencies from **all** nonterminal statuses, including deferred, and resolve edges only against known `done`/`cancelled` issues. Unknown dependency IDs fail closed here, even though `DependencyGraph.from_issues` currently warns and drops them. Cycles yield diagnostics rather than an invented root blocker.
 - Required gate results are `pass`, `fail` or `missing`, separate from numeric axes. `implement-issue` requires satisfied hard blockers **and** `depends_on`, and valid readiness/outcome scores against the effective merged confidence thresholds (defaults `85/65`); honor `outcome_gate_waived` for the outcome comparison only. Both score fields must still be present. This is the conservative arena policy, aligned with `check-readiness --honor-waiver`, not the readiness-only manage-issue/ll-auto gate. `commands.confidence_gate.enabled: false` does not make an unassessed issue ready for the arena. `resolve-blocker` requires satisfied dependencies; its displayed implementation step also requires these readiness checks. Non-negotiable eligibility/input checks cannot be disabled by weight `0` or a gate override.
 - An explicit `status: blocked` independently vetoes implementation even if no dependency edge remains; expose that status instead of assuming its unspecified blocker vanished. A blocked issue can still be refined. A root-blocker implementation with this status is rejected until its blocking reason/status is resolved.
-- Coverage stores `resolved_axes` and `applicable_axes` as integers plus a display string; count only applicable **positive-weight nongate** axes. The numeric coverage multiplier is `resolved_axes / applicable_axes`; effective positive-weight applicability must be nonempty after config validation. Within each verb, order scored candidates by `selection_score = utility × coverage`, then valid priority (where applicable, missing/invalid after valid priorities), then `target_key` ascending. `utility` is unmodified. An all-zero effective weight set is a config error, not cold start.
-- Cold start is **per verb**: gate-passing candidates with no resolved scoring axes have `utility=null` and `selection_score=null`, sort after scored candidates in their bucket, and use priority/target-key fallback. This allows never-run loops even when issue buckets have data. Gates run first and are never bypassed by fallback. Exit 1 means no eligible candidate across the requested buckets, with distinct empty-source, gate-failed and gate-missing diagnostics.
+- Coverage is **reported, not multiplied**. Store `resolved_axes` and `applicable_axes` as integers plus a display string (counting only applicable **positive-weight nongate** axes) for output and `--explain`. There is **no coverage multiplier**: renormalization already handles missing axes, and a multiplier would penalize the same gap twice and rank issues down for metadata hygiene (e.g. ~half of issues lack `captured_at`). Instead a **minimum-coverage rule** applies: an issue-verb candidate needs `priority` plus at least one other resolved axis to be scored; a run-loop candidate needs at least one resolved history axis. A candidate below the minimum is treated as cold start (below), not excluded. Within each verb, order scored candidates by `selection_score = utility` (kept as a distinct field equal to `utility` for contract stability, so later slices can adjust it without a schema change), then valid priority (where applicable, missing/invalid after valid priorities), then `target_key` ascending. Effective positive-weight applicability must be nonempty after config validation; an all-zero effective weight set is a config error, not cold start.
+- Cold start is **per verb**: gate-passing candidates with no resolved scoring axes, or below the minimum-coverage rule, have `utility=null` and `selection_score=null`, sort after scored candidates in their bucket, and use priority/target-key fallback. This allows never-run loops even when issue buckets have data. Gates run first and are never bypassed by fallback. Exit 1 means no eligible candidate across the requested buckets, with distinct empty-source, gate-failed and gate-missing diagnostics.
 
 ### Cross-type fill (stateless)
 
-Rank within each verb by `selection_score`; fill `--top N` slots by **round-robin in fixed canonical verb order** (`implement-issue`, `refine-issue`, `resolve-blocker`, `run-loop`), taking each verb's best remaining candidate per round, with a per-type cap (default 2, keyed config). A namespaced `target_key` appears at most once (first by round-robin order). On a duplicate, continue down that bucket without consuming a slot or its cap; stop only at N or exhaustion. Preserve alternate verbs/actions and the blocker fan-out reason on the selected target so deduplication does not hide its leverage. `--explain VERB TARGET` describes that candidate and the alternate candidates for the same target. Utility is never compared numerically across verbs. `pressure` is `null` here; FEAT-3711 can substitute a bucket order without changing candidate ranks or dedup semantics.
+Rank within each verb by `selection_score`; fill `--top N` slots by **round-robin in fixed canonical verb order** (`implement-issue`, `refine-issue`, `resolve-blocker`, `run-loop`), taking each verb's best remaining candidate per round, with a per-type cap (default 2, keyed config). A namespaced `target_key` appears at most once (first by round-robin order). On a duplicate, continue down that bucket without consuming a slot or its cap; stop only at N or exhaustion. Preserve alternate verbs/actions and the blocker fan-out reason on the selected target so deduplication does not hide its leverage. `--explain VERB TARGET` describes that candidate and the alternate candidates for the same target. Utility is never compared numerically across verbs. `pressure` is `null` here; `bucket_order` is an input so a later slice could substitute an order without changing candidate ranks or dedup semantics (the pressure feature itself is deferred as FEAT-3722).
 
 When `--top` is omitted, N is the number of requested buckets with eligible candidates (at least 1 for internal selection). This gives each available verb a first-round opportunity and prevents a hardcoded top-3 from starving `run-loop` and the two later verbs. An explicit `--top 3` retains a short list; canonical-order bias under an explicit limit is documented. Target dedup can make a verb unavailable; use its alternate-action annotation rather than duplicate a recommendation merely to fill every verb.
 
@@ -125,7 +129,7 @@ Pin the consumed shape: `next.verbs.<verb>.weights.<axis>` uses the matrix above
 ## Scope Boundaries
 
 - **In scope:** four generators with explicit no-candidate cases, scorer integration, round-robin selection, advisory CLI/JSON Schema, deterministic fixed-clock fixtures, scaled performance gate, docs.
-- **Out of scope:** scorer extraction/config foundation (FEAT-3681), history events/acceptance/pressure and the schema bump (FEAT-3711), the backtest (FEAT-3712), `capture-issues`/`run-sprint` (FEAT-3713), `pay-tech-debt`/`update-docs`/`meta` (FEAT-3714), `--execute`, LLM reranking, learned weights, parsing goals prose, the decision-rule gate, auto-clustered sprints.
+- **Out of scope:** scorer extraction/config foundation (FEAT-3681), history events/explicit acceptance and the schema bump (FEAT-3711), the shared history reader (FEAT-3721), pressure/automatic attribution (FEAT-3722, deferred), the backtest (FEAT-3712), `capture-issues`/`run-sprint` (FEAT-3713), `pay-tech-debt`/`update-docs`/`meta` (FEAT-3714), `--execute`, LLM reranking, learned weights, parsing goals prose, the decision-rule gate, auto-clustered sprints.
 
 ## Integration Map
 
@@ -134,7 +138,7 @@ Pin the consumed shape: `next.verbs.<verb>.weights.<axis>` uses the matrix above
 - New `little_loops.cli.next` module and pure snapshot/candidate-generator/selection modules; `scripts/pyproject.toml` entry point; CLI registration/permissions in `scripts/little_loops/init/writers.py`; `scripts/little_loops/config-schema.json` and `config/{features,core,__init__}.py` for consumed extensions to FEAT-3681's `next` object.
 - Shared content-based refinement/formatting and source adapters around `cli/issues/next_action.py`, `issue_parser.py`, `session_log.py`, dependency graph and `cli/loop/next_loop.py`; adapt new consumers without changing the old commands' policy or output.
 - Generated JSON Schema file for the output contract; `docs/reference/CLI.md`, `CONFIGURATION.md`, `API.md`.
-- Tests for candidate sources, command-input invariants, gates/coverage/selection, schema drift, CLI registry/permissions, fixed-clock fixtures and the scaled performance ceiling.
+- Tests for candidate sources, command-input invariants, gates/coverage/selection, schema drift, CLI registry/permissions, fixed-clock fixtures and the structural performance checks and the `perf`-marked scaled gate.
 - CLI-only: the skills/`ll-adapt` mirror gates do not apply; the CLI registry, permissions and `CLI.md` do.
 
 ### Similar Patterns and Configuration
@@ -152,7 +156,7 @@ Pin the consumed shape: `next.verbs.<verb>.weights.<axis>` uses the matrix above
 
 - `assess_candidates(state: ProjectState) -> list[CandidateAssessment]` — retains source-valid targets and their gate/input/exclusion evidence for both selection and explain.
 - `generate_candidates(state: ProjectState) -> list[Candidate]` — projects eligible, fully resolved assessments; does not duplicate assessment logic.
-- `select_candidates(candidates: list[Candidate], *, top: int | None, bucket_order: Sequence[str], caps: Mapping[str, int]) -> list[Candidate]` — applies gates, coverage ordering, omitted-top policy and round-robin fill without cross-type utility comparison; later pressure changes only `bucket_order`.
+- `select_candidates(candidates: list[Candidate], *, top: int | None, bucket_order: Sequence[str], caps: Mapping[str, int]) -> list[Candidate]` — applies gates, coverage ordering, omitted-top policy and round-robin fill without cross-type utility comparison; a later slice may change only `bucket_order`.
 
 ### Call Path
 
@@ -163,7 +167,8 @@ Existing `cmd_next_loop` / `find_issues` source paths → new `generate_candidat
 1. Land FEAT-3681; pin the snapshot, axis adapters, eligibility/readiness policy, matrix and consumed config. Schema/rebuild safety belongs to the events slice; ENH-3678 is related background here.
 2. Implement the four generators as independently testable functions, then score/rank/select with no-candidate and missing-data semantics.
 3. Add advisory `ll-next`, generated JSON Schema, registration/permissions/docs.
-4. Run fixed fixtures and a serial synthetic performance gate: 10,000 issues, 20,000 dependency edges, 200 loop definitions and 10,000 filesystem run records, ≤30 seconds excluding fixture construction on the test runner. Also assert one parse per issue and O(1) git subprocess calls (≤4 regardless of issue count); batch metadata reads rather than per-file git calls. Perform no network/database access. Confirm the four `next-*` CLIs are unchanged.
+4. Run fixed fixtures and the performance checks. **Default suite** (no wall-clock limit; the repo's file-creation volume previously beach-balled the Mac and a 30 s limit would be flaky on GitHub runners): (a) assert one parse per issue by counting parse calls, (b) assert ≤4 git subprocess calls regardless of issue count by monkeypatching `subprocess`, (c) an in-memory linear-scaling check on injected issues/graph at ~500 vs ~5,000, (d) a small filesystem smoke test of ~200 files. **`@pytest.mark.perf`** (excluded by default, run manually before release): the full 10,000 issues / 20,000 edges / 200 loop definitions / 10,000 run records ≤30 s gate, excluding fixture construction. Batch git metadata reads rather than per-file calls; perform no network/database access. Confirm the four `next-*` CLIs are unchanged.
+5. **Walking-skeleton usefulness check** before FEAT-3711/3712/3713 start: with only the implement-issue and refine-issue generators plus `--explain` working, diff `ll-next --type implement-issue --top 3` against `ll-issues next-issue`/`next-issues` on the current backlog and record the agreement/divergence in the issue's Resolution notes. If they almost always agree, the arena adds little over the existing recommender; pause the follow-on slices and re-decide rather than proceeding by default.
 
 ## Impact
 
@@ -180,23 +185,27 @@ A user runs `ll-next` and each available action bucket gets a first-round opport
 
 - [ ] FEAT-3681's scorer/config foundation is landed; the four verbs' per-verb `next` config entries and the axes × verbs matrix defaults are in `config-schema.json` and pinned by fixtures.
 - [ ] All four verbs have tested candidate sources and explicit empty-source behavior; complete slash arguments and shell quoting are verified. Deleted/invalid loops and unresolved inputs never emit runnable commands; never-run valid loops use per-bucket fallback. `--execute` is absent.
-- [ ] Bounded axis adapters, separate tri-state gates and positive-weight coverage follow the contracts above; missing/zero/invalid/future inputs differ explicitly, all-zero weights fail at the consumer, and legacy curves remain unchanged.
+- [ ] Lower-bounded axis adapters, separate tri-state gates and the minimum-coverage rule (no coverage multiplier; coverage reported) follow the contracts above; missing/zero/invalid/future inputs differ explicitly, all-zero weights fail at the consumer, and legacy curves remain unchanged. A property test over the default weights asserts `(worst/best)^w ≥ 0.6` for every non-gate axis and that per-verb default weights sum to 1.0; zero-dependent leaves and P5 issues are not silently vetoed. The Impact-section effort adapter has fixtures for `small — …`, `small-medium`, `Medium–Large`, unknown text (missing) and absence (missing); there is no `next_goal_alignment` field.
 - [ ] Eligibility/readiness tests cover EPICs, in-progress/deferred targets, deferred/missing/external dependencies, depends_on, one-sided blocks, cycles, absent versus zero scores, local threshold overrides and outcome waiver. Fallback never bypasses a veto/missing gate.
 - [ ] Round-robin fill follows the canonical verb order with the per-type cap and at-most-once-per-target rule; no cross-verb utility comparison.
 - [ ] Namespaced dedup refills past duplicates without spending caps; alternate actions/blocker reasons survive. Injected snapshots, shuffled source order and a fixed UTC clock yield deterministic ranks/output in live and reconstructed states.
 - [ ] Human/JSON/explain/empty/error modes, installed output Schema (with drift test), config root/export/merge/reset/serialization, registry/permissions and docs pass focused tests. All paths perform no `history.db` access and no writes, including incidental CLI telemetry.
 - [ ] Explain uses the shared assessment path for rejected gates, unresolved loop inputs and capped refinement; selected recommendations always have complete actions. Typed action/fingerprint tests distinguish parameter changes from display-quoting changes, and pin consumed caps/refinement limits/threshold validation.
-- [ ] Fixed-clock missing-gate/zero-score/mixed-bucket cold-start fixtures and the quantified scaled performance gate pass without network access.
+- [ ] Fixed-clock missing-gate/zero-score/mixed-bucket cold-start fixtures and the default-suite structural performance checks (parse count, ≤4 git subprocesses, in-memory linear scaling, ~200-file smoke) pass without network access; the full 10k wall-clock gate exists behind an off-by-default `perf` marker.
+- [ ] Walking-skeleton check recorded: top-3 of implement-issue/refine-issue compared with `ll-issues next-issue` on the current backlog, with a go/pause note for the follow-on slices.
+- [ ] Single `next` config block settled with FEAT-3681's `next.loop_history.weights` (no second loop scorer; `next.verbs.*` is separate); wiring checklist done: pyproject entry point, `docs/reference/CLI.md` plus its docs test, docs-audience gate, README CLI/loop counts and `scripts/README.md` mirror, `ll-adapt` mirrors only if a skill is touched.
 - [ ] The four existing `next-*` CLIs remain behavior-identical; `python -m pytest scripts/tests/` passes.
 
 ## Related
 
-- EPIC-3710 (parent). FEAT-3681 (scorer extraction; prerequisite), ENH-3678 (done; schema-bump safety, relevant to FEAT-3711). FEAT-3711, FEAT-3712, FEAT-3713 (follow-on slices); FEAT-3714 (deferred finding-backed verbs).
+- EPIC-3710 (parent). FEAT-3681 (scorer extraction; prerequisite), ENH-3678 (done; schema-bump safety, relevant to FEAT-3711). FEAT-3711, FEAT-3712, FEAT-3713, FEAT-3721 (follow-on slices); FEAT-3714 and FEAT-3722 (deferred).
 
 ## Review Notes
 
 - 2026-10-03: Pre-implementation review corrected the `next-action` source contract, bounded all arena curves, separated gates from axes, defined snapshot/target/action identity, per-bucket cold start, exact invocations and read-only/config/performance gates. Kept the advisory four-verb slice and legacy CLI compatibility.
-- 2026-10-03: Follow-up review separated source assessment from eligibility so explain retains rejected targets, pinned argument-aware action identity and the numeric coverage multiplier, and specified consumed cap/refinement settings without an unused gate-disable framework.
+- 2026-10-03: Follow-up review separated source assessment from eligibility so explain retains rejected targets, pinned argument-aware action identity and the (since removed, see 2026-10-04) coverage multiplier, and specified consumed cap/refinement settings without an unused gate-disable framework.
+
+- 2026-10-04: Opus epic review (confidence 0.78) plus repo data checks: lower-bounded all non-gate curves (zero-valued axes were near-vetoes under the 1e-6 geometric floor), normalized weights to 1.0, removed the coverage multiplier in favor of a minimum-coverage rule, cut the goal-alignment axis (0/3622 issues carry the field), re-sourced effort from the Impact-section field via a strict map, replaced the default-suite 10k wall-clock gate with structural counters plus a `perf`-marked run, added a walking-skeleton usefulness check, and pinned run-loop as a thin adapter over FEAT-3681's scorer. Dissent noted: weighted arithmetic would be simpler but reopens FEAT-3681.
 
 ## Status
 

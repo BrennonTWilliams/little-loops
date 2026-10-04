@@ -10,6 +10,9 @@ captured_at: '2026-10-03T17:45:16Z'
 parent: EPIC-3710
 blocked_by:
 - FEAT-3561
+- FEAT-3721
+relates_to:
+- FEAT-3722
 - FEAT-3711
 ---
 
@@ -17,7 +20,7 @@ blocked_by:
 
 ## Summary
 
-Add capture-issues (a configured codebase scan) and run-sprint generators with pinned axes, meaningful eligibility gates, pure filesystem/config loading and FEAT-3711's shared read-only HistorySnapshot. This is the only additional dependency compared with the original split: one history reader is shared, and missing history degrades honestly. Keep the existing verb names; the capture description explicitly says it recommends a scan, not an arbitrary single-issue capture.
+Add capture-issues (a configured codebase scan) and run-sprint generators with pinned axes, meaningful eligibility gates, pure filesystem/config loading and FEAT-3721's shared read-only HistorySnapshot (decoupled from FEAT-3711 after the 2026-10-04 Opus review). Missing history degrades honestly. Keep the existing verb names; the capture description explicitly says it recommends a scan, not an arbitrary single-issue capture.
 
 ## Current Behavior
 
@@ -76,17 +79,17 @@ Pin `next.verbs.capture-issues.stale_days=14`, `activity_threshold=20` scoped co
 
 ### Selection, config and acceptance integration
 
-Append canonical verbs after run-loop in order `run-sprint`, `capture-issues`. Extend generator dispatch, supported --type/explain values, default available-bucket top policy, cap settings, namespaced dedup/alternate metadata and generated output Schema fixtures. Selection algorithm remains the shared round-robin/opt-in-pressure algorithm, but its **vocabulary and configuration contract** change; do not claim selection needs no integration.
+Append canonical verbs after run-loop in order `run-sprint`, `capture-issues`. Extend generator dispatch, supported --type/explain values, default available-bucket top policy, cap settings, namespaced dedup/alternate metadata and generated output Schema fixtures. Selection algorithm remains the shared round-robin algorithm (pressure is deferred as FEAT-3722), but its **vocabulary and configuration contract** change; do not claim selection needs no integration.
 
-Add consumed next.verbs weights/caps/scan thresholds with complete config root/export/serialization/schema/docs wiring; hard gates retain the core's fixed policy and effective confidence thresholds. Reuse the core's positive-weight coverage, geometric floor, tri-state gates and consumer validation. History reads use FEAT-3711's deadline/backend/snapshot seam; generators do no live DB queries or writes and --no-record/explain remain write-free. No additional history schema migration.
+Add consumed next.verbs weights/caps/scan thresholds with complete config root/export/serialization/schema/docs wiring; hard gates retain the core's fixed policy and effective confidence thresholds. Reuse the core's reported-coverage/minimum-coverage rule (no coverage multiplier), lower-bounded curves, geometric floor, tri-state gates and consumer validation. **All axis curves below are mapped through FEAT-3561's `lerp(lo, 1, x)` lower-bounding (`lo=0.2` for commits/age/recency-style axes, `0.2` for ready share and mean priority) so a zero raw value (just-run sprint, zero scoped commits) is not a near-veto; extend FEAT-3561's worst/best-factor property test to these axes.** History reads use FEAT-3721's local-only reader; generators do no live DB queries or writes and --no-record/explain remain write-free. No additional history schema migration.
 
-Register a sprint adapter for the exact qualified CLI evidence above; delayed completion is usable only when available by as_of, with outcome unknown. Register a scan adapter only for proven exact-scope/completion evidence, otherwise leave it unavailable. Acceptance means a matching invocation/acknowledgement; it never proves work quality. Maintain the core action_key/target_key/action_fingerprint contract and FEAT-3711's one-evidence/one-offer attribution; reuse its shared argument parser and inspection view. Do not let capture-issue accept a scan or per-issue picks accept a sprint recommendation.
+Implement a sprint-history **axis reader** for the exact qualified CLI evidence above; delayed completion is usable only when available by as_of, with outcome unknown. Implement a scan-freshness reader only for proven exact-scope/completion evidence, otherwise leave it unavailable. Acceptance means a matching invocation/acknowledgement; it never proves work quality. Maintain the core action_key/target_key/action_fingerprint contract; reuse its shared argument parser. Automatic attribution/producer registration is deferred (FEAT-3722): these evidence rules feed only the sprint-recency and scan-freshness **axes** here, and explicit `accept` (FEAT-3711) works regardless. Do not let capture-issue accept a scan or per-issue picks accept a sprint recommendation.
 
 ## Integration Map
 
 ### Files to Modify
 
-- FEAT-3561 candidate/snapshot/selection vocabulary, CLI dispatch/type/explain and generated output Schema; FEAT-3711 shared read-only snapshot/producer registration.
+- FEAT-3561 candidate/snapshot/selection vocabulary, CLI dispatch/type/explain and generated output Schema; FEAT-3721 shared read-only snapshot.
 - Pure sprint loader/validation adapters around `scripts/little_loops/sprint.py` and dependency wave helpers, with no constructor side effects or altered ll-sprint execution behavior.
 - `config/{features,core,__init__}.py`, `config-schema.json`, focused generator/history/selection/consumer tests.
 - `docs/reference/CLI.md`, `docs/reference/CONFIGURATION.md`, `docs/reference/API.md`.
@@ -108,7 +111,7 @@ Pure sprint-content parser using the existing Sprint/SprintOptions data model wi
 
 ## Implementation Steps
 
-1. Implement after FEAT-3561 and FEAT-3711's shared reader; pin two verbs' weights, curves, gates, scope identity and exact producer qualifications.
+1. Implement after FEAT-3561 and FEAT-3721's shared reader; pin two verbs' weights, curves, gates, scope identity and exact producer qualifications.
 2. Add pure sprint/scope/commit adapters with absence/invalid/external dependency cases before wiring dispatch.
 3. Extend consumed config, selection vocabulary/output Schema/explain and producer registration; keep unknown producer states explicit.
 4. Run fixed-clock fixtures, no-write/backend-degradation/invocation tests and update docs.
@@ -136,8 +139,8 @@ A user with a fully ready first sprint wave sees the named sprint. A project wit
 - [ ] Sprint history uses exact parsed non-dry-run ended named CLI evidence with outcome unknown; a handler returning 1 while telemetry records 0 cannot establish success. Per-issue orchestration and temporary state do not fabricate recency/acceptance, and different/truncated filters or arguments cannot match an offer.
 - [ ] Capture fixtures cover empty/missing scope, verified stale/fresh/zero-finding scan, unknown history with sufficient/insufficient activity, concern-limited/unrelated events, scope/exclusion changes, overlapping directories, excluded paths and non-git state.
 - [ ] Fixed weights/curves/thresholds and positive-weight coverage are pinned; config consumer/schema/export/serialization/merge/reset/error tests pass.
-- [ ] Canonical order, omitted-top opportunity, caps/dedup, --type/explain/Schema and optional pressure integration cover all six verbs, including collisions between issue/loop/sprint display names.
-- [ ] Producer adapters prove exact target/action or remain unavailable/unknown; explicit accept works without treating capture-issue as a scan. Shared backend/deadline/no-record behavior is preserved and no history migration is added.
+- [ ] Canonical order, omitted-top opportunity, caps/dedup, --type/explain/Schema integration cover all six verbs, including collisions between issue/loop/sprint display names.
+- [ ] Sprint/scan history readers prove exact target/scope or remain unavailable/unknown (no automatic attribution; FEAT-3722 deferred); explicit accept works without treating capture-issue as a scan. FEAT-3721's local-only reader and no-record behavior are preserved and no history migration is added. Lower-bounded curves extend the FEAT-3561 property test.
 - [ ] Required invocations are copyable with literal quoting/no invented scope flag; docs and `python -m pytest scripts/tests/` pass.
 
 ## Related Key Documentation
@@ -150,6 +153,7 @@ A user with a fully ready first sprint wave sees the named sprint. A project wit
 
 - 2026-10-03: Pre-implementation/Opus review pinned sources/curves/thresholds, made global sprint dependencies and no-side-effect loading explicit, rejected unscoped scan/per-issue sprint attribution, and added the shared-history dependency and six-verb selection wiring. Retained the taxonomy and avoided a new scan telemetry subsystem.
 - 2026-10-03: Follow-up review reproduced global-wave projection inventing outside prerequisite completion and cli_event_context recording zero for a returned failure. Added full-graph preflight plus member-only waves, vetoes matching the actual unfiltered executor, a clock-free sprint parser, and outcome-unknown invocation recency. Executor/telemetry repairs remain separate from this generator slice.
+- 2026-10-04: Opus epic review (0.78): decoupled from FEAT-3711 (history reader is FEAT-3721, local-only), producer attribution/pressure deferred (FEAT-3722), lower-bounded axis curves to match FEAT-3561.
 
 ## Status
 

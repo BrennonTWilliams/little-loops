@@ -18,7 +18,7 @@ relates_to:
 
 ## Summary
 
-Produce a reproducible historical **choice-agreement** report for ll-next's within-type implement-issue ranking: hit@3 and MRR versus the existing next-issue ranking rule and a priority-only baseline, with explicit sample coverage, temporal cutoffs, origin uncertainty and paired uncertainty estimates. A report, not a metric suite assertion or proof that the recommendations improve project outcomes.
+Produce a reproducible historical **choice-agreement** report for ll-next's within-type implement-issue ranking: hit@3 and MRR versus the existing next-issue ranking rule and a priority-only baseline, with explicit sample coverage, temporal cutoffs, origin uncertainty and paired uncertainty estimates. A **diagnostic report**, not a metric suite assertion, pass/fail gate or proof that the recommendations improve project outcomes. At n ≤ 50 the hit@3 bootstrap interval is roughly ±0.15 or wider; treat results as descriptive. **Gated by a feasibility probe (step 0 below).**
 
 ## Current Behavior
 
@@ -26,7 +26,7 @@ No evidence compares the arena's ordering to existing recommendations. Arbitrary
 
 ## Expected Behavior
 
-A read-only report tool evaluates up to 50 eligible historical decision samples with a recorded manifest and fixed seed. It reconstructs issue/config content at a SHA, scores using FEAT-3561's immutable ProjectState with a fixed UTC as_of, and looks forward **only to obtain a label** within a declared seven-day horizon. It reports orchestrated, confirmed-manual (where affirmative provenance exists), and unclassified picks separately. Unknown origin stays unknown; no orchestrator match must not silently become manual.
+A read-only report tool evaluates up to 50 eligible historical decision samples with a recorded manifest and fixed seed. It reconstructs issue/config content at a SHA, scores using FEAT-3561's immutable ProjectState with a fixed UTC as_of, and looks forward **only to obtain a label** within a declared seven-day horizon. It reports two strata: **confirmed-manual** (affirmative provenance) and **other** (orchestrated or unclassified, shown with its orchestrated/unclassified sub-counts for transparency but not as a separate primary stratum). Unknown origin stays unknown; no orchestrator match must not silently become manual.
 
 Report matched picks and each exclusion/censoring reason, even if fewer than 50 or zero defensible samples remain. Pressure and recommendation attribution are not feature inputs. The report answers whether ranking agrees with observed choices; completion/outcome value is outside scope.
 
@@ -50,7 +50,7 @@ Keep a frozen **sample/input digest** separate from a per-run **evaluation diges
 
 ### Snapshot reconstruction and ranking comparability
 
-- Reconstruct from git tree/blob objects, without checking out files, changing the worktree/index, or reading today's issue files. Include all configured issue categories/statuses needed by the full dependency graph, terminal resolution, frontmatter scores, raw capture metadata and Session Logs. Detect missing/deleted references and cycles with the core's gate policy.
+- Reconstruct from git tree/blob objects (one `git cat-file --batch` process, not one checkout per sample), without checking out files, changing the worktree/index, or reading today's issue files. Include all configured issue categories/statuses needed by the full dependency graph, terminal resolution, frontmatter scores, raw capture metadata and Session Logs. Detect missing/deleted references and cycles with the core's gate policy.
 - Use config committed at the sample SHA plus defaults from the **recorded evaluated implementation version**; explicitly omit today's gitignored ll.local.md and environment overrides. Snapshot any tracked goals/other file actually consumed by core features. Record baseline strategy/effective next weights/gates/config digest per sample; skip unsupported historical config rather than silently substituting today's project settings.
 - For staleness/momentum, use timestamps present in that historical content and git history reachable from the SHA only. Normalize UTC; no checkout mtime or later commit on another branch. Capture all derived values from the same as_of.
 - FEAT-3561 implementation scoring uses files/git, so no history reader is necessary for ranking features. History is a bounded read-only **label/provenance input** here; use existing backend read-only seams independently of FEAT-3711. Mutable final orchestration status/head/ended fields and later skill completion fields cannot leak into features. Future-label origin joins are allowed only in the label stage, with that purpose explicit.
@@ -59,10 +59,10 @@ Keep a frozen **sample/input digest** separate from a per-run **evaluation diges
 
 ### Origin and metrics
 
-- Orchestrated: affirmative exact issue/run/time provenance from ll-auto/ll-parallel/ll-sprint. Per-issue skill events nested in those runs stay in this stratum. Confirmed manual requires affirmative provenance (or an explicit reviewed annotation in the saved manifest); unmatched/missing provenance is unclassified. Report proxy snapshots separately from clean recorded bases.
+- **Circularity caveat:** orchestrated runs (ll-auto/ll-parallel/ll-sprint) chose issues with the priority/next-issue rule, so agreement with those labels largely measures a baseline against itself; only confirmed-manual choices carry independent signal. Orchestrated = affirmative exact issue/run/time provenance (per-issue skill events nested in those runs belong here). Confirmed manual requires affirmative provenance (or an explicit reviewed annotation in the saved manifest); unmatched/missing provenance is `other`/unclassified, never manual. Two strata: manual vs other. Report proxy snapshots separately from clean recorded bases.
 - Measure ll-auto/next-issue top-1 agreement on the common population and report the denominator/unknowns. This is a contamination sanity check, not a rule that can relabel an origin. Do not choose strata after seeing the agreement result.
 - `hit@3 = 1` when the chosen issue is among the first `min(3, len(ranking))` results, else 0. Reciprocal rank is `1/rank` for the chosen issue, else 0; use deterministic actual tie-breaks. Empty rank results are explicit and covered in denominators. Average metrics use exactly the same scorable samples for all three rankers.
-- Show per-stratum counts, ranker hit@3/MRR, paired deltas versus both baselines, and paired bootstrap 95% intervals (stdlib implementation, recorded seed/resample count). No runtime tuning/metric pass threshold. State when evidence is insufficient (especially zero confirmed-manual samples or intervals including zero); unclassified choices are exploratory, never presented as an uncontaminated manual primary result.
+- Show per-stratum counts, ranker hit@3/MRR, paired deltas versus both baselines, and paired bootstrap 95% intervals (stdlib implementation, recorded seed/resample count). No runtime tuning/metric pass threshold. State when evidence is insufficient (especially zero confirmed-manual samples or intervals including zero); `other` choices are exploratory, never presented as an uncontaminated manual primary result. History-derived axes (e.g. momentum Session Log timestamps) must be filtered to the as-of time so no future data leaks into features.
 - Label sample-level bootstrap intervals as descriptive under dependent historical picks; several issues from the same orchestration run are not independent choices. Report distinct run/session counts where known. A cluster-bootstrap/statistical-inference framework is outside this small report; do not present these intervals as a calibrated causal significance test.
 - Header: choice agreement is not proof of value, causation, successful implementation or superiority. Record sampling dates/manifest, code/ll version, git HEAD, dirty-code/config warning, baseline strategies, effective parameters, store/source identity without credentials, and timestamp/provenance limitations. A fixed SHA list alone is insufficient reproducibility when history backfill changes: save the extracted label/provenance inputs with a digest in the manifest.
 
@@ -79,7 +79,7 @@ Keep a frozen **sample/input digest** separate from a per-run **evaluation diges
 
 ### Types
 
-- `BacktestSample(sha, ancestry_anchor, as_of, label_cutoff, chosen_issue, label_key, origin, origin_evidence, snapshot_quality, exclusion_reason)`; origin `manual_confirmed`, `orchestrated` or `unclassified`.
+- `BacktestSample(sha, ancestry_anchor, as_of, label_cutoff, chosen_issue, label_key, origin, origin_evidence, snapshot_quality, exclusion_reason)`; origin `manual_confirmed` or `other` (with `origin_evidence` recording orchestrated vs unclassified).
 - `BacktestManifest` freezes sample/label inputs, per-source observation bounds and their digest; a separate evaluation record pins evaluated code/config/baseline versions and parameters. `BacktestReport` includes both identities, metrics, paired intervals, sample coverage and exclusions.
 
 ### Signatures
@@ -94,7 +94,8 @@ New report entry point → existing backend `connect_readonly` for bounded label
 
 ## Implementation Steps
 
-1. Implement after FEAT-3561; pin snapshot/label/origin/candidate-population contracts and the manifest format with synthetic data first.
+0. **Feasibility probe (go/no-go).** After FEAT-3561 lands, run one read-only SQL query (as a spike or first step) counting orchestration-free, clean-base (`base_dirty=false`) confirmed-manual implementation picks in `history.db`. Proceed only if there are roughly **30 or more** such samples; otherwise record the count and close/defer this issue as insufficient evidence rather than building the reconstruction machinery. Record the probe result in the issue.
+1. Implement after FEAT-3561 (and a passing probe); pin snapshot/label/origin/candidate-population contracts and the manifest format with synthetic data first.
 2. Implement batch git reconstruction and pure ranker adapters; prove feature and label cutoff separation with a later score/config/status mutation fixture.
 3. Implement deterministic sample selection, frozen label inputs, coverage/censoring tables, metrics and paired intervals.
 4. Run the actual report if defensible samples exist, including auto/baseline agreement; document how to rerun the same manifest and all evidence limitations. A small/empty sample is a valid honest report.
@@ -117,13 +118,14 @@ A maintainer reruns the same saved manifest after an implement-issue weight chan
 
 ## Acceptance Criteria
 
+- [ ] Feasibility probe run and recorded before reconstruction work; proceed only with ~30+ clean-base confirmed-manual samples, otherwise defer/close with the count.
 - [ ] Reproducible saved manifest freezes samples, label/provenance inputs/digests, feature/label cutoffs, seed and evaluated code/config/baseline versions; supports fewer than 50 or zero eligible samples honestly.
 - [ ] Proxy ancestry is explicitly anchored and always secondary; nonmonotonic commit dates, switched live branches and unknown source observation ends cannot invent an exact snapshot or a negative label. Frozen sample and evaluation digests permit weight-only reruns without changing observations.
 - [ ] Synthetic git/history tests prove no future score/config/Session Log/status/mtime/branch leakage, no live worktree changes, known dirty/unavailable source handling and strict feature-versus-label stage separation.
 - [ ] Exact implementation-request/pick parsing excludes planning/dry-runs and deduplicates correlated telemetry; horizon, ties, repeated labels, censoring and unscorable labels have explicit reasons/counts.
 - [ ] Rankers use the same historical eligible population/config and actual deterministic tie-breaks; candidate/readiness coverage is reported separately and no baseline silently reads current project state.
 - [ ] Equal next-issue sort keys preserve the existing `(priority_int, issue_id)` loader order; shared parser fixtures reject truncation/hidden flags, and eligibility changes between evaluation records are separated from weight-only ranking comparisons.
-- [ ] Origins require affirmative provenance; manual-confirmed/orchestrated/unclassified and clean/proxy snapshots are reported distinctly. Auto/next-issue agreement includes denominators and remains a sanity check.
+- [ ] Origins require affirmative provenance; manual-confirmed vs other (orchestrated/unclassified sub-counts) and clean/proxy snapshots are reported distinctly. Auto/next-issue agreement includes denominators and remains a sanity check.
 - [ ] Hit@3/MRR, paired deltas and bootstrap intervals use matching samples with fixed seeds; report states choice-agreement limits and insufficient evidence. No assertion requires one ranker to win.
 - [ ] Read-only backend extraction and report execution are documented; actual source-repo run evidence stays under postmortems/; `python -m pytest scripts/tests/` passes.
 
@@ -136,6 +138,7 @@ A maintainer reruns the same saved manifest after an implement-issue weight chan
 
 - 2026-10-03: Pre-implementation/Opus review added decision-aligned samples, fixed label horizons, exact/proxy snapshot distinctions, unknown origin, common-population comparisons, frozen history inputs, exclusion coverage and paired uncertainty. Kept the backtest pressure-free and independent of FEAT-3711.
 - 2026-10-03: Follow-up review pinned shared pure argument parsing, baseline stable-tie order after find_issues' priority/ID presort, explicit proxy ancestry/secondary-only comparisons, per-source follow-up uncertainty and separate frozen-sample/evaluation identities. Kept sample-bootstrap intervals descriptive without adding a tuning or statistical framework.
+- 2026-10-04: Opus epic review (0.78): added the feasibility go/no-go probe (≥~30 clean-base confirmed-manual samples), the orchestrated-label circularity caveat, two origin strata instead of three, diagnostic framing (bootstrap width at n≤50), `git cat-file --batch` reconstruction and an explicit as-of filter on history-derived axes.
 
 ## Status
 
