@@ -22,6 +22,7 @@ Exclude:
 - Project-internal code
 - Standard Python builtins (`str`, `dict`, `list`, `int`, etc.)
 - Contract-stable stdlib (`os`, `sys`, `pathlib`, `json`, `re`, `datetime`)
+- Model IDs (e.g. `claude-sonnet-5-5`) named only as a test fixture or the evaluation subject — a model name is a value being exercised, not an API surface the plan assumes behavior of. Claude-named products (`claude-code`, `claude-agent-sdk`) are still targets.
 
 Produce a deduplicated list of short target names (e.g. `["anthropic", "requests", "stripe"]`).
 

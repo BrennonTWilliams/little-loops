@@ -3,10 +3,11 @@ id: BUG-3727
 type: BUG
 title: learning-target extractor treats Claude model-ID strings as external-API dependencies
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-04'
 captured_at: '2026-10-04T17:31:16Z'
+completed_at: '2026-10-04T19:21:31Z'
 confidence_score: 100
 outcome_confidence: 86
 score_complexity: 18
@@ -64,15 +65,15 @@ Tighten `_EXTRACTION_PROMPT` to exclude model names used as test fixtures or eva
 
 ## Acceptance Criteria
 
-- [ ] `extract_learning_targets` drops `claude-sonnet-5-5`, `claude-opus-5-5`, and `claude-haiku-4-5-20251001` when the injected `llm_call` returns them in `targets`
-- [ ] Provider-prefixed, case-varied and dotted spellings are also dropped (`anthropic/claude-sonnet-5-5`, `us.anthropic.claude-sonnet-5-5-v1:0`, `Claude-Sonnet-5-5`, `claude-sonnet-4.5`)
-- [ ] Claude-named products are still returned: `claude-code` and `claude-code-stream-json` (proven `.ll/learning-tests/` registry targets), `claude-code-2`, `claude-agent-sdk`, and `Claude Code CLI`, verified by regression tests in `scripts/tests/test_learning_tests_extractor.py`
-- [ ] Real SDK/package targets (`anthropic`, `requests`) in the same response are still returned, in order
-- [ ] A response containing only model IDs returns `[]`
-- [ ] `_EXTRACTION_PROMPT` states that model IDs used as fixtures or evaluation subjects are not dependencies (substring-asserted in a test)
-- [ ] `commands/refine-issue.md` Step 7.5 and `skills/wire-issue/learning-targets.md` carry the same exclusion; host mirrors regenerated and mirror/audience/line-limit gates pass
-- [ ] The field-first `learning_tests_required` passthrough is unchanged (a model ID declared in frontmatter is returned verbatim) and this is documented in the Resolution
-- [ ] Regression tests pass via `python -m pytest scripts/tests/`
+- [x] `extract_learning_targets` drops `claude-sonnet-5-5`, `claude-opus-5-5`, and `claude-haiku-4-5-20251001` when the injected `llm_call` returns them in `targets`
+- [x] Provider-prefixed, case-varied and dotted spellings are also dropped (`anthropic/claude-sonnet-5-5`, `us.anthropic.claude-sonnet-5-5-v1:0`, `Claude-Sonnet-5-5`, `claude-sonnet-4.5`)
+- [x] Claude-named products are still returned: `claude-code` and `claude-code-stream-json` (proven `.ll/learning-tests/` registry targets), `claude-code-2`, `claude-agent-sdk`, and `Claude Code CLI`, verified by regression tests in `scripts/tests/test_learning_tests_extractor.py`
+- [x] Real SDK/package targets (`anthropic`, `requests`) in the same response are still returned, in order
+- [x] A response containing only model IDs returns `[]`
+- [x] `_EXTRACTION_PROMPT` states that model IDs used as fixtures or evaluation subjects are not dependencies (substring-asserted in a test)
+- [x] `commands/refine-issue.md` Step 7.5 and `skills/wire-issue/learning-targets.md` carry the same exclusion; host mirrors regenerated and mirror/audience/line-limit gates pass
+- [x] The field-first `learning_tests_required` passthrough is unchanged (a model ID declared in frontmatter is returned verbatim) and this is documented in the Resolution
+- [x] Regression tests pass via `python -m pytest scripts/tests/`
 
 ## Integration Map
 
@@ -212,6 +213,8 @@ Revised 2026-10-04 after pre-implementation review and `/ll:advise` with Opus: r
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-04T19:21:31 - `80eba000-6032-41ce-81d8-5ec41e6f7753.jsonl`
+- `/ll:ready-issue` - 2026-10-04T19:12:19 - `9e9543bf-5bbb-4377-a975-3dce9df01352.jsonl`
 - `/ll:confidence-check` - 2026-10-04T18:47:11 - `4fcf50ed-e004-47d9-8a3c-f07dc1efb8ee.jsonl`
 - `/ll:wire-issue` - 2026-10-04T18:36:53 - `6edca675-5538-495d-a946-19c5b2740bca.jsonl`
 - `/ll:refine-issue` - 2026-10-04T18:29:46 - `4675b499-1b8e-4fd9-8d9d-6cf940665b02.jsonl`
@@ -227,3 +230,12 @@ _Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
 - **Anchor**: `in function extract_learning_targets()` (per-target filter loop)
 - **Cause**: The loop's only deterministic filter is `name.split(".", 1)[0].lower() in _STDLIB_EXCLUDED`; everything else the LLM returns in `TARGETS_JSON` is deduped by `slugify()` and returned. `_EXTRACTION_PROMPT`'s `Include:` list ("External APIs and services", "SDKs for external platforms") has no exclusion for model names, so a model ID used as an evaluation subject is listed as a service.
 - **Downstream effect**: `executor.py:_execute_learning_state` resolves each target to `.ll/learning-tests/<slugify(target)>.md`; a missing record triggers `/ll:explore-api <target>`, which can only write `refuted` for a model ID, routing to `on_blocked` → `ready-to-implement-gate` `blocked` terminal → `issue_manager.py` "Learning gate blocked: unproven external-API deps".
+
+## Resolution
+
+**Fixed** — 2026-10-04
+
+- `extractor.py`: added `_MODEL_ID_RE` / `_is_model_id()` (digit-keyed, `code|agent|cli|plugin` product lookahead, optional `anthropic/` / `us.anthropic.` prefix) and a drop branch in `extract_learning_targets()` before `slugify` dedup; `_EXTRACTION_PROMPT` now excludes model IDs used as fixtures or evaluation subjects.
+- Same exclusion wording added to `commands/refine-issue.md` Step 7.5 and `skills/wire-issue/learning-targets.md`; `.gemini`/`.kimi-code`/`.qwen` mirrors regenerated with `ll-adapt`.
+- Tests: 5 new `TestExtractLearningTargets` cases (drop, drop prefixed/cased/dotted, keep SDKs alongside, keep Claude products, prompt wording) plus a field-first passthrough test. Full suite: 27855 passed; ruff + mypy clean.
+- **Deliberate non-coverage**: the field-first `learning_tests_required` path stays unfiltered (escape hatch for issues whose real dependency is a model ID). Not covered by the Python filter: `rn-implement.yaml`, `rn-remediate.yaml`, `assumption-firewall.yaml`'s own extraction, `scope-epic`/`confidence-check` prose (follow-up), prose model names ("Claude Sonnet 5.5"), bare aliases (`opus`/`sonnet`), and non-Claude model IDs.

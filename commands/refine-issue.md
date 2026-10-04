@@ -1141,7 +1141,7 @@ After appending the session log, extract external API dependencies from the issu
 
 **Skip this step** if the issue frontmatter contains `testable: false` or if `--dry-run` is set.
 
-1. **Identify external dependencies** — Analyze the full issue text (frontmatter + body) to list all third-party packages, SDKs, and external API surfaces the implementation plan assumes behavior of. Exclude project-internal code and contract-stable stdlib (os, sys, pathlib, json, re, datetime, builtins). Return a deduplicated list of short target names (e.g. `["anthropic", "requests", "stripe"]`).
+1. **Identify external dependencies** — Analyze the full issue text (frontmatter + body) to list all third-party packages, SDKs, and external API surfaces the implementation plan assumes behavior of. Exclude project-internal code and contract-stable stdlib (os, sys, pathlib, json, re, datetime, builtins). Also exclude model IDs (e.g. `claude-sonnet-5-5`) named only as a test fixture or the evaluation subject — a model name is a value being exercised, not an API surface the plan assumes behavior of; Claude-named products (`claude-code`, `claude-agent-sdk`) are still targets. Return a deduplicated list of short target names (e.g. `["anthropic", "requests", "stripe"]`).
 
 2. **Check each target against the registry** — For each extracted target, run:
    ```bash

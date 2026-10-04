@@ -47,6 +47,9 @@ Exclude:
   re, datetime, urllib, http, socket, subprocess, csv, sqlite3, logging,
   argparse, shutil, tempfile). Only include stdlib when its *runtime* behavior
   is genuinely non-obvious (asyncio, multiprocessing, concurrent.futures).
+- Model IDs (e.g. claude-sonnet-5-5) named only as a test fixture or the \
+evaluation subject — a model name is a value being exercised, not an external \
+API surface the plan assumes behavior of.
 
 For each identified dependency, provide its canonical short name only \
 (no version qualifier, no description).
@@ -106,6 +109,21 @@ _STDLIB_EXCLUDED = frozenset(
         "uuid",
         "warnings",
     }
+)
+
+# Claude model-ID strings (BUG-3727). An issue that merely names a model as an
+# evaluation subject got `claude-sonnet-5-5` extracted as an "external API",
+# which can only ever be proven `refuted` and so blocks the learning gate. Kept
+# as a deterministic filter rather than prompt wording alone because the LLM
+# cannot be relied on to separate "model under test" from "service depended on".
+# Digit-keyed (not family-keyed) so new family names need no code change; the
+# lookahead keeps Claude-named products (claude-code, claude-agent-sdk, ...), which
+# are real registry targets. Add to the product list if Anthropic ships another
+# `claude-<word>-<digit>` product. Optional prefix covers `anthropic/...` and
+# Bedrock-style `us.anthropic....` spellings.
+_MODEL_ID_RE = re.compile(
+    r"^(?:(?:[a-z]{2,4}\.)?anthropic[./])?claude-(?!(?:code|agent|cli|plugin)\b)(?:\d|[a-z]+-\d)",
+    re.IGNORECASE,
 )
 
 # Host-call timeout for the default extraction call (seconds), matching
@@ -192,6 +210,11 @@ def _default_llm_call(prompt: str) -> str:
         return ""
 
 
+def _is_model_id(name: str) -> bool:
+    """Return True when ``name`` has the shape of a Claude model ID."""
+    return bool(_MODEL_ID_RE.match(name))
+
+
 def extract_learning_targets(
     issue_text: str,
     *,
@@ -235,6 +258,9 @@ def extract_learning_targets(
             continue
         if name.split(".", 1)[0].lower() in _STDLIB_EXCLUDED:
             logger.debug("extract_learning_targets: dropped stdlib target %r", name)
+            continue
+        if _is_model_id(name):
+            logger.debug("extract_learning_targets: dropped model-id target %r", name)
             continue
         slug = slugify(name)
         if slug not in seen:

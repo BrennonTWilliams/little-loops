@@ -137,6 +137,60 @@ class TestExtractLearningTargets:
         result = extract_learning_targets("uses the GitHub API", llm_call=mock)
         assert result == ["GitHub API rate limits"]
 
+    def test_drops_model_id_targets(self) -> None:
+        resp = (
+            'TARGETS_JSON:{"targets": ["claude-sonnet-5-5", "claude-opus-5-5", '
+            '"claude-haiku-4-5-20251001"], "count": 3}'
+        )
+        mock = _make_llm(resp)
+        result = extract_learning_targets("evaluated against claude-sonnet-5-5", llm_call=mock)
+        assert result == []
+
+    def test_drops_prefixed_cased_and_dotted_model_ids(self) -> None:
+        resp = (
+            'TARGETS_JSON:{"targets": ["anthropic/claude-sonnet-5-5", '
+            '"us.anthropic.claude-sonnet-5-5-v1:0", "Claude-Sonnet-5-5", '
+            '"claude-sonnet-4.5", "claude-3-5-sonnet-20241022", "claude-fable-5-1"], '
+            '"count": 6}'
+        )
+        mock = _make_llm(resp)
+        result = extract_learning_targets("model ids in prose", llm_call=mock)
+        assert result == []
+
+    def test_keeps_sdk_targets_alongside_model_ids(self) -> None:
+        resp = (
+            'TARGETS_JSON:{"targets": ["anthropic", "claude-sonnet-5-5", "requests"], "count": 3}'
+        )
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses anthropic and requests", llm_call=mock)
+        assert result == ["anthropic", "requests"]
+
+    def test_keeps_claude_product_targets(self) -> None:
+        resp = (
+            'TARGETS_JSON:{"targets": ["claude-code", "claude-code-stream-json", '
+            '"claude-code-2", "claude-agent-sdk", "Claude Code CLI"], "count": 5}'
+        )
+        mock = _make_llm(resp)
+        result = extract_learning_targets("uses the claude CLI", llm_call=mock)
+        assert result == [
+            "claude-code",
+            "claude-code-stream-json",
+            "claude-code-2",
+            "claude-agent-sdk",
+            "Claude Code CLI",
+        ]
+
+    def test_prompt_excludes_model_ids_used_as_fixtures(self) -> None:
+        captured: list[str] = []
+
+        def _capture(prompt: str) -> str:
+            captured.append(prompt)
+            return 'TARGETS_JSON:{"targets": [], "count": 0}'
+
+        extract_learning_targets("issue", llm_call=_capture)
+        assert "model ids" in captured[0].lower()
+        assert "evaluation subject" in captured[0].lower()
+
 
 def _make_issue_stub(
     tmp_path: Path,
@@ -184,6 +238,14 @@ class TestResolveLearningTargets:
 
         assert result == []
         mock_extract.assert_not_called()
+
+    def test_field_first_model_id_returned_verbatim(self, tmp_path: Path) -> None:
+        """BUG-3727: a model ID declared in frontmatter is the deliberate escape hatch."""
+        issue = _make_issue_stub(tmp_path, learning_tests_required=["claude-sonnet-5-5"])
+
+        result = resolve_learning_targets(issue)
+
+        assert result == ["claude-sonnet-5-5"]
 
     def test_none_field_triggers_jit_extraction(self, tmp_path: Path) -> None:
         """When field is None, fall back to JIT extraction from issue text."""
