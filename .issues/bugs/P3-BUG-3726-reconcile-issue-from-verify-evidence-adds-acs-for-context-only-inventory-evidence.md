@@ -27,39 +27,76 @@ Two independent direct calls (D3, D4) on an issue whose Proposed Solution is a d
 
 ## Expected Behavior
 
-An evidence item whose target is a context-only entry (an unchanged caller, test or documentation inventory with no behavior or contract consequence) is not actioned. Reconcile leaves the body unchanged and records the item under `## CONCERNS`, as it already does for items that demand a new behavior or option.
+An evidence target that is a context-only entry (an unchanged caller, test or documentation inventory with no behavior or contract consequence) creates no requirement. Reconcile reports the refused target under `## CONCERNS` in its output. Other targets in the same evidence item can still justify an AC or Step. Existing criteria, including legitimate preservation/compatibility criteria, are not removed merely because their wording includes "unchanged".
+
+If neither accepted evidence nor ordinary findings justify a repair, reconcile leaves the directives unchanged and returns `RECONCILED` with `## CORRECTIONS_MADE: None`. The normal guard/session-log writes and existing superseded-marker cleanup still apply. Refusing evidence must not skip a repair justified by the issue's own findings.
 
 ## Proposed Solution
 
-Tighten the `--from-verify-evidence` text in `commands/reconcile-issue.md` so each evidence item is classified by the same role table B6 uses (observable behavior or contract, required fixture update, context-only) before any addition, and a context-only target is refused with a `## CONCERNS` line. Do not touch `check_reconcile_limit` (`target: 2`).
+Tighten the `--from-verify-evidence` text in `commands/reconcile-issue.md` so each named target is classified by the same roles B6 uses (observable behavior or contract, required fixture update, context-only) before any addition, and a context-only target is refused with a `## CONCERNS` line. Keep the eligibility conjunction (explicit flag, `DIRECTIVE_DRIFT`, nonempty evidence), existing rewrite/preservation rights, and `check_reconcile_limit` (`target: 2`) unchanged.
 
-The rule already exists in one sentence (`commands/reconcile-issue.md`, "Context-only inventory items create no requirement") and was ignored 2/2, because the evidence's own `-> add an AC for each listed … entry` tail is an instruction that competes with it. A restatement alone is unlikely to win, so the text must:
+The rule already exists in one sentence (`commands/reconcile-issue.md`, "Context-only inventory items create no requirement") and failed to prevent additions in both trials. The evidence's own `-> add an AC for each listed … entry` tail asks for the observed additions; treating that tail as authoritative is a plausible cause, not an attribution established by an ablation. Test explicit precedence and process-level triage rather than assuming a restatement alone will work:
 
-1. **State precedence.** The evidence's `-> <correction>` tail is verify's proposal, not an instruction. Classify each named *target* (per inventory entry, not per item) by the B6 role table; the classification wins over the tail.
-2. **Name the anti-pattern.** An AC whose only content is "file X is unchanged" / "test passes with no edits" is never entailed. A tail asking for an AC "for each listed entry" signals context-only.
-3. **Live in the Process, not only the Contract.** Add a numbered triage step before Step 4; if every item is refused the run is a no-op `RECONCILED` (empty `## CORRECTIONS_MADE`).
-4. **Update the `## CONCERNS` output template** (it currently covers only "directive bullet with no supporting finding") with a `[refused-evidence]` line naming the item and its role.
-5. **Cross-reference, don't copy,** the B6 role table (`commands/verify-issues.md`, check B6) so the two cannot drift.
+1. **State precedence.** The evidence's `-> <correction>` tail is verify's proposal, not an instruction. Classify each named *target* from the selected mechanism and the issue's recorded findings (per target, not per item or subsection); the classification wins over the tail. A tail cannot upgrade a context-only target into a coverage obligation. Retain the tail as a proposed correction for applicable targets, subject to entailment.
+2. **Name the anti-pattern narrowly.** An inventory listing alone does not entail "file X is unchanged" / "test passes with no edits" ACs. An explicit behavior/compatibility requirement in the selected mechanism can entail a preservation criterion; do not reject it on wording alone. "For each listed entry" triggers scrutiny, not automatic rejection of every target. Triage filters the evidence source; it does not authorize deleting existing ACs or Steps.
+3. **Live in the Process, not only the Contract.** Add triage between Step 3 and Step 4. Only accepted, uncovered targets participate in evidence-based stale-section detection. Always continue ordinary contradiction detection in Steps 4/4a; all-refused evidence alone is not an early-return condition. A no-op requires no accepted uncovered target, no ordinary stale directive, and no contradicted Scope Boundaries claim. Preserve marker cleanup, guard/session-log writes, and Step 5b's rule that no-op passes leave scores and confidence notes untouched.
+4. **Apply the same triage in `--check`.** Include it in Step 7's read-only sequence: context-only evidence with no other drift yields `CLEAN` / exit 1, while an entailed uncovered target or ordinary contradiction yields `NEEDED` / exit 0. No guard write, rewrite, score clearing, marker removal, or session-log append occurs in check mode.
+5. **Update the `## CONCERNS` output template** (it currently covers only "directive bullet with no supporting finding") with `- [refused-evidence] <evidence item / section>: <target> — context-only — <reason from selected mechanism>`. Report one line per refused target, including on a normal no-op pass; list only actual repairs under `## CORRECTIONS_MADE`. This is command output, not a new issue-body section.
+6. **Cross-reference B6 for role definitions**, without copying its table. Retain the local executable mapping already in the Contract: behavior/API/compatibility consequence → AC, fixture/mock invalidation → Step, context-only → refusal. Reconcile must work when loaded independently and must not re-research project code to classify targets.
 
-If a text-only fix does not reach 5/5 on D3 (see ACs), fall back to a structural option: reconcile ignores the `->` tail and derives any correction only from the drift plus the target's role.
+If the candidate fails any required live case, keep the issue open, record the failure and reassess the prompt. Do not silently widen this fix into a structured-evidence protocol or discard correction tails globally: fixture repairs can depend on their concrete correction content. A broader evidence-boundary redesign needs a separately scoped follow-up.
 
 Notes (from Opus second opinion, 2026-10-04):
 - Mirror gates may trip on a command edit; run `ll-adapt --host <gemini|kimi-code|qwen> --apply` if so.
-- Follow-up, not in scope: `DIRECTIVE_DRIFT_NON_CONVERGENCE` (`refine-to-ready-issue.yaml`) says "repair incomplete" and would misattribute a deliberate refusal if B6 keeps re-emitting the false positive. The root cause is upstream in B6 (per-inventory-entry evidence tails).
+- Follow-up, not in scope: `DIRECTIVE_DRIFT_NON_CONVERGENCE` (`refine-to-ready-issue.yaml`) says "repair incomplete" and could misattribute a deliberate refusal if B6 later emits a false positive repeatedly. No such upstream failure was reproduced: B6 returned `VALID` in ENH-3718; this bug concerns reconcile's treatment of injected evidence.
+- Review with `/ll:advise` and Opus on 2026-10-04 (confidence 0.80): correct P1, narrow the unchanged-AC rule, prevent all-refused short-circuiting, preserve check-mode parity, and make the live replay portable. The advisor's stdout-parsing concern does not require a loop change: `reconcile_issue` proceeds directly to `normalize_structure`; `check_reconcile_limit` evaluates its own shell counter, not reconcile's concerns output.
+
+## Integration Map
+
+### Files to Modify
+- `commands/reconcile-issue.md` — Contract precedence, process triage, no-op/check-mode consistency, and refusal-output template.
+- `scripts/tests/test_bug3695_directive_drift_repair.py` — extend the existing section-scoped prompt contract checks; assertions must cover Contract, triage before stale detection, check-mode inclusion, and the output template rather than matching unrelated prose anywhere in the command.
+- `postmortems/` — new private BUG-3726 trial scaffolding/results, using the ENH-3718 assets as input: rebuild the launcher with a caller-supplied scratch root or `mktemp -d`, candidate snapshot, and section-aware oracle. Preserve the historical snapshots. Do not commit historical transcripts or absolute scratch paths. Minimal sanitized toy fixtures may be tracked outside the issue-corpus fixture directories if useful; they are not a prerequisite for the prompt fix.
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — flagged `reconcile_issue` consumer; preserve `target: 2`, action routing and `max_steps: 113`.
+- `scripts/little_loops/loops/prepare-issue.yaml` — ordinary unflagged reconcile consumer; its findings-based repair behavior must remain available.
+
+### Similar Patterns
+- `commands/verify-issues.md` — check B6's role-based classification and shared-coverage rule; no upstream behavior change required.
+- `scripts/tests/test_reconcile_issue_command.py` — section-scoped contract, preservation, guard, no-op and check-mode assertions.
+
+### Tests
+- Existing reconciliation and BUG-3695 suites plus the new prompt assertions; live cases and their oracles below supply behavior evidence. Substring tests alone do not establish model compliance.
+
+### Documentation
+- No separate documentation change required unless the implementation changes the existing command contract beyond the refusal clarification.
+
+## Implementation Steps
+
+1. Add target-over-tail precedence and triage to the command, keep ordinary findings-based repair active, update check-mode coverage and refusal output, and add section-scoped contract assertions.
+2. Rebuild the throwaway-project launcher from the ENH-3718 assets with portable scratch paths. Pin the live model to `claude-sonnet-5-5` for comparison, record the host version, and disable the shared cached plugin in the throwaway project. Load an immutable plugin snapshot containing the candidate command, including uncommitted candidate edits if necessary; record the base SHA and candidate command hash. Historical `d960240d4` is the reproduction baseline, not the candidate under test. Abort the batch if transcript/source-hash preflight cannot prove the candidate was loaded; never modify the shared plugin cache.
+3. Freeze complete pristine input files and hashes for D3, D1/D2, N1/N2, P1, P2, M1 and R1. Run five independent D3 trials and each control once in fresh sessions/projects, restoring all issue bytes (including evidence, scores and guards) before each trial. Run the two check-mode controls separately. Keep trial fixtures outside this checkout's active `.issues/` and issue-corpus fixture directories.
+4. Compare ACs, Steps, Integration Map, protected body sections and frontmatter against the pristine snapshots with the case-specific allowed changes below; inspect stdout for verdict, actual corrections and per-target refusals. Record all trials, command/model hashes, before/after snapshots and stdout under a new private postmortems run directory. Five D3 passes are a smoke test with no observed failures, not a reliability estimate.
+5. Regenerate affected host mirrors if their gates require it. Run the focused reconciliation suites and the authoritative local suite (`python -m pytest scripts/tests/`) before implementation closure; keep retry limits and loop routing unchanged.
 
 ## Acceptance Criteria
 
-- [ ] `commands/reconcile-issue.md` states that a context-only evidence target is refused and recorded under `## CONCERNS`, states target-over-tail precedence, names the "file X is unchanged" AC anti-pattern, and the `## CONCERNS` template has a `[refused-evidence]` line. Enforced by a deterministic substring test (style of `test_bug3695_directive_drift_repair.py`).
-- [ ] Five live direct calls on `postmortems/ENH-3718-live-eval-20261003/fixtures/D3.ENH-8803.md` (zero tolerance, 5/5) each: leave `## Acceptance Criteria` and `## Implementation Steps` byte-identical, change the file only by `reconcile_attempted: true` and the Session Log append, and print a `[refused-evidence]` CONCERNS line in stdout. ("Body unchanged" must not be checked by whole-file diff — `analyze.py` `bodychg` compares the whole file and would flag a correct refusal; scope it to the AC/Step sections and add the stdout check so a silent no-op fails.)
-- [ ] Regression controls D1, D2, N1 and N2 keep their ENH-3718 outcomes (Step added with no AC; body unchanged).
-- [ ] Positive control P1 (copy of N1 with `verify_verdict: DIRECTIVE_DRIFT` and a genuine behavior/contract evidence item) still adds an entailed AC — guards against over-correction.
-- [ ] Mixed fixture M1 (one real behavior item plus one context-only inventory item) adds an AC for the real item only and records exactly one `[refused-evidence]` CONCERNS line for the other.
+- [ ] Section-scoped deterministic checks enforce target-over-tail precedence, the inventory-only anti-pattern (with legitimate compatibility/preservation coverage permitted), triage before stale detection, continued ordinary repair, triage in `--check`, and `[refused-evidence]` under the output `## CONCERNS` template. Existing flag eligibility, fixture→Step mapping and preservation checks pass.
+- [ ] Five live direct calls on a pristine copy of `postmortems/ENH-3718-live-eval-20261003/fixtures/D3.ENH-8803.md` pass (zero tolerance, 5/5) with the candidate command proven loaded. ACs, Steps, the entire Integration Map and protected body are byte-identical, including the existing "tests still pass unchanged" AC; frontmatter is unchanged except `reconcile_attempted: true` and the only body addition is Session Log. Stdout returns `RECONCILED`, `## CORRECTIONS_MADE` is `None`, and `## CONCERNS` has exactly three `[refused-evidence]` lines naming the two test targets and README target with their context-only reasons. A silent no-op fails. Use section/frontmatter-aware comparisons, not `analyze.py`'s whole-file `bodychg` as the no-op oracle.
+- [ ] Regression controls D1/D2 each add the entailed fixture-update Step without an AC or Integration Map addition; N1/N2 (VALID plus stale evidence) preserve ACs/Steps/Integration Map and protected body, with only normal guard/log writes. On every normal trial `verify_verdict` and `verify_evidence` remain unchanged; no-op trials preserve any existing six score fields and confidence notes.
+- [ ] P1 is N1 with exactly the opt-out AC removed, `verify_verdict: DIRECTIVE_DRIFT`, and evidence restricted to the uncovered `skip_stopwords=False` contract. One matching AC is added, verifying `top_words("the cat the dog", 1, skip_stopwords=False)` returns `[("the", 2)]`; existing ACs remain unchanged and no context-only refusal is reported. This tests preservation of the old ranking as an explicit compatibility contract.
+- [ ] P2 is unmodified N1 with `verify_verdict: DIRECTIVE_DRIFT` and its stale evidence retained. Already-covered targets add no duplicate AC/Step, produce no `[refused-evidence]` line, and return a no-op with only guard/log writes. Covered applicable evidence is distinct from refused context-only evidence.
+- [ ] M1 starts with one missing CLI-output AC and one context-only inventory entry. A **single** evidence item names both targets and proposes an AC "for each listed entry". The real consequence is stated in a Tests or Documentation entry, so subsection name cannot determine its role. Reconcile adds only the entailed CLI-output AC, reports exactly one `[refused-evidence]` line for the context-only target, and preserves all other directives/Integration Map entries. Separate-item classification alone does not satisfy this control.
+- [ ] R1 combines D3's context-only evidence with an existing Implementation Step contradicted by a recorded Codebase Research Finding. Reconcile refuses the three inventory targets but still rewrites the stale Step from that finding; it does not add an AC or short-circuit into a no-op. Normal rewrite score-clearing rules still apply.
+- [ ] Check-mode controls run with `--check --from-verify-evidence`: D3 returns `CLEAN` / exit 1; P1 returns `NEEDED` / exit 0. Full issue-file hashes remain unchanged in both, including guard, scores, markers and Session Log. The check-mode sequence includes triage and ordinary contradiction detection.
+- [ ] All required live cases are recorded with the resolved model, pristine fixture hashes, candidate command hash and before/after/stdout evidence; no required trial is discarded solely because it failed. The local test suite passes, and retry limits/routing remain unchanged.
 
 ## Impact
 
 - **Priority**: P3 - exposure needs a B6 false positive first, and the added ACs are no-op "unchanged" assertions
-- **Effort**: Small (command text + one substring test + P1/M1 fixtures; live runs reuse the ENH-3718 shim)
-- **Risk**: Low (main risk is over-correction, covered by P1/M1)
+- **Effort**: Medium (command text + focused contract assertions + portable replay setup and positive/mixed/ordinary-repair/check-mode controls; historical shim is reusable after removing its stale scratch-path assumptions)
+- **Risk**: Low (main risk is over-correction or suppressing ordinary repair, covered by P1/P2/M1/R1 and check-mode controls)
 
 ## Steps to Reproduce
 
