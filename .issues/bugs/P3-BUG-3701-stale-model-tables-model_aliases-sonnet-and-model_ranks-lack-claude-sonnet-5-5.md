@@ -94,7 +94,7 @@ Checked against the code so nobody re-investigates:
 - Literal `claude-sonnet-5` in unrelated fixtures (`test_feat3182_evidence_bundle.py`, `test_issue_history_agent_quality.py`, `test_history_reader_events.py`) is data, not an alias assertion; leave it unchanged
 
 ### Documentation
-- `docs/reference/CLI.md:~977–992`: the example `coding → claude-sonnet-5 (claude-code)` shows the CLI path's observed model; optionally refresh it to `claude-sonnet-5-5`
+- `docs/reference/CLI.md:~977–992`: the `coding` example reflects the default behavior changed by this issue; update it to `claude-sonnet-5-5` as a required documentation edit
 - `docs/guides/SESSION_HANDOFF.md:384`: `detected_model` example; illustrative, optional
 
 ## Program Design

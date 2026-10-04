@@ -14,6 +14,8 @@ labels:
 - usage-ingestion
 blocked_by:
 - ENH-3660
+relates_to:
+- ENH-3723
 ---
 
 # ENH-3671: Implement OpenCode stored token usage
@@ -32,12 +34,21 @@ Discover real OpenCode sessions through their native storage tree and read their
 
 If ENH-3660 proves partial native support, store the proved components with null evidence-backed unsupported components as `unknown`, audit-only rows under the current row-level provenance contract; canonical totals/rates that require missing components stay unavailable. If native absence is proved for every in-scope path, this issue still owns the direct-fallback disposition and explicit unavailable diagnostic; mark it done after that work, or cancel only if no change remains. An in-scope unknown keeps this issue blocked and the epic incomplete. If no after-usage event exists, prove another current-session trigger or keep this issue open for an explicit epic scope decision.
 
-ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`, `normalize_host_usage` where applicable, `refresh_raw_events`, and derive checkpoint contract. This delivery issue owns any extension needed for its native source layout, source refresh, incremental derive, freshness cursor, or runtime trigger, with shared regression tests. Preserve the baseline replay guarantees; no other host's evidence becomes a hard blocker.
+ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`, `normalize_host_usage` where applicable, `refresh_raw_events`, and derive checkpoint contract. This delivery issue owns its native adapter and required integration, coordinating shared source refresh, incremental derive, freshness, and trigger changes under EPIC-3562 § Shared Delivery Ownership, with shared regression tests. Preserve the baseline replay guarantees; no other host's evidence becomes a hard blocker.
+
+## Runtime Qualification and Cutover Gate
+
+Qualify each observation using the runtime provider and source/CLI version from the evidence issue's verified native source. Match the captured contract exactly or apply its specifically evidenced compatibility policy. Absent/unmatched provider/version or unproved attribution/identity remains audit-only with a visible reason and unavailable dependent canonical figures. A broad typed host capability never substitutes for this check.
+
+Persist the ingest-time contract reference, provider/version evidence and qualification disposition on `raw_events`, using existing metadata where sufficient, so incremental derive and rebuild make the same decision. A later CLI upgrade or provider configuration must not promote old unknowns; requalification requires new source evidence and an explicit tested operation.
+
+ENH-3723 is linked through `relates_to` and is required before reader cutover/closeout. There is no whole-issue scheduling edge to it, so native capture, parser and adapter development can proceed before that shared gate lands. Before cutover, add this host's qualified/partial/mismatch rows to its shared source/snapshot/session-reader matrix. The only hard evidence blocker remains this host's matching ENH-3660–3665 issue.
 
 ## Program Design
 
 - **Producer input**: the real session/message/part JSON storage tree, including stored step-finish parts with tokens and matching live part IDs; ENH-3660 supplies the versioned layout, field, and component contract. The reduced JSONL excerpt is contract evidence, not the ingest source.
 - **Replay identity**: (sessionID, part.id) only after ENH-3660 proves uniqueness across retries and compaction. The key is scoped by verified host and session and survives full rebuild; copied or conflicting records remain unknown until resolved.
+- **Mutation policy**: `_preserves_fields` currently rejects changed existing values; do not assume monotonic refresh accepts final/revised part counters. Implement an evidence-backed part replacement/invalidation policy with stable native identity, transactional derived replacement, and freshness recovery.
 - **Stored path**: implement native-tree discovery and a source adapter that assigns stable `source_path`/position and verified session attribution to each part before writing `raw_events` and `usage_events`. Extend ENH-3534's refresh baseline and ENH-3651's derive checkpoint to track the native files without treating a concatenated JSONL export as the original source.
 - **Current session**: use the evidence issue's event and source-write timing candidate, then prove a real trigger after usage is persisted. Extend `usage_stop.handle`/`backfill_worker._run_usage_trigger` or a host-specific equivalent. A read-time refresh is acceptable only when tested against a real post-write source and committed as-of boundary; a manually invoked worker alone does not prove current-session freshness.
 - **Reader**: `ll-ctx-stats` selects the verified host/session through `select_usage_coverage`, checks `usage_source_freshness`, and exposes a canonical rate only for qualified non-overlapping components.
@@ -55,7 +66,7 @@ ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`
 
 ## Integration Map
 
-- Session discovery/parser/normalizer and replay writer under scripts/little_loops/session_store/; this issue owns any required extension to `refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, and shared tests. Verify append, overwrite, rotation, or file-tree mutation behavior against the real native source before reusing a cursor.
+- Session discovery/parser/normalizer and replay writer under scripts/little_loops/session_store/; coordinate extensions to `refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, and shared tests under EPIC-3562 § Shared Delivery Ownership; ENH-3723 owns shared canonical eligibility. Verify append, overwrite, rotation, or file-tree mutation behavior against the real native source before reusing a cursor.
 - Coordinate `session_store/writers.py::host_layout_for`, `session_store/sessions.py` discovery, `user_messages.py` source lookup, and `test_session_reader_no_host_roots_gate.py` so they describe one real OpenCode root. Define how the current `(source_path, line_no)` raw-event dedup key and file-based freshness cursor map to individual part files or a stable session manifest.
 - OpenCode lifecycle adapter and scripts/little_loops/hooks/usage_stop.py or another proved after-usage trigger; scripts/little_loops/cli/backfill_worker.py and incremental derivation.
 - scripts/little_loops/cli/ctx_stats.py and scripts/little_loops/history_reader/usage.py shared selection; scripts/little_loops/host_runner.py typed telemetry entries.
@@ -63,6 +74,11 @@ ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`
 
 ## Acceptance Criteria
 
+- [ ] An ordered native-tree test writes a partial usage part, finalizes/revises its counters, adds another part, and deletes/replaces a part, refreshing multiple times at each stage. Proved replacement is counted once at its latest valid value; deleted observations are invalidated rather than retained as fresh consumption. Full rebuild, incremental derive and repeated refresh agree on counts and identity.
+- [ ] A malformed/in-progress part write or failed derive makes freshness stale/unknown without exposing a false canonical value. After a valid write and successful refresh, qualification/freshness recover and the selected reader shows the corrected counts; `_preserves_fields` cannot leave a legitimate revised part permanently unknown.
+- [ ] Runtime matching, unmatched provider, absent provider/version, unproved version, and unproved identity fixtures enforce the evidence-backed qualification policy. Unsupported versions/providers cannot inherit a measured host-level verdict; diagnostics explain audit-only/unavailable results.
+- [ ] Ingest-time qualification evidence survives on `raw_events`; incremental derive, full rebuild, and later CLI/provider changes produce the same qualified or unknown disposition without promoting old rows.
+- [ ] Before reader cutover/closeout, ENH-3723's selected eligibility policy and this host's source/snapshot/session-reader parity cases pass, including partial/mismatch rows and any documented stricter measured-only rate rule.
 - [ ] ENH-3660 records a versioned, sanitized producer contract for every implemented metric/channel: fields, inclusivity, omissions, request grain/reset behavior, reasoning/output relation, and stable source identity; unresolved items remain explicit unknowns.
 - [ ] A parser-replayable fixture in the real native source layout passes through discovery/parser, raw_events, usage_events, and the shared selector. It preserves the native usage fields needed for this host and does not change unrelated normalized content; a reduced JSONL excerpt alone cannot satisfy this gate.
 - [ ] Real-tree discovery selects the correct project/session; stable part identity and source position survive resume, part rewrite, repeated refresh, incremental derive, and full rebuild. A changed or missing native file makes freshness stale/unknown rather than retaining a false fresh verdict.
@@ -77,6 +93,13 @@ ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`
 
 - **In scope**: OpenCode native usage ingestion, request identity, current-session trigger, freshness-qualified stored read, capability entries, and fixture-backed tests.
 - **Out of scope**: non-Anthropic pricing, non-Claude context occupancy, and other hosts' producer contracts.
+
+## Implementation Steps
+
+1. Consume ENH-3660's provider/version-qualified native contract, real layout, identity and source-write timing evidence.
+2. Implement the native adapter and durable ingest-time qualification; coordinate shared seams under the epic ownership rule.
+3. Prove replay/update behavior, incremental/full parity, a real current-session trigger and freshness recovery.
+4. Add this host's ENH-3723 qualification matrix cases; cut over the reader only after its gate passes, or record the evidence-backed unavailable/partial disposition.
 
 ## Impact
 
@@ -93,7 +116,7 @@ ENH-3534 is done and supplies the baseline `UsageReplayRecord`, `HostUsageState`
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): Shared usage seams (`refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, `_run_usage_trigger` dispatch, shared tests): the first delivery issue among ENH-3671/3672/3673 to land a change owns it; later hosts extend through host-keyed dispatch and rebase. Host-specific adapter work (OpenCode storage tree) stays here.
+**Coordination rule (2026-10-03):** EPIC-3562 § Shared Delivery Ownership governs all six delivery issues (ENH-3671–3676). The first lander owns the shared refresh/derive/freshness/trigger extension; later hosts extend the host-keyed dispatch and rebase. ENH-3723 owns shared canonical eligibility. Host-specific adapter work stays here.
 
 
 ## Session Log

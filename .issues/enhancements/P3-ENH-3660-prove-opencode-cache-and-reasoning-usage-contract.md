@@ -59,6 +59,8 @@ Cache-hit/write semantics need a caching-capable provider. A local storage-tree 
 
 ## Acceptance Criteria
 
+- [ ] Capture the native lifecycle of a usage-bearing part from partial write to final/revised values, including observed add/delete or rewrite behavior where supported. Give ENH-3671 the evidence-backed replacement/identity rule and the real storage layout; do not assume a JSONL append-only contract.
+- [ ] The ENH-3671 handoff identifies a captured provider/version-qualified contract and an evidenced exact-version or compatibility rule, with matching and mismatch/absent-identity fixtures. Runtime values come from a verified native source; missing evidence remains audit-only/unavailable rather than inheriting a host-wide supported verdict.
 - [ ] Save a sanitized, versioned native capture with a tool call, resume, and matching live/stored parts; document which cache-hit/write and retry/compaction cases were actually observed.
 - [ ] Preserve a sanitized, parser-ready fixture in the native session/message/part storage-tree layout, with the project-directory mapping and storage-root rule. A test extracts its step-finish token fields and checks parity with the existing reduced JSONL excerpt; only the tree fixture is eligible for production-discovery tests.
 - [ ] Record native-field availability for input, output, cache-read, and cache-creation on each relevant channel, and record the reasoning/output relationship separately: `supported`, `unsupported` with affirmative producer evidence, or `unknown` with the missing proof. State inclusivity, omitted-field behavior, grain/reset rules, and the namespace and stability of `(sessionID, part.id)`.
@@ -69,6 +71,8 @@ Cache-hit/write semantics need a caching-capable provider. A local storage-tree 
 
 ## Completion Rule
 
+The runtime qualification handoff above is required before releasing the delivery issue.
+
 Mark this evidence issue `done` only when every metric/channel and identity rule needed for the selected canonical stored path has a supported or evidence-backed unsupported verdict. An unselected auxiliary channel may stay `unknown` only when the EPIC-3562 ledger names it as outside that path and explains why it cannot duplicate or change the canonical figure. If an in-scope field, request identity, or source path remains `unknown`, keep this issue `open` or `blocked`; completing the fixture alone does not release ENH-3671. The chosen canonical source and possible duplicate channels, or the evidence-backed no-source verdict, must be recorded in the fixture README and epic ledger before this issue is done. Resolve the reasoning/output relationship for any selected output path; if it remains unknown, keep this issue open because normalized output cannot be measured.
 
 ## Evidence Tiers (added 2026-09-30 after `/ll:advise` review)
@@ -76,6 +80,12 @@ Mark this evidence issue `done` only when every metric/channel and identity rule
 Source-cited producer evidence (upstream source at a pinned version/commit, keyed by provider) is a **provisional lower tier** in the fixture README. `TelemetryCapability` has no tier or reasoning field: a source-only metric/channel stays `unknown` with a note naming that source; captured native evidence is required before marking it `supported`, and an `unsupported` verdict needs affirmative evidence. Record the reasoning/output relationship in the README and the `output_tokens` note, not as a separate telemetry metric. A captured identity/replay fixture is required before this issue closes. Capture a nonzero cache case when claiming a supported cache component's measured semantics that affect canonical figures or rates; an evidence-backed unsupported cache component does not require a nonzero sample. Source-only evidence does not release the delivery issue.
 
 Fixture sanitization: strip credentials, tokens, absolute home paths and prompt content before commit; the pre-commit `ll-verify-private-refs` hook must pass. The first of ENH-3660/3665 to prepare a closing change owns the common verdict-table format and one parameterized README-to-`telemetry_matrix` evidence test; if both proceed together, ENH-3665 owns it. This issue adds its host's rows. The test covers only the six remaining hosts with a structured table; Claude/Codex and not-yet-captured hosts keep their existing verification. The test checks that each typed `supported` claim has captured native support for its metric/channel and a provider/version-scoped note, that `unsupported` has affirmative evidence for its stated scope, and that source-only evidence is never the sole support for a typed claim.
+
+## Runtime Qualification Handoff
+
+Give ENH-3671 the observed provider and CLI/source version, the native envelope or verified source of those values, and a stable fixture contract reference. Record whether qualification requires the exact captured version or permits a specific compatibility range backed by evidence. A current local CLI version alone cannot qualify a historical record. A host-level capability note does not qualify every provider/version.
+
+Include a matching fixture and unmatched-provider, unsupported/unproved-version, absent provider/version, and unproved identity cases. Specify the audit-only/unavailable reason for each mismatch. The delivery issue persists the ingest-time contract/evidence on `raw_events` (using existing metadata where sufficient) and reuses it on rebuild; it must not substitute later machine configuration or promote an old unknown. No all-provider capture matrix or mandatory new column is implied. ENH-3723 owns shared consumer eligibility, separately from this native evidence contract.
 
 ## Program Design
 

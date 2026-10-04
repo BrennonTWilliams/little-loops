@@ -11,6 +11,8 @@ captured_at: '2026-10-04T01:15:41Z'
 parent: EPIC-3562
 blocked_by:
 - BUG-3696
+relates_to:
+- BUG-3724
 ---
 
 # ENH-3719: Unpriced-model footer and cost-table docs correction for ll-loop usage report
@@ -56,7 +58,7 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 2. **Read the same table the estimator reads.** Look up `MODEL_PRICING` as a module attribute at call time (`from little_loops import pricing`, then `pricing.MODEL_PRICING`), not through a `from ... import MODEL_PRICING` binding, so a test that patches the table affects the estimator and the footer identically. Tests use `patch.dict` or patch the module attribute; they must never leave the two readers disagreeing.
 3. **Sentinel set.** The missing-model sentinels, after `str()` and `.strip()`, are `{"unknown", "None", ""}` (whitespace-only strings collapse into `""`). `"None"` is a real production case from a JSON-null model, not a hypothetical. A sentinel is never reported as a model; a concrete ID is reported verbatim, with no prefix/suffix normalization.
 4. Render the footer in `table()` when the list is non-empty and the report has states. For concrete IDs append `no pricing for model(s): <comma-separated IDs> — affected state costs shown as n/a; report an ID if it should be priced`. Sentinels produce one `missing model ID — affected state costs shown as n/a` line without report/upgrade advice. Mixed concrete IDs and sentinels produce both lines, concrete first. A missing rate makes the affected state and run total unavailable rather than subtracting a contribution. The footer is end-user-facing; do not tell users to edit a Python module or promise that upgrading supplies a deliberately unsupported model's price. Do not serialize the list; `read_json` defaults it to empty.
-5. **Mixed-model rows (known limitation).** Because a row's model is the last usage event's model (`executor.py:2761`), a mixed-model action is priced and named by its last model only, and the footer cannot name earlier ones. Document it in the CLI reference; do not change event attribution here.
+5. **Mixed-model rows (known limitation).** Because a row's model is the last usage event's model (`executor.py:2761`), a mixed-model action is priced and named by its last model only, and the footer cannot name earlier ones. Document the current behavior in the CLI reference; BUG-3724 owns correcting heterogeneous model/batch attribution and ceiling accounting. Do not expand this footer issue into that repair. If BUG-3724 lands first, describe its corrected or fail-closed behavior instead of preserving an obsolete limitation.
 6. Correct the stale docs: `~$` fallback, `0.0` unknown costs, a printed `TOTAL` row, thousands separators. Fix the column definitions: `input` is the aggregate `input_tokens` field without cache tokens; `cache` combines `cache_read_tokens` and `cache_creation_tokens`. State that costs are exact-ID estimates, that state/run costs become null if any contributor is unpriced, and that stored null history costs are not back-filled. Distinguish the broad `has_unknown_model` flag (any unpriceable contribution) from this missing-price diagnostic; incomplete tokens alone still produce `n/a` without the footer. Record the exact-match limitation: dated, `anthropic.`-prefixed or `[1m]` model IDs stay unpriced and the footer now names them.
 
 ## Integration Map
@@ -130,14 +132,15 @@ Keep the locked per-state/top-level JSON key tests.
 - [ ] Stable JSON keys are unchanged; an unknown-model report round-trips with null costs and intentionally loses its footer metadata
 - [ ] `_print_usage_summary` prints the unknown-ID footer and writes locked JSON with null costs in the same invocation; the observed Sonnet 5.5 projection renders `$0.3201` with no footer
 - [ ] Footer wording is end-user-facing (no instruction to edit `little_loops.pricing`)
-- [ ] CLI/API/observability docs match actual `n/a`/null behavior and the input/cache column definitions, distinguish per-state flags from `totals.has_unknown_model` and the missing-price diagnostic, describe the footer, and state the mixed-model (last-event model), exact-match and no-backfill limitations
+- [ ] CLI/API/observability docs match actual `n/a`/null behavior and the input/cache column definitions, distinguish per-state flags from `totals.has_unknown_model` and the missing-price diagnostic, describe the footer, and state the current mixed-model behavior (last-event limitation until BUG-3724 lands, then its corrected or fail-closed contract), exact-match and no-backfill limitations
 - [ ] `python -m pytest scripts/tests/` exits 0
 
 ## Related
 
 - BUG-3696 — adds the Sonnet 5.5 price and alias/rank/price coverage; hard dependency (test 4's priced projection needs the rate)
 - BUG-3701 — alias/rank correction; independent of this footer
-- ENH-3703 — family-prefix approximate pricing (separate follow-up)
+- ENH-3703 — deferred family-prefix approximate pricing decision after this footer; retained under EPIC-3562
+- BUG-3724 — model/batch attribution repair; coordinate the documented behavior without expanding this footer's scope
 - BUG-3704 — effective context windows, independent scope
 
 ## Related Key Documentation
