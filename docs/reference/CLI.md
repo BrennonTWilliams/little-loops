@@ -38,6 +38,12 @@ Initialize little-loops for a project. Detects the project root and type, reads 
 
 Every surface — the interactive wizard, `--yes`, and `--plan`/`apply` — runs the **same detection pipeline** (`init/proposal.py`), so a project gets the same defaults regardless of how it is initialised. Each proposed value carries a provenance tag (`declared` / `inferred` / `default` / `existing` / `flag` / `recommended`) and the evidence behind it; the wizard shows the evidence next to every prompt.
 
+<!-- TODO: update-docs stub — ENH (ll-init existing-dir filter) — drafted 2026-10-04 -->
+**Directory detection only proposes directories that exist.** Every proposed `project.src_dir`, `project.test_dir`, and `scan.focus_dirs` value — whether detected from a manifest or taken from a template default — is checked against your project root first; a path that does not exist is dropped. A project whose sources live at the repo root (including co-located Go/JS tests) resolves to `.`. When no test directory is found, `ll-init` searches the project for test files (`test_*.py`, `*_test.go`, `*.test.*`, `*.spec.*`, …) before falling back to `tests/`, the one value it proposes even though it may not exist yet, as the place new tests will be written.
+
+> **Stub**: drafted by `/ll:update-docs`; confirm wording and add the issue ID.
+<!-- END TODO stub -->
+
 When run on a project that already has a `.ll/ll-config.json`, every field is pre-populated from the stored values and the run is **idempotent**: re-running `ll-init --yes` writes a byte-identical config (features you never enabled stay off; sub-config you tuned — thresholds, profiles, worker counts — is preserved verbatim). Only `--enable`/`--disable` change feature state on a re-init.
 
 **Flags:**
