@@ -14,6 +14,7 @@ relates_to:
 - BUG-3708
 - BUG-3691
 - ENH-3690
+- ENH-3718
 decision_needed: false
 confidence_score: 92
 outcome_confidence: 69
@@ -24,6 +25,8 @@ score_change_surface: 18
 ---
 
 # BUG-3695: refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria
+
+> **Implementation review 2026-10-03:** the code fix already landed in `8dbd00703`, including the caller flag, B6 enumeration/persistence, real-child scripted FSM harness, non-convergence signal and docs/mirrors. Do not implement it again. This review reran the relevant repair, command, loop, dispatch and cost suites: **2120 passed, 1 skipped**. The full-suite closure gate was not rerun in this review; retain `open` for that final validation/closure, rather than claiming a fresh full-suite pass from the checked historical ACs. Live model compliance belongs to the already-captured **ENH-3718**, including its new ineligible stale-evidence case; it is not a prerequisite for this code issue's closure. The earlier review and confidence assessment below are historical.
 
 > **Review 2026-10-03 (EPIC-3694 children review, Opus second opinion, confidence 0.7).**
 >
@@ -115,7 +118,7 @@ The Program Design precedent in `.ll/decisions.d/b5a1b051-4f32-42a8-b4ef-148a548
 - `commands/verify-issues.md` — B6 role/coverage enumeration, `DIRECTIVE_DRIFT` remedy row/cross-references, and scoped persistence bullet writing current evidence with verdict
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `reconcile_issue` action gains only `--from-verify-evidence`; existing routes/counters/step cap stay unchanged
 - `scripts/tests/test_reconcile_issue_command.py`, `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py`, `scripts/tests/test_builtin_loops.py`, `scripts/tests/test_ll_issues_next_obligation.py` — contract and route/negative-case tests
-- `scripts/tests/test_bug3695_directive_drift_repair.py` (new) — real built-in FSM with scripted slash-command effects; AC/fixture drift and budget regression
+- `scripts/tests/test_bug3695_directive_drift_repair.py` — landed real built-in FSM with scripted slash-command effects; AC/fixture drift and budget regression
 
 ### Dependent Files (Callers/Importers)
 
@@ -173,6 +176,8 @@ Command boundary: `/ll:reconcile-issue ISSUE_ID --from-verify-evidence`. This is
 
 ## Implementation Steps
 
+_Historical implementation plan — completed by `8dbd00703`. Remaining work is the normal full-suite closure gate and status update; ENH-3718 owns live evaluation._
+
 1. BUG-3708 has landed (`45481a2ba`). Keep its occurrence/property and advisory contracts intact while editing B6/persistence; serialize overlapping ENH-3690 edits too.
 2. Update B6 with the applicability table and complete per-entry walk. Persist DIRECTIVE_DRIFT verdict/evidence together using the existing escaped single-line format; update remedy row/cross-references without losing asserted anchors.
 3. Add the caller flag and narrow source extension throughout reconcile's arguments, parsing, findings read, contract, edit workflow and output. Preserve ordinary no-new-requirements, provenance and check-mode rules. Only the shared `reconcile_issue` action receives the flag.
@@ -195,9 +200,9 @@ Command boundary: `/ll:reconcile-issue ISSUE_ID --from-verify-evidence`. This is
 - [x] Scripted real-child FSM tests exercise AC-only and fixture-only drift through repair/normalize/clear/fresh verify, assert evidence lifecycle and one attempt, and preserve the negative exhaustion path.
 - [x] VERIFY-before-AC ordering, normal clear topology, HEDGES-only skip and non-drift shared-state eligibility are tested; the existing failed-clear/no-write limitation is documented, not described as impossible.
 - [x] Repaired fixture checkbox ACs pass the actual manual-phrase probe; coverage/quality is tested separately rather than inferred from that probe's exit 0.
-- [x] On budget exhaustion after a flagged reconcile, `record_gate_unmet` output/evidence distinguishes DIRECTIVE_DRIFT non-convergence from other gate failures without adding a `legacy_class`; a stale DIRECTIVE_DRIFT verdict+evidence pair on the shared `ACCEPTANCE_CRITERIA` route without the flag is tested to be inert.
+- [x] On budget exhaustion after a flagged reconcile, `record_gate_unmet` output/evidence distinguishes DIRECTIVE_DRIFT non-convergence from other gate failures without adding a `legacy_class`; tests pin unflagged callers and the eligibility contract, and show a VALID verdict with stale evidence can reach the flagged shared `ACCEPTANCE_CRITERIA` action. Actual refusal to add directives in that ineligible case is live-evaluated under ENH-3718, not proved by scripted effects.
 - [x] Route table, target 2/shared budget and max_steps stay unchanged; mirrors and relevant documentation match; `python -m pytest scripts/tests/` exits 0.
-- [ ] ~~Three-run live evaluation~~ → separate follow-up issue (capture when code lands). Original text: three-run live evaluation reports repair/convergence results and remaining limitations on a fresh AC-only fixture, with fixture-only/context-inventory evaluation too; any failed replay is investigated without an automatic budget increase.
+- [x] Live-evaluation work transferred to **ENH-3718**, which has already been captured. This checks the handoff only: the live runs remain pending there and are not claimed as satisfied here. Original scope: three independent AC-only runs plus fixture-only/context-inventory evaluation; investigate failures without automatically increasing the budget.
 
 ## Secondary Observations
 
@@ -212,9 +217,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-10-02 | Priority: P3
 
+Code implemented in `8dbd00703`; awaiting the normal full-suite closure gate. No further implementation of this issue's selected mechanism is needed. ENH-3718 separately owns live evaluation and records the existing failed-clear/no-write limitation.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-10-03 (re-scored after BUG-3708 landed and `blocked_by` was cleared)_
+
+_Historical pre-implementation assessment. Correction from this review: the flag and adapted real-child harness now exist in `8dbd00703`; the live follow-up is ENH-3718. Preserve the original assessment below as history, not as current implementation work._
 
 **Readiness Score**: 92/100 → PROCEED
 **Outcome Confidence**: 69/100 → MODERATE
@@ -234,6 +243,7 @@ _Added by `/ll:confidence-check` on 2026-10-03 (re-scored after BUG-3708 landed 
 - Shared `commands/verify-issues.md` / mirror surface with other EPIC-3694 children requires serialized edits.
 
 ## Session Log
+- Implementation review - 2026-10-03 - `/ll:advise` with Opus (confidence 0.80): confirmed `8dbd00703` already delivers the code fix; reran 2120 relevant tests (1 skipped); corrected the live-evaluation handoff and negative-test evidence claim. ENH-3718 gains a live non-drift/stale-evidence eligibility check. Full suite not rerun, so closure remains pending rather than attributing live compliance or a fresh full-suite pass to scripted tests.
 - `/ll:confidence-check` - 2026-10-03T22:46:43 - `c4c6a704-e666-48df-b6fe-37ff869c1bae.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:52:31 - `7b5fbb18-2486-460d-9469-16b4a7432e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-03T17:18:06 - `e655cd0c-0c5d-446b-bee6-c9fe4cf5573e.jsonl`

@@ -18,17 +18,17 @@ Group of related issues about autodev/refine gates failing on non-defects: env l
 
 ## Children
 
-Recommended order (re-reviewed 2026-10-03 with an Opus second opinion): **replay BUG-3689 trigger + AC#1 → BUG-3702 → BUG-3695 → ENH-3697 (ENH-3690 cancelled: the replay passed)** (done: BUG-3689, BUG-3691, BUG-3708) (updated 2026-10-03: BUG-3691 split into a detector half and BUG-3708 for the B8 prose; ENH-3690 and BUG-3695 both declare BUG-3708 as a dependency; serialize their shared `commands/verify-issues.md` edits).
+Recommended order (re-reviewed 2026-10-03 with an Opus second opinion): **replay BUG-3689 trigger + AC#1 → BUG-3702 → ENH-3697 (ENH-3690 cancelled: the replay passed)** (done: BUG-3689, BUG-3691, BUG-3708). **BUG-3695's code already landed in `8dbd00703`; only its full-suite closure gate remains. ENH-3718 owns the independent live evaluation.** BUG-3691 was split into a detector half and BUG-3708 for the B8 prose; preserve their contracts when editing `commands/verify-issues.md`.
 
 1. **BUG-3689** — Autodev quality gate false-fails on env leakage (11 env-driven tests; shared `HERMETIC_ENV_VARS` constant + gate `unset` + `pin_terminal_size`) (**done**, P2)
 2. **ENH-3697** — Make corpus-ratchet gate tests read the committed `.issues` tree, not the working tree (open, P3) — supersedes ENH-3692; **re-scoped 2026-10-03:** narrow to the prose-dependency sweep via in-memory `git cat-file` HEAD reads behind a gate-only env flag; decide against a clean-checkout gate first
 3. **BUG-3691** — verify-issues citation checking is unstable across passes (**done**, P3) — **detector half**: extend `ll-issues format-check` (defined-in vs imported-in rule, line-past-EOF, bare-filename resolution) and emit an `examined_refs` payload; all new findings **advisory** until ENH-3690 promotes them; no new CLI
 4. **BUG-3708** — verify-issues check B8: defer to format-check `examined_refs` for citation findings (**done**, P3) — prose half of the BUG-3691 split (`45481a2ba`)
 5. ~~**ENH-3690**~~ (**cancelled**, 2026-10-03; superseded by BUG-3708) — refine-to-ready-issue: NON_VALID citation-only findings get a repair route (open, P3) — **re-scoped 2026-10-03:** BUG-3691/BUG-3708 landed and make both BUG-3689 triggers verdict-neutral under B8; implement only if a live replay still ends `NON_VALID`, with mechanical `correction_target` eligibility
-6. **BUG-3695** — refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria (open, P3) — unblocked (BUG-3708 done; rescore); live-evaluation AC split to a follow-up; sibling of ENH-3690 (same "verdict has no working remedy" class); reviewed 2026-10-03 with an evidence-gated AC/Step repair and unchanged budget
+6. **BUG-3695** — refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria (open, P3; code implemented, closure pending) — `8dbd00703` delivers the evidence-gated AC/Step repair with unchanged budget; review reran 2120 relevant tests (1 skipped), with the normal full-suite closure gate not rerun. Live compliance is transferred to ENH-3718; do not reimplement the code fix.
 - ~~**ENH-3692**~~ — baseline-aware code-run-gate (**cancelled**, won't-do): the two motivating "pre-existing" failures pass on a clean `main` and only went red from uncommitted `.issues/` working-tree state, so the mechanism could not have rescued them and carried High masking risk; superseded by ENH-3697.
 - **BUG-3702** — refine_followup evidence-delta snapshot vanishes from shared scratch dir mid-state (open, P4) — largely fixed by BUG-3705's 24h age guard; re-scoped to one parametrize case + two-tier docstring (~10 min), then close
-- **ENH-3718** — Live-evaluate reconcile-issue --from-verify-evidence DIRECTIVE_DRIFT repair (open)
+- **ENH-3718** — Live-evaluate reconcile-issue --from-verify-evidence DIRECTIVE_DRIFT repair (open) — five isolated loop trials plus a direct live non-drift/stale-evidence eligibility case; restore pristine fixtures and verify the effective command source between trials
 
 
 
