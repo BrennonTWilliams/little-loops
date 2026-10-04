@@ -203,7 +203,7 @@ _Historical implementation plan — completed by `8dbd00703`. Remaining work is 
 - [x] Repaired fixture checkbox ACs pass the actual manual-phrase probe; coverage/quality is tested separately rather than inferred from that probe's exit 0.
 - [x] On budget exhaustion after a flagged reconcile, `record_gate_unmet` output/evidence distinguishes DIRECTIVE_DRIFT non-convergence from other gate failures without adding a `legacy_class`; tests pin unflagged callers and the eligibility contract, and show a VALID verdict with stale evidence can reach the flagged shared `ACCEPTANCE_CRITERIA` action. Actual refusal to add directives in that ineligible case is live-evaluated under ENH-3718, not proved by scripted effects.
 - [x] Route table, target 2/shared budget and max_steps stay unchanged; mirrors and relevant documentation match; `python -m pytest scripts/tests/` exits 0.
-- [x] Live-evaluation work transferred to **ENH-3718**, which has already been captured. This checks the handoff only: the live runs remain pending there and are not claimed as satisfied here. Original scope: three independent AC-only runs plus fixture-only/context-inventory evaluation; investigate failures without automatically increasing the budget.
+- [x] Live-evaluation work transferred to **ENH-3718**, which has already been captured. This checks the handoff only: the live runs remain pending there and are not claimed as satisfied here. Original scope: three independent AC-only loop runs plus direct flagged-reconcile calls for fixture-only, context-inventory and VALID-with-stale-evidence cases (ENH-3718's revised design); investigate failures without automatically increasing the budget.
 
 ## Secondary Observations
 
@@ -218,7 +218,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-10-02 | Priority: P3
 
-Code implemented in `8dbd00703`; awaiting the normal full-suite closure gate. No further implementation of this issue's selected mechanism is needed. ENH-3718 separately owns live evaluation and records the existing failed-clear/no-write limitation.
+Code implemented in `8dbd00703`; awaiting the normal full-suite closure gate. No further implementation of this issue's selected mechanism is needed. ENH-3718 separately owns live evaluation (including the VALID-with-stale-evidence refusal) and notes the existing failed-clear/no-write limitation as known infrastructure; a focused freshness bug is filed only if that evaluation reproduces it.
 
 ## Confidence Check Notes
 

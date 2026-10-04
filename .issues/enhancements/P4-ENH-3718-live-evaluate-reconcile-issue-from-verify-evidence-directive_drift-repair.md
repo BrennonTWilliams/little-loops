@@ -24,41 +24,104 @@ score_change_surface: 25
 
 ## Summary
 
-Split out of BUG-3695 (EPIC-3694 children review, 2026-10-03). BUG-3695 landed the `--from-verify-evidence` carve-out and proved routing with scripted FSM tests (`scripts/tests/test_bug3695_directive_drift_repair.py`); scripted slash effects are not model behavior, so model compliance and convergence are still unmeasured.
+Split out of BUG-3695 (EPIC-3694 children review, 2026-10-03). BUG-3695 landed the `--from-verify-evidence` carve-out (commit `8dbd00703`) and proved routing with scripted FSM tests (`scripts/tests/test_bug3695_directive_drift_repair.py`); scripted slash effects are not model behavior, so model compliance and convergence are still unmeasured.
 
-Evaluate three independent `refine-to-ready-issue` runs from an identical fresh fixture reproducing AC-only check-B6 drift (ENH-3678 has since changed, so build a new fixture), each with a fresh run_dir, unchanged code and the current one-reconcile budget (`check_reconcile_limit`, `target: 2`). Record findings, AC/Step edits, AC-checker output, verdicts and iteration counts reaching VALID/ready.
-
-Also evaluate a fixture-only drift case (expects an Implementation Step, no invented AC) and an irrelevant Tests/Documentation inventory (must create no requirement).
-
-Add one direct live `/ll:reconcile-issue <fixture> --from-verify-evidence` invocation with `verify_verdict: VALID` and nonempty leftover drift evidence. With no contradictory research finding, the model must leave ACs, Steps and Integration Map unchanged. Do not run the normal child first for this case: its clear/fresh-verify chain would erase the input being evaluated. The shared `ACCEPTANCE_CRITERIA` action can receive this flag/evidence combination, but the verdict makes it ineligible; scripted routing tests do not prove the model obeys that boundary.
-
-Investigate any failed replay or file a focused follow-up; never automatically raise the reconcile budget.
-
+This issue runs the repair path against a real model: three end-to-end `refine-to-ready-issue` loop runs on an AC-only drift fixture, plus direct `/ll:reconcile-issue --from-verify-evidence` calls for the fixture-only, context-only and VALID-with-stale-evidence boundary cases. It changes no production code. Never raise the reconcile budget (`check_reconcile_limit`, `target: 2`); investigate a failed replay or file a focused follow-up.
 
 ## Current Behavior
 
-BUG-3695's repair path is covered only by scripted FSM tests (routing, evidence lifecycle, one-attempt budget). No run has shown a real model, given the `/ll:reconcile-issue` flag `--from-verify-evidence` and a `DIRECTIVE_DRIFT` finding, adding an entailed AC/Step without inventing requirements, and converging within the one-reconcile budget.
+BUG-3695's repair path is covered only by scripted FSM tests (routing, evidence lifecycle, one-attempt budget). No run has shown a real model, given `--from-verify-evidence` and a `DIRECTIVE_DRIFT` finding, adding an entailed AC/Step without inventing requirements and converging within the one-reconcile budget.
 
 ## Expected Behavior
 
-Three independent live runs from an identical AC-only drift fixture reach `VALID`/ready within the existing budget, or the failure is diagnosed. Fixture-only drift yields an Implementation Step with no invented AC, an irrelevant Tests/Documentation inventory yields no new requirement, and flagged reconciliation with a non-drift verdict ignores stale drift evidence.
+- Three independent live AC-only runs reach `VALID`/ready **because of the reconcile**, within the existing budget, or the failure is diagnosed.
+- Fixture-only drift yields an Implementation Step and no invented AC.
+- A context-only Tests/Documentation inventory yields no new requirement.
+- A flagged reconcile with `verify_verdict: VALID` and stale drift evidence leaves ACs, Steps and the Integration Map unchanged.
 
 ## Motivation
 
-Scripted effects cannot show model compliance, applicability churn, or incomplete first-pass B6 enumeration. Without live evidence, BUG-3695's "converges in one reconcile" claim is unproven and a failure would surface only as another 25-minute `GATE_UNMET` run.
+Scripted effects cannot show model compliance, applicability churn, or incomplete first-pass B6 enumeration. Without live evidence BUG-3695's "converges in one reconcile" claim is unproven, and a failure would surface only as another 25-minute `GATE_UNMET` run.
 
 ## Proposed Solution
 
-Build a fresh AC-only drift fixture (ENH-3678 has since changed), run `ll-loop run refine-to-ready-issue <fixture>` three times with a fresh run_dir each and unchanged code, then repeat once each for fixture-only drift and a context-only inventory. Add the direct ineligible-flag/stale-evidence invocation described above. Restore the full original issue bytes before each independent trial, including frontmatter, directives, research, scores and guard flags; a fresh run_dir alone does not undo a prior model's edits. Record the original fixture hash, chosen host/model, effective command source, per-run findings, AC/Step edits, `check-acceptance-criteria` output, verdicts, iteration counts and whether the `[GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE]` line fired. The host must load the updated command source from `8dbd00703` or later, rather than an older cached plugin. Record directive-section diffs for the negative invocation; permissible guard/session-log writes are not directive additions. Write results into this issue; do not raise `check_reconcile_limit`'s target.
+### Trial matrix
 
-### Codebase Research Findings
+| ID | Mode | Fixture | Pass condition |
+|----|------|---------|----------------|
+| L1–L3 | `ll-loop run refine-to-ready-issue <ID>` (end-to-end) | AC-only drift, byte-identical copies | Attributed convergence (below), no invented requirement |
+| D1–D2 | Direct flagged `/ll:reconcile-issue <ID> --from-verify-evidence` | Fixture-only drift with a frozen, real persisted `verify_evidence` | Adds an Implementation Step, no AC |
+| D3–D4 | Direct flagged reconcile | Context-only Tests/Documentation inventory with frozen real evidence | Issue body unchanged, no requirement derived from the inventory |
+| N1–N2 | Direct flagged reconcile | `verify_verdict: VALID` plus nonempty leftover `verify_evidence`, no contradictory research finding | ACs, Steps and Integration Map byte-unchanged (directive-section diff only; guard/session-log writes are not directive additions) |
 
-_Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
+Rationale for the direct-call decomposition: a context-only loop run never reaches reconcile if B6 is correct, so it measures B6 false positives, not model over-application. Do not run the normal child loop before N1–N2: its `clear_verify_verdict`/fresh-verify chain erases the input being evaluated. Optionally add one context-only *loop* run and report it separately as a B6 false-positive observation.
 
-- **Fixture validity is a precondition, not an outcome.** Each fixture is a synthetic issue over real code, ID chosen from a never-allocated number gap, with frontmatter that opts out of unrelated gates (`testable: false`, `program_design_not_applicable: true`, `behavior_parity_not_applicable: true`) and a body that never mentions the missing AC/Step it is meant to elicit. A fixture that already carries the correct answer shows "did not regress", not "the repair fired" (contamination precedent: ENH-3258's session log). Before counting a run, confirm its first `verify_issue` persisted `DIRECTIVE_DRIFT` with the intended evidence kind; otherwise discard it as an invalid replay and say so.
-- **Independence**: three runs from a byte-identical fixture copy, each in a fresh throwaway project (or at minimum a fresh fixture copy with a reset issue tree) so `run_dir`, counter files and prior Session Log entries cannot leak. Runs never stop early on a pass (same stance as the N-sample rule in `docs/guides/EVALUATION_GUIDE.md`), and the model, host CLI version and repo commit are pinned in the results block.
-- **Results placement**: this repo's convention for evaluation issues is a short dated results block in the issue (verdict line, compact per-run table, caveats line naming n, single model family) with full run dirs and transcripts in the gitignored postmortems directory (precedents: FEAT-3686, FEAT-3596, ENH-3520); ENH-3258 instead recorded fixture validation in Session Log bullets. The two destinations disagree and either is in force. Because the postmortems directory is untracked, `ll-issues format-check` treats a backticked path into it as a stale file reference — cite it as a bare directory name in prose.
-- **Failure handling**: a run ending in `[GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE]` is a finding, to be diagnosed (incomplete first-pass B6 enumeration, applicability churn, or an ineffective repair, per BUG-3695's budget notes) or filed as a focused follow-up against B6 or `commands/reconcile-issue.md`. `check_reconcile_limit`'s `target: 2` is not an adjustable variable in this evaluation.
+Frozen evidence for D/N cases: run the first `verify` once per fixture (through the pinned command source below), validity-gate it, then copy the persisted `verify_verdict`/`verify_evidence` into the pristine fixture bytes.
+
+### Command-source guarantee (P0)
+
+The effective model-executed command source is the **plugin cache**, not the working tree: `ll@little-loops` (user scope) points at `~/.claude/plugins/cache/little-loops/ll/1.166.0`, whose `reconcile-issue.md` has no `--from-verify-evidence` carve-out (working tree: 16 hits) and whose `verify-issues.md` lacks the updated B6/evidence persistence (2 vs 15 hits). The cached and working-tree `plugin.json` both say 1.166.0, so a version check cannot detect staleness.
+
+Do **not** overwrite or symlink the shared cache (global mutation; every local-editable project is affected and a plugin update silently reverts it), do not add a `host_runner` hook (production code), and do not rely on project-level commands (wrong namespace). Recipe:
+
+1. Build an immutable snapshot of the checkout at the batch SHA (>= `8dbd00703`) with `git archive` into the trial scratch area.
+2. Put a trial-only `claude` shim first on `PATH` (`host_runner` resolves bare `claude` via PATH and passes no `--setting-sources`). The shim `exec`s the real CLI with `--plugin-dir <snapshot>`, and logs argv, snapshot SHA and `sha256(commands/reconcile-issue.md)` for every spawn; it also snapshots the issue file before and after each `/ll:` call.
+3. In the throwaway project's project-scope Claude settings file set `{"enabledPlugins": {"ll@little-loops": false}}` so the cached plugin does not shadow the override.
+4. **Preflight probe (load-bearing, not yet empirically tested):** run one trivial command through the shim and confirm the reconcile session loads the snapshot copy (a post-`8dbd00703`-only marker in the transcript, no `plugins/cache/little-loops` path). Abort the batch if the override does not take; fallback is a throwaway `CLAUDE_CONFIG_DIR` (auth/keychain caveats).
+5. Per trial verify: the shim log covers every spawn and shows the snapshot hash; main-tree `HEAD` and `git status --porcelain` are unchanged for the batch (the loop YAML and `ll-issues` still come from the editable live tree, so "unchanged code" means no main-tree edits between trials). Run the `max_steps == 113` / `target: 2` pins before and after.
+
+### Launch hygiene
+
+- Launch with `env -i` and an explicit allowlist. A Claude session leaks `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PROJECT_DIR`, `CLAUDE_CONFIG_DIR`, `LL_AUTOMATION`, `LL_HOST_CLI`, `LL_HOOK_HOST` and `LL_HISTORY_DB` into descendants; an ambient `LL_HOST_CLI` silently changes the model family under test. Set `orchestration.host_cli` explicitly in the throwaway config.
+- Create each throwaway project **outside** the repo (`mktemp -d`) so it cannot shadow `find_project_root`/git root. Layout follows `_setup_project` in `scripts/tests/autodev_harness.py` (`.ll/ll-config.json`, `.issues/` type dirs, `.gitignore` with `.loops/`, `git init` + initial commit). `run_refine_to_ready` is not reusable (it drives `ScriptedRunner`, not a model).
+- Run detached (loop runs of ~20 iterations exceed the 10-minute Bash tool cap). Do not leave any fixture under `.issues/` or `scripts/tests/fixtures/issues/`.
+- Without `LL_HISTORY_DB`, a throwaway project writes `loop_runs` rows to its own `.ll/history.db`; export `LL_HISTORY_DB` to a path inside the project to keep that explicit.
+- Record the host CLI version, resolved model, batch SHA, and original fixture hash.
+
+### Fixture hygiene
+
+Each fixture is a synthetic issue over real code (cited source files committed in the throwaway project: `format-check` builds `ref_index` from `git ls-files`, so uncommitted cited files become `stale_file_ref` and spend the one format fallback). ID from a never-allocated number gap. Frontmatter opts out of unrelated gates: `testable: false`, `program_design_not_applicable: true`, `behavior_parity_not_applicable: true`. The body must never mention the missing AC/Step it is meant to elicit (contamination precedent: ENH-3258's session log).
+
+Pre-flight so pre-verify states (`precheck_format`/`format_issue_pre`, `refine_issue`, `wire_issue`, `normalize_structure`) cannot repair or erase the drift:
+
+- All `format-check` sections present; `refine-status` satisfied with **no `/ll:refine-issue` Session Log entries** beyond what is intended (only `/ll:refine-issue:gap-analysis` is exempt); no `decision_needed`, spike triggers, open questions or placeholders.
+- No manual-verification phrases in ACs (`manually`, `by hand`, `verify by`, `visually confirm`): they would route `ACCEPTANCE_CRITERIA` first and spend the shared `refine-to-ready-reconcile-attempts` budget.
+- Every claim about current code true and a Proposed Solution that is neither TBD nor boilerplate (B6 is skipped otherwise; drift verdicts rank below `NON_VALID`, `EVIDENCE_UNVERIFIED`, `CLAIMS_OUTDATED`, `PROPOSAL_UNSOUND`).
+- Advisor disabled; confidence thresholds pinned (readiness 85, outcome 65): a reconcile rewrite clears scores, so `confidence_check` must regenerate them before `done`. `commands.max_refine_count` pinned; at the lifetime limit `check_lifetime_limit` diverts to `breakdown_issue`, which can decompose the fixture.
+- Restore the full original fixture bytes (frontmatter, directives, research, scores, guard flags) before every independent trial; a fresh `run_dir` does not undo a prior model's edits.
+
+### Validity gate (applies before any run is tabulated)
+
+B6 is a judgment check, so a fixture only makes drift *likely*. A run counts only if all three hold:
+
+1. Its first `verify_issue` persisted `DIRECTIVE_DRIFT` with the intended evidence kind (behavior/API drift for AC-only, fixture/mock invalidation for fixture-only).
+2. The pre-verify snapshot (after `refine_issue`/`wire_issue`/`normalize_structure`) still lacks the entailed AC/Step. The wire-done marker is per `run_dir`, so each run repeats these states.
+3. The refine budget (`refine-to-ready-refine-count`, shared by `check_refine_limit`, `check_hedge_refine_limit`, `check_gate_refine_limit`) was not consumed before the reconcile.
+
+Otherwise discard as an invalid replay, say so in the results, and replace it; cap replacement replays at 3.
+
+### Success definition and decision rule (pre-registered)
+
+- **Attributed convergence (L runs):** success = the first verify after `reconcile_issue` returns no `DIRECTIVE_DRIFT` **and** no `refine_followup` ran after the reconcile. After the one-reconcile budget is spent, drift routes `check_gate_refine_limit` -> `refine_followup`, so a bare `final_state: done` may be refine's repair, not reconcile's.
+- Terminal signals: `loop_complete` with `final_state: done`/`terminated_by: terminal` (success); `final_state: failed` via `record_gate_unmet`, echoing `[GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE]` only when the reconcile counter >= 1 and `ll-issues check-verify-verdict <ID> --directive-drift` exits 0 (failure). Iteration count = `loop_complete.iterations` (global step count, `max_steps: 113`).
+- **Decision rule:** any invented requirement (AC/Step not entailed by the evidence, Integration Map addition, edit outside the permitted sections, or any directive change in N cases) = FAIL, zero tolerance. L runs: 3/3 attributed convergence = pass; 2/3 = conditional pass plus a focused follow-up; <= 1/3 = fail plus a focused follow-up bug. Never raise `target: 2`. n = 3 is a smoke test, not a rate estimate. Runs never stop early on a pass (N-sample stance, `docs/guides/EVALUATION_GUIDE.md`).
+- **Failure classification** (record each separately, never as one mechanism): model over-application, incomplete first-pass B6 enumeration, applicability churn, infrastructure freshness (stale command source, failed clear), and downstream gate failures (`confidence_check`, proof, advise, decision, `breakdown_issue` diversion) that are unrelated to reconcile.
+
+### Observation points and results placement
+
+- Per-run artifacts: `<loops_dir>/runs/refine-to-ready-issue-<stamp>/` (`refine-to-ready-reconcile-attempts` counter, `run-records/refine-to-ready-issue/<ID>.json` with `evidence_refs` incl. `directive_drift_nonconvergence`), archive `<loops_dir>/.history/<started_at>-refine-to-ready-issue/` (`state.json`, `events.jsonl`; timestamp differs from the instance id by a timezone shift), `ll-loop history refine-to-ready-issue <run_id> --json`. The non-convergence marker has no consumer beyond tests and docs (`autodev_summary.py`/`preparation_policy.py` read only the `gate_unmet` token), so events/run record is the only observation point.
+- Per L run record: final state, `loop_complete.iterations`, reconcile attempt count, the AC/Step diff against the pristine fixture, the re-verify verdict, whether the non-convergence line fired. Every cell traces to `events.jsonl` or the fixture diff.
+- `ll-issues check-acceptance-criteria` is **not** a drift probe: it flags only manual-verification phrases and reads neither `verify_verdict` nor `verify_evidence`. Record its output as manual-phrase status only; coverage/convergence evidence is the re-verify verdict and final loop state.
+- Results go into this issue as a short dated results block (verdict line, compact per-run table, caveats line naming n, single model family, judgment-based B6). Full run dirs and transcripts go into the gitignored postmortems directory (precedents: FEAT-3686, FEAT-3596, ENH-3520); `classify_file_ref` treats `postmortems/` as `untracked_by_design`, so backticked paths into it are safe. Copy run dirs there before deleting a throwaway project. Link any follow-up with `ll-issues link`.
+
+Results block template:
+
+```
+### Results — <date> (batch SHA <sha>, host <cli version>, model <id>, command source <snapshot sha256>)
+Verdict: <pass | conditional pass | fail>. Invalid replays discarded: <n>.
+| Run | Fixture hash | First-verify evidence kind | Reconcile edits | Re-verify verdict | refine_followup after reconcile | Final state / iterations | Marker fired |
+Caveats: n=3 same-fixture, one model family, B6 judgment-based.
+```
 
 ## Integration Map
 
@@ -66,105 +129,52 @@ _Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
 - None expected; findings are recorded in this issue. A failed replay may spawn a focused fix against `commands/verify-issues.md` (B6) or `commands/reconcile-issue.md`.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `reconcile_issue`, `check_reconcile_limit`, `record_gate_unmet`
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — states that run **before** the first drift route and can rewrite the fixture: `precheck_format` (may run `format_issue_pre`), `refine_issue` (`/ll:refine-issue --auto`), `wire_issue`, `normalize_structure` (`format-check --fix --apply`). They can add ACs/Integration Map entries that pre-empt the drift the fixture was built to elicit; `check_lifetime_limit` at `commands.max_refine_count` (default 5) diverts to `breakdown_issue`, which can decompose the fixture into new issue files [Agent 2 finding]
-- `scripts/little_loops/cli/issues/next_obligation.py` — `_tier1_probe` yields the `VERIFY:DIRECTIVE_DRIFT` / `ACCEPTANCE_CRITERIA` tokens `route_pre_score_obligation` routes on; `scripts/little_loops/cli/issues/check_verify_verdict.py` (`--directive-drift`, exit 3 = verdict absent) and `clear_verify_verdict.py` (removes both `verify_verdict` and `verify_evidence`) back the evidence lifecycle the run is read from [Agent 1 finding]
-- `scripts/little_loops/autodev_summary.py` — `_GATE_UNMET_SKIPPED_REASONS` and `preparation_policy.py` (`evidence_refs` pass-through) consume only the `gate_unmet` token, never the `DIRECTIVE_DRIFT_NON_CONVERGENCE` marker; the marker and `directive_drift_nonconvergence` ref have no consumer beyond tests and docs, so reading them out of `events.jsonl`/the run record is the only observation point [Agent 2 finding]
-- `scripts/little_loops/session_store/db.py` — `_resolve_db_path` resolves `LL_HISTORY_DB`, then `history.db_path`, then `<project root>/.ll/history.db`: a throwaway project writes `loop_runs` rows to **its own** `.ll/history.db` unless `LL_HISTORY_DB` is exported (corrects the "shared history DB" assumption in Codebase Research Findings above) [Agent 2 finding]
-- `scripts/little_loops/host_runner.py` — `resolve_host` precedence `LL_HOST_CLI` → `LL_HOOK_HOST` → `orchestration.host_cli`; an ambient value silently changes the model family under test. The harness's `run_refine_to_ready` strips these, a live `ll-loop run` does not [Agent 2 finding]
-- `~/.claude/plugins/cache/little-loops/ll/1.166.0/commands/reconcile-issue.md` (and `verify-issues.md`) — **effective model-executed command source is the plugin cache, not this working tree.** The cached `reconcile-issue.md` has no `--from-verify-evidence`/`DIRECTIVE_DRIFT` carve-out (working tree: 5 hits) and the cached `verify-issues.md` lacks the `verify_evidence` persistence and updated B6. Editable install makes the Python CLIs live but not the slash-command prose, so unmodified, all three AC-only runs would exercise a command that cannot do the repair [Agent 2 finding]
-- `.loops/.running/refine-to-ready-issue-20261003T182725.state.json` — a loop run with `input: ENH-3718` is recorded as `running` in the main tree (state `wire_issue`, last updated 2026-10-04T00:34Z); confirm it is dead before editing this file or counting any run [Agent 2 finding]
-- `.issues/epics/P3-EPIC-3694-autodev-gate-and-citation-false-failure-hardening.md`, `.issues/bugs/P3-BUG-3695-refine-to-ready-issue-directive_drift-cannot-be-remedied-reconcile-issue-cannot-add-acceptance-criteria.md` — scope drift: EPIC-3694 describes ENH-3718 as "five isolated loop trials plus a direct live non-drift/stale-evidence eligibility case; restore pristine fixtures and verify the effective command source between trials", and BUG-3695 (acceptance bullet ~line 202, ~line 219) hands the VALID-with-stale-evidence refusal and the failed-clear/no-write limitation to ENH-3718. This issue's body has neither; reconcile before closing [Agent 2 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `reconcile_issue` (only state carrying `--from-verify-evidence`), `check_reconcile_limit` (counter shared with the `ACCEPTANCE_CRITERIA` route), `check_gate_refine_limit`/`refine_followup`, `record_gate_unmet`; pre-verify states that can rewrite a fixture: `precheck_format`, `refine_issue`, `wire_issue`, `normalize_structure`; `check_lifetime_limit` -> `breakdown_issue`.
+- `scripts/little_loops/cli/issues/next_obligation.py` — `_tier1_probe` yields `VERIFY:DIRECTIVE_DRIFT`/`ACCEPTANCE_CRITERIA` tokens; `check_verify_verdict.py` (`--directive-drift`, exit 3 = verdict absent) and `clear_verify_verdict.py` (removes `verify_verdict` and `verify_evidence`) back the evidence lifecycle. There is no evidence file: "evidence" is two frontmatter keys cleared before every re-verify.
+- `scripts/little_loops/host_runner.py` — `resolve_host` precedence `LL_HOST_CLI` -> `LL_HOOK_HOST` -> `orchestration.host_cli`; no `--plugin-dir`/extra-args hook.
+- `scripts/little_loops/session_store/db.py` — `_resolve_db_path`: `LL_HISTORY_DB`, then `history.db_path`, then `<project root>/.ll/history.db`.
+- `~/.claude/plugins/cache/little-loops/ll/1.166.0/commands/` — the stale effective command source (see Command-source guarantee).
 
 ### Similar Patterns
-- `scripts/tests/test_bug3695_directive_drift_repair.py` — the scripted routing coverage this complements
+- `scripts/tests/test_bug3695_directive_drift_repair.py` — scripted coverage this complements: pins `target: 2`, `max_steps == 113`, single-reconcile state order, evidence clearing and the non-convergence marker; `_drift`, `_scenario`, `AC_EVIDENCE`/`NEW_AC`, `FIXTURE_EVIDENCE`/`NEW_STEP` (ids `ac-only-drift`, `fixture-only-drift`, `ENH-9001`) are the scripted shapes the live fixtures mirror in evidence kind but must differ from in body. No existing test or fixture feeds a context-only inventory to a model.
+- `scripts/tests/autodev_harness.py` — `_setup_project` layout; `DEFAULT_CONFIG` omits `orchestration.host_cli`, `tdd_mode`, `analytics`, `events.transports`.
 
 ### Tests
-- None added; this is an evaluation issue.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/autodev_harness.py` — `_setup_project(root, scenario)` is the layout to copy for the throwaway project (`DEFAULT_CONFIG` + `.ll/ll-config.json`, `.issues/` type dirs, `write_issue`, `extra_issues`, `Scenario.project_files`, `.gitignore` with `.loops/`, `git init` + `init` commit). `run_refine_to_ready` is **not** reusable — it drives `ScriptedRunner`, not a model. `DEFAULT_CONFIG` omits `orchestration.host_cli`, `tdd_mode`, `analytics`, `events.transports`; set `host_cli` explicitly [Agent 2/3 finding]
-- `scripts/tests/test_bug3695_directive_drift_repair.py` — `_drift(evidence)`, `_scenario(verify, reconcile)`, `AC_EVIDENCE`/`NEW_AC`, `FIXTURE_EVIDENCE`/`NEW_STEP` (ids `ac-only-drift`, `fixture-only-drift`, issue `ENH-9001`) are the scripted shapes the live fixtures mirror in evidence kind but must differ from in body: the live body must not already contain `NEW_AC`/`NEW_STEP`. `TestRecordGateUnmetSignalIsScoped._run` is the pattern for probing the `record_gate_unmet` action in real bash [Agent 3 finding]
-- Pins that must still pass before and after the batch (unchanged-code evidence; none are expected to break): `max_steps == 113` (`test_builtin_loops.py:1884`, `test_autodev_proof_reentry.py::test_max_steps_raised`, `test_advise_ready_gate.py::TestMaxStepsRaised.test_max_steps_113`), `check_reconcile_limit` `target: 2` (`test_builtin_loops.py::test_check_reconcile_limit_state_routing`), flag only on `reconcile_issue` (`test_builtin_loops.py::test_reconcile_issue_state_routing`) [Agent 3 finding]
-- `scripts/tests/test_caller_suitability_gate.py` — `TestFixtureLoopResidue.test_no_staged_fixture_residue` is the precedent for guarding a fixture ID against leaking into the real `.issues/` tree (ENH-288 + `.gitignore` entry). Real-tree sweeps read the working tree: `test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`, `test_symbol_cli_claim_sweep.py::test_symbol_and_cli_flag_claim_sweep_report_only` (ceilings 2 / 5), `test_research_triage.py::TestCorpusBaseline`. Keep all fixtures in the throwaway project; do not leave one under `.issues/` or `scripts/tests/fixtures/issues/` [Agent 3 finding]
-- No existing test or fixture feeds a context-only Tests/Documentation inventory to a model; the live fixture is net-new (confirmed by search of `scripts/tests/` for `context-only`, `DIRECTIVE_DRIFT`, `from-verify-evidence`) [Agent 3 finding]
+- None added; evaluation issue. Pins that must still pass before and after the batch: `max_steps == 113` (`test_builtin_loops.py`, `test_autodev_proof_reentry.py::test_max_steps_raised`, `test_advise_ready_gate.py::TestMaxStepsRaised.test_max_steps_113`), `check_reconcile_limit` `target: 2` (`test_builtin_loops.py::test_check_reconcile_limit_state_routing`), flag only on `reconcile_issue` (`test_builtin_loops.py::test_reconcile_issue_state_routing`).
+- Real-tree sweeps read the working tree (`test_prose_dep_sweep_gate.py`, `test_symbol_cli_claim_sweep.py`, `test_research_triage.py::TestCorpusBaseline`, `test_caller_suitability_gate.py::TestFixtureLoopResidue`): keep all fixtures in the throwaway project.
 
 ### Documentation
-- None.
+- No doc edits needed. Cross-check references if a follow-up changes behavior: `docs/guides/LOOPS_REFERENCE.md` (`refine-to-ready-issue` entry), `docs/reference/COMMANDS.md` (`reconcile-issue`), `docs/reference/CLI.md` (`check-verify-verdict --directive-drift`), `docs/guides/EVALUATION_GUIDE.md` ("Reading the Signal").
 
-_Wiring pass added by `/ll:wire-issue`:_
-- No doc edits needed (evaluation only). Docs describing the path under test, for reference/cross-check if a follow-up changes behavior: `docs/guides/LOOPS_REFERENCE.md` (`refine-to-ready-issue` entry, ~line 195: flagged reconcile, one-reconcile budget, `DIRECTIVE_DRIFT_NON_CONVERGENCE`, `directive_drift_nonconvergence`), `docs/reference/COMMANDS.md` (`reconcile-issue`, ~line 305), `docs/reference/CLI.md` (`check-verify-verdict --directive-drift`). Methodology reference for results: `docs/guides/EVALUATION_GUIDE.md` ("Reading the Signal": N-sample, no early stop) [Agent 1/2 finding]
-- Results citation correction: `text_utils.classify_file_ref` returns `untracked_by_design` (not `stale`) for slash-qualified refs under `DEFAULT_UNTRACKED_BY_DESIGN` prefixes (`postmortems/`, `thoughts/`, `logs/`, `.loops/runs/`, `.loops/.history/`, `.loops/.running/`, `.loops/tmp/`, `.loops/diagnostics/`), and `check_format_gaps` only flags status `stale`. So backticked `postmortems/…` paths are safe under the default config; other untracked paths (e.g. other `.ll/` or `.loops/` subdirs) still raise blocking `stale_file_ref` [Agent 2 finding]
-
-### Configuration
-_Wiring pass added by `/ll:wire-issue`:_
-- `.ll/ll-config.json` (throwaway project, not this repo) — set `orchestration.host_cli` and `commands.confidence_gate.{readiness,outcome}_threshold` (needs readiness ≥ 85, outcome ≥ 65 after a reconcile rewrite clears scores) and `commands.max_refine_count`; a `history.db_path`/`LL_HISTORY_DB` choice decides whether `loop_runs` rows hit the shared DB [Agent 2 finding]
-- Frontmatter opt-outs for fixtures: `program_design_not_applicable: true` (`issues/program_design.py`), `behavior_parity_not_applicable: true` (checked only when a `ref_index` exists, `issue_parser.py`), `testable: false` (advisory, `_ADVISORY_GAP_CLASSES`) [Agent 2 finding]
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
-
-- **Repair path under test** (`scripts/little_loops/loops/refine-to-ready-issue.yaml`): `verify_issue` persists `verify_verdict` and `verify_evidence` to the issue's frontmatter; `route_pre_score_obligation` (via `ll-issues next-obligation`) maps `VERIFY:DIRECTIVE_DRIFT` and `ACCEPTANCE_CRITERIA` to `check_reconcile_limit`; `reconcile_issue` is the only state whose action carries `--from-verify-evidence`. There is no evidence file — the "evidence" is two frontmatter keys, cleared by `clear_verify_verdict` before every re-verify.
-- **Budget semantics**: `check_reconcile_limit` increments `refine-to-ready-reconcile-attempts` (seeded to 0 by `resolve_issue` in `${context.run_dir}`) and tests `lt target: 2`, so exactly one reconcile is admitted per run. The counter is shared with the `ACCEPTANCE_CRITERIA` route, so an AC-obligation reconcile earlier in a run consumes the same budget. A second entry routes to `check_gate_refine_limit`, whose `refine-to-ready-refine-count` is shared with `check_refine_limit` and `check_hedge_refine_limit`; an earlier `refine_followup` therefore shortens the post-reconcile retry path.
-- **Terminal signals to record**: success = `loop_complete` with `final_state: done` and `terminated_by: terminal`; failure = `final_state: failed` via `record_gate_unmet`, which echoes `[GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE]` only when the reconcile counter is >= 1 **and** `ll-issues check-verify-verdict <ID> --directive-drift` exits 0. The run record's legacy class stays `gate_unmet`; the marker lives in the echoed line and the record's `evidence_refs` (`directive_drift_nonconvergence`). Iteration count = `loop_complete.iterations` (global step count, `max_steps: 113`), not `iteration_count`.
-- **Where artifacts land**: `<loops_dir>/runs/refine-to-ready-issue-<stamp>/` (per-run counters, `run-records/refine-to-ready-issue/<ID>.json`), live state in `<loops_dir>/.running/`, archive in `<loops_dir>/.history/<started_at>-refine-to-ready-issue/` (`state.json`, `events.jsonl`). The history-dir timestamp differs from the instance id by a timezone shift. `ll-loop history refine-to-ready-issue [run_id] --json` reads the archive.
-- **Fixture constraints from B6** (`commands/verify-issues.md`, check B6): drift verdicts rank below `NON_VALID`, `EVIDENCE_UNVERIFIED`, `CLAIMS_OUTDATED` and `PROPOSAL_UNSOUND`, so a drift fixture must have every claim about current code true and a Proposed Solution that is neither TBD nor boilerplate (B6 is skipped otherwise). B6 is a judgment check, not a deterministic probe — the fixture can only make drift *likely*, so a run whose first verify does not yield `DIRECTIVE_DRIFT` is an invalid replay, not a pass or a fail.
-- **Contract the live runs check** (`commands/reconcile-issue.md`, "Source extension — `--from-verify-evidence`"): eligibility requires the flag, `verify_verdict` exactly `DIRECTIVE_DRIFT`, and non-empty `verify_evidence`. When eligible, reconcile may add/rewrite ACs and Implementation Steps and correct existing Integration Map entries; it must not add Integration Map entries, edit other sections, edit the verdict/evidence keys, or append a parallel corrected block. Behavior/API drift maps to an AC, fixture/mock invalidation to an Implementation Step with no invented AC, and context-only Tests/Documentation inventory to no requirement. A rewrite also clears confidence scores, so `confidence_check` must regenerate them before `done`.
-- **`ll-issues check-acceptance-criteria` is not a drift probe** (`scripts/little_loops/cli/issues/check_acceptance_criteria.py`): it only flags checkbox ACs matching a manual-verification phrase list (`temporarily`, `manually`, `by hand`, `verify by`, `visually confirm`, `check that … looks`), reads neither `verify_verdict` nor `verify_evidence`, and exits 0 on any AC set free of those phrases. The loop reaches it only through `next-obligation`, after the VERIFY tier. "AC-checker output" in this issue's acceptance criteria therefore means manual-phrase status; coverage/convergence is evidenced by the re-verify verdict and the final loop state.
-- **Invocation and isolation**: `ll-loop run refine-to-ready-issue <ID>` accepts only `NNN`, `TYPE-NNN` or `P<n>-TYPE-NNN` — not a file path (`resolve_issue_path` in `scripts/little_loops/issue_parser.py`). All paths derive from the cwd, so a throwaway git project (`.ll/ll-config.json`, `.issues/{bugs,features,enhancements,epics}/`, an initial commit, `.loops/` gitignored — the shape built by `_setup_project` in `scripts/tests/autodev_harness.py`) isolates the issue tree and run state; the built-in loop resolves without installing it there. `loop_runs`/usage rows still go to the shared history DB.
-- **Editable-install hazard**: every little-loops project here is `local-editable` against this checkout, so "unchanged code" means the main-tree working tree is not edited between the three runs; record the commit SHA and `git status` cleanliness once per batch. The harness helper `run_refine_to_ready` pins `PYTHONPATH` and strips `LL_AUTOMATION`, `LL_HOST_CLI` and `LL_HOOK_HOST`; a live run launched from an automation context inherits those ambient variables unless they are unset.
-- **Scripted coverage this complements** (`scripts/tests/test_bug3695_directive_drift_repair.py`): pins `target: 2`, `max_steps == 113`, the single-reconcile state order, evidence clearing, and the non-convergence marker with the `ac-only-drift` and `fixture-only-drift` scenarios. No test or fixture anywhere feeds a context-only Tests/Documentation inventory to a model; the context-only case in this issue has no prior fixture to reuse.
+### Contract under test
+`commands/reconcile-issue.md`, "Source extension — `--from-verify-evidence`": eligibility requires the flag, `verify_verdict` exactly `DIRECTIVE_DRIFT`, and non-empty `verify_evidence`. When eligible, reconcile may add/rewrite ACs and Implementation Steps and correct existing Integration Map entries; it must not add Integration Map entries, edit other sections, edit the verdict/evidence keys, or append a parallel corrected block. Behavior/API drift maps to an AC, fixture/mock invalidation to an Implementation Step with no invented AC, context-only Tests/Documentation inventory to no requirement. The shared `ACCEPTANCE_CRITERIA` action can receive the flag with a VALID verdict, which makes it ineligible; that refusal is what N1–N2 measure.
 
 ## Implementation Steps
 
-1. Create the fresh AC-only drift fixture, fixture-only/context-only variants, and a VALID-plus-stale-evidence fixture with no contradictory findings. Preserve each pristine fixture and record its hash, host/model and effective command source.
-2. Run three independent live runs of the AC-only fixture; capture run dirs, verdicts, edits, AC-checker output and iteration counts.
-3. Run the fixture-only and context-only variants once each.
-4. Run the direct flagged reconcile against the ineligible VALID fixture; assert ACs/Steps/Integration Map remain unchanged despite the leftover evidence. Restore fixture bytes before every independent trial.
-5. Record results and limitations here; investigate failures or capture focused follow-ups. Record separately whether a failure reflects model over-application, incomplete B6 enumeration or infrastructure freshness, rather than treating them as the same mechanism.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
-
-- Constraint on ordering: fixtures must be validated (first verify yields intended `DIRECTIVE_DRIFT` evidence) before any run is tabulated; the five runs themselves have no forced order, but the three AC-only runs must share one commit SHA and an unedited main tree.
-- Outcome per AC-only run: final state, `loop_complete.iterations`, reconcile attempt count, the AC/Step diff reconcile produced (diffable against the fixture copy), the re-verify verdict, and whether a `[GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE]` line fired. Verification: every cell traces to `events.jsonl` in the run's archive or to the fixture diff.
-- Outcome for the fixture-only run: the diff adds an Implementation Step addressing the fixture/mock invalidation and adds no AC. Outcome for the context-only run: the issue body is unchanged by reconcile (or the verify verdict is `VALID` without a reconcile) and no requirement derived from the inventory appears.
-- Outcome: results block written per the placement convention above, with a caveats line (n = 3 same-fixture runs, one model family, B6 is judgment-based so one fixture does not generalise) and any follow-up issue linked via `ll-issues link`.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the evaluation setup:_
-
-- Verify the effective command source before any run: diff `~/.claude/plugins/cache/little-loops/ll/1.166.0/commands/reconcile-issue.md` and `verify-issues.md` against the working tree; if the cache lacks the `--from-verify-evidence` carve-out / B6 evidence persistence, refresh or point the plugin at this checkout and record the resolved path and `gitCommitSha` in the results block. Re-check between trials (EPIC-3694 requirement)
-- Build every fixture in a throwaway git project (copy of `_setup_project` layout), committing the real source files the fixture cites (`Scenario.project_files` pattern) — `format-check` builds `ref_index` from `git ls-files`, so uncommitted/absent cited code classifies as `stale_file_ref` and sends `normalize_structure` to `format_issue_post`, spending the one format fallback
-- Pre-flight each fixture so the loop's pre-verify rewrites cannot erase the drift: write the fixture with all `format-check` sections, `refine-status` satisfied (no Session Log `/ll:refine-issue` entries beyond what is intended — only `/ll:refine-issue:gap-analysis` is exempt), no `decision_needed`, no manual-verification phrases in ACs (`manually`, `verify by`, … would spend the shared `refine-to-ready-reconcile-attempts` budget on the `ACCEPTANCE_CRITERIA` route first), and no open questions/placeholders (hedge/refine budget is shared with `check_refine_limit`)
-- Launch each run with a clean environment: `unset LL_AUTOMATION LL_HOST_CLI LL_HOOK_HOST` (or set deliberately), export `LL_HISTORY_DB` to a path inside the throwaway project, and record resolved model and host CLI version
-- Record the commit SHA and `git status` cleanliness of the main tree once per batch; run the `max_steps == 113` / `target: 2` pins before and after to prove "unchanged code"
-- Capture per run, from the archive (`ll-loop history refine-to-ready-issue <run_id> --json` and `<loops_dir>/.history/…/events.jsonl`) plus `<loops_dir>/runs/<instance>/refine-to-ready-reconcile-attempts` and `run-records/refine-to-ready-issue/<ID>.json` `evidence_refs`; diff the final issue against the byte-identical fixture copy; copy run dirs into the postmortems directory before deleting the throwaway project
-- Add the two cases EPIC-3694/BUG-3695 assign to this issue, or explicitly move them to a follow-up and remove them from those issues: VALID verdict with stale `verify_evidence` (reconcile must refuse to add directives) and the failed-clear/no-write limitation
-- Confirm no loop run on ENH-3718 is still `running` in the main tree's `.loops/.running/` before editing this file or tabulating runs
+1. Build the throwaway-project scaffolding, the command-source shim and snapshot, and run the preflight probe; abort if the override does not load the snapshot command.
+2. Author the AC-only, fixture-only, context-only and VALID-plus-stale fixtures per Fixture hygiene; preserve each pristine copy and record its hash.
+3. Validity-gate each fixture's first verify; freeze the real persisted evidence for the D/N fixtures. Discard and replace invalid replays (max 3).
+4. Run L1–L3, then D1–D4, then N1–N2, restoring pristine fixture bytes and rechecking the command source before every trial.
+5. Apply the decision rule, classify any failure by mechanism, write the results block here, copy run dirs to postmortems, and file focused follow-ups for failures (never raise `check_reconcile_limit`).
 
 ## Impact
 
 - **Priority**: P4 - evidence for an already-landed fix, not a defect
-- **Effort**: Small - five loop runs and one direct live negative invocation plus write-up
-- **Risk**: Low - model edits are isolated to restored throwaway fixtures
+- **Effort**: Medium - shim/snapshot setup and preflight, four fixtures, three loop runs (~20 iterations each) plus six direct reconcile calls, validity gating and write-up; model cost is nondeterministic, budget for replay replacements (cap 3)
+- **Risk**: Low - model edits are isolated to restored throwaway fixtures; the shim leaves the shared plugin cache untouched
 
 ## Acceptance Criteria
 
-- [ ] Three live AC-only-drift runs are recorded with verdicts, edits, checker output and iteration counts
-- [ ] Fixture-only drift adds a Step and no invented AC; a context-only inventory adds no requirement
-- [ ] A live flagged reconciliation with VALID and stale drift evidence leaves ACs/Steps/Integration Map unchanged; fixture hashes and host/model/command source confirm independent trials use the landed command
-- [ ] Any failed replay is investigated or has a focused follow-up; the reconcile budget is not raised
+- [ ] Command-source preflight passes and every trial's shim log shows the post-`8dbd00703` snapshot hash; main-tree HEAD/porcelain unchanged across the batch
+- [ ] Three validity-gated live AC-only runs recorded with verdicts, edits, iteration counts and attributed convergence (no `refine_followup` after the reconcile), judged under the pre-registered decision rule
+- [ ] Fixture-only direct calls add a Step and no invented AC; context-only direct calls add no requirement
+- [ ] Live flagged reconcile with VALID and stale drift evidence leaves ACs/Steps/Integration Map unchanged
+- [ ] Any failed or invalid replay is classified by mechanism, investigated or given a focused follow-up; the reconcile budget is not raised
 
 ## Scope Boundaries
 
-- Out of scope: changing `check_reconcile_limit`, adding a fallback budget, or a fail-closed clear/write protocol.
-- Known infrastructure limitation: `clear_verify_verdict` suppresses failures with `|| true`; if it fails and verify writes nothing, stale verdict/evidence can survive. The negative case tests the model's non-drift eligibility boundary, not that clear/write failure path. If live evaluation reproduces stale evidence consumption after a failed clear, capture a focused freshness bug with its run evidence; do not absorb that infrastructure repair into this evaluation or BUG-3695.
+- Out of scope: changing `check_reconcile_limit`, adding a fallback budget, a fail-closed clear/write protocol, any `host_runner` change, and modifying the shared plugin cache.
+- Known infrastructure limitation: `clear_verify_verdict` suppresses failures with `|| true`; if it fails and verify writes nothing, stale verdict/evidence can survive. N1–N2 test the model's non-drift eligibility boundary, not that path. ENH-3718 records the limitation only; if live evaluation reproduces stale-evidence consumption after a failed clear, capture a focused freshness bug with its run evidence rather than absorbing the repair here or into BUG-3695.
 
 ## Related Key Documentation
 
@@ -175,6 +185,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-10-03 | Priority: P4
 
 ## Session Log
+- Review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.80): NO-GO as written, GO after doc-only edits. Added the command-source shim/snapshot recipe with preflight, attributed-convergence success definition and pre-registered decision rule, three-part validity gate with replay cap, direct-call redesign of fixture-only/context-only/stale-evidence cases, launch/fixture hygiene; consolidated the stacked research/wiring blocks (kept wiring corrections for history DB and postmortems paths; dropped the stale `.running` claim, which is `completed`), narrowed the BUG-3695 handoff, effort Small -> Medium.
 - `/ll:confidence-check` - 2026-10-04T00:45:05 - `1f4ee23d-eb5f-434e-8716-2e767906926a.jsonl`
 - `/ll:wire-issue` - 2026-10-04T00:42:05 - `36756883-95b1-4883-8685-67496417190f.jsonl`
 - Review - 2026-10-03 - Added Opus-recommended live ineligible-flag/stale-evidence case (confidence 0.80), pristine-fixture restoration and effective command-source verification; corrected the evaluation's read-only claim. Model compliance remains unmeasured until these trials run.
