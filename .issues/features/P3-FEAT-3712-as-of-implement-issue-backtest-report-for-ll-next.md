@@ -3,7 +3,7 @@ id: FEAT-3712
 type: FEAT
 title: As-of implement-issue backtest report for ll-next
 priority: P3
-status: open
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:45:16Z'
@@ -18,7 +18,7 @@ relates_to:
 
 ## Summary
 
-Produce a reproducible historical **choice-agreement** report for ll-next's within-type implement-issue ranking: hit@3 and MRR versus the existing next-issue ranking rule and a priority-only baseline, with explicit sample coverage, temporal cutoffs, origin uncertainty and paired uncertainty estimates. A **diagnostic report**, not a metric suite assertion, pass/fail gate or proof that the recommendations improve project outcomes. At n ≤ 50 the hit@3 bootstrap interval is roughly ±0.15 or wider; treat results as descriptive. **Gated by a feasibility probe (step 0 below).**
+Original proposal: produce a reproducible historical **choice-agreement** report for ll-next's within-type implement-issue ranking: hit@3 and MRR versus the existing next-issue ranking rule and a priority-only baseline, with explicit sample coverage, temporal cutoffs, origin uncertainty and paired uncertainty estimates. A **diagnostic report**, not a metric suite assertion, pass/fail gate or proof that recommendations improve project outcomes. Interval width depends on observed choices/sample dependence; a small sample is descriptive evidence, not a fixed precision guarantee. **The pre-implementation source audit failed: no structured source supplies the required clean recorded base paired with confirmed-manual choice provenance. This implementation is cancelled; the design below is retained for a future evidence-backed proposal.**
 
 ## Current Behavior
 
@@ -94,7 +94,7 @@ New report entry point → existing backend `connect_readonly` for bounded label
 
 ## Implementation Steps
 
-0. **Feasibility probe (go/no-go).** After FEAT-3561 lands, run one read-only SQL query (as a spike or first step) counting orchestration-free, clean-base (`base_dirty=false`) confirmed-manual implementation picks in `history.db`. Proceed only if there are roughly **30 or more** such samples; otherwise record the count and close/defer this issue as insufficient evidence rather than building the reconstruction machinery. Record the probe result in the issue.
+0. **Pre-implementation source audit (go/no-go; does not require FEAT-3561).** First identify a source for affirmative manual origin and a source for the **same choice's** recorded `base_sha`/`base_dirty=false`; absence of an orchestration match proves neither. Inspect schema/producer contracts, then count exact parsed implementation requests and independently report proven clean/manual pairs. No source is distinct from a source with zero qualifying choices. Reviewed manifest annotations may establish origin only with explicit evidence, and cannot invent a clean base. Proceed only with **at least 30** defensible pairs under the clean-base primary policy; proxy-only/orchestrated evidence does not pass. On no-go, record evidence and mark `cancelled`, resolving the epic child without building reconstruction machinery. Do not use nonterminal `deferred` or create a provenance/collection subsystem in this issue. Audit result is recorded in Resolution below.
 1. Implement after FEAT-3561 (and a passing probe); pin snapshot/label/origin/candidate-population contracts and the manifest format with synthetic data first.
 2. Implement batch git reconstruction and pure ranker adapters; prove feature and label cutoff separation with a later score/config/status mutation fixture.
 3. Implement deterministic sample selection, frozen label inputs, coverage/censoring tables, metrics and paired intervals.
@@ -139,7 +139,27 @@ A maintainer reruns the same saved manifest after an implement-issue weight chan
 - 2026-10-03: Pre-implementation/Opus review added decision-aligned samples, fixed label horizons, exact/proxy snapshot distinctions, unknown origin, common-population comparisons, frozen history inputs, exclusion coverage and paired uncertainty. Kept the backtest pressure-free and independent of FEAT-3711.
 - 2026-10-03: Follow-up review pinned shared pure argument parsing, baseline stable-tie order after find_issues' priority/ID presort, explicit proxy ancestry/secondary-only comparisons, per-source follow-up uncertainty and separate frozen-sample/evaluation identities. Kept sample-bootstrap intervals descriptive without adding a tuning or statistical framework.
 - 2026-10-04: Opus epic review (0.78): added the feasibility go/no-go probe (≥~30 clean-base confirmed-manual samples), the orchestrated-label circularity caveat, two origin strata instead of three, diagnostic framing (bootstrap width at n≤50), `git cat-file --batch` reconstruction and an explicit as-of filter on history-derived axes.
+- 2026-10-04: Follow-up code/schema audit and Opus critique (0.78) found the probe's required provenance/base pair unavailable in the current producers. Ran the source audit before core implementation, made the threshold exact and the no-go status terminal, and retained the report design without implementing a proxy-only substitute.
+
+## Resolution
+
+**Cancelled — insufficient source evidence, 2026-10-04.** This is a source-contract no-go, not a claim that no manual implementation choices occurred. No report tool or reconstruction machinery was implemented.
+
+Read-only audit of the source checkout's existing local history store (schema 58):
+
+| Source | Observed evidence | Missing requirement |
+|---|---|---|
+| `skill_events` | 143 canonical manage-issue request rows; 52 have exactly the three implementation-shaped arguments under the existing bug/fix, feature/implement, enhancement/improve grammar; 91 are other/ambiguous requests. No rows reached the 200-character capture boundary in this count. | No choice-level `base_sha`/`base_dirty` or affirmative manual-origin field. The 52 are an upper bound on possible labels, not confirmed-manual samples; dedup/origin checks could reduce them. |
+| `sessions` | Columns are session_id, jsonl_path, started_at, project_path. | No entrypoint/query_source/manual discriminator or clean-base stamp. Session membership/path alone cannot distinguish interactive from orchestrated choices. |
+| `orchestration_runs` | At the audit query: 745 ll-auto rows (370 clean recorded bases), 20 ll-sprint rows (8 clean recorded bases). | These are affirmative orchestrated picks; their clean bases cannot be attached to unrelated skill requests to manufacture manual samples. |
+| `hook_events` / generic transcript rows | Hook events carry head/branch; raw/message event tables carry session/source/content. No reviewed sample manifest was supplied. | Head/branch/content alone is not a choice-bound clean-base stamp. No raw transcript mining or retrospective annotation was used to substitute for the specified structured evidence. |
+
+The schema/producer audit establishes **0 provable clean-base confirmed-manual pairs from the currently supported structured sources**, against the required 30. Origin and base quality of the 52 implementation-shaped requests remain unknown; this is not an observed count of zero manual choices. Store counts can change as concurrent tooling runs, while the missing source fields remain the blocking fact.
+
+Reproduction: inspect `PRAGMA table_info(skill_events)`, `sessions`, `orchestration_runs` and `hook_events`; count canonical manage-issue rows and strictly parse only complete three-token implementation requests; group orchestration rows by driver and count non-null base_sha with base_dirty=0. `session_store/schema.py` documents the dequeue-time base stamp specifically on orchestration_runs. All access used `backend.connect_readonly(..., timeout=0.25)` with no backfill/migration or live worktree reconstruction.
+
+Revisit only when a declared source supplies at least 30 confirmed-manual, choice-bound clean recorded bases, or a separately reviewed proposal changes the primary evidence policy. Proxy-only retrospective choices and recommendation acknowledgements do not satisfy this issue's retained contract. The epic may close with this recorded no-go instead of a diagnostic report.
 
 ## Status
 
-**Open** | Created: 2026-10-03 | Priority: P3
+**Cancelled** | Created: 2026-10-03 | Priority: P3 | Source-audit no-go: 2026-10-04

@@ -74,7 +74,7 @@ ENH-3723 is linked through `relates_to` and is required before reader cutover/cl
 ## Acceptance Criteria
 
 - [ ] An ordered repeated-message-ID fixture changes input/output/cache values and finishes with a valid record. Apply ENH-3663's proved replacement-versus-distinct-request rule: no duplicate sum and no frozen earlier value. Incremental derive, repeated refresh and full rebuild agree on final values and observation counts.
-- [ ] Malformed/in-progress updates make freshness stale/unknown; a valid finalized update followed by successful derive restores the correct qualified reader result. Generic field-preservation checks must not permanently reject a legitimate counter revision.
+- [ ] Malformed/in-progress updates make freshness stale/unknown while retaining the last committed observations; a valid finalized update followed by successful derive restores the correct qualified reader result. Use EPIC-3562's source retention and freshness rule: missing or unreadable originals do not retract recorded consumption or produce a fresh zero. Generic field-preservation checks must not permanently reject a legitimate counter revision.
 - [ ] Runtime matching, unmatched provider, absent provider/version, unproved version, and unproved identity fixtures enforce the evidence-backed qualification policy. Unsupported versions/providers cannot inherit a measured host-level verdict; diagnostics explain audit-only/unavailable results.
 - [ ] Ingest-time qualification evidence survives on `raw_events`; incremental derive, full rebuild, and later CLI/provider changes produce the same qualified or unknown disposition without promoting old rows.
 - [ ] Before reader cutover/closeout, ENH-3723's selected eligibility policy and this host's source/snapshot/session-reader parity cases pass, including partial/mismatch rows and any documented stricter measured-only rate rule.
@@ -118,4 +118,7 @@ ENH-3723 is linked through `relates_to` and is required before reader cutover/cl
 
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-04 - Aligned update failures and source disappearance with the epic's retained-history/stale-freshness rule. Existing repeated-ID identity and valid-update recovery gates remain in place.
+
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:02 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`

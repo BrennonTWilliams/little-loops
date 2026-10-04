@@ -57,7 +57,7 @@ One helper maps `HistoryUnsupported` to `<prog> <sub>: <safe reason>` on stderr 
 
 ### Docs and exit codes
 
-- Update the `ll-ctx-stats` / `ll-harness` epilog "Exit codes" text, and tell the model what a refusal exit 1 means in `skills/analyze-history/SKILL.md` and `skills/create-eval-from-issues/SKILL.md`; regenerate the `.gemini/`, `.qwen/`, `.kimi-code/` mirrors with `ll-adapt --host <gemini|kimi-code|qwen> --apply`.
+- Update the `ll-ctx-stats` epilog and `ll-history` CLI reference "Exit codes" text, and tell the model what a refusal exit 1 means in `skills/analyze-history/SKILL.md` and `skills/create-eval-from-issues/SKILL.md`; regenerate the `.gemini/`, `.qwen/`, `.kimi-code/` mirrors with `ll-adapt --host <gemini|kimi-code|qwen> --apply`. ENH-3700 owns all `ll-harness` wording, including its existing retry/baseline validation failures.
 - Create the single reader-support table in `docs/reference/CONFIGURATION.md` "Remote history backend", linked from `docs/reference/CLI.md`. Refused rows say **"not supported with a remote backend"** with no promise of a follow-up. Add one sentence: "context-pressure and handoff rows are not recorded under a remote backend." ENH-3700 adds its serve/degrade rows to the same table.
 - Keep `loops/lib/cli.yaml` `ll_history_summary` description non-empty. Keep `test_wiring_reference_docs.py` and `test_docs_audience_gate.py` green; cite `little_loops.<module>` in prose, no `scripts/tests/` paths. Reader text is a first mention everywhere and must not contradict the write-side "telemetry is skipped silently" wording at `CONFIGURATION.md:738`.
 
@@ -74,8 +74,12 @@ Remote-backend users hit an unhandled traceback from `ll-history`, `ll-logs` and
 
 1. **Boundary helper** (one function, wired into `main_history`, `main_logs`, `main_ctx_stats`, `main_messages`), catching `HistoryUnsupported` only.
 2. **Refuse sites** per the verdict table; they rely on the existing pre-resolve's `HistoryBackendNotLocal`. For `_cmd_stats`/`_cmd_dead_skills`, resolve before building the hand-made path so a remote target refuses instead of creating a shadow DB.
-3. **MCP `history_search`**: confirm the structured `is_error` names the operation and uses `project_root`.
+3. **MCP `history_search`**: map the unsupported pre-resolve to the shared fixed safe reason naming `history_search`, before `handle_call_tool`'s generic `str(exc)` serialization. The resolver's current operation is `resolve_history_db`, which does not identify the requested tool. Preserve structured `is_error` and use `project_root`.
 4. **Docs, epilog and skill wording, mirrors** as above.
+
+### Project-root and entry-point contract
+
+Every default read uses the root selected by the command: thread `root=project_root` through `main_history`'s pre-resolves (including the summary branch prepared for ENH-3700), and use the selected `--cwd` root for logs eval-export. A default-shaped absolute path alone does not supply resolver root context. Test remote owning root/local foreign cwd and local owning root/remote foreign cwd; preserve `history.db_path` and `LL_HISTORY_DB` local overrides. These changes do not alter `_resolve_once` or the reader opener contract.
 
 ## Integration Map
 
@@ -89,7 +93,7 @@ Remote-backend users hit an unhandled traceback from `ll-history`, `ll-logs` and
 
 ### Tests
 - New: one **parametrized** refusal test over the refused sites, including `main_messages` under `--sft-format --reader db` (exit 1, `<prog> <sub>:` prefix, `libsql` in stderr, `"Traceback" not in err`, no reader requests) plus a local twin. Disable CLI analytics capture for the request-count assertion (`LL_ANALYTICS_CAPTURE=0`), or separate reader requests from legitimate remote `cli_events` writes. `_cmd_stats`/`_cmd_dead_skills` refuse without creating a local `.ll/history.db` (assert absence). Where a CLI defines `--db` (`ll-ctx-stats`), that explicit path stays local; `LL_HISTORY_DB` keeps its local override. MCP refusal names the operation and resolves config against `project_root` (remote config at `project_root` + foreign cwd).
-- Use the hoisted `remote` fixture from ENH-3677 (must `delenv("LL_HISTORY_DB")` to override the autouse `conftest._isolate_history_db`); test `main_*([...])`, not `cmd_*`.
+- Use the hoisted `remote` fixture from ENH-3677 (must `delenv("LL_HISTORY_DB")` to override the autouse `conftest._isolate_history_db`). Test the public boundary: `main_history()`, `main_logs()` and `main_messages()` take no `argv`, so monkeypatch `sys.argv`; `main_ctx_stats(argv=None)` accepts a list. Seed sessions/transcripts for eval-export and SFT so discovery actually reaches the DB read. Assert the named refusal, not merely exit 1 from an earlier missing-session branch. Exercise the registered MCP `handle_call_tool`, not only `_tool_history_search`.
 - Keep green: `test_enh3549_codex_stored_ctx_stats.py` (`err == ""`), `test_enh3656_stored_cache_rate.py`, `test_libsql_backend.py::test_resolve_history_db_raises_for_the_remote_target` (fix stays at call sites, not `resolve_history_db`), `test_history_store_chokepoint_gate.py` (no raw `sqlite3.connect`), `test_feat3410_workspace_quality.py`/`test_feat3445_workspace_activity.py` (literal `"history.db not found"`), `test_ll_logs.py` index-sensitive stderr tests, `test_cli_messages.py`, `test_bug_3216_telemetry_digest_invocations.py`, `test_adapt_skills_for_codex.py`, `test_verify_skill_prose.py`, `test_enh494_skill_companions.py`.
 
 ### Documentation
@@ -103,7 +107,7 @@ Remote-backend users hit an unhandled traceback from `ll-history`, `ll-logs` and
 
 ### Signatures
 
-- `main_history() -> int` — CLI boundary; maps `HistoryUnsupported` to `<prog> <sub>: <safe reason>` on stderr and returns 1 (same for `main_logs`, `main_ctx_stats(argv=None)`, `main_messages` for explicit DB reads).
+- `main_history() -> int`, `main_logs() -> int`, `main_messages() -> int` — zero-argument CLI boundaries; `main_ctx_stats(argv=None) -> int` accepts argv. Map `HistoryUnsupported` to the program/operation's fixed safe reason on stderr and return 1. `ll-messages` and `ll-ctx-stats` have no subcommand: use `ll-messages sft` and `ll-ctx-stats` respectively as stable operation labels rather than inventing a parsed subcommand.
 
 ### Call Path
 
@@ -138,7 +142,8 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 - [ ] Every refuse site in the verdict table, including `ll-messages --sft-format --reader db`, is covered by one parametrized remote-stub test (exit 1, `<prog> <sub>:` prefix, `libsql` in stderr, `"Traceback" not in err`, no reader requests when analytics capture is disabled) plus a local twin.
 - [ ] The boundary helper catches `HistoryUnsupported` only, never bare `HistoryError`, and no endpoint token appears in any refusal.
 - [ ] `logs` `_cmd_stats`/`_cmd_dead_skills` refuse under remote without creating a local `.ll/history.db`; `"No history.db found"` is unchanged (invariant test).
-- [ ] MCP `history_search` refusal names the operation and resolves config against `project_root` (remote config at `project_root` + foreign cwd test).
+- [ ] MCP `history_search` refusal names the operation and resolves config against `project_root`; the registered handler returns `is_error` with a fixed safe reason even when the caught exception contains endpoint/token/SQL canaries.
+- [ ] `ll-history --config` and logs eval-export's selected `--cwd` use their owning root with a foreign cwd in both directions; config/env local overrides are preserved and no foreign `.ll/history.db` is created.
 - [ ] Where a CLI defines `--db`, that explicit path remains local; `LL_HISTORY_DB` keeps its local override at applicable sites.
 - [ ] The support table exists in `CONFIGURATION.md`, refused rows read "not supported with a remote backend" (no follow-up promised), and it includes "context-pressure and handoff rows are not recorded under a remote backend"; epilog exit codes and the two skills describe the refusal exit 1; mirrors regenerated.
 - [ ] With the default local store `python -m pytest scripts/tests/` passes unchanged.
@@ -161,9 +166,10 @@ _Cleared 2026-10-02 after the split into 3657a (this issue) and ENH-3700 (3657b)
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): Exit-code wording vs ENH-3700: epilog and CLI.md "Exit codes" edits here cover `ll-ctx-stats` and `ll-history` only. `ll-harness` serves under a remote backend and never exits 1 for it — its wording belongs to ENH-3700.
+**Ownership:** epilog and CLI.md "Exit codes" edits here cover `ll-ctx-stats` and `ll-history` only. ENH-3700 owns `ll-harness` serving and its existing fail-closed retry/baseline validation behavior; this issue adds no remote-backend refusal there.
 
 ## Session Log
+- EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - root propagation, public-boundary tests and safe MCP refusal amended; implementation not performed
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:04 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:advise` (Opus, EPIC-3693 children review) + split into ENH-3657 / ENH-3700 - 2026-10-02
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:25 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`

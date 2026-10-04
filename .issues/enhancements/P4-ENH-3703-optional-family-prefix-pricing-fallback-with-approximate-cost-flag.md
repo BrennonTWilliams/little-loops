@@ -131,4 +131,8 @@ Only after the decision, add a separate approximate estimator/result used by `Co
 
 ## Status
 
-**Open** | Created: 2026-10-02 | Priority: P4
+**Deferred** | Created: 2026-10-02 | Priority: P4
+
+## Session Log
+
+- Pre-implementation epic review - 2026-10-04 - Aligned the body status with the existing human-deferred frontmatter. Retained the optional footer-first implement/cancel decision; no fallback or scope change is approved.

@@ -59,7 +59,7 @@ Cache-hit/write semantics need a caching-capable provider. A local storage-tree 
 
 ## Acceptance Criteria
 
-- [ ] Capture the native lifecycle of a usage-bearing part from partial write to final/revised values, including observed add/delete or rewrite behavior where supported. Give ENH-3671 the evidence-backed replacement/identity rule and the real storage layout; do not assume a JSONL append-only contract.
+- [ ] Capture the native lifecycle of a usage-bearing part from partial write to final/revised values, including observed add/delete or rewrite behavior where supported. Give ENH-3671 the evidence-backed replacement/identity rule and the real storage layout; do not assume a JSONL append-only contract. Classify whether the native store distinguishes authoritative retraction from retention, compaction or source disappearance. If that distinction is unproved, record it as unknown and specify that ENH-3671 must retain recorded usage and mark current-source freshness stale/unknown; proof of a retraction signal is not a new closeout prerequisite.
 - [ ] The ENH-3671 handoff identifies a captured provider/version-qualified contract and an evidenced exact-version or compatibility rule, with matching and mismatch/absent-identity fixtures. Runtime values come from a verified native source; missing evidence remains audit-only/unavailable rather than inheriting a host-wide supported verdict.
 - [ ] Save a sanitized, versioned native capture with a tool call, resume, and matching live/stored parts; document which cache-hit/write and retry/compaction cases were actually observed.
 - [ ] Preserve a sanitized, parser-ready fixture in the native session/message/part storage-tree layout, with the project-directory mapping and storage-root rule. A test extracts its step-finish token fields and checks parity with the existing reduced JSONL excerpt; only the tree fixture is eligible for production-discovery tests.
@@ -118,3 +118,7 @@ Include a matching fixture and unmatched-provider, unsupported/unproved-version,
 ## Status
 
 **Open** | Created: 2026-09-29 | Priority: P3
+
+## Session Log
+
+- Pre-implementation epic review - 2026-10-04 - Clarified the mutable-source handoff after the Opus critique: classify authoritative retraction separately from source loss; absent retraction evidence defaults to retaining recorded usage with stale/unknown freshness. This optional retraction classification does not expand the evidence closeout gate.

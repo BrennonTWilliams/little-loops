@@ -17,14 +17,14 @@ relates_to:
 
 ## Summary
 
-Deliver `ll-next`, an advisory CLI that recommends the next project action across a fixed menu of verbs (implement, refine, resolve-blocker, run-loop, run-sprint, capture-issues) using auditable, deterministic scoring. Split out of FEAT-3561 after an Opus pre-implementation review (2026-10-03), then slimmed by a second Opus epic review (2026-10-04): core CLI first, then a shared read-only history reader, recommendation events with explicit acceptance, a diagnostic choice-agreement backtest (feasibility-gated), and extra generators. Default output gives each available verb a first-round opportunity.
+Deliver `ll-next`, an advisory CLI that recommends the next project action across a fixed menu of verbs (implement, refine, resolve-blocker, run-loop, run-sprint, capture-issues) using auditable, deterministic scoring and explicit eligibility evidence. Split out of FEAT-3561 after an Opus pre-implementation review (2026-10-03), then slimmed by further Opus reviews (2026-10-04): core CLI first, then a shared read-only history reader, recommendation events with explicit acceptance and extra generators. The historical backtest was cancelled after its source audit found insufficient clean-base confirmed-manual evidence. Default output gives each available verb a first-round opportunity; capture-issues is an activity-gated singleton with freshness unknown, rather than an invented freshness score.
 
-**Closure criterion:** `ll-next` ships for six verbs with documented gates, coverage, unavailable-data behavior and exit codes; recommendation events and explicit acknowledgements never fabricate ignored labels; a reproducible as-of implement-issue choice-agreement **diagnostic** report (if its feasibility probe passes; otherwise recorded as insufficient evidence) includes origin uncertainty and sample coverage. `--execute`, learned weights, LLM reranking, activity pressure/automatic attribution (FEAT-3722) and the three finding-backed verbs are out of scope.
+**Closure criterion:** `ll-next` ships for six verbs with documented gates, per-verb coverage/evidence-only behavior, unavailable-data behavior and exit codes; recommendation events and explicit acknowledgements never fabricate ignored labels and require project ownership/existing schema; the core checkpoint and six-verb command-usability checks are recorded. FEAT-3712's source-audit no-go supplies the permitted insufficient-evidence outcome instead of a diagnostic report. `--execute`, learned weights, LLM reranking, activity pressure/automatic attribution (FEAT-3722), scan-age/freshness telemetry and the three finding-backed verbs are out of scope.
 
 ## Impact
 
 - **Priority:** P3 — project-wide decision support; advisory only.
-- **Effort:** Large across five slices; each independently reviewable.
+- **Effort:** Large across four active slices; each independently reviewable.
 - **Risk:** High — persuasive but wrong rankings from stale signals. Mitigated by lower-bounded curves, explicit missing-data states, unknown-not-ignored acceptance, and a go/pause check after the core.
 - **Breaking Change:** No; existing `next-*` CLIs are untouched.
 
@@ -33,7 +33,7 @@ Deliver `ll-next`, an advisory CLI that recommends the next project action acros
 - **FEAT-3561** — `ll-next` core: advisory CLI, four generators, gates/coverage, round-robin fill (open; blocked by FEAT-3681)
 - **FEAT-3721** — shared read-only `HistorySnapshot` reader, local-only (open; blocked by FEAT-3561)
 - **FEAT-3711** — recommendation events, `accept`/`feedback` explicit acceptance (open; blocked by FEAT-3561 and FEAT-3721)
-- **FEAT-3712** — As-of `implement-issue` backtest diagnostic report, gated on a feasibility probe (open; blocked by FEAT-3561)
+- **FEAT-3712** — As-of `implement-issue` backtest diagnostic report (**cancelled**; pre-implementation source audit: no supported structured source supplies the required clean recorded base paired with confirmed-manual choice provenance; full design retained)
 - **FEAT-3713** — capture-issues and run-sprint generators (open; blocked by FEAT-3561 and FEAT-3721)
 
 ## Goal
@@ -42,7 +42,7 @@ A user can ask "what should I do next?" and get a short, legible, evidence-backe
 
 ## Scope
 
-Five children. The core owns the CLI/output Schema, pure snapshot/scoring (lower-bounded curves, no coverage multiplier) and round-robin fill with no history access/writes; it ends with a walking-skeleton usefulness check against `ll-issues next-issue`. FEAT-3721 owns the shared local-only reader. The events child owns the only history migration. The backtest is independent of the events child and starts with a feasibility probe; extra generators reuse the reader and no longer depend on the events child.
+Five linked children: four open, one cancelled. The core owns the CLI/output Schema, pure snapshot/scoring (lower-bounded curves at nominal defaults, no coverage multiplier) and round-robin fill with no history access/writes; it ends with an implement-ranking comparison plus mixed-verb usefulness checkpoint. FEAT-3721 owns the shared local-only reader with bounded primary-key walks, exact recommendation lookups and explicit 250 ms read-lock waits; it does not promise unavailable indexes or a total deadline. The events child owns the only history migration and a narrow existing-store no-ensure write seam; normal recommendations never initialize/migrate history. Extra generators reuse the reader without depending on events: sprint ranking plus an activity-only scan offer with unknown freshness. Backend-wide deadline machinery remains ENH-3720.
 
 ## Detached / deferred (not children; `relates_to` this epic)
 
@@ -54,7 +54,11 @@ Five children. The core owns the CLI/output Schema, pure snapshot/scoring (lower
 
 ## Implementation order
 
-FEAT-3681 → FEAT-3561 (walking-skeleton check: continue or pause) → { FEAT-3721, FEAT-3712 (probe first) }; FEAT-3721 → { FEAT-3711, FEAT-3713 }. FEAT-3711 claims the next free history schema version at implementation time (currently 58 → 59 if still free). ENH-3678/ENH-3679 are done and supply rebuild gating/short-timeout seams; the recommendation writer must explicitly use those seams (v1 local-only; the remote deadline seam is ENH-3720).
+FEAT-3681 → FEAT-3561 (walking-skeleton checkpoint and recorded go/pause decision for all follow-ons) → FEAT-3721 → { FEAT-3711, FEAT-3713 }. FEAT-3712's source audit already ran independently of core implementation and cancelled that slice. FEAT-3711 claims the next free history schema version at implementation time (currently 58 → 59 if still free). ENH-3678/ENH-3679 are done and supply rebuild gating/per-lock timeout seams; readers must pass their own 250 ms timeout explicitly, and recording must avoid implicit schema setup. Deliberate initialization uses existing `ll-session migrate`; remote history/deadline work is ENH-3720.
+
+## Review Notes
+
+- 2026-10-04: Code/schema audit plus `/ll:advise` with Opus (confidence 0.78) corrected failing curve-factor defaults, impossible index/deadline promises, missing project ownership and source/coverage handoffs. Removed unused scan-freshness/weight machinery and producer-registration leftovers. All five original children remain linked for progress accounting; FEAT-3712 is terminally cancelled with a recorded source-contract no-go, avoiding a deferred child that would strand closure.
 
 ## Status
 

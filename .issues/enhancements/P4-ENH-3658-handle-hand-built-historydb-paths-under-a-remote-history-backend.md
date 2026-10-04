@@ -57,13 +57,21 @@ A remote backend should not look like an empty local database. These paths bypas
 ## Proposed Solution
 
 1. At each of the five Python call sites, resolve the default path using the owning project's root. Branch on `RemoteTarget` before `is_file()`, `stat()`, or snapshot export. For `cmd_dashboard`, keep the existing `snapshot_export` refusal operation; no new `_REMOTE_REFUSALS` or `_REJECTED` entry is needed.
-2. Guard `--trim` in `main_doctor` using its existing `_remote_target()` pattern. Leave `collect_trim_report` / `doctor_trim.py` local-only. Add one shared unavailable-reason value consumed by the serve route, page factory, and loop `--serve` render.
+2. Guard `--trim` in `main_doctor` using its existing `_remote_target()` pattern. For a local target, pass the resolver's returned Path to the existing `collect_trim_report(..., db_path=...)` parameter; otherwise a redirected `LL_HISTORY_DB` would still be ignored. Leave `doctor_trim.py` local-only. Add one shared unavailable-reason value consumed by the serve route, page factory, and loop `--serve` render.
 3. Replace the `skills/update-docs` literal-path existence check with target-aware behavior. Add a pytest hazard gate over `skills/`, `commands/`, `loops/*.yaml`, and `hooks/` for executable `history.db` existence tests and `resolve_history_db()` calls, with reasoned allowlist entries. This issue is no longer `blocked_by` ENH-3657/ENH-3700 (2026-10-02 Opus review): it never edits `session_store/backend.py`, and its five Python sites classify with `resolve_history_store`, not the central guard. CT-0 (`skills/improve-claude-md/SKILL.md` ~L206-209) calls `resolve_history_db()` directly, so the gate flags it until ENH-3700 switches it to `resolve_history_store`: add a **temporary** allowlist entry for CT-0 that ENH-3700's PR removes. Add a **permanent** allowlist entry for `context-monitor.sh` with the reason "remote writes intentionally skipped (ENH-3680 cancelled)". Do not flag the bare string in prose.
 4. Add remote-stub tests and local twins, then update the remote-history support docs with end-user wording.
 
+### Preserve explicit snapshot-target intent through export
+
+`cmd_dashboard --db` is an explicit local override even when it names `.ll/history.db` (relative or absolute). Record this intent as `LocalTarget`, keeping a separate local Path for filesystem operations. `session_store.queries.build_snapshot_db` currently calls `refuse_on_remote(db, "snapshot_export")` and then `Path(db)`: passing the plain default-shaped Path downstream would reclassify the explicit local override as remote. Extend this snapshot-only seam to accept `Path | LocalTarget`, refuse before unwrapping, and carry the already-classified local target through `build_dashboard_html` / `build_history_payload` to that seam. Do not change the remote refusal or `_resolve_once` contract, and do not broaden the history-reader package's signatures in this issue. Test both default-shaped `--db` forms and a non-default file under remote config with real snapshot content.
+
+### Render an unavailable history panel without doing snapshot work
+
+The remote page needs a renderer path, not only a precheck at its caller: add an optional safe unavailable reason to `ServeContext`, skip `build_history_payload` and history SQL initialization/polling in that branch, and populate the template's required data keys in every branch (`StrictUndefined`). Render the notice through the existing escaping rules and preserve SSE/interaction regions. An explicit 501 received by an already-running client sets an unavailable flag, cancels its interval and returns before gunzip/instantiate; later queued ticks must check the flag before fetching. Local snapshots and retryable failures keep their existing behavior.
+
 ## Scope Boundaries
 
-- **In scope:** the five Python call sites, the `main_doctor` guard, `skills/update-docs`, the narrow hazard gate, tests and user-facing docs.
+- **In scope:** the five Python call sites, renderer unavailable branch/501 client, snapshot-local provenance through export, the `main_doctor` guard and existing `db_path=` override, `skills/update-docs` and mirrors, the narrow hazard gate, tests and user-facing docs.
 - **Out of scope:** `context-monitor.sh` behavior (ENH-3680, cancelled: remote writes stay skipped); `cli/logs.py` readers (ENH-3657) and CT-0 behavior (ENH-3700); `workflow_sequence/io.py` (correct JSONL fallback); `doctor_trim.py` internals; remote snapshot export itself.
 
 ## Behavior Parity
@@ -75,8 +83,8 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 ### Files to Modify
 
 - `scripts/little_loops/cli/artifact/serve.py` (`make_history_route`, `_make_page_html_factory`), `scripts/little_loops/templates/dashboard.llat/template.html.j2` (`refreshHistory`, polling interval handle, unavailable status), `cli/artifact/dashboard.py`, `cli/doctor.py`, `cli/loop/run.py` (`cmd_run --serve` dashboard render; locate by function, not the old `:691` anchor).
-- The shared serve/dashboard reason constant or `ServeContext` field, `skills/update-docs/SKILL.md`, one pytest hazard-gate test, and remote/local tests in `test_feat3323_sse_bridge.py`, `test_feat3304_artifact_dashboard.py`, `test_remote_doctor.py` / `test_cli_doctor_trim.py`, plus a `cmd_run --serve` render test.
-- `docs/reference/CONFIGURATION.md` and `docs/reference/CLI.md`; pin new user-facing strings in `test_wiring_reference_docs.py` and keep `test_docs_audience_gate.py` green. No generated `site/` copies are edited directly.
+- The shared serve/dashboard reason constant or `ServeContext` field, `session_store/queries.py` (`build_snapshot_db` local-target provenance), `skills/update-docs/SKILL.md` and regenerated `.gemini/`, `.kimi-code/`, `.qwen/` mirrors (`ll-adapt --host <gemini|kimi-code|qwen> --apply`), one pytest hazard-gate test, and remote/local tests in `test_feat3323_sse_bridge.py`, `test_feat3304_artifact_dashboard.py`, `test_remote_doctor.py` / `test_cli_doctor_trim.py`, plus a `cmd_run --serve` render test.
+- `docs/reference/CONFIGURATION.md` and `docs/reference/CLI.md`; pin new user-facing strings in `test_wiring_reference_docs.py` and keep `test_docs_audience_gate.py` green. Add/update this slice's rows in the single support table even if ENH-3657 has not landed; integrate rows without replacing siblings' entries. No generated `site/` copies are edited directly.
 
 ### Dependent Files and Similar Patterns
 
@@ -91,7 +99,9 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 ### Signatures
 
-- `resolve_history_store(path: Path | str, *, root: Path) -> Path | RemoteTarget` — classifies against the owning project.
+- `resolve_history_store(path: Path | str | HistoryTarget | None = None, *, root: Path | None = None) -> Path | RemoteTarget` — classify defaults against the owning project; typed `LocalTarget` preserves explicit intent.
+- `build_snapshot_db(db: Path | LocalTarget, dest: Path, ...)` — preserve snapshot-local provenance through the refusal precheck, then unwrap for the unchanged local SQL opener.
+- `build_dashboard_html(..., db_path: Path, db_target: LocalTarget | None = None)` / `build_history_payload(..., db_path: Path, db_target: LocalTarget | None = None)` — optional already-classified provenance passed through to snapshot export; filesystem work still uses the Path. Existing direct callers retain their default refusal behavior.
 - `make_history_route(config: BRConfig) -> Callable[..., None]` — performs the remote precheck before ETag/stat work. `main_doctor()` owns the `--trim` guard.
 
 ### Call Path
@@ -119,10 +129,11 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 ## Acceptance Criteria
 
 - [ ] Every listed Python site classifies with the owning project root. A foreign cwd does not change the verdict; `LL_HISTORY_DB` uses the resolver's returned local Path.
-- [ ] Remote `cmd_dashboard` exits 1 with a snapshot-export refusal; local-missing and explicit `--db` behavior remain unchanged.
+- [ ] Remote `cmd_dashboard` exits 1 with a snapshot-export refusal; local-missing and explicit `--db` behavior remain unchanged, including relative/absolute default-shaped local overrides through the actual `build_snapshot_db` refusal seam.
 - [ ] Remote `make_history_route` returns the specified HTTP 501 JSON before local `stat()`; initial remote pages skip snapshots and show the shared reason. `refreshHistory` in the dashboard template renders the 501 reason with `textContent` and stops polling without an error toast; network/5xx failures still retry. Cover safe rendering with an HTML-like canary reason and verify a second polling tick makes no 501 request.
-- [ ] Remote `ll-doctor --trim` has an informational text/JSON result, no traceback, and the same advisory exit code as a run without `--trim`.
-- [ ] `skills/update-docs` stays DB-first for a real local history file, takes the explicit scan fallback for a remote target or missing local file, and never reads a stale shadow DB; the narrow hazard gate passes with documented temporary allowlist entries.
+- [ ] Remote `ll-doctor --trim` has an informational text/JSON result, no traceback, and the same advisory exit code as a run without `--trim`. A local/env override is supplied through `collect_trim_report(db_path=...)` and its real usage rows are observed.
+- [ ] The remote page/loop render never calls `build_history_payload` or initializes/polls a history snapshot; SSE and interactions remain functional. Execute the rendered client's 501/timer behavior in a pytest-wrapped JavaScript test (skip gracefully if the runtime is absent), rather than checking strings or a copied implementation alone.
+- [ ] `skills/update-docs` stays DB-first for a real local history file, takes the explicit scan fallback for a remote target or missing local file, and never reads a stale shadow DB; source and regenerated skill mirrors agree. The narrow hazard gate passes with documented allowlist entries, temporary CT-0 only while needed and permanent context-monitor only for its intentional remote no-op.
 - [ ] Remote-stub and local-twin tests cover every changed site; `python -m pytest scripts/tests/` passes.
 
 ## Related
@@ -144,6 +155,7 @@ _Updated 2026-10-02 after the EPIC-3693 pre-implementation review._
 Prior 85/75 scores were cleared because the revised client/hazard-gate scope changed. The client question is resolved: the named dashboard template requires a safe 501 branch and polling cancellation. Implementation remains blocked by ENH-3677. Re-run `/ll:confidence-check` after that fixture lands; do not reuse the old aggregate as approval. Sequence shared doctor edits with ENH-3679/3698 at integration.
 
 ## Session Log
+- EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - explicit snapshot provenance, renderer skip path, trim override and mirror/test wiring amended; implementation not performed
 - `/ll:confidence-check` - 2026-09-30T05:10:36 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`
 - `/ll:confidence-check` - 2026-09-29T22:09:10 - `c419efbf-94bc-4735-80cf-772ead8ae35e.jsonl`
 - `/ll:verify-issues` - 2026-09-29T22:05:35 - `b6e9a962-45bc-4981-a31d-f5f911dc70c3.jsonl`

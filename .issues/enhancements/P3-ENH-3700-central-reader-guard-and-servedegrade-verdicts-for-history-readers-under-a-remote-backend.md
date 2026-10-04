@@ -34,11 +34,13 @@ Under `history.backend.provider: libsql` (FEAT-3535), a reader that builds the d
 
 ## Current Behavior
 
-**Load-bearing fact.** `_resolve_once` returns an absolute path verbatim as a `LocalTarget` (BUG-3181), so dropping a pre-resolve does not make a site read remotely: `open_history_readonly(..., ensure=True)` would run `ensure_schema` on that local path and create an empty shadow `.ll/history.db`. Only `cli/harness.py` (relative `DEFAULT_DB_PATH`) can serve.
+**Load-bearing fact.** `_resolve_once` returns an absolute path verbatim as a `LocalTarget` (BUG-3181), so dropping a pre-resolve does not make an absolute-path site read remotely: `open_history_readonly(..., ensure=True)` would create an empty shadow `.ll/history.db`. Among the newly flipped CLI sites here, `cli/harness.py` can serve by retaining relative `DEFAULT_DB_PATH`; existing relative-default session/context readers remain supported.
 
 **Placement bug.** `history_reader/_base.py:_connect_readonly` catches `HistoryError` (parent of `HistoryUnsupported`) and returns `None`, and its ~67 callers all treat `None` as "no data". A refusal raised inside `open_history_readonly` is swallowed into silent empty output unless `_connect_readonly` re-raises it.
 
-**Read-only token.** `ensure=True` runs `check_access(write=True)` (`remote_schema.check_access`, `libsql.py`), which refuses a behind/ahead store and a read-only token, so every reader returns `None` against such a store.
+**Read-mode mismatch.** `ensure=True` runs `check_access(write=True)` (`remote_schema.check_access`, `libsql.py`), which refuses a behind/ahead store. It currently sends only metadata SELECTs, so it does **not** establish that a read-only token is rejected on an exact stamped schema; remove that unsupported claim. A permission-rejecting stub is still required to prove the final read path sends no writes/DDL. `LibsqlBackend.ensure_schema` checks policy and never migrates.
+
+**Missing-stamp gap (verified 2026-10-04).** `check_access(write=False)` currently accepts a migrated store with no `project_id` stamp: `_check_project` only rejects a non-null mismatched stamp, and the missing-stamp check is inside `if write:`. A temporary HranaStub probe confirmed a version-58 unstamped read is accepted while a write is refused. This issue must implement the stated read-stamp policy, rather than treat it as existing behavior.
 
 Sites that currently degrade wrongly or silently:
 - `decisions.py:generate_from_completed`, `user_messages.py:extract_conversation_turns` (reader `auto` reaches `resolve_history_db`), and `skills/improve-claude-md` CT-0, whose `python3 -c` calls bare `resolve_history_db()` (SKILL.md ~L206-209) and ends in `2>/dev/null`, so the refusal emits empty stdout that reads as "no candidates".
@@ -53,16 +55,18 @@ Sites that currently degrade wrongly or silently:
 | Site | Under remote | Notes |
 |---|---|---|
 | `history summary` | **degrade** to the file scan, exit 0 | one `note:` line on stderr |
-| `ll-harness` x5 sites | **serve** | relative `DEFAULT_DB_PATH` reaches `LibsqlBackend`; read-mode ensure; never refuses with exit 1 (indistinguishable from a graded FAIL) |
+| `ll-harness` x5 sites | **serve** | relative `DEFAULT_DB_PATH` reaches `LibsqlBackend`; advisory reads degrade, required retry/baseline lookups fail closed through existing validation paths |
 | `decisions.generate_from_completed` | **degrade** to the issues-directory scan | local path stays DB-first |
 | `ll-messages --sft-format` / `extract_conversation_turns` | `reader=auto` -> **degrade** to JSONL | catch `HistoryUnsupported` before the JSONL fallback; explicit `db` refusal is ENH-3657 |
-| CT-0 in `skills/improve-claude-md` | **degrade**: skip with a one-line note | empty stdout must no longer read as "no candidates"; switch to `resolve_history_store` and branch on `RemoteTarget` (no bare `resolve_history_db()` call) |
+| CT-0 in `skills/improve-claude-md` | **degrade**: explicit skipped verdict with a one-line note | switch to `resolve_history_store`, branch on `RemoteTarget`, remove the snippet's `2>/dev/null`, and check the skipped verdict before the empty-feedback branch |
 | `scripts/little_loops/loops/sft-corpus.yaml` `stage` | `--reader auto` (degrade to JSONL) | a refusal must not become an empty corpus routed to `enrich` as success |
 | `scripts/little_loops/loops/sft-corpus.yaml` `enrich` | **degrade**: explicit note, pass records through un-enriched | |
 
 ### Central guard (fix the cause once)
 
 In `session_store.backend.open_history_readonly` (the `ensure=True` reader opener): when the configured provider is remote **and** the resolved target is a *default-shaped* absolute local path (`<root>/.ll/history.db`, `LL_HISTORY_DB` unset, no explicit `--db`), raise `HistoryRemoteRefused` (a subclass of `HistoryUnsupported`) instead of `ensure_schema`-creating a shadow DB. It fires only in that case and must respect the BUG-3181 absolute-path contract, an explicit `--db` (wrap it in `LocalTarget` at the CLI), `LL_HISTORY_DB`, and first-use local creation when the provider is not remote. Classify "remote" from the root derived from the path (`<root>/.ll/...`), not the cwd, so an MCP call with a foreign cwd is not misclassified.
+
+CLI provenance must survive the reached helper chain: where an explicit local `--db` reaches this ensure-reader seam, retain `LocalTarget` rather than stripping it with `Path(...)` before the guard. Widen only the affected helper annotations and filesystem probes, not every reader or remote target signature. Audit `ll-session` and `ll-history-context` (both define `--db`) with omitted defaults and explicit absolute default-shaped local paths; preserve their existing relative-default remote resolution. `ll-ctx-stats --db` uses the separate strict opener and remains unaffected. Snapshot CLI provenance belongs to ENH-3658. Record these carve-outs in the AST gate instead of exempting whole modules.
 
 ### `_connect_readonly` re-raise (contract change)
 
@@ -82,10 +86,10 @@ Paths below are relative to `scripts/little_loops/`. These are implementation di
 | `cli/ctx_stats.py` | ENH-3657 refuses default remote reads; usage selectors receive an existing connection; explicit `--db` stays local. |
 | `cli/harness.py` | Serve using relative default; read-mode ensure; quiet open and mid-query fallback (this issue). |
 | `cli/history.py` | ENH-3657 refuses reader rows; summary file-scan fallback here. |
-| `cli/history_context.py` | Relative default/explicit caller path; guard must leave relative remote reads and explicit local paths intact. |
+| `cli/history_context.py` | Preserve relative-default remote resolution and explicit local path provenance through reached helpers; exercise `--project` and issue/effort paths with local overrides. |
 | `cli/logs.py` | ENH-3657 refuses remote DB-backed paths before absolute-path metadata lookup; preserve local missing-data behavior. |
 | `cli/loop/evidence.py` | `find_loop_run(run_id)` uses the relative default; guard unaffected. |
-| `cli/session.py` | Parser's relative default or caller `--db`; exercise reached reader helpers without converting the default to an absolute local path. |
+| `cli/session.py` | Preserve relative-default remote resolution and explicit local path provenance through reached reader helpers; exercise the absolute default-shaped override without converting omitted defaults to absolute paths. |
 | `fsm/executor.py` | Relative `DEFAULT_DB_PATH` advisory prepatch reads; ENH-3682 budgets open/query failure. |
 | `hooks/session_start.py` | Absolute digest path is already gated by `not _remote_store`; retain that guard. |
 | `issue_history/agent_quality.py` | Called under ENH-3657 refusal; local analysis stays intact; future target propagation is ENH-3684. |
@@ -103,21 +107,27 @@ Two different functions are named `_connect_readonly`: `history_reader/_base.py`
 
 ### Read-mode remote ensure
 
-Make the ensure step of `open_history_readonly` for a `RemoteTarget` a read-mode check (`check_access(write=False)`, no ensure/migrate); a missing remote schema reads as empty, and `ll-harness` serve treats it as such. **Stamped-schema rule (decided here, 2026-10-02):** serve a store at the exact schema version, **behind** or **ahead**; this is `check_access(write=False)`'s existing policy ("strict reads proceed either way"), so no new refusal code is added. An ahead-store refusal was rejected (2026-10-02 Opus review): it would be new code and `_connect_readonly` would map it to `None`, producing silent-empty `ll-harness` output that violates the epic closure criterion. If an older client queries a column a newer schema renamed or removed, the query fails as an ordinary `HistoryError` and degrades like any other mid-query failure. Project-id mismatch and missing `project_id` still raise. Extend `HranaStub` with a read-only permission mode that permits SELECT and rejects writes (or a controlled equivalent); a token accepted for every SQL statement cannot prove this behavior. ENH-3668 (deferred) must follow this rule if revived.
+For a `RemoteTarget`, skip writable ensure/migration and use `check_access(write=False)`. In the ordinary `ensure=True` opener, verify eagerly **on the same read-only connection's client before returning it**: replacing the old eager ensure with lazy first-query verification would move auth/project/stamp failures out of `_connect_readonly`'s existing catch into ~67 query callers, many of which catch only `sqlite3.Error`. Preserve that failure timing rather than expanding every caller's catch policy. Close the connection on failed preparation. Cached verification still prevents a second metadata request when the first data query runs; a cold healthy read makes one verification POST plus its data POST. ENH-3682's explicit best-effort seam independently catches open and query failures and uses the same deadline-bound client for any verification it performs. **Stamped-schema rule (decided 2026-10-02):** serve exact, **behind** and **ahead** versions; no ahead-store refusal. Missing queried columns follow the reached caller's query-failure disposition. Extend `HranaStub` with a default-off read-only permission mode permitting metadata/data SELECTs and rejecting writes/DDL; enable it after fixture migration. ENH-3720's fault/deadline controls must compose with it and retain defaults. ENH-3668 must follow this policy if revived.
 
-Distinguish missing configured project ID, a missing store stamp on a migrated store, and a foreign stamp; all fail the read-mode access check. A version-0 store retains the documented non-strict empty fallback. A project/auth/open failure at `ll-harness` also degrades to its existing empty result, with the existing once-only safe library warning; it must not become a graded failure exit. The stricter user-facing error policy is deferred to ENH-3668.
+Enforce missing-stamp rejection in the shared `remote_schema.check_access` **after** state loading/cache lookup: `write=False` plus `state.version > 0` and no store `project_id` raises ordinary `HistoryUnsupported(operation="open")`, never `HistoryRemoteRefused`. Missing configured ID and foreign stamps remain refused. Version 0 keeps the non-strict empty fallback; stamped exact/behind/ahead remain readable. This intentionally tightens migrated-but-unstamped reads for all remote consumers, so test cold, in-process-cache and persisted verification-cache paths and document the migration/stamping requirement. ENH-3682 inherits this shared policy without a duplicate stamp classifier or an extra dependency. The reader maps access-policy errors to its ordinary fallback; the central guard remains the only re-raised refusal.
+
+### Harness advisory reads and required validation reads
+
+`_read_target_history` and DSL `admissions_by_reason` are advisory: open/query failure yields the existing absent rate/breakdown and does not alter grading or exit codes. The DSL admissions result is only formatted after execution and does not gate/deduplicate tasks (verified in `cmd_dsl` 2026-10-04).
+
+`_retry_gate`, `_resolve_baseline_of`, and `read_baseline` feeding compare/pin gates are required control-flow lookups. Failure must never admit a retry or invent a baseline. Preserve the existing missing-attempt/baseline validation messages and exit paths (including exit 1 where already used), with a safe warning for unavailable history and zero subject invocations/new candidate rows for the rejected candidate. Do not infer a successful empty query from a caught error; the library warning distinguishes failure without introducing strict-reader infrastructure. Test successful remote prior-attempt/baseline data and open/query failures at the required gates, plus an advisory representative. Remote configuration itself adds no generic refusal or new harness exit code.
 
 ### Non-strict mid-query failures
 
-`HranaError` is already a `HistoryError`, but is not a `sqlite3.Error`. The harness reader's current `except sqlite3.Error` handlers therefore leak a remote error after a successful open. Widen the reached best-effort handlers to `(sqlite3.Error, HistoryError)` and retain the same empty/zero/None result on open **and** query failure. Use the existing safe `warn_once` channel once per call, without raw host/token/SQL text; injected failure after the first successful request proves this path. When ENH-3668 is revived, these handlers re-raise under strict remote mode; explicit best-effort always wins. Keep local SQL fallbacks unchanged.
+`HranaError` is a `HistoryError`, but not a `sqlite3.Error`. Widen the reached harness handlers to `(sqlite3.Error, HistoryError)` and retain empty/zero/None with the dispositions above. For remote failures use `warn_once` with a stable operation/category and fixed text, never `str(exc)` or `exc_info=True`; apply the same rule to `_base._connect_readonly`, whose current warning embeds raw exception text. Capture logging as well as stderr and inject endpoint/token/SQL canaries on open and mid-query failures. Keep local SQL diagnostics/fallbacks unchanged. If ENH-3668 is revived, its strict mode must respect explicit best-effort precedence.
 
 ### SFT pipeline failure routing (owned here)
 
-In `scripts/little_loops/loops/sft-corpus.yaml`, remove stage's `2>/dev/null || touch "$OUTPUT"` masking and use `--reader auto`. Add `on_error: corpus_failed` to stage and enrich, with `corpus_failed` set to `terminal: true, failure: true`. A non-zero shell state with only `next` currently continues, so a process error alone is insufficient. The intentional remote passthrough succeeds with its explicit note; unexpected staging, parsing or serialization errors fail the run. Publish `enriched.jsonl` by writing a unique temporary sibling and atomically replacing it only after successful completion; clean up a failed temp and leave any previous final file untouched. No failure may reach filter/publish or emit the success sentinel. ENH-3685 reuses this wiring if revived.
+In `scripts/little_loops/loops/sft-corpus.yaml`, remove stage's `2>/dev/null || touch "$OUTPUT"` masking and use `--reader auto`. Explicitly propagate the `ll-messages` status (`... > "$OUTPUT" || exit $?`) before the final pathname echo; otherwise that echo returns success and `on_error` never runs. Check other fallible shell commands too, while preserving the optional absent harvest sentinel. On success emit exactly one pathname on stdout, with notices on stderr. A partial run-private raw file may remain on failure but must never be consumed. Add `on_error: corpus_failed` to stage and enrich, with `terminal: true, failure: true`. Remote JSONL/passthrough succeeds with its note; unexpected staging/parsing/serialization errors terminate. Publish `enriched.jsonl` with a unique temporary sibling and atomic replace only after success; clean failed temps and retain the previous final. Test the actual packaged YAML states and FSM failure route (not copied shell snippets), including failure after one record. No failure reaches filter/publish or the harvest success sentinel. ENH-3685 reuses this wiring if revived.
 
 ### Notice channel
 
-Degrade notice = one `note:` line via `print(..., file=sys.stderr)` from the CLI, emitted before touching the seam, only under a remote target, never on stdout, never echoing an endpoint token. The library `remote_telemetry.warn_once` in `_connect_readonly` must **not** also fire for that call: one channel per site.
+Degrade notice = one fixed `note:` line on stderr at the human CLI/skill/state boundary, before bypassing the DB, only under a remote target. Libraries such as `generate_from_completed` and `extract_conversation_turns` select their fallback without printing; their CLI callers own the note. Automatic/library callers keep their existing output contract. CT-0 additionally returns parseable JSON with `verdict: skipped` and a fixed reason, then branches before "no candidates". Remove its `2>/dev/null` so the note survives. For packaged stage/enrich, each state owns its designated note; a library warning must not duplicate a deliberate fallback notice. No endpoint/token/SQL or exception text appears in either channel.
 
 ### Docs wording
 
@@ -129,7 +139,7 @@ A refusal from the boundary helper (ENH-3657) only covers CLIs that pre-resolve.
 
 ## Scope Boundaries
 
-- **In scope**: the central guard and `HistoryRemoteRefused`, the `_connect_readonly` re-raise, the audit and its AST test, read-mode remote ensure and the `HranaStub` read-only mode, `ll-harness` serve, the degrade sites above, the CT-0 skill change and mirrors, `sft-corpus` `stage`/`enrich`, the support-table rows for these sites.
+- **In scope**: central guard/re-raise, narrow explicit-local provenance in reached helpers, importer audit/AST test, shared missing read-stamp policy, eager read-mode preparation on the same client and default-off stub permission mode, harness advisory/required-lookups dispositions, safe remote warnings, the degrade sites and boundary-owned notes, CT-0/mirrors, packaged SFT failure routing, and support-table rows.
 - **Out of scope**: the boundary helper and refuse sites (ENH-3657), hand-built paths (ENH-3658), `context-monitor.sh`, prepatch budget (ENH-3682), remote read serving for `ll-history` subcommands and MCP (ENH-3668/3684/3685, deferred), writers/startup paths (BUG-3652, done).
 
 ## Proposed Solution
@@ -143,7 +153,7 @@ A refusal from the boundary helper (ENH-3657) only covers CLIs that pre-resolve.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/session_store/backend.py` (`open_history_readonly`), `history_reader/_base.py` (`_connect_readonly`), `history_reader/harness.py` (mid-query best-effort catches), `cli/harness.py` (5 sites), `cli/history.py` (`summary` degrade), `decisions.py`, `user_messages.py`, `skills/improve-claude-md/SKILL.md`, `scripts/little_loops/loops/sft-corpus.yaml`, `scripts/tests/hrana_stub.py` (read-only permission mode).
+- `scripts/little_loops/session_store/backend.py` (`open_history_readonly`), `session_store/remote_schema.py` (missing read stamp policy), `history_reader/_base.py` (`_connect_readonly`), `history_reader/harness.py` (mid-query catches), `cli/harness.py` (5 sites), `cli/history.py` (`summary` degrade), `decisions.py` / `cli/decisions.py` (library fallback / CLI note), `user_messages.py` / `cli/messages.py` (library fallback / CLI note), `cli/session.py` / `cli/history_context.py` and only reached reader helpers that must retain explicit local provenance, `skills/improve-claude-md/SKILL.md`, `scripts/little_loops/loops/sft-corpus.yaml`, `scripts/tests/hrana_stub.py` (read-only permission mode).
 - Anchors drift: re-grep every `resolve_history_db(` site before editing (`decisions.py:596`, `user_messages.py` ~`:1227`).
 - `issue_history/evolution._open_db` (sqlite-only choke point) changes only if made remote-aware.
 
@@ -167,12 +177,12 @@ A refusal from the boundary helper (ENH-3657) only covers CLIs that pre-resolve.
 ### Types
 
 - `HistoryError(Exception)` <- `HistoryUnsupported(HistoryError)` <- `HistoryBackendNotLocal(HistoryUnsupported)`, and new `HistoryRemoteRefused(HistoryUnsupported)`, in `little_loops.session_store.backend`; `HistoryUnsupported.operation: str | None` carries the operation name.
-- `HistoryTarget = LocalTarget | RemoteTarget` in `little_loops.session_store.targets`; no reader signature accepts it here.
+- `LocalTarget` in `little_loops.session_store.targets` carries an explicit local override through only the reached helpers affected by the guard. Default remote reads continue to use relative `DEFAULT_DB_PATH`; broad `RemoteTarget` reader propagation is deferred.
 
 ### Signatures
 
 - `open_history_readonly(target=None, *, ensure: bool = False)` — gains the default-shaped-local-path guard (raises `HistoryRemoteRefused`) and a read-mode ensure for `RemoteTarget`.
-- `_connect_readonly(db_path: Path) -> sqlite3.Connection | None` — returns `None` on ordinary failure but re-raises `HistoryRemoteRefused`.
+- `_connect_readonly(db_path: Path | LocalTarget) -> sqlite3.Connection | None` — preserves explicit local provenance; returns `None` on ordinary failure and re-raises `HistoryRemoteRefused` unless ENH-3682's explicit best-effort mode is selected.
 - `generate_from_completed(config: BRConfig) -> int` — degrade site in `little_loops.decisions`; local branch stays DB-first.
 
 ### Call Path
@@ -185,16 +195,16 @@ A refusal from the boundary helper (ENH-3657) only covers CLIs that pre-resolve.
 ### Decision Rules
 
 - Serve at the designated `ll-harness` boundary using the relative default. Refuse a plain absolute default-shaped path under remote config; typed explicit `LocalTarget`, applicable `--db`, and `LL_HISTORY_DB` remain local carve-outs.
-- Escape hatch: `LL_HISTORY_DB` set, or an explicit `--db` (only `ll-ctx-stats` and `ll-session refresh` define one), runs locally.
+- Escape hatch: `LL_HISTORY_DB` or an applicable explicit local `--db` retains local intent. `ll-session` and `ll-history-context` also define `--db`; do not confuse their omitted relative defaults with explicit absolute local inputs. `ll-ctx-stats` uses the separate strict opener. ENH-3658 owns artifact dashboard overrides.
 - Catch class for the guard is `HistoryRemoteRefused`; the notice channel is one CLI `note:` line; `"No history.db found"` stays verbatim for local-missing.
-- Unreachable endpoint on a serve site reads as "no data" (`_connect_readonly` maps other `HistoryError` to `None`); accepted for `ll-harness` and documented.
+- Unreachable endpoint gives advisory empty output plus a safe warning, or a required retry/baseline validation refusal through its existing exit path; it never authorizes a retry or synthesizes a baseline.
 - Stamped remote schema: exact, behind and ahead are all served (`check_access(write=False)`).
 
 ## Implementation Steps
 
 Prerequisites: ENH-3677 (hoisted `remote` fixture) and ENH-3657 (boundary helper, so a guard refusal is never a traceback) landed.
 
-1. Seams, with the read-mode ensure verified against `HranaStub` first, plus the caller audit and its recorded per-module verdicts.
+1. Seams: guard/re-raise, shared read-stamp predicate, eager same-client read preparation and explicit-local provenance. Verify open-failure timing and permission/request counts against `HranaStub`, then complete the caller audit and recorded per-module verdicts. Coordinate backend/stub edits with external ENH-3720 while preserving its optional deadline and defaults.
 2. `cli/harness.py` serve.
 3. Degrade sites, CT-0 skill change, `sft-corpus.yaml`.
 4. Skills mirrors (`ll-adapt`), docs, remove the CT-0 allowlist entry from ENH-3658's hazard gate.
@@ -210,13 +220,15 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture) and ENH-3657 (boundary helper
 ## Acceptance Criteria
 
 - [ ] `HistoryRemoteRefused` exists; `_connect_readonly` re-raises it (documented contract) while other `HistoryUnsupported` from remote ensure still map to `None`; ENH-3682's regression test passes on either merge order.
-- [ ] The central guard fires only for a remote provider + default-shaped absolute local path with no `--db`/`LL_HISTORY_DB`, classifies remote from the path-derived root (not cwd), and under remote no reader creates a local `.ll/history.db` (assert absence). A caller-supplied absolute path wrapped as `LocalTarget` stays local.
+- [ ] The central guard fires only for a remote provider + default-shaped absolute local path with no explicit local intent/`LL_HISTORY_DB`, classifies remote from the path-derived root, and default remote reads create no shadow `.ll/history.db`. Explicit `LocalTarget` stays local through the reached helper chain, including an absolute default-shaped `--db`; local override content is actually read.
 - [ ] Re-run and reconcile the recorded 17-external/15-internal importer inventory, covering lazy imports and reached helpers; the AST gate catches new unaudited importers/default-path absolute construction with reasoned exceptions, and dynamic tests assert no shadow DB.
 - [ ] `ll-harness` serve sites return stub data, create no local `.ll/history.db`, serve an exact, behind or ahead stamped schema and a read-only token (`check_access(write=False)`, tested with a permission-rejecting stub); no ahead-store refusal is added.
-- [ ] Degrade sites (`history summary`, `decisions generate`, `--reader auto`, CT-0, `sft-corpus` `enrich`) keep stdout unchanged, exit 0 (CLI cases), and print exactly one `note:` line on stderr only under a remote target; `warn_once` does not also fire; no endpoint token appears in any notice.
+- [ ] Degrade CLI/state sites (`history summary`, `decisions generate`, `--reader auto`, `sft-corpus` `enrich`) preserve data stdout, exit 0 for intentional fallbacks and emit their single safe stderr note only under remote config. Direct/automatic library fallbacks add no stdout/stderr notice. CT-0 emits parseable `verdict: skipped` plus its note and never reports "no candidates" for a remote skip; no duplicate library warning.
 - [ ] CT-0 uses `resolve_history_store` and branches on `RemoteTarget`; no bare `resolve_history_db()` remains in `skills/`; mirrors regenerated.
-- [ ] Non-strict `ll-harness` open and mid-query Hrana failures preserve existing empty/zero/None fallbacks without traceback, with safe once-only warnings; local failures are unchanged.
-- [ ] Packaged SFT stage uses auto fallback without error masking; stage/enrich unexpected failures route to a terminal failure, reach no filter/publish/success sentinel, and never publish partial enrichment. Remote passthrough succeeds with its note. Test a failure after at least one record is written and retention of any previous final file.
+- [ ] Non-strict `ll-harness` open/mid-query failures preserve advisory fallbacks and grading; required retry/baseline/compare/pin lookups fail closed with existing validation exits and zero subject invocations/new candidate rows. Actual remote prior attempts/baselines serve successfully. Logs/stderr contain no traceback or endpoint/token/SQL canaries; local failures remain unchanged.
+- [ ] Read-mode access rejects a missing migrated-store stamp with ordinary `HistoryUnsupported`, including cold and cached states; version 0 remains a fallback and exact/behind/ahead stamped stores serve. A permission-rejecting stub proves no reader DDL/write is sent; default-off fault/permission controls compose with ENH-3720.
+- [ ] Ordinary remote `ensure=True` access/auth/stamp verification still fails during opening, so `_connect_readonly` returns `None` to existing query callers. Preparation and the data query use the same client, with no duplicate cold verification, and failed preparation closes it; ordinary strict `connect_readonly` defaults are unchanged.
+- [ ] Tests execute packaged SFT stage/enrich actions and the FSM route: stage auto fallback works under remote config, a failing `ll-messages` status cannot be overwritten by its pathname echo, and stage/enrich failures reach terminal failure without filter/publish/success sentinel. Success stdout contains only the captured pathname. Remote passthrough succeeds with its note; failed partial enrichment retains the previous final file.
 - [ ] `"No history.db found"` is unchanged (invariant test).
 - [ ] If ENH-3658's temporary CT-0 allowlist exists, remove it here; if the seam lands first, no CT-0 exception is introduced later. Both orders leave the completed gate without that stale exception.
 - [ ] With the default local store `python -m pytest scripts/tests/` passes unchanged.
@@ -229,12 +241,19 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture) and ENH-3657 (boundary helper
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): Exit-code wording vs ENH-3657: this issue owns `ll-harness` exit-code wording (serve; never refuses with exit 1 under a remote backend). ENH-3657's epilog/CLI.md exit notes cover `ll-ctx-stats` and `ll-history` only.
+**Ownership:** this issue owns `ll-harness` exit-code wording: remote serving adds no generic backend refusal, while its existing fail-closed retry/baseline validation codes remain. ENH-3657's epilog/CLI.md exit notes cover `ll-ctx-stats` and `ll-history` only.
 
 ## Status
 
 **Open** | Created: 2026-10-02 | Priority: P3
 
+## Confidence Check Notes
+
+_Updated 2026-10-04 after the code-backed epic review._
+
+Re-run `/ll:confidence-check` after ENH-3677/3657 land. The revised stamp-policy, eager verification timing, explicit-local provenance and harness/SFT obligations need implementation evidence; this review and the Opus recommendation are not passing readiness checks. Coordinate shared backend/stub edits with ENH-3720 without adding a functional dependency.
+
 
 ## Session Log
+- EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.74) - 2026-10-04 - stamp enforcement, harness control-flow, safe diagnostics, local provenance and actual SFT failure routing amended; implementation not performed
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:05 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`

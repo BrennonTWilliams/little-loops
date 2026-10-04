@@ -54,11 +54,11 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 
 ## Proposed Solution
 
-1. Add `CostReport.unpriced_models: list[str] = field(default_factory=list)`, populated as sorted, de-duplicated values from the existing `str(row.get("model", "unknown"))` lookup. Check exact membership independently of the token-completeness branch. Do not infer missing prices from `cost is None` or `has_unknown_model`.
+1. Add `CostReport.unpriced_models: list[str] = field(default_factory=list)`, populated as sorted, de-duplicated values from the existing `str(row.get("model", "unknown"))` lookup for legacy rows. After BUG-3724 introduces attributed contributions, inspect every effective pricing contribution instead of only the parent action's last model. Check exact membership independently of the token-completeness branch. Do not infer missing prices from `cost is None` or `has_unknown_model`.
 2. **Read the same table the estimator reads.** Look up `MODEL_PRICING` as a module attribute at call time (`from little_loops import pricing`, then `pricing.MODEL_PRICING`), not through a `from ... import MODEL_PRICING` binding, so a test that patches the table affects the estimator and the footer identically. Tests use `patch.dict` or patch the module attribute; they must never leave the two readers disagreeing.
 3. **Sentinel set.** The missing-model sentinels, after `str()` and `.strip()`, are `{"unknown", "None", ""}` (whitespace-only strings collapse into `""`). `"None"` is a real production case from a JSON-null model, not a hypothetical. A sentinel is never reported as a model; a concrete ID is reported verbatim, with no prefix/suffix normalization.
 4. Render the footer in `table()` when the list is non-empty and the report has states. For concrete IDs append `no pricing for model(s): <comma-separated IDs> — affected state costs shown as n/a; report an ID if it should be priced`. Sentinels produce one `missing model ID — affected state costs shown as n/a` line without report/upgrade advice. Mixed concrete IDs and sentinels produce both lines, concrete first. A missing rate makes the affected state and run total unavailable rather than subtracting a contribution. The footer is end-user-facing; do not tell users to edit a Python module or promise that upgrading supplies a deliberately unsupported model's price. Do not serialize the list; `read_json` defaults it to empty.
-5. **Mixed-model rows (known limitation).** Because a row's model is the last usage event's model (`executor.py:2761`), a mixed-model action is priced and named by its last model only, and the footer cannot name earlier ones. Document the current behavior in the CLI reference; BUG-3724 owns correcting heterogeneous model/batch attribution and ceiling accounting. Do not expand this footer issue into that repair. If BUG-3724 lands first, describe its corrected or fail-closed behavior instead of preserving an obsolete limitation.
+5. **Mixed-model rows (known limitation and handoff).** Because a legacy row's model is the last usage event's model (`executor.py:2761`), its footer cannot recover earlier identities. Document the current behavior in the CLI reference; BUG-3724 owns correcting heterogeneous model/batch attribution and ceiling accounting. Do not expand this footer issue into that repair. Once contributions exist, collect concrete IDs and missing-ID sentinels from every contribution, even an incomplete one; a known last model cannot hide an earlier unpriced contribution. Whichever issue lands second adapts the shared reader and adds that regression. Keep `relates_to` coordination without a mutual blocking edge. If BUG-3724 lands first, describe and consume its corrected or fail-closed behavior instead of preserving an obsolete limitation.
 6. Correct the stale docs: `~$` fallback, `0.0` unknown costs, a printed `TOTAL` row, thousands separators. Fix the column definitions: `input` is the aggregate `input_tokens` field without cache tokens; `cache` combines `cache_read_tokens` and `cache_creation_tokens`. State that costs are exact-ID estimates, that state/run costs become null if any contributor is unpriced, and that stored null history costs are not back-filled. Distinguish the broad `has_unknown_model` flag (any unpriceable contribution) from this missing-price diagnostic; incomplete tokens alone still produce `n/a` without the footer. Record the exact-match limitation: dated, `anthropic.`-prefixed or `[1m]` model IDs stay unpriced and the footer now names them.
 
 ## Integration Map
@@ -95,7 +95,7 @@ Keep the locked per-state/top-level JSON key tests.
 
 ### Types
 
-- `CostReport.unpriced_models: list[str]` — diagnostic-only, default empty; sorted, de-duplicated existing lookup values absent from `pricing.MODEL_PRICING`, including the reserved missing-ID sentinels; absent from stable JSON
+- `CostReport.unpriced_models: list[str]` — diagnostic-only, default empty; sorted, de-duplicated effective pricing IDs absent from `pricing.MODEL_PRICING`, including the reserved missing-ID sentinels; read legacy aggregate IDs until BUG-3724 supplies contributions, then inspect every contribution; absent from stable JSON
 
 ### Signatures
 
@@ -124,7 +124,7 @@ Keep the locked per-state/top-level JSON key tests.
 
 ## Acceptance Criteria
 
-- [ ] Unknown model IDs are sorted and de-duplicated in the footer with complete or incomplete tokens; incomplete known models do not appear there
+- [ ] Unknown model IDs are sorted and de-duplicated in the footer with complete or incomplete tokens; incomplete known models do not appear there. Once BUG-3724's contributions exist, an earlier unpriced/missing-ID contribution followed by a known last model is still diagnosed; the second lander owns the shared-reader regression
 - [ ] Sentinel set `{unknown, None, "", whitespace-only}` produces one missing-ID line without report advice; mixed concrete IDs and sentinels produce the two-line block; concrete IDs and exact-match variants (dated, `anthropic.`-prefixed, `[1m]`) appear verbatim
 - [ ] The footer's membership check and `estimate_cost_usd` read the same `MODEL_PRICING` object (proved by a patched-table test)
 - [ ] Exact footer bytes are tested; empty reports have no footer; all-priced tables are byte-identical to legacy output
@@ -156,5 +156,7 @@ Keep the locked per-state/top-level JSON key tests.
 **Open** | Created: 2026-10-04 | Priority: P3
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-04 - Added the functional BUG-3724 handoff after the Opus critique: the second lander makes diagnostics contribution-aware and tests an earlier unpriced model hidden by a known last model. Legacy identities remain unrecoverable; footer scope and stable JSON remain unchanged.
 
 - Split from BUG-3696 - 2026-10-04 - `/ll:advise` with Opus (confidence 0.78): footer, sentinel matrix, JSON-loss/reporter tests and the doc sweep moved here so pricing could land alone; test matrix trimmed to four; added same-table lookup, pinned sentinel set (incl. real `"None"` from JSON-null model) and last-event-model limitation.

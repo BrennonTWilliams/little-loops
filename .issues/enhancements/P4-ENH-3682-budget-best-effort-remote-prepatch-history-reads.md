@@ -33,15 +33,19 @@ BUG-3652 made the two prepatch reads remote-aware through relative `DEFAULT_DB_P
 
 **Dependencies:** ENH-3677 supplies the hoisted `remote` fixture; ENH-3720 supplies the shared monotonic `Deadline` and strict read-only backend/transport enforcement. Land this integration after both. Do not reimplement cumulative request budgeting in this issue.
 
-**Soft sequencing:** prefer integration after ENH-3700 so tests use the final `_connect_readonly` guard/read-mode contract; no functional dependency on ENH-3700 or ENH-3657 is added. ENH-3700 owns the helper's narrowing/re-raise and read-mode ensure; ENH-3657 owns the remote-local target guard. Preserve compatible defaults when rebasing the common opener seams.
+**Soft sequencing:** prefer integration after ENH-3700 so tests use the final `_connect_readonly` guard/read-mode contract; no functional dependency on ENH-3700 or ENH-3657 is added. ENH-3700 owns the central remote-local guard, its narrowed re-raise, shared read-stamp policy and ordinary read-mode ensure; ENH-3657 owns the CLI refusal boundary. Preserve ENH-3720's optional `deadline=` plumbing and no-deadline defaults when rebasing the common seams.
 
-**Exception policy:** the best-effort path skips remote ensure/migration, verifies with `check_access(write=False)`, and catches `HistoryError`/`sqlite3.Error` at both open and query/fetch boundaries. The open helper cannot catch a later query failure. Behind/ahead stores and read-only tokens remain readable when supported by read-mode verification; foreign or unstamped stores degrade on `HistoryUnsupported`. The prepatch readers keep their documented `None` fallback regardless of the ambient reader mode.
+**Exception policy:** the best-effort path skips remote ensure/migration, verifies with the shared `check_access(write=False)` policy, and catches `HistoryError`/`sqlite3.Error` at both open and query/fetch boundaries. The open helper cannot catch a later query failure. Behind/ahead stamped stores and read-only tokens remain readable when supported by that policy; foreign/access-policy refusals degrade on `HistoryUnsupported`. Do not duplicate ENH-3700's missing-stamp predicate here or assert that the currently unchanged policy already rejects unstamped reads. The prepatch readers keep their documented `None` fallback regardless of the ambient reader mode; a guard refusal also degrades without opening a shadow local store.
 
 ## Expected Behavior
 
 Best-effort prepatch reads share one cumulative `history.backend.telemetry_timeout_ms` deadline across access verification and the data query, skip remote ensure/migration, and return `None` on an unavailable endpoint. On a cold connection `_guard` verification and the query are separate HTTP requests: giving each a fresh timeout is insufficient. Construct one connection-lifetime `Deadline` from the telemetry timeout at entry to the best-effort remote opener and pass it to ENH-3720's read-only connection machinery. Reuse its verification/query/socket enforcement and documented DNS/CPU limits; do not add another timer or automatic retry. Do not send the query after verification consumes the budget. The first timeout sets the file-backed unreachable marker; another advisory read while it is active makes no request. Other history reads retain existing timeout/errors; local behavior is unchanged.
 
-Explicit `best_effort=True` wins over ambient `strict_reads()` (ENH-3668): both open and mid-query `HistoryError`/`sqlite3.Error` return `None`, never raise. The marker is the existing endpoint-scoped TTL file, shared across processes; no replacement cache or new configuration is needed.
+The deadline is per reader invocation/connection: verification and its data query share one budget, not one budget each. The two separate SHA/dirty calls do not share a new FSM-wide timer; the endpoint marker suppresses the second call after the first timeout. Successful calls may each consume their own budget.
+
+Explicit `best_effort=True` wins over any ambient reader mode: both open and mid-query `HistoryError`/`sqlite3.Error` return `None`. `strict_reads()` is planned only by deferred ENH-3668; do not introduce it or require that deferred issue to implement this fix. Add the nesting/restoration test if that API exists when implementing, otherwise record this precedence for its future integration. The marker is the existing endpoint-scoped TTL file, shared across processes; no replacement cache or new configuration is needed.
+
+Mark unreachable on timeout/unavailability at verification **or** data request, before returning `None`; a normal empty row, schema/query error or project-policy refusal must not create an outage marker. Suppression applies only to telemetry/best-effort consumers, and ordinary explicit reads ignore it. Test a second reader and a fresh process observing the same marker, TTL expiry followed by recovery, and unchanged standard-reader behavior. Use fixed operation/category warnings without raw exception/endpoint/token/SQL text in `_connect_readonly` and `runs._log_query_failure`; this applies even if ENH-3700 lands later.
 
 ## Motivation
 
@@ -63,7 +67,7 @@ Add `open_history_readonly(..., best_effort: bool = False)` and a remote `Libsql
 - `scripts/little_loops/session_store/backend.py` — best-effort branch in `open_history_readonly`; preserve the local and ordinary-reader branches.
 - `scripts/little_loops/session_store/libsql.py` — proposed readonly telemetry connection that consumes ENH-3720's `Deadline` and adds existing marker/cache policy.
 - `scripts/little_loops/history_reader/_base.py` — narrow best-effort parameter and open-error fallback.
-- `scripts/little_loops/history_reader/runs.py` — opt in only `read_base_sha`/`read_base_dirty`; enforce query/fetch fallback separately from opening fallback.
+- `scripts/little_loops/history_reader/runs.py` — opt in only `read_base_sha`/`read_base_dirty`; enforce query/fetch fallback separately from opening fallback and sanitize the remote branch of `_log_query_failure` while retaining local diagnostics.
 - `scripts/tests/test_remote_callers_bug3652.py` and `scripts/tests/test_remote_ingestion_telemetry.py` — focused prepatch deadline/marker/mode tests, using ENH-3677's shared fixture and ENH-3720's fault controls.
 - `docs/reference/API.md` — best-effort opener/reader contract. `scripts/little_loops/session_store/hrana.py` is consumed unchanged; transport enforcement belongs to ENH-3720.
 
@@ -80,7 +84,7 @@ Add `open_history_readonly(..., best_effort: bool = False)` and a remote `Libsql
 ### Signatures
 
 - `open_history_readonly(target=None, *, ensure: bool = False, best_effort: bool = False)` — keeps the default standard read behavior.
-- `_connect_readonly(db_path: Path, *, best_effort: bool = False)` — forwards the mode and catches open failures only.
+- `_connect_readonly(db_path, *, best_effort: bool = False)` — forwards the mode, preserves any narrow local-target provenance added by ENH-3700, and catches open failures only. Its exception order must return `None` for explicit best-effort before ENH-3700's ordinary `HistoryRemoteRefused` re-raise.
 - `LibsqlBackend.connect_readonly_telemetry(target: Path | HistoryTarget, *, deadline: Deadline) -> LibsqlConnection` — proposed new read-only telemetry seam, given the one deadline created by the opener; marker/cache policy extends the existing strict read-only enforcement.
 
 ### Call Path
@@ -104,15 +108,16 @@ Add `open_history_readonly(..., best_effort: bool = False)` and a remote `Libsql
 
 - [ ] A black-holed-socket test shows each prepatch read returns `None` within the configured telemetry timeout budget, sets the unreachable marker, and sends no new request while that marker is active.
 - [ ] Cold and warm verification-cache tests consume one ENH-3720 `Deadline`: cold success makes two POSTs, warm success one, a marker-suppressed read zero, and verification consuming the budget prevents the data POST. A slow verification followed by a stalled/trickling query cannot consume two budgets; use the prerequisite's named small scheduling tolerance and fault controls.
-- [ ] Inside `strict_reads()`, explicit best-effort still returns `None` on open and mid-query failure and restores the enclosing mode; standard readers retain their own timeout and error policy.
+- [ ] Explicit best-effort returns `None` on open/mid-query/guard failure; standard readers retain their timeout/error policy. If deferred ENH-3668's ambient strict API is present, test nesting/restoration and best-effort precedence; otherwise no strict-reader implementation is required.
 - [ ] Both readers still return actual remote data through a reachable `HranaStub`; local SQLite and standard reader timeouts remain unchanged.
-- [ ] Separate open-error and query/fetch-error tests preserve each reader's never-raises/`None` fallback. Foreign/unstamped stores degrade on `HistoryUnsupported`; behind/ahead stores and read-only tokens use supported read-mode verification rather than write-mode ensure. No local shadow DB is created.
+- [ ] Separate open-error and query/fetch-error tests preserve each reader's never-raises/`None` fallback. Injected shared access-policy `HistoryUnsupported` degrades; behind/ahead stamped stores and read-only tokens use read-mode verification rather than write-mode ensure. This issue does not duplicate or depend on ENH-3700's stamp-policy implementation. Default remote reads create no shadow DB.
+- [ ] Verification/query timeout sets the existing marker; second-reader/fresh-process suppression sends zero requests; TTL expiry permits recovery. Empty rows and policy/query errors do not mark the endpoint down, and ordinary explicit reads ignore the advisory marker. Captured logs/stderr contain no raw exception/endpoint/token/SQL canaries.
 - [ ] Regression tests for `HistoryUnsupported` degradation remain valid before and after ENH-3700's `_connect_readonly` guard/read-mode changes; explicit best-effort never re-raises the guard's own refusal.
 - [ ] `python -m pytest scripts/tests/` passes; the new API behavior is documented.
 
 ## Related
 
-- BUG-3652 (done startup/read path correction), ENH-3668 (larger remote-reader feature; independent), FEAT-3535 (remote backend).
+- ENH-3677 (shared fixture) and ENH-3720 (shared deadline), both prerequisites; ENH-3700 (shared reader policy/seam, prefer integration first); BUG-3652 (done), ENH-3668 (deferred strict-reader feature; not a prerequisite), FEAT-3535 (remote backend).
 
 ## Related Key Documentation
 
@@ -133,5 +138,6 @@ Prior 86/72 scores were cleared: the old plan omitted cumulative cold verificati
 Revised 2026-10-04 to consume ENH-3720's shared deadline rather than duplicate transport work. The previous appended scope correction is incorporated into the ordering/exception contract above: ENH-3700 owns read-mode verification and guard policy; ENH-3657 does not change that helper contract. Reader opening and query/fetch degradation are separate acceptance obligations.
 
 ## Session Log
+- EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - guard ownership, per-invocation deadline, marker recovery/scope and safe best-effort diagnostics clarified; deferred strict API removed as a required gate
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:04 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:confidence-check` - 2026-09-30T05:10:31 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

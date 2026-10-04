@@ -13,6 +13,7 @@ relates_to:
   - ENH-3668
   - ENH-3684
   - ENH-3685
+  - ENH-3720
 ---
 
 # EPIC-3693: Remote History Backend Support
@@ -21,7 +22,7 @@ relates_to:
 
 Make an opt-in remote (libSQL) history backend fail cleanly instead of silently: reader CLIs refuse with a named verdict instead of a traceback, no reader creates a shadow local `.ll/history.db`, hand-built `history.db` paths classify against the project root, and best-effort prepatch reads are time-budgeted. Narrowed 2026-10-02 after an Opus pre-implementation review (BUG-3652's follow-ups).
 
-**Closure criterion:** each audited entry point has a documented serve/refuse/degrade verdict, creates no shadow local DB, and exposes no endpoint/token or unhandled traceback. Intentional advisory empty results and skipped writes remain permitted where stated below; an unsupported user-facing reader must not look like a successful empty query. Broader strict read serving (ENH-3668/3684/3685) is deferred; the limited `ll-harness` best-effort serving in ENH-3700 is in scope. Refused rows say "not supported with a remote backend" and promise no follow-up.
+**Closure criterion:** each audited entry point has a documented serve/refuse/degrade verdict, creates no unintended shadow local DB, and exposes no endpoint/token/SQL or unhandled traceback. Applicable explicit local overrides remain supported. Intentional advisory empty results and skipped writes remain permitted where stated below; unsupported user-facing readers must not look like successful empty queries, and required harness retry/baseline lookups must fail closed. Broader strict read serving (ENH-3668/3684/3685) stays deferred; limited `ll-harness` serving is in scope. Refused rows say "not supported with a remote backend" and promise no follow-up.
 
 ## Children
 
@@ -51,10 +52,11 @@ The five active children cover the shared test fixture, refusal boundary, centra
 
 - **ENH-3678** (P2) and **ENH-3679** (P3) — local-store rebuild gating / lock-wait work; detached so the P2 fix and FEAT-3561 are not held behind P4 remote work by the epic-branch merge rule. Their follow-ons ENH-3698 (size gate, pending notice) and ENH-3699 (single-flight, deferred) hang off ENH-3678.
 - **ENH-3668**, **ENH-3684**, **ENH-3685** — remote read serving (strict-read infra, `ll-history` flips, MCP/SFT); deferred, detached (deferred is non-terminal, so keeping them parented would strand the epic branch). Revive when remote read demand exists.
+- **ENH-3720** — active external prerequisite of ENH-3682, with reciprocal `blocks`/`blocked_by`; supplies the shared `Deadline` and strict read-only backend/transport enforcement. It remains outside this epic, with no dependency on EPIC-3710 or deferred strict-reader work.
 
 ## Implementation order
 
-Remote track: ENH-3677 → ENH-3657 → ENH-3700. ENH-3658 and ENH-3682 each require ENH-3677; they can proceed independently of the refusal slice, but prefer ENH-3682 after ENH-3700 because both edit the reader seam. ENH-3658's CT-0 allowlist exists only until ENH-3700 lands; if the seam lands first, do not introduce that temporary entry.
+Remote track: ENH-3677 → ENH-3657 → ENH-3700. ENH-3658 requires ENH-3677 and can proceed independently of refusal/reader-seam work. ENH-3682 requires **both ENH-3677 and external ENH-3720**; prefer it after ENH-3700 without adding a hard dependency. Prefer integrating ENH-3720's backend/stub plumbing before ENH-3700's shared-file edits, then ENH-3682's consumer; either order must retain `deadline=` kwargs, no-deadline defaults and default-off stub fault/permission controls. ENH-3658's temporary CT-0 allowlist is removed by ENH-3700; if the seam lands first, never introduce it. Each slice merges its own rows into the single support table without discarding siblings' rows.
 
 Local track: ENH-3678 → ENH-3698, with ENH-3679 independent of remote readers. Sequence `cli/doctor.py` / `CLI.md` check-count edits in ENH-3679, ENH-3698 and ENH-3658 when integrating; shared-file ownership is not an additional functional dependency. ENH-3698 must land before any `REBUILD_DERIVE_VERSION` bump. ENH-3699 remains deferred until a spike proves bounded-lock timeout recovery across a newer ingest watermark. Deferred remote serving follows ENH-3700 → ENH-3668 → ENH-3684/3685 if revived.
 
@@ -66,6 +68,12 @@ Retain ENH-3677, ENH-3657, ENH-3700, ENH-3658 and ENH-3682 as the active remote-
 
 Revised issues with cleared/missing confidence scores require a new confidence check before implementation; planned tests are not passing evidence. No child is claimed implementation-ready merely because its prose now validates.
 
+_Re-reviewed 2026-10-04 against current code, a temporary HranaStub missing-stamp probe and `/ll:advise` with `claude-opus-5-5` (confidence 0.74). No extra child issue is needed._
+
+Amendments: ENH-3657 now pins owning-root resolution and tests the real CLI/MCP boundaries. ENH-3700 implements the previously assumed missing-stamp read predicate, preserves eager ensure-reader access failures on the same client, separates advisory output from required retry/baseline refusals, sanitizes diagnostics and propagates SFT shell failures before the pathname echo. ENH-3658 preserves explicit local snapshot provenance through export, supplies a real renderer skip path and doctor-trim DB override, and regenerates skill mirrors. ENH-3677 fixes variant ownership/setup-failure cleanup and clears stale 100/67 scores. ENH-3682 consumes external ENH-3720, clarifies per-read budgeting/marker recovery and does not require deferred `strict_reads()` infrastructure.
+
+Opus agreed with the core corrections and favored the shared stamp predicate. Its dissent favored refusing some default-shaped explicit local paths to reduce signature changes; the plan retains the epic's local-override promise through narrowly reached helpers and the snapshot seam. Opus's possible-remote-migration concern was checked: `LibsqlBackend.ensure_schema` currently verifies policy and does not migrate. Required gates use existing validation exits; no new strict-reader subsystem or harness exit code is added.
+
 ## Final support matrix
 
 | Surface | Remote verdict at epic closure | Owner |
@@ -73,10 +81,10 @@ Revised issues with cleared/missing confidence scores require a new confidence c
 | `ll-history` analyze/activity/rework/quality/collisions/sessions/root; DB-backed logs; `ll-ctx-stats`; explicit messages DB reader | Refuse, named safe stderr, exit 1; preserve applicable explicit local overrides | ENH-3657 |
 | MCP `history_search` | Structured `is_error` refusal against the owning project root | ENH-3657 |
 | History summary, decisions generation, automatic messages reader, CT-0 | Documented file/JSONL fallback or skip with one note | ENH-3700 |
-| `ll-harness` | Best-effort remote serving; exact/behind/ahead stamped schema and read-only token (`check_access(write=False)` policy); foreign/auth/uninitialized/unavailable/query failure degrades as documented | ENH-3700 |
+| `ll-harness` | Remote serving for exact/behind/ahead stamped schema and read-only token; advisory history degrades with safe warning, required retry/baseline/compare/pin lookups fail closed through existing validation exits | ENH-3700 |
 | Packaged SFT stage/enrich | Auto JSONL and explicit remote unenriched passthrough; unrelated errors fail the pipeline atomically | ENH-3700 |
 | Artifact snapshot route/dashboard/history panel; loop `--serve`; doctor `--trim` | Named refusal/501/unavailable panel or informational skip; server remains usable | ENH-3658 |
-| Prepatch base SHA/dirty reads | Best-effort remote data within one cumulative telemetry deadline, otherwise `None`; TTL marker suppresses repeat requests | ENH-3682 |
+| Prepatch base SHA/dirty reads | Per-invocation telemetry deadline shared by verification/query, otherwise `None`; existing endpoint TTL marker suppresses later advisory requests and permits recovery | ENH-3682, with external ENH-3720 |
 | Context-monitor pressure/handoff writes | Documented remote no-op; reminders and exits unchanged | ENH-3680 (cancelled) |
 | Existing backend-aware `ll-session recent`/search queries | Existing remote support retained; omission of pressure/handoff writes is documented, not absence of all remote consumers | Existing behavior |
 
@@ -87,12 +95,17 @@ This matrix is the acceptance baseline for the single public table in `docs/refe
 - [ ] All active children are `done` or deliberately `cancelled`; deferred/detached work is not required to close the epic.
 - [ ] Every matrix row has remote/local tests for its actual entry point; foreign cwd and local override cases preserve owning-project resolution and create no shadow `.ll/history.db`.
 - [ ] Unsupported readers return explicit safe refusals; documented advisory fallbacks preserve stdout contracts and emit only their designated safe warning/note channel.
-- [ ] Cold and warm prepatch reads share one cumulative deadline; open and mid-query failures never escape the advisory path.
+- [ ] Each cold/warm prepatch invocation shares one deadline across verification/query; open/mid-query failures return `None`. Marker suppression/recovery is proven without altering ordinary explicit reads or requiring deferred strict-reader APIs.
 - [ ] Dashboard 501 is rendered safely and stops polling; initial remote pages skip local snapshot work while serving continues.
 - [ ] Stage/enrich failures reach `terminal: true, failure: true`, publish no partial enrichment and never reach filter/publish/success sentinel.
+- [ ] Required harness retry/baseline/compare/pin lookup failures cannot run the rejected candidate or write candidate rows; advisory rates/admissions cannot change grading. Stamp/access verification stays within the ordinary ensure-reader open boundary, and migrated unstamped reads follow the documented shared policy.
 - [ ] The reader importer inventory, hazard gate allowlists, support docs and dependency backlinks agree with the implemented scope. Stale confidence scores are removed; re-run readiness checks on revised issues before implementation, after their prerequisites land.
 - [ ] The local authoritative suite (`python -m pytest scripts/tests/`) passes for the implementation; no unsupported reader message promises deferred remote serving.
 
 ## Status
 
 **Open** | Created: 2026-10-02 | Priority: P3
+
+## Session Log
+
+- EPIC-3693 open-child review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - five child plans amended and external ENH-3720 dependency reconciled; implementation not performed

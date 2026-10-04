@@ -49,12 +49,13 @@ The arena needs auditable scoring, while existing loop recommendations must not 
 ### Files to Modify
 
 - New `scripts/little_loops/utility/` module and focused pure scorer/curve tests.
-- `scripts/little_loops/cli/loop/next_loop.py`: adapt scoring, inject `as_of` into scoring and rationale, consume resolved weights, and handle `NextConfigError`.
+- `scripts/little_loops/cli/loop/next_loop.py`: adapt scoring, pass one captured time through scoring and rationale, consume resolved weights, and handle `NextConfigError`.
 - `scripts/little_loops/cli/loop/__init__.py`: pass the existing `BRConfig` into `cmd_next_loop`; preserve dispatch and CLI flags.
 - `scripts/little_loops/config/features.py`, `scripts/little_loops/config/core.py`, and `scripts/little_loops/config/__init__.py`: config types, deferred validation/resolution, root parsing/property/serialization wiring, public exports, and `__all__`.
 - `scripts/little_loops/config-schema.json`: declare the consumed weight object, bounds, defaults, and unknown-key rejection.
+- `hooks/scripts/session-start.sh`: align the retained inline config merge with the shared recursive-null fix; Python session-start/edit-batch handlers already use the shared helper.
 - `scripts/tests/test_cli_loop_next.py` and `scripts/tests/test_cli_loop_dispatch.py`: golden output, error/exit behavior, clock propagation, config forwarding, and mocked execution.
-- `scripts/tests/test_config.py`, `scripts/tests/test_config_schema.py`, and `scripts/tests/test_config_properties.py`: local overrides, runtime validation, `_DATACLASS_SECTION_MAP` completeness, schema-default parity, and serialization idempotence with nondefault weights.
+- `scripts/tests/test_config.py`, `scripts/tests/test_config_schema.py`, and `scripts/tests/test_config_properties.py`: local overrides, runtime validation, schema-default parity, and serialization idempotence with nondefault weights. Check `_DATACLASS_SECTION_MAP` in `scripts/tests/test_config_schema.py` for completeness.
 - `docs/reference/CONFIGURATION.md`, `docs/reference/CLI.md`, and `docs/reference/API.md`: consumed config shape, defaults/reset behavior, exit codes, and pure utility contracts. Existing CLI registry tests must remain green; no new entry point is registered.
 
 ### Similar Patterns and Configuration
@@ -76,8 +77,11 @@ The arena needs auditable scoring, while existing loop recommendations must not 
 ### Aggregator contracts
 
 - Both aggregators accept keyed mappings. Weights are finite, nonnegative real numbers; booleans, nonnumeric values, NaN, and infinities are invalid. Supplied score keys without corresponding weights are invalid rather than silently ignored. The module is pure: no filesystem, database, clock, or network access.
+- Validate every supplied non-missing score even when its weight is zero; a disabled axis does not excuse NaN, infinity, a boolean, or an out-of-domain value. Invalid arguments raise `ValueError` with the axis name. For the geometric helper only, absent/`None` scores remain valid missing evidence, including on zero-weight axes.
 - **Additive:** every weighted axis must have a finite, nonnegative real score, excluding booleans. Missing/`None` scores are invalid; the legacy adapter represents missing recency as an explicit `0.0`. Scores above 1 are allowed. Iterate in the supplied weight mapping's order using ordinary left-to-right multiplication/addition; the legacy adapter constructs that mapping in the canonical order `frequency`, `recency`, `success`. Do not normalize, clip, use `math.fsum`, or change the arithmetic association. Two empty mappings return `0.0`; the command separately rejects configured weights that are all zero.
+- **Finite aggregate:** if nondefault finite weights overflow an additive product/sum, raise `ValueError`; the command translates that into the same exit-2 diagnostic boundary as invalid weights, with empty stdout and no execution. Do not silently emit infinity/NaN into rankings or JSON. This does not change the default legacy arithmetic.
 - **Geometric:** an absent score key or `None` means missing; a supplied zero is present. Present scores must be finite real numbers in `[0, 1]`, excluding booleans. Zero-weight axes contribute nothing. Aggregate only present positive-weight axes, renormalizing their weights. Return `None` if none resolve, including empty input or an all-zero weight mapping; never invent utility `0` or `1` for missing evidence.
+- **Geometric numerics:** normalize included weights by their maximum before computing normalized shares, so finite weights such as `1e308/1e308` do not overflow their denominator. Test large equal weights and small positive weights; scale-invariance assertions apply only when the scaled weights remain finite and positive. Do not use this normalization on the additive path.
 - **Floor:** use one named parameter, `floor`, default `1e-6`, validated as finite with `0 < floor < 1` and excluding booleans. Each included geometric score is replaced by `max(score, floor)`, including a positive value below the floor. Compute the weighted geometric mean in log space. This is separate from the legacy additive path and adds no make-up term.
 - **Ownership:** neither aggregator receives gates or implements vetoes, coverage, or fallback ordering. FEAT-3561 handles these before/after the geometric helper. Its adapters must resolve bounded geometric axes separately; they must not change legacy next-loop curves to satisfy the geometric score domain.
 
@@ -100,6 +104,7 @@ The arena needs auditable scoring, while existing loop recommendations must not 
 - Omitted sections and omitted weight leaves use these defaults. Partial weight objects are valid; the effective three-axis set is validated after defaults are applied.
 - Declare `additionalProperties: false` at the `next`, `loop_history`, and `weights` levels. Only the three named weight keys exist in this issue. Each supplied weight is a number with minimum 0; there is no normalization requirement or upper bound. All three effective weights being zero is a runtime config error.
 - A one-key `.ll/ll.local.md` override preserves sibling weights. Local `null` removes a configured leaf, so subsequent default resolution restores its default; a zero weight intentionally disables that contribution. Explicit `null` in the base JSON config is invalid.
+- Reset semantics also apply when `next`, `loop_history`, or `weights` was absent from the base file, or the local override replaces a non-object base value. `config.core.deep_merge` currently recurses only when both sides already contain a mapping, so a null leaf inside a newly introduced mapping survives instead of being removed. Include the small merge correction: recurse over override mappings against an empty mapping when the base is missing/non-mapping, preserving array replacement and input immutability. Before changing the shared merge, audit its config/hook consumers for reliance on a null leaf in a newly introduced mapping. Keep the retained inline merge in `hooks/scripts/session-start.sh` consistent, with a Python/inline-hook parity regression; Python hook handlers already import the shared function. Test absent ancestors and scalar-to-object replacement, not only a populated base object. Do not reinterpret base-file null as a reset in the resolver.
 - FEAT-3561 may add a separate `next.verbs` object when its per-verb settings have consumers. It must not reinterpret `next.loop_history.weights` as arena weights.
 - Invalid consumed shapes, unknown keys, invalid numeric values, or an all-zero effective set yield exit 2, one concise stderr diagnostic naming the setting, and empty stdout in both text and JSON modes. There must be no traceback, recommendation rendering, or `cmd_run` call on that path. Invalid `next` settings alone must not prevent unrelated commands from constructing `BRConfig` and running.
 - Preserve current no-history/all-excluded behavior: exit 1 with existing text or JSON `[]`. Successful recommendation output remains exit 0; text `--execute` continues to return the dispatched run result.
@@ -112,23 +117,25 @@ The arena needs auditable scoring, while existing loop recommendations must not 
 
 1. Before changing production code, capture literal text and JSON golden output against the current implementation with color settings and both clock reads fixed. Use a compact multi-loop fixture covering ties, more than 50 runs, missing/malformed/naive/future timestamps, and mixed run statuses. Pin the raw additive formula as well as rendered rounding.
 2. Extract the pure response curves and additive scorer, passing `as_of` through scoring and rationale. Preserve canonical arithmetic order, timestamp string ordering, stable tie order, success counting, JSON `round(..., 4)`, and text `.3f` formatting.
-3. Add the consumed config/schema, complete root/export/serialization wiring, pass config through dispatch, and resolve/validate it at the consumer boundary. Test defaults, deliberate nondefault ranking changes, partial objects, one-key local merge, local leaf removal/default restoration, malformed shapes, unknown keys, invalid numbers, and all-zero weights. Verify an invalid `next` value does not break an unrelated command.
+3. Add the consumed config/schema, complete root/export/serialization wiring, pass config through dispatch, and resolve/validate it at the consumer boundary. Test defaults, deliberate nondefault ranking changes, partial objects, one-key local merge, local leaf removal/default restoration (including absent ancestors), malformed shapes, unknown keys, invalid numbers, and all-zero weights. Preserve malformed raw `next` values until resolution; parsing or serializing unrelated config must not coerce them into defaults or raise a next-specific error. Verify an invalid `next` value does not break an unrelated command. Include the bounded merge/reset correction described above.
 4. Add the geometric helper with focused missing-axis, zero-weight, zero-score, floor, no-utility, and invalid-input tests. Test invariance to multiplying all included weights by the same positive factor; keep gate evaluation tests in FEAT-3561.
 5. Add CLI cases for exclusions, no history, resolved parameters where practical, and `--execute` with `cmd_run` mocked. Preserve the existing behavior that `--json --execute` renders JSON without dispatching execution. Update docs and run the local suite, lint, and type checks.
 
 ## Impact
 
-- **Priority:** P3 — prerequisite for FEAT-3561 without changing current recommendations.
-- **Effort:** Medium — scorer extraction, config/schema and tests.
-- **Risk:** Medium — a default or time-source change could silently reorder existing output.
-- **Breaking Change:** No.
+- **Priority**: P3 — prerequisite for FEAT-3561 without changing current recommendations.
+- **Effort**: Medium — scorer extraction, config/schema and tests.
+- **Risk**: Medium — a default or time-source change could silently reorder existing output.
+- **Breaking Change**: No.
 
 ## Acceptance Criteria
 
 - [ ] Golden output is captured before extraction. Default-config text and JSON remain byte-identical with a fixed clock shared by recency and rationale, including stable ties, rounding, uncapped frequency, future recency, timestamp fallbacks/string ordering, and mixed statuses.
 - [ ] Default legacy weights are exactly `0.50/0.30/0.20`; the additive path retains the original multiplication/addition order without normalization, clipping, or `math.fsum`.
 - [ ] Pure aggregator tests enforce the contracts above: valid/invalid weights and score domains, missing data, zero weights, ordinary zero scores, the floor and values below it, geometric weight-scale invariance, and `None` when no positive-weight axis resolves. No gates or make-up term are added.
+- [ ] Zero-weight scores are still validated; large finite geometric weights normalize safely; additive overflow from nondefault weights produces a controlled exit-2 failure before rendering/execution.
 - [ ] `next.loop_history.weights` is declared in `config-schema.json` with matching runtime validation, unknown-key rejection, and defaults. Partial objects and one-key local overrides preserve siblings; local leaf removal restores a default; explicit zero remains zero.
+- [ ] Local null resets work with missing ancestors and scalar-to-mapping replacement; base JSON null remains invalid. Shared and retained hook merge behavior agrees, and merge inputs remain unmodified.
 - [ ] Root config/property/export/serialization wiring is complete; schema-default parity, dataclass-map completeness, and nondefault serialization idempotence tests pass.
 - [ ] The real `ll-loop next-loop` entry point handles invalid consumed config in text/JSON modes with exit 2, one concise stderr diagnostic, empty stdout, no traceback, and no execution. Invalid `next` values alone do not break unrelated commands.
 - [ ] Existing no-history/all-excluded exit 1 behavior, exclusions, parameter resolution, mocked text execution, and JSON-with-execute behavior remain unchanged. Dispatch passes the already-loaded config through.
@@ -151,3 +158,9 @@ A user runs `ll-loop next-loop` with default configuration after the extraction 
 ## Status
 
 **Open** | Created: 2026-09-30 | Priority: P3
+
+## Review Notes
+
+- 2026-10-04: Pre-implementation review with `/ll:advise --signal user_requested --host claude-code --model opus` (confidence 0.74 across the three issues). Added zero-weight validation, stable geometric weight normalization, controlled nondefault additive overflow, and the source-proven local-null merge gap. Retained byte-identical default behavior and the small scope. Opus suggested clamping future timestamps; rejected here because curve corrections belong outside this extraction and FEAT-3561 already owns bounded arena adapters. An extreme future timestamp currently raises `OverflowError` in the legacy recency curve; characterize that exception rather than silently clamping it.
+
+- Second Opus pass (2026-10-04, confidence 0.74): added the shared-merge consumer audit/parity check. Retained unconditional stable normalization in the new geometric helper; it never runs on the legacy additive path, so the concern about changing old score bits is inapplicable.
