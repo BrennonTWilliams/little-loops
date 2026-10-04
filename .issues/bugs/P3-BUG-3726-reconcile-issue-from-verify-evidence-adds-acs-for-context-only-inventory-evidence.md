@@ -10,6 +10,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-04'
 captured_at: '2026-10-04T01:57:03Z'
 parent: EPIC-3694
+learning_tests_required: []
 relates_to:
 - ENH-3718
 - BUG-3695
@@ -122,4 +123,5 @@ The evidence is synthetic: a real B6 pass returned `VALID` on this fixture, so t
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-10-04T17:23:31 - `44b0fc74-7bed-48d3-bb6f-bfd73dcfe916.jsonl`
 - `/ll:confidence-check` - 2026-10-04T17:20:47 - `8a3efb4e-00d3-4735-b344-4003dc6dc953.jsonl`
