@@ -4,6 +4,7 @@ type: ENH
 title: Total-deadline budget plumbing for session_store backends
 priority: P4
 status: open
+testable: true
 discovered_by: ll-issues-create
 discovered_date: '2026-10-04'
 captured_at: '2026-10-04T01:29:51Z'
@@ -15,212 +16,162 @@ relates_to:
 learning_tests_required:
 - sqlite3
 reconcile_attempted: true
-verify_verdict: CLAIMS_OUTDATED
-verify_evidence: "Integration Map > Tests: 'scripts/tests/test_enh3720_session_store_deadline.py — new file (ENH-numbered convention...' is flagged stale_file_ref (untracked) because the planned-new marker is not in the recognised form -> write '(new file)' (or '(new)'/'(to be created)') immediately after the path so format-check classifies it planned_new"
-
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3720: Total-deadline budget plumbing for session_store backends
 
 ## Summary
 
-Add a monotonic total-deadline budget to `session_store/backend.py`, `libsql.py` and `hrana.py` so optional history reads/writes can honor a whole-operation bound (cold verification + queries + transactions + response reads). Split out of FEAT-3711 after an Opus review (2026-10-03): it is shared infrastructure, not an ll-next feature. v1 `ll-next` reads **local SQLite only**, so this is **not** a prerequisite of EPIC-3710; it unlocks remote-history reads for ll-next and any other optional-telemetry caller.
+Add an opt-in, connection-lifetime monotonic deadline to strict read-only history connections. Local SQLite queries and remote libSQL access verification, queries and response reads share the caller's absolute expiry. ENH-3682 is the first concrete consumer and owns best-effort prepatch integration; this issue owns the reusable deadline and backend/transport enforcement. v1 `ll-next` remains local-SQLite only, so this issue is not a prerequisite of EPIC-3710.
 
 ## Current Behavior
 
-`LibsqlBackend.connect_readonly` ignores its timeout argument and each Hrana request starts a fresh budget, so a cold verification followed by a stalled query can exceed any caller-intended total. SQLite lock timeouts bound waiting for a lock but not query execution. ENH-3679 bounds only `cli_event_context` (250 ms per connection).
+- `LibsqlBackend.connect_readonly` accepts `timeout` for compatibility but ignores it; its Hrana client uses a 10-second per-request timeout. Cold access verification and the query start separate budgets.
+- `HranaClient._read` checks time between `resp.read(65536)` calls. A buffered read can receive a trickle for longer than its socket timeout. `getresponse()` can also detach the connection's socket for connection-closing responses, leaving `conn.sock` unavailable while the response still owns its reader.
+- `SqliteBackend.connect_readonly` returns a raw SQLite connection with a lock-wait timeout and no query cancellation. Query work can continue in cursor fetching and iteration after `execute()` returns.
+- `history_reader._base._connect_readonly` catches opening failures only and calls `open_history_readonly(..., ensure=True)`. It cannot catch later query/fetch failures, and no deadline is passed through that seam today.
 
 ## Expected Behavior
 
-- A caller passes one monotonic deadline; the remaining budget is carried through cold access verification, queries, transactions and response reads in the libsql/Hrana backends. SQLite gets a progress-handler cancellation bound in addition to a remaining-budget lock timeout.
-- Existing readers keep their default (unbounded-as-today) behavior when no deadline is passed.
-- No timed-out task continues writing after the caller reports a timeout.
-- Read-only paths never use `connect_telemetry` (its file-backed verification/unreachable caches violate no-write contracts).
-- Coordinate with ENH-3682 (budget best-effort remote prepatch reads): share the common primitive; keep prepatch/cache behavior independent.
+- One absolute deadline governs the entire lifetime of an opted-in connection. Opening, cold verification and all subsequent read statements consume that same budget; an expired connection cannot start another query or request.
+- SQLite cancellation covers execution, fetching and iteration. Remaining-budget lock timeouts are refreshed before subsequent SQL statements, rather than frozen at connection creation.
+- Remote verification and query requests use the same expiry, capped by the client's existing per-request timeout. Stalled or trickling headers/body cannot keep an opted-in socket operation alive beyond its effective deadline plus documented scheduling tolerance.
+- Expiry raises `HistoryUnavailable` locally and `HranaUnavailable` remotely, including expiry during fetching. This is a backend exception contract; reader fallback is ENH-3682's separate responsibility.
+- Connections opened without a deadline retain existing timeout, exception, request-count and cache behavior. Ordinary SQLite connections install no new handler or adapter.
+- Strict read-only connections do not use `connect_telemetry` or file-backed verification/unreachable caches. The existing in-process verification cache remains allowed.
 
-## Acceptance Criteria
+## Motivation
 
-- [ ] Deadline primitive threaded through `backend.py`, `libsql.py`, `hrana.py`; tests cover cold slow verification followed by a stalled query/write, with request counts and a documented small scheduling tolerance.
-- [ ] SQLite query cancellation via progress handler bounded by remaining budget.
-- [ ] A deadline expiry surfaces as `HistoryUnavailable` on both legs — the SQLite leg wraps the progress-handler `sqlite3.OperationalError` ("interrupted"), the remote leg raises `HranaUnavailable` — so `history_reader/_base.py::_connect_readonly` (which catches only `HistoryError` and returns `None` on failure) degrades identically on both backends. Verified by a test driving an expired deadline through `_connect_readonly` on each backend and asserting `None` with no raw `sqlite3.OperationalError` escaping.
-- [ ] The SQLite progress handler is installed per operation and cleared (`set_progress_handler(None, 0)`) when the operation ends, so a reused connection is not aborted by a stale handler; a no-deadline path installs no handler. Verified by a test that runs a deadline-bounded operation on a connection, lets the deadline lapse, then runs a long query on the same connection and asserts it completes.
-- [ ] Default behavior of existing callers unchanged; no background worker continues a write after timeout.
-- [ ] Documented in `docs/guides/HISTORY_SESSION_GUIDE.md`/`API.md`; `python -m pytest scripts/tests/` passes.
+Optional history reads need a shared latency budget rather than a fresh allowance per network request or SQL statement. Separating this primitive from ENH-3682 avoids implementing conflicting deadline mechanisms while keeping reader fallback and marker policy independent.
+
+## Proposed Solution
+
+Use a frozen `Deadline` value with an absolute `time.monotonic()` expiry, float-second `remaining()` and `expired()` helpers. Add keyword-only `deadline=None` to the `Backend` protocol, both providers' `connect_readonly` methods and the module-level `connect_readonly` wrapper. Preserve the existing meaning of `timeout`: SQLite busy-wait seconds; remote callers use the optional deadline in addition to the existing Hrana client cap.
+
+For SQLite, use an opt-in `sqlite3.Connection` factory and cursor adapters only on deadline-bound connections. Check expiry before opening or starting a statement, install a connection-owned progress handler for its lifetime, and refresh the busy timeout to the smaller of the original lock cap and remaining budget before subsequent statements. Connection shortcuts and explicitly created cursors must enforce the same contract. Keep the handler active through `fetchone`, `fetchmany`, `fetchall` and iteration; clearing it when `execute()` returns would leave most query work unbounded. Translate deadline-triggered interrupts and deadline-exhausted lock waits to `HistoryUnavailable`, preserving the original exception as the cause; unrelated SQLite errors retain their prior taxonomy. The handler ends with connection closure. Reuse after expiry is intentionally refused; open a fresh unbounded connection for unrelated work.
+
+For libSQL, construct a dedicated deadline-bound Hrana client for the read-only connection. Store the immutable deadline on that client so lazy `check_access` -> `read_state` -> `batch` and the data query automatically share it, without adding per-call keywords to every schema helper or mutating a shared client. Keep verification lazy. Recheck expiry before each statement and POST, including cache-hit paths. Each request's effective expiry is the earlier of the caller's expiry and the current request's existing timeout cap.
+
+Enforce that expiry through connect/TLS, request send, header reads and body reads. Retain access to the response's live socket when `getresponse()` detaches `conn.sock`; close both response and connection on every exit. Deadline checks between large buffered reads alone are insufficient: use reads or cancellation that can interrupt a continuing trickle within one body read or header parse. If an interrupt watchdog is needed, it may only cancel owned I/O and must be stopped before returning; do not run queries in abandoned background workers.
+
+The deadline is not a universal hard wall-time guarantee: synchronous DNS resolution, JSON encoding/decoding, SQLite user-defined functions and filesystem stalls are not preempted by socket timeouts or VM progress callbacks. Document these limits and the progress-handler instruction granularity. Check expiry before further I/O and before reporting successful completion after synchronous work. Writes are outside v1; abandoning a future remote write cannot establish whether it committed, so unknown outcomes must not be blindly retried.
 
 ## Scope Boundaries
 
-- **In scope**: a shared monotonic deadline primitive; threading it through `Backend.connect_readonly`, `LibsqlBackend`/`LibsqlConnection` (cold access verification, queries, transactions) and `HranaClient` (per-request budget, response reads); a SQLite progress-handler cancellation bound plus remaining-budget lock timeout; docs in `docs/guides/HISTORY_SESSION_GUIDE.md` and `docs/reference/API.md`.
-- **Out of scope**:
-  - Switching `ll-next` (EPIC-3710/FEAT-3711) to remote-history reads — v1 is local-SQLite only; this only unlocks that later.
-  - Remote prepatch read budgeting and cache behavior (ENH-3682) — shares the primitive but stays independent.
-  - Changing `cli_event_context`'s 250 ms per-connection bound (ENH-3679) or the `connect_telemetry` verification/unreachable caches.
-  - Any change to default (no-deadline) behavior of existing readers/writers.
+- **In scope:** shared monotonic `Deadline`; strict read-only connection plumbing; local execution/fetch/lock enforcement; remote lazy verification and socket enforcement; default-off test-harness fault controls; backend API and timeout documentation.
+- **Out of scope:** writable `connect`, `connect_telemetry`, write transactions, `ensure_schema`, migrations, automatic retries, existing telemetry caches/markers and the ENH-3679 CLI-event budget.
+- **Owned by ENH-3682:** `open_history_readonly`/`history_reader._base._connect_readonly` best-effort seam, remote readonly telemetry policy, prepatch call sites, schema-ensure skipping and open/mid-query `None` fallback. ENH-3682 depends on this issue and consumes its primitive; do not add a parallel reader seam here.
+- **Also out of scope:** switching ll-next to remote reads, broad reader rewrites, new configuration/dependencies, and changing no-deadline defaults.
 
 ## Integration Map
 
-### Codebase Research Findings
+### Files to Modify
 
-_Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
-
-**Files to Modify**
-- `scripts/little_loops/session_store/backend.py` — `connect_readonly` is declared in four places that must stay signature-aligned: the `Backend` protocol (`:224`), `SqliteBackend` (`:278`), the module-level wrapper (`:365`, which resolves the target then forwards `timeout=`), and `LibsqlBackend` (`libsql.py:273`). The wrapper's docstring says timeout is "ignored by remote backends".
-- `scripts/little_loops/session_store/libsql.py` — `LibsqlBackend.connect_readonly` (`:273`) accepts `timeout` "for protocol parity and ignored"; it builds `LibsqlConnection(self._client(remote), read_only=True, ...)` with `_client(..., timeout=DEFAULT_TIMEOUT_S)` (`:45`, 10.0 s) and makes no network call at connect time. `LibsqlConnection` (`:152`) has no deadline attribute; its statement entry points are `execute` (`:215`) and `executemany` (`:219`), both of which call `_guard` (`:177`) then `_run` (`:201`).
-- `scripts/little_loops/session_store/hrana.py` — `HranaClient.__init__` stores one per-client `_timeout` (`:199`); `_post` (`:215`) computes `deadline = time.monotonic() + self._timeout` on every call (`:218`) and opens the connection with the same `timeout=self._timeout` (`:226`); only `_read` (`:255`) consults the monotonic deadline. Public entry points `execute` (`:289`), `batch` (`:297`) and `execute_many` (`:313`) all funnel through `_results` (`:271`) to `_post`, one HTTP POST each.
-- `scripts/little_loops/session_store/remote_schema.py` — `check_access` (`:222`) receives an already-built client and has no timeout of its own; cold verification is `read_state` (`:74`) → `client.batch` → one `_post`. `LibsqlConnection.ensure_schema` path (`libsql.py:283`) calls `check_access(..., write=True)` directly, outside `_guard`.
-
-**Request-count facts (for the test constraint)**
-- A cold `LibsqlConnection.execute` on a non-telemetry connection is **2 HTTP requests** (verification batch + the statement); warm is 1, because `_VERIFIED` (`remote_schema.py:213`) is process-wide and keyed `(base_url, project_id)`. `executemany` is one atomic `begin/rows/commit` batch pipeline — there is no interactive transaction, `executescript`, or multi-round-trip write path in `libsql.py`/`hrana.py`.
-- `migrate_remote` issues several sequential `_post`s (`_apply_one` re-reads state on `HranaUnavailable`); whether it is in scope for a deadline is not stated in the issue.
-
-**Dependent Files (Callers/Importers)**
-- Importers of `backend.py` (graph-confirmed): `cli/session.py:78`, `history_reader/runs.py:26`, `history_reader/formatting.py:18`, `issue_history/parsing.py:19`, `cli/issues/set_status.py:13`, and within `session_store/`: `queries.py`, `lifecycle.py:36`, `schema.py:25`, `writers.py:36`, `usage_refresh.py:17`, `remote_schema.py:29`, `hrana.py:33`, `libsql.py:31`, `__init__.py:79`. Importers of `hrana.py`: `libsql.py:40`, `remote_schema.py:30`.
-- Existing `connect_readonly` callers that pass an explicit `timeout=`: `lifecycle.rebuild_needed` (`lifecycle.py:1102`, `_REBUILD_NEEDED_TIMEOUT = 0.5`, tied to the 5 s SessionStart budget). These are the callers whose per-connection float-seconds `timeout` must keep meaning what it means today.
-- `connect_readonly` is also reached by ~25 `history_reader/*` and `issue_history/*` modules via `open_history_readonly` / `_connect_readonly` (`history_reader/_base.py`), none of which pass a deadline today.
-
-**Conventions in Force**
-- A new knob is added keyword-only with `None` meaning "keep prior behavior", resolved inside the callee, and mirrored through every seam layer — evidence: `schema.connect(path, *, busy_timeout_ms=None)` and `writers._connect_telemetry` forwarding the kwarg only when set. The four `connect_readonly` declarations above must move in lockstep (ENH-3678 needed a wrapper pass-through fix for the same reason).
-- Transport failures never leak a raw `TimeoutError`: `HranaClient._post` catches `OSError`/`http.client.HTTPException` (`TimeoutError` is an `OSError`) and re-raises `HranaUnavailable` (a `HistoryUnavailable`); `LibsqlConnection._run` is the single place that reacts to error classes (marks unreachable only on telemetry connections). A deadline expiry must stay inside this taxonomy; there is no deadline-specific exception class today.
-- No shared time-budget type exists; every site computes `deadline = time.monotonic() + X` inline and recomputes `deadline - time.monotonic()` (`hrana.py:_read`, `mcp_call.py`, `transport.py`). Contested: some sites use `time.time()` for deadlines (`runner_spec.py`, `fsm/executor.py`), and `remote_telemetry` TTLs use wall-clock `_now()`. This issue's primitive is monotonic by requirement.
-- Unit split: `connect_readonly`/`HranaClient`/`sqlite3` take float **seconds**; `busy_timeout_ms` and `telemetry_timeout_ms` are int **milliseconds**. Frozen dataclasses in `session_store/` are pure value types (`targets.BackendConfig`, `remote_schema.RemoteState`); none carries behavior methods, so a `Deadline` with `remaining()`/`expired()` is a new shape here.
-- The read-only path never uses `connect_telemetry`/the file-backed verified and unreachable caches: `LibsqlConnection(telemetry=False)` means `persist=False` in `check_access` and no marker checks in `_guard`. That is the property the "never `connect_telemetry`" criterion pins; the `_VERIFIED` in-process cache is still consulted and populated.
-
-**Tests**
-- `scripts/tests/hrana_stub.py::HranaStub` — real `ThreadingHTTPServer`; knobs are a single **global** `delay` (initialised at `:126`; the sleep at `:92-93` in `do_POST` is applied *after* the request is appended to `requests` at `:89`), `fail_next`, and `requests`. It has no per-request/per-statement delay and no mid-body stall, so "cold slow verification followed by a stalled query" cannot be expressed with it as-is; a stalled request still counts in `len(stub.requests)` even after the client gives up.
-- Timing tests use real wall time with a loose inline upper bound (3–5× the configured timeout) and no named tolerance constant: `test_hrana_client.py::TestTimeouts` (`:222`, `< 1.5` for `timeout=0.3`), `test_remote_ingestion_telemetry.py::TestTelemetryBudget`, `test_libsql_integration.py` (env-gated). Request counts are asserted as `len(stub.requests)` before/after. No test patches `time.monotonic` for the hrana client; no test asserts that a timed-out request has no late side effects.
-- Local-SQLite lock-wait precedent: `test_session_store_writers.py::TestCliEventLockBound` (`:3545`) holds `BEGIN IMMEDIATE` from a thread released by an `Event`, asserts `0.2 <= waited <= 2.0` for a 250 ms bound, and spies `sqlite3.connect`. `test_enh3678_rebuild_derive_gate.py::TestConnectReadonlyTimeout` only checks `timeout=` is accepted.
-- Suite constraints (`scripts/pyproject.toml`): default `-n logical`, `--timeout=120 --timeout-method=thread`. The `no_parallel` marker (serial-only, via `test_no_parallel_serial_gate.py`) exists for timing-sensitive tests but none of the hrana/libsql timing tests use it. Existing tests that import these modules and must keep passing: `test_hrana_client.py`, `test_libsql_backend.py`, `test_libsql_integration.py`, `test_remote_schema.py`, `test_remote_operation_matrix.py`, `test_remote_callers_bug3652.py`, `test_remote_hooks.py`, `test_remote_doctor.py`, `test_session_store_backend.py`.
-
-**Documentation**
-- `docs/reference/API.md` § `little_loops.session_store` → "Backend chokepoint" lists `connect_readonly` in an import block but documents no `timeout` parameter and has no section for `libsql`/`hrana`/`remote_schema`; its only libsql mention (~`:9975`) calls it a "future remote (libSQL) provider", which lags the code (libsql ships today).
-- `docs/guides/HISTORY_SESSION_GUIDE.md` has **no** remote/libsql/Hrana content at all (0 hits). The remote-backend timeout material actually lives in `docs/reference/CONFIGURATION.md` (`history.backend.telemetry_timeout_ms`, "Explicit reads use a longer bound (10s)", ~`:620–725`). The acceptance criterion naming the Guide therefore needs either new end-user-facing content there or a redirect to CONFIGURATION.md. Both are end-user docs: no `scripts/tests/…` or `scripts/little_loops/…` paths (`test_docs_audience_gate.py`).
-
-**Configuration**
-- `scripts/little_loops/config-schema.json` (`telemetry_timeout_ms`, ~`:2246`), `session_store/targets.py` (`DEFAULT_TELEMETRY_TIMEOUT_MS = 1500`), `config/features.py` — existing per-write telemetry budget; out of scope per the issue but it is the nearest existing "total budget" knob and must keep its current semantics.
+- `scripts/little_loops/session_store/deadline.py` (new file) — frozen deadline value; no database opens in this module.
+- `scripts/little_loops/session_store/backend.py` — three `connect_readonly` declarations, wrapper forwarding, and opt-in SQLite connection/cursor enforcement. Keep raw SQLite opens in this existing chokepoint.
+- `scripts/little_loops/session_store/libsql.py` — `LibsqlBackend.connect_readonly`, client construction and read-only connection expiry checks; preserve writable/telemetry defaults.
+- `scripts/little_loops/session_store/hrana.py` — optional immutable client deadline; request/socket/response cleanup and enforcement.
+- `scripts/little_loops/session_store/__init__.py` — export `Deadline` for downstream callers, including ENH-3682.
+- `scripts/tests/hrana_stub.py` — default-off per-request delays and stalled/trickling header/body controls; retain existing fixture behavior.
 
 ### Dependent Files (Callers/Importers)
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/session_store/backend.py` — `open_history_readonly()` ends in `backend.connect_readonly(resolved)` with no `timeout`/deadline; a deadline reaches the ~70 `history_reader/*` readers only if this (and `history_reader/_base.py::_connect_readonly`) gains a parameter. That seam is ENH-3682's `best_effort` territory — share the `Deadline` primitive, do not add a second seam here [Agent 1/2 finding]
-- `scripts/little_loops/history_reader/_base.py` — in `_connect_readonly()`: `except HistoryError` only, so a raw `sqlite3.OperationalError("interrupted")` from the progress handler escapes the "return None on failure" contract unless the SQLite leg wraps expiry as `HistoryUnavailable`; remote failures route through `remote_telemetry.warn_once(...)` [Agent 2 finding]
-- `scripts/little_loops/session_store/lifecycle.py` — in `rebuild_needed()` (`:1102`, `timeout=_REBUILD_NEEDED_TIMEOUT`): wraps open+read in a bare `except Exception` → `unknown/read_error`, so a deadline expiry is already degrade-safe; no edit needed. Second `connect_readonly(db)` site in `lifecycle.py:1658` passes no kwargs [Agent 1/2 finding]
-- `scripts/little_loops/session_store/writers.py` — `_DEGRADE_ERRORS = (sqlite3.Error, HistoryError)` (`:54`): a progress-handler `sqlite3.OperationalError` or a `HistoryUnavailable` expiry are both inside it; no edit needed [Agent 2 finding]
-- `scripts/little_loops/cli/doctor.py` — in `_remote_client()`/`_REMOTE_PROBE_TIMEOUT_S = 3.0` (`:464`, `HranaClient(..., timeout=...)` at `:480`) and `remote_schema.read_state(client)` (`:780`): builds its own per-client budget and does not go through `connect_readonly`; positional `resolve_backend().connect_readonly(...)` at `:535`, `:579`, `:890`. All stay valid with a default-`None` kwarg; no edit [Agent 1/2 finding]
-- `scripts/little_loops/cli/doctor_trim.py:280`, `cli/history.py:800`, `cli/ctx_stats.py:157,260,300,460`, `cli/logs.py:868,1610`, `issue_history/evolution.py:44`, `issue_history/workspace_quality.py:120` — positional `connect_readonly(path)` callers; unchanged by an additive kwarg [Agent 1 finding]
-- `scripts/little_loops/cli/session.py` — in `_main_migrate()`: `HranaClient(cfg.endpoint(), cfg.auth_token())` + `migrate_remote` (`:496–500`) and `connect_readonly(path)` probe in `contextlib.closing` (`:504–509`); no deadline today, out of scope per the `migrate_remote` open question [Agent 1/2 finding]
-- `scripts/little_loops/session_store/__init__.py` — `connect_readonly` import/`__all__` (`:87`, `:244`); a `Deadline` export (optional) needs an import + `__all__` entry here [Agent 1 finding]
-- `scripts/little_loops/session_store/remote_schema.py` — in `migrate_remote()`/`_apply_one()`: sequential `read_state`/`client.batch`/`client.execute` without a deadline; a changed `read_state`/`check_access` signature reaches it indirectly [Agent 2 finding]
 
-### Files to Modify
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/session_store/__init__.py` — export `Deadline` alongside `connect_readonly` **only if** callers outside `session_store` construct one (they do: `lifecycle`/`history_reader`/CLI readers); `test_session_store_schema.py::test_all_and_required_private_names_resolve` then covers it automatically [Agent 1/3 finding]
-- `scripts/tests/hrana_stub.py` — add a default-off per-request / per-chunk delay knob (e.g. `delay_for`/`trickle`) so "slow verification, then stalled statement" and a slow-trickle body (`_read` per-chunk deadline) are expressible; the existing global `delay` sleeps before any bytes are sent [Agent 3 finding]
+- `scripts/little_loops/session_store/remote_schema.py` — lazy `check_access`/`read_state` uses the bound client; public signatures, writable ensure and migrations stay unchanged.
+- `scripts/little_loops/session_store/lifecycle.py` — `rebuild_needed(timeout=_REBUILD_NEEDED_TIMEOUT)` retains its current timeout semantics; no new caller opt-in here.
+- `scripts/little_loops/session_store/backend.py` and `scripts/little_loops/history_reader/_base.py` — existing high-level reader openers remain unchanged here; ENH-3682 owns integration and catches failures at both open and query boundaries.
+- `scripts/little_loops/cli/doctor.py` — existing independently configured probe clients retain their timeout defaults.
 
-### Documentation
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/API.md` — in `Backend chokepoint: little_loops.session_store.backend`: add the `connect_readonly(target, *, timeout=5.0, deadline=None)` signature and `Deadline` semantics; also refresh the stale "SQLite-only prerequisite for a future remote (libSQL) provider" intro [Agent 2 finding]
-- `docs/reference/CONFIGURATION.md` — in `Remote history backend` (`history.backend.telemetry_timeout_ms` row, "Explicit reads use a longer bound (10s)", "Orchestration and loops" bullet "can stall that read for up to about 10 s"): cross-link the deadline option; wording must stay true for callers that pass no deadline [Agent 2 finding]
-- `docs/ARCHITECTURE.md` — in the "Every history.db connection funnels through `little_loops.session_store.backend`" paragraph (`:862`): mention the optional deadline; keep the substring `_connect_readonly` — `test_wiring_guides_and_meta.py:134` asserts it [Agent 2/1 finding]
-- `docs/guides/HISTORY_SESSION_GUIDE.md` — in the remote/timeout material it lacks entirely: add end-user text or a link to `CONFIGURATION.md`; dotted module names only (`test_docs_audience_gate.py` rejects `scripts/tests`, `scripts/little_loops/`, "this repo", `pytest scripts`) [Agent 2 finding]
+### Similar Patterns
+
+- Keyword-only optional settings use `None` to preserve defaults, as in `schema.connect` and telemetry connection forwarding.
+- Keep expiry within the existing `HistoryError` taxonomy. A local adapter must cover cursor work; wrapping only the connection opener does not translate later interrupts.
+- Extend the sqlite3 learning proof for progress-handler persistence, interrupt errors, connection/cursor factories and fetch-time work before relying on these mechanisms. Existing `learning_tests_required: [sqlite3]` remains in force.
 
 ### Tests
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_hrana_client.py` — in `TestTimeouts` (copy `test_read_timeout_raises_unavailable_within_the_bound`): new `TestDeadline` class — already-expired deadline, deadline shorter than client `timeout`, deadline through each of `execute`/`batch`/`execute_many`, slow-trickle body through `_read`, no-deadline default unchanged [Agent 3 finding]
-- `scripts/tests/test_remote_schema.py` — in `TestOpenPolicy::test_the_check_runs_once_per_process` (counts `sqlite_master` requests): pin cold = 2 requests and warm = 1 with a deadline passed; any extra request added by deadline threading trips it [Agent 3 finding]
-- `scripts/tests/test_libsql_backend.py` — in `TestReadOnly::test_reads_work_and_writes_are_refused_client_side` (asserts `len(stub.requests) == before`): extend for `connect_readonly(deadline=...)` + `TestBackendRegistry::test_libsql_resolves`; read-only path stays off `connect_telemetry` [Agent 3 finding]
-- `scripts/tests/test_enh3678_rebuild_derive_gate.py` — in `TestConnectReadonlyTimeout::test_default_timeout_unchanged_and_override_accepted`: pins `timeout` as a float-seconds keyword and the no-deadline default; add the SQLite progress-handler abort + remaining-budget lock-timeout tests here (lock-hold pattern from `TestRebuildNeeded::test_locked_store_maps_to_unknown_within_short_timeout`) [Agent 3 finding]
-- `scripts/tests/test_session_store_writers.py` — in `TestCliEventLockBound._hold_write_lock` / `test_both_telemetry_connects_use_short_timeout` (`:3545`, `:3605`): reuse the held-`BEGIN IMMEDIATE` helper (`0.2 <= waited <= 2.0` shape); re-read the telemetry-timeout test before changing how `timeout` maps onto remaining budget [Agent 3 finding]
-- `scripts/tests/test_session_store_backend.py` — in `TestProtocolConformance`: `Backend` is `@runtime_checkable`, so existing `isinstance` checks verify names only; add a new `inspect.signature` parity test over the four `connect_readonly` declarations (no precedent for these classes) [Agent 2/3 finding]
-- `scripts/tests/test_history_store_chokepoint_gate.py` — in `test_no_raw_sqlite_connect_outside_chokepoint_and_allowlist`: AST gate on raw `sqlite3.connect(`; passes if progress-handler/`Deadline` code adds no `sqlite3.connect` outside `backend.py` (a new helper module that connects needs an allowlist entry) [Agent 2/3 finding]
-- `scripts/tests/test_remote_callers_bug3652.py` — in `TestReadersDegradeOnRemoteFailure` (`_open(db_path)` fake patching `history_reader.runs._connect_readonly`, `:509–526`): breaks only if the `_connect_readonly` wrapper signature changes (ENH-3682 seam), not from this issue's kwarg [Agent 1/3 finding]
-- `scripts/tests/test_enh3720_session_store_deadline.py` — new file (ENH-numbered convention, cf. `test_enh3678_rebuild_derive_gate.py`): cross-layer cold-slow-verify + stalled-statement test importing `HranaStub` from `tests.hrana_stub`, request counts + named tolerance constant; mark `@pytest.mark.no_parallel` only if xdist CPU contention flakes it (no session_store test uses it today) [Agent 3 finding]
+
+- `scripts/tests/test_enh3720_session_store_deadline.py` (new file) — backend-boundary cold/warm/expired tests, connection-lifetime semantics, fetch/iteration cancellation and lock waits after earlier budget consumption.
+- `scripts/tests/test_hrana_client.py` — stalled/trickling headers/body, effective request cap, connection-closing responses, cleanup and no-deadline defaults.
+- `scripts/tests/test_libsql_backend.py` and `scripts/tests/test_remote_schema.py` — lazy read-only verification, strict cache policy and request counts.
+- `scripts/tests/test_session_store_backend.py` and `scripts/tests/test_enh3678_rebuild_derive_gate.py` — deadline keyword/default parity across all four declarations, wrapper forwarding and legacy timeout behavior.
+- `scripts/tests/test_session_store_schema.py` and `scripts/tests/test_history_store_chokepoint_gate.py` — exported names and database-opening chokepoint remain valid.
+- Use fake clocks/transports for exact budget accounting. Mark real timing cases `no_parallel` and use a named scheduling tolerance smaller than the tested budget, so two complete budgets or a prolonged trickle cannot pass. Do not substitute the existing 3-5x timeout allowances for total-deadline assertions.
+
+### Documentation
+
+- `docs/reference/API.md` — exported `Deadline`, read-only signatures, connection lifetime, expiry errors and limits; refresh the stale future-libSQL introduction.
+- `docs/reference/CONFIGURATION.md` — distinguish existing per-request/telemetry caps from an optional caller deadline without changing documented no-deadline defaults.
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — link to timeout documentation and describe user-visible failure behavior; use end-user language and no source/test paths.
+- `docs/ARCHITECTURE.md` — mention the optional backend deadline; preserve existing `_connect_readonly` wiring references.
 
 ### Configuration
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/session_store/libsql.py` — in `LibsqlBackend._client` (`DEFAULT_TIMEOUT_S = 10.0`, `:45`) and `connect_telemetry` (`telemetry_timeout_ms / 1000.0`, `:264–269`): the per-client cap the deadline must be `min()`-ed with; no new config key, so `config-schema.json`, `config/features.py`, `targets.py` (`DEFAULT_TELEMETRY_TIMEOUT_MS`), `db.py` and `test_history_backend_config.py` need no change [Agent 2 finding]
+
+No new option, schema migration or dependency. Existing telemetry timeout and marker semantics are unchanged; ENH-3682 uses that timeout to construct the new deadline.
 
 ## Program Design
 
 ### Types
 
-- `Deadline.expires_at: float` — absolute `time.monotonic()` value
-- `Deadline` — frozen dataclass; `None` deadline means unbounded (today's behavior)
+- `Deadline` (new frozen dataclass): `expires_at: float`, an absolute monotonic time in seconds.
+- `_DeadlineConnection` (proposed new `sqlite3.Connection` subclass) and `_DeadlineCursor` (proposed new `sqlite3.Cursor` subclass): preserve driver compatibility while enforcing the opted-in deadline through statements and cursor consumption.
+- `HranaClient` holds an optional immutable deadline on a dedicated client instance; no mutable per-request deadline on a shared client.
 
 ### Signatures
 
 - `Deadline.after(seconds: float) -> Deadline`
-- `Deadline.remaining() -> float` — seconds left, floored at 0.0
+- `Deadline.remaining() -> float` — floored at zero.
 - `Deadline.expired() -> bool`
-- `Backend.connect_readonly(target: Path | HistoryTarget, *, timeout: float = 5.0, deadline: Deadline | None = None) -> sqlite3.Connection`
-- `HranaClient.execute(sql: str, params: Sequence[Any] = (), *, deadline: Deadline | None = None) -> HranaResult`
-- `LibsqlConnection.execute(sql: str, parameters: Sequence[Any] = ()) -> LibsqlCursor` — reads the connection's own `deadline` and passes remaining budget to each `HranaClient` call
+- `Backend.connect_readonly(target: Path | HistoryTarget, *, timeout: float = 5.0, deadline: Deadline | None = None) -> sqlite3.Connection` — mirror keyword/default semantics in `SqliteBackend` and the module wrapper; `LibsqlBackend` keeps its existing `LibsqlConnection` return type.
+- `HranaClient.__init__(url: str, auth_token: str | None = None, *, timeout: float = 10.0, deadline: Deadline | None = None) -> None` — proposed additive constructor keyword; existing statement/batch signatures stay unchanged.
+- `LibsqlConnection.execute(sql: str, parameters: Sequence[Any] = ()) -> LibsqlCursor` — existing signature, lazy verification and query use the same bound client.
 
 ### Call Path
 
-`connect_readonly` (`backend.py`) -> `LibsqlBackend.connect_readonly` -> `LibsqlConnection._guard` -> `remote_schema.check_access` -> `HranaClient._post` -> `HranaClient._read`
+Remote: module-level `connect_readonly` -> `LibsqlBackend.connect_readonly` (no HTTP request) -> caller's `LibsqlConnection.execute` -> `_guard` -> `remote_schema.check_access` -> `remote_schema.read_state` -> `HranaClient.batch` -> `_post`; the data statement then uses `HranaClient.execute` -> `_post` -> `_read` with the same caller expiry.
 
-SQLite leg: `connect_readonly` -> `SqliteBackend.connect_readonly` -> `sqlite3.Connection.set_progress_handler` (aborts when `Deadline.expired()`).
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
-
-**Ground-truth corrections to the types/signatures/call path above (verified against current code)**
-- `HranaClient.execute(sql, params=())` (`hrana.py:289`) has no deadline parameter today, and neither do its siblings `batch` (`:297`) and `execute_many` (`:313`). `check_access` → `read_state` reaches the wire through `client.batch`, so a deadline carried only on `execute` would leave cold verification (`read_state`) and `executemany` unbudgeted. Whatever carries the budget has to reach `_post`/`_read` for all three entry points.
-- `LibsqlConnection._guard` (`libsql.py:177`) is **not** on the `connect_readonly` call path: `LibsqlBackend.connect_readonly` makes no network call and does not invoke `_guard`. `_guard` runs lazily per statement inside `execute`/`executemany`, and the first one triggers `check_access` via `_run`. The cold-verification leg therefore happens at first-statement time, inside the caller's operation — which is exactly why a connect-time deadline must be stored on the connection rather than consumed at connect.
-- `_post` computes its budget from `self._timeout` and `_read` takes an absolute `deadline: float` argument (static method). The existing absolute-monotonic-float contract in `_read` is the seam where a caller-supplied expiry and the per-client `_timeout` cap have to be reconciled (effective budget = the smaller of the two is the reading consistent with "unbounded-as-today when no deadline is passed").
-- `SqliteBackend.connect_readonly` (`backend.py:278`) passes `timeout=` to `sqlite3.connect` (lock-wait only, seconds) and sets `PRAGMA query_only = ON`; it does not set `PRAGMA busy_timeout`, and no `set_progress_handler` exists anywhere in the repo (repo-wide search, source and tests). `sqlite3` surfaces a progress-handler abort as `sqlite3.OperationalError` ("interrupted"), which `connect_readonly`'s `HistoryUnavailable` wrapper does not cover (it wraps only open/PRAGMA); read-path `sqlite3.OperationalError` is currently unwrapped except where a call site opts into `translate_sqlite_errors()`.
-
-**Open decisions this issue introduces (state the answers when implementing; none is pinned yet)**
-- Expiry error: a deadline expiry on the remote leg is naturally `HranaUnavailable` (existing taxonomy; `TimeoutError` → `HranaUnavailable` conversion already happens in `_post`). The local leg's expiry type (raw `sqlite3.OperationalError` vs `HistoryUnavailable`) is unspecified, and callers that treat the two backends uniformly depend on that parity.
-- Units: `Deadline` is monotonic seconds; `busy_timeout_ms` is int ms. The remaining-budget lock timeout must be converted consistently, and a remaining budget of `0.0` must not be passed to `sqlite3.connect(timeout=0)` / `PRAGMA busy_timeout` in a way that reads as "unbounded" on either backend.
-- Progress-handler granularity: `set_progress_handler(handler, n)` fires every `n` VM instructions, so cancellation latency is bounded by `n`, not exactly by the deadline; the "documented small scheduling tolerance" criterion should name this too. The handler is per-connection state and persists for the connection's lifetime — a handler left installed on a connection reused after the deadline would abort unrelated later queries.
-- Server-side outcome of a timed-out write: the client abandoning a Hrana request does not prove the server did not commit (`remote_schema._apply_one` already treats a mid-batch `HranaUnavailable` as an *ambiguous commit* and re-reads the idempotency marker). `hrana.py`/`libsql.py` spawn no threads, so "no timed-out task continues writing" holds client-side by construction; the criterion cannot mean server-side non-commit. The only background writer in `session_store` is the `compact-6section-*` daemon thread in `lifecycle._maybe_soft_threshold_summary`, which is not deadline-aware and is outside this issue's stated scope.
-
-### Decision Rules
-- Not a new gate/keyword/threshold: the issue adds a budget primitive, not a classification rule. Left as `N/A — no new decision logic` for the gate's purposes; the open decisions above are implementation judgments.
+Local: module-level `connect_readonly` -> `SqliteBackend.connect_readonly` -> opted-in connection/cursor factory -> SQL execution and cursor fetch/iteration with a persistent progress handler and remaining-budget lock timeout.
 
 ## Implementation Steps
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-04 — based on codebase analysis:_
-
-1. A caller-supplied monotonic deadline is honored across every wire round-trip on the remote leg — cold verification (`remote_schema.read_state` → `HranaClient.batch`), the statement (`execute`), and `executemany` — and is capped by, not replacing, the client's existing `_timeout`. Verified by a stub-backed test where verification is slow and the following statement stalls, asserting elapsed time against the deadline plus a tolerance, and `len(stub.requests)` (2 for cold, not more).
-2. `Backend.connect_readonly` accepts the optional deadline on all four declarations (`backend.py:224`, `:278`, `:365`; `libsql.py:273`) and ignoring it is no longer true for libsql. Verified by a signature-parity assertion alongside `test_session_store_backend.py` / `test_libsql_backend.py`, and by existing `timeout=` callers (`lifecycle.rebuild_needed`) behaving unchanged.
-3. The SQLite read-only leg cancels a long-running query when the remaining budget is exhausted, and the cancellation handler does not outlive the operation on a reused connection. Verified with a local test in the style of `TestCliEventLockBound` (held lock + a deliberately slow query), asserting both a lower and an upper elapsed bound.
-4. With no deadline passed, behavior is byte-for-byte as today: no handler installed, no changed lock timeout, no extra requests. Verified by the existing suites listed under Integration Map → Tests passing unmodified.
-5. The test harness can express a slow-verification-then-stalled-statement scenario (the stub's single global `delay` cannot today); any new stub knob must not disturb the 8 files that import `HranaStub`.
-6. Docs: `API.md` documents the new parameter and the deadline semantics; the HISTORY_SESSION_GUIDE.md criterion is reconciled with the fact that remote-backend behavior is documented in `CONFIGURATION.md`. `python -m pytest scripts/tests/` exits 0, including `test_docs_audience_gate.py`.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `scripts/tests/hrana_stub.py` — add the default-off per-request/per-chunk delay knob before writing the deadline tests; the 8 `HranaStub` importers (`test_remote_schema.py`, `test_remote_doctor.py`, `test_remote_operation_matrix.py`, `test_hrana_client.py`, `test_remote_hooks.py`, `test_libsql_backend.py`, `test_remote_ingestion_telemetry.py`, `test_remote_callers_bug3652.py`) must pass unmodified
-- Add `scripts/tests/test_enh3720_session_store_deadline.py` and extend `test_hrana_client.py::TestTimeouts`, `test_enh3678_rebuild_derive_gate.py::TestConnectReadonlyTimeout`, `test_session_store_backend.py::TestProtocolConformance` (new `inspect.signature` parity test across the four `connect_readonly` declarations)
-- Decide and state the SQLite-leg expiry type: wrap progress-handler `sqlite3.OperationalError` as `HistoryUnavailable` so `history_reader/_base.py::_connect_readonly` (`except HistoryError`) keeps its "return None on failure" contract and local/remote callers see the same taxonomy; `writers._DEGRADE_ERRORS` and `lifecycle.rebuild_needed` already tolerate either
-- Install the progress handler per-operation and clear it (`set_progress_handler(None, 0)`) when the operation ends, so a reused connection is not aborted by a stale handler; any no-deadline path installs nothing
-- Inject at `scripts/little_loops/session_store/backend.py::open_history_readonly` / `history_reader/_base.py::_connect_readonly` — only in coordination with ENH-3682 (its `best_effort` seam); this issue supplies the `Deadline` primitive, not a second wrapper signature
-- Update `docs/reference/API.md`, `docs/reference/CONFIGURATION.md`, `docs/ARCHITECTURE.md` (keep `_connect_readonly` substring), and `docs/guides/HISTORY_SESSION_GUIDE.md` (dotted module names only) to describe the optional deadline
-- Learning registry gap: `ll-learning-tests check --stale-aware sqlite3` is proven but carries no assertion for `Connection.set_progress_handler` (abort surfaces as `OperationalError: interrupted`, handler persists per-connection, `n`-instruction granularity) — add one before relying on it; `learning_tests_required: [sqlite3]` already present, unchanged
+1. Extend the sqlite3 learning proof, add/export the deadline value and align the read-only connection signatures.
+2. Add opt-in local connection/cursor enforcement, fetch-time exception translation and per-statement lock budgeting.
+3. Bind the remote client deadline across lazy verification and data reads; enforce socket expiry and cleanup, including trickling and connection-closing responses.
+4. Add deterministic accounting tests and a small serial real-I/O matrix; update docs and run the full suite. Keep reader/marker integration in ENH-3682.
 
 ## Impact
 
-- **Priority**: P4 — not on the ll-next critical path (v1 is local-only).
-- **Effort**: Medium — three backends plus concurrency-sensitive tests.
-- **Risk**: Medium — timing-sensitive tests; touches shared backend code.
-- **Breaking Change**: No.
+- **Priority:** P4 — reusable infrastructure with ENH-3682 as the first consumer; not on the ll-next critical path.
+- **Effort:** Medium — two backends, cursor adapters and transport cancellation tests.
+- **Risk:** Medium — shared backend code and timing-sensitive behavior; changes are opt-in.
+- **Breaking Change:** No; bounded connections intentionally fail after their caller-specified expiry.
+
+## Acceptance Criteria
+
+- [ ] All four `connect_readonly` declarations accept and forward `deadline=None` with consistent keyword/default semantics; existing `timeout=` callers pass unchanged regression tests.
+- [ ] A bound remote connection shares one absolute expiry across cold verification and data queries: cold success makes two POSTs, warm success one, expiry before dispatch zero, and verification consuming the budget prevents the second POST. Fake-clock tests assert the effective cap without resetting the caller budget.
+- [ ] Serial socket tests for stalled headers/body, a continuing trickle within a buffered read/header parse, and connection-closing responses finish within effective expiry plus a named tolerance smaller than the tested budget; response/connection resources are closed on success and failure.
+- [ ] Local tests cover expired-before-open and expired-before-statement rejection, execution cancellation, `fetchone`/`fetchmany`/`fetchall`/iteration cancellation through both connection shortcuts and explicit cursors, and lock waits after prior budget consumption.
+- [ ] Deadline-triggered local interrupts/lock expiry raise `HistoryUnavailable` with the SQLite cause preserved; remote expiry raises `HranaUnavailable`. Unrelated SQLite failures keep their existing exception behavior. These are backend tests, not `_connect_readonly` reader-fallback tests.
+- [ ] Every read on an expired bound connection fails, including small queries/cache-hit paths; closing it releases owned cancellation state. A separate no-deadline connection performs long reads without a new handler, shortened timeout or changed exception policy.
+- [ ] Strict remote reads refuse writes before any POST and do not invoke `connect_telemetry` or write file-backed cache/marker files; in-process verification reuse remains allowed. No request starts after expiry and no abandoned query worker continues after timeout.
+- [ ] Writable connections, telemetry defaults, schema ensure/migrations and existing no-deadline request counts remain unchanged in regression tests; existing HranaStub users retain default behavior.
+- [ ] API, timeout and history-guide documentation specifies the connection lifetime, exception contract, scheduling/VM granularity and DNS/CPU/UDF/filesystem limits; `python -m pytest scripts/tests/` exits 0.
 
 ## Status
 
 **Open** | Created: 2026-10-04 | Priority: P4
 
-## Verification Notes
+## Review Notes
 
-Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). Ran `--from-evidence`: only the claim listed in `verify_evidence` was re-checked.
-
-- Integration Map > Tests: `hrana_stub.py::HranaStub` citation placed the post-`requests.append` sleep at `:126`/`:128`. Current code: `self.delay = 0.0` is initialised at `:126` (`self.requests` init is `:128`); the sleep is `scripts/tests/hrana_stub.py:92-93` in `do_POST`, after `stub.requests.append` at `:89`. Rewrote the citation in place.
+Revised 2026-10-04 after code review, targeted local reproductions and `/ll:advise` with Opus. An 80 ms Hrana timeout took about 205 ms under a slow trickle; clearing a SQLite handler after `execute()` allowed fetching to outlive a 30 ms deadline. These observations motivate the transport and fetch-time acceptance criteria. Earlier appended research/open decisions are consolidated above; the old persisted verification verdict/evidence was cleared because it described the previous draft, not this revised contract.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-04T19:40:08 - `e588d5e7-f6f0-45f7-81e4-8c0cef455170.jsonl`
 - `/ll:verify-issues` - 2026-10-04T03:10:04 - `2d651013-b69a-457e-aeca-c0e6f7d1781c.jsonl`
 - `/ll:verify-issues` - 2026-10-04T03:08:18 - `676efbca-b77e-4cfe-b025-9bbe4d011d98.jsonl`
 - `/ll:reconcile-issue` - 2026-10-04T03:04:52 - `38f792e1-e775-40d5-80c0-389347b2f30b.jsonl`
