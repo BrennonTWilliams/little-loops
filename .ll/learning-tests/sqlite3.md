@@ -35,5 +35,13 @@ assertions:
   result: pass
 - claim: A CREATE TEMP VIEW is listed in sqlite_temp_master (or temp.sqlite_master), not in main.sqlite_master or bare unqualified sqlite_master
   result: pass
+- claim: a progress handler installed with set_progress_handler stays active after cursor.execute() returns, so a handler returning 1 interrupts later fetchall()/fetch/iteration work with sqlite3.OperationalError('interrupted') whose sqlite_errorcode is SQLITE_INTERRUPT (ENH-3720)
+  result: pass
+- claim: sqlite3.connect(factory=<Connection subclass>) returns that subclass, but the Connection.execute() shortcut does not call an overridden cursor() and returns a plain sqlite3.Cursor, so a deadline-bound connection must override execute()/executemany()/executescript() itself and create cursors via cursor(<Cursor subclass>) (ENH-3720)
+  result: pass
+- claim: with a rollback-journal database held by BEGIN EXCLUSIVE in another connection, a reader's SELECT waits PRAGMA busy_timeout (not the connect timeout it was opened with once changed) and then raises OperationalError('database is locked') with sqlite_errorcode SQLITE_BUSY, so busy_timeout can be re-clamped per statement (ENH-3720)
+  result: pass
+- claim: set_progress_handler(None, 0) clears the handler and later statements on the same connection run to completion (ENH-3720)
+  result: pass
 raw_output_path: .ll/learning-tests/raw/sqlite3.txt
 ---

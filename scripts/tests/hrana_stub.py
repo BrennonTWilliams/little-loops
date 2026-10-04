@@ -16,6 +16,11 @@ One lock spans a whole request, so concurrent batches serialize the way ``begin 
 does on the real servers. Fault knobs: ``delay`` (sleep before answering), ``fail_next``
 (queue of one-shot ``(status, body)`` overrides) and ``requests`` (every request received,
 for asserting on what crossed the wire).
+
+Default-off transport faults (ENH-3720): ``delays`` (queue of per-request sleeps, consumed
+before ``delay``), ``stall_body`` (send headers, then sleep before the body) and ``trickle``
+(seconds between single-byte writes of the response; ``trickle_part`` is ``"headers"``,
+``"body"`` or ``"all"``). The handler speaks HTTP/1.0, so every response is connection-closing.
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ from __future__ import annotations
 import base64
 import http.server
 import json
+import socket
 import sqlite3
 import threading
 import time
@@ -76,11 +82,34 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def _reply(self, status: int, body: Any) -> None:
         raw = json.dumps(body).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+        stub = self.server
+        if stub.trickle <= 0 and stub.stall_body <= 0:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+        self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        head = (
+            f"HTTP/1.0 {status} X\r\nContent-Type: application/json\r\n"
+            f"Content-Length: {len(raw)}\r\n\r\n"
+        ).encode()
+        try:
+            self._send(head, stub.trickle if stub.trickle_part in ("headers", "all") else 0.0)
+            if stub.stall_body > 0:
+                time.sleep(stub.stall_body)
+            self._send(raw, stub.trickle if stub.trickle_part in ("body", "all") else 0.0)
+        except OSError:
+            pass  # the client gave up (its deadline expired)
+
+    def _send(self, data: bytes, interval: float) -> None:
+        if interval <= 0:
+            self.wfile.write(data)
+            return
+        for i in range(len(data)):
+            self.wfile.write(data[i : i + 1])
+            time.sleep(interval)
 
     def do_POST(self) -> None:  # noqa: N802
         length = int(self.headers.get("Content-Length") or 0)
@@ -89,8 +118,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         stub.requests.append(
             {"path": self.path, "auth": self.headers.get("Authorization"), "body": raw.decode()}
         )
-        if stub.delay:
-            time.sleep(stub.delay)
+        pause = stub.delays.pop(0) if stub.delays else stub.delay
+        if pause:
+            time.sleep(pause)
         if stub.fail_next:
             status, body = stub.fail_next.pop(0)
             self._reply(status, body)
@@ -124,6 +154,10 @@ class HranaStub(http.server.ThreadingHTTPServer):
         self.lock = threading.Lock()
         self.db = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
         self.delay = 0.0
+        self.delays: list[float] = []
+        self.stall_body = 0.0
+        self.trickle = 0.0
+        self.trickle_part = "all"
         self.fail_next: list[tuple[int, Any]] = []
         self.requests: list[dict[str, Any]] = []
         self._thread: threading.Thread | None = None

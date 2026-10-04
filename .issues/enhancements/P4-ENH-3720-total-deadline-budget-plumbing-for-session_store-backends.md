@@ -3,11 +3,14 @@ id: ENH-3720
 type: ENH
 title: Total-deadline budget plumbing for session_store backends
 priority: P4
-status: open
+status: done
 testable: true
+blocks:
+- ENH-3682
 discovered_by: ll-issues-create
 discovered_date: '2026-10-04'
 captured_at: '2026-10-04T01:29:51Z'
+completed_at: '2026-10-04T20:09:24Z'
 relates_to:
 - ENH-3682
 - FEAT-3711
@@ -152,25 +155,38 @@ Local: module-level `connect_readonly` -> `SqliteBackend.connect_readonly` -> op
 
 ## Acceptance Criteria
 
-- [ ] All four `connect_readonly` declarations accept and forward `deadline=None` with consistent keyword/default semantics; existing `timeout=` callers pass unchanged regression tests.
-- [ ] A bound remote connection shares one absolute expiry across cold verification and data queries: cold success makes two POSTs, warm success one, expiry before dispatch zero, and verification consuming the budget prevents the second POST. Fake-clock tests assert the effective cap without resetting the caller budget.
-- [ ] Serial socket tests for stalled headers/body, a continuing trickle within a buffered read/header parse, and connection-closing responses finish within effective expiry plus a named tolerance smaller than the tested budget; response/connection resources are closed on success and failure.
-- [ ] Local tests cover expired-before-open and expired-before-statement rejection, execution cancellation, `fetchone`/`fetchmany`/`fetchall`/iteration cancellation through both connection shortcuts and explicit cursors, and lock waits after prior budget consumption.
-- [ ] Deadline-triggered local interrupts/lock expiry raise `HistoryUnavailable` with the SQLite cause preserved; remote expiry raises `HranaUnavailable`. Unrelated SQLite failures keep their existing exception behavior. These are backend tests, not `_connect_readonly` reader-fallback tests.
-- [ ] Every read on an expired bound connection fails, including small queries/cache-hit paths; closing it releases owned cancellation state. A separate no-deadline connection performs long reads without a new handler, shortened timeout or changed exception policy.
-- [ ] Strict remote reads refuse writes before any POST and do not invoke `connect_telemetry` or write file-backed cache/marker files; in-process verification reuse remains allowed. No request starts after expiry and no abandoned query worker continues after timeout.
-- [ ] Writable connections, telemetry defaults, schema ensure/migrations and existing no-deadline request counts remain unchanged in regression tests; existing HranaStub users retain default behavior.
-- [ ] API, timeout and history-guide documentation specifies the connection lifetime, exception contract, scheduling/VM granularity and DNS/CPU/UDF/filesystem limits; `python -m pytest scripts/tests/` exits 0.
+- [x] All four `connect_readonly` declarations accept and forward `deadline=None` with consistent keyword/default semantics; existing `timeout=` callers pass unchanged regression tests.
+- [x] A bound remote connection shares one absolute expiry across cold verification and data queries: cold success makes two POSTs, warm success one, expiry before dispatch zero, and verification consuming the budget prevents the second POST. Fake-clock tests assert the effective cap without resetting the caller budget.
+- [x] Serial socket tests for stalled headers/body, a continuing trickle within a buffered read/header parse, and connection-closing responses finish within effective expiry plus a named tolerance smaller than the tested budget; response/connection resources are closed on success and failure.
+- [x] Local tests cover expired-before-open and expired-before-statement rejection, execution cancellation, `fetchone`/`fetchmany`/`fetchall`/iteration cancellation through both connection shortcuts and explicit cursors, and lock waits after prior budget consumption.
+- [x] Deadline-triggered local interrupts/lock expiry raise `HistoryUnavailable` with the SQLite cause preserved; remote expiry raises `HranaUnavailable`. Unrelated SQLite failures keep their existing exception behavior. These are backend tests, not `_connect_readonly` reader-fallback tests.
+- [x] Every read on an expired bound connection fails, including small queries/cache-hit paths; closing it releases owned cancellation state. A separate no-deadline connection performs long reads without a new handler, shortened timeout or changed exception policy.
+- [x] Strict remote reads refuse writes before any POST and do not invoke `connect_telemetry` or write file-backed cache/marker files; in-process verification reuse remains allowed. No request starts after expiry and no abandoned query worker continues after timeout.
+- [x] Writable connections, telemetry defaults, schema ensure/migrations and existing no-deadline request counts remain unchanged in regression tests; existing HranaStub users retain default behavior.
+- [x] API, timeout and history-guide documentation specifies the connection lifetime, exception contract, scheduling/VM granularity and DNS/CPU/UDF/filesystem limits; `python -m pytest scripts/tests/` exits 0.
+
+## Resolution
+
+**Action**: improve | **Completed**: 2026-10-04
+
+Implemented as designed: `session_store/deadline.py` (`Deadline`, `now()` fake-clock seam, `PROGRESS_INTERVAL`), `_DeadlineConnection`/`_DeadlineCursor` in `backend.py`, deadline-bound `HranaClient` transport in `hrana.py` (`_DeadlineSocket` proxy owns the live socket so connection-closing responses and trickles are bounded), `deadline=None` on all four `connect_readonly` declarations, expiry checks in `LibsqlConnection`, default-off `HranaStub` fault controls, docs and sqlite3 learning-test assertions.
+
+### Deviations
+- Local lock-error translation keys on `_lock_clamped` (the wait was shortened by the deadline) rather than only on expiry, to avoid a clock-edge race.
+- No-deadline `HranaClient` keeps the legacy `_exchange` transport verbatim; only deadline-bound clients use `_exchange_bound`.
+- Verification: full suite 27897 passed; 8 `test_libsql_integration.py::TestLive` errors (live endpoint in env: "remote schema changed unexpectedly during migration 0") reproduce identically on unmodified HEAD, so are pre-existing.
 
 ## Status
 
-**Open** | Created: 2026-10-04 | Priority: P4
+**Done** | Created: 2026-10-04 | Priority: P4
 
 ## Review Notes
 
 Revised 2026-10-04 after code review, targeted local reproductions and `/ll:advise` with Opus. An 80 ms Hrana timeout took about 205 ms under a slow trickle; clearing a SQLite handler after `execute()` allowed fetching to outlive a 30 ms deadline. These observations motivate the transport and fetch-time acceptance criteria. Earlier appended research/open decisions are consolidated above; the old persisted verification verdict/evidence was cleared because it described the previous draft, not this revised contract.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-04T20:09:24 - `ae94c54f-e91e-45d3-91aa-ecd772e1a69d.jsonl`
+- `/ll:ready-issue` - 2026-10-04T19:55:58 - `17c19f9b-1b02-42f6-9328-91f405c1b3a2.jsonl`
 - `/ll:confidence-check` - 2026-10-04T19:40:08 - `e588d5e7-f6f0-45f7-81e4-8c0cef455170.jsonl`
 - `/ll:verify-issues` - 2026-10-04T03:10:04 - `2d651013-b69a-457e-aeca-c0e6f7d1781c.jsonl`
 - `/ll:verify-issues` - 2026-10-04T03:08:18 - `676efbca-b77e-4cfe-b025-9bbe4d011d98.jsonl`

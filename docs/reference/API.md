@@ -9972,7 +9972,8 @@ from little_loops.session_store import (
 ### Backend chokepoint: little_loops.session_store.backend (ENH-3525/ENH-3526)
 
 Every real `.ll/history.db` connection — read or write — funnels through this
-module, the SQLite-only prerequisite for a future remote (libSQL) provider:
+module. It registers two providers behind one `Backend` protocol: local SQLite and
+a remote libSQL store (`history.backend.provider: libsql`):
 
 ```python
 from little_loops.session_store.backend import (
@@ -9987,6 +9988,7 @@ from little_loops.session_store.backend import (
     connect_readonly,         # strict read-only open: never creates or migrates (D19)
     resolve_backend,          # -> Backend for a provider (default "sqlite")
 )
+from little_loops.session_store import Deadline  # opt-in total budget (ENH-3720)
 
 def open_history(target: Path | str | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection
 ```
@@ -10003,6 +10005,46 @@ caller managing its own cross-thread synchronization (`SQLiteTransport` keeps
 one long-lived connection shared across threads behind its own lock); every
 other caller uses the default, which delegates to `schema.connect()`
 unchanged.
+
+#### Total deadline for read-only connections (ENH-3720)
+
+```python
+Deadline.after(seconds: float) -> Deadline   # absolute time.monotonic() expiry
+Deadline.remaining() -> float                # seconds left, floored at 0
+Deadline.expired() -> bool
+
+connect_readonly(target=None, *, timeout: float = 5.0, deadline: Deadline | None = None)
+```
+
+`deadline` is opt-in and keyword-only on every `connect_readonly` (the `Backend`
+protocol, `SqliteBackend`, `LibsqlBackend` and the module-level wrapper). The
+connection spends **one** budget for its whole lifetime — opening, the lazy remote
+access verification and every later read — instead of a fresh allowance per request
+or statement. `timeout` keeps its meaning (SQLite's busy wait in seconds); on a
+bound connection the effective lock wait is the smaller of `timeout` and the
+remaining budget, re-evaluated before each statement.
+
+- **Local SQLite.** Execution, `fetchone`/`fetchmany`/`fetchall` and iteration are
+  cancelled through a progress handler that stays installed until `close()`.
+  Expiry raises `HistoryUnavailable` with the SQLite error as `__cause__`.
+  Unrelated SQLite errors keep their existing exception type.
+- **Remote libSQL.** Verification and queries share the expiry; each HTTP request
+  is capped by the earlier of the deadline and the client's per-request timeout
+  (10 s), covering connect/TLS, send, header and body reads (a slow trickle cannot
+  extend it). Expiry raises `HranaUnavailable` (a `HistoryUnavailable`). No request
+  starts after expiry, and a response that completes after expiry is not reported
+  as success.
+- **Lifetime.** An expired bound connection refuses every further read, including
+  small or cached ones; open a fresh connection for unrelated work. Without
+  `deadline`, a connection keeps its prior timeouts, exceptions and request counts
+  (a plain `sqlite3.Connection`, no handler installed).
+- **Strict only.** Writable connections, telemetry writes and the file-backed
+  verification/unreachable caches do not take a deadline; a bound remote read
+  refuses writes before any request.
+- **Limits.** The deadline is not a hard wall-time guarantee. DNS resolution, JSON
+  encoding/decoding, SQLite user-defined functions and filesystem stalls are not
+  preempted, and local cancellation runs at progress-handler granularity (every
+  1000 SQLite VM instructions), plus scheduling latency.
 
 ### Session discovery: list_workspaces / detect_sessions / iter_events (FEAT-3417, ENH-3420)
 

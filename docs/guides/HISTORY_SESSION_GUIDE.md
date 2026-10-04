@@ -300,6 +300,12 @@ ll-session related BUG-1759
 
 Returns every event (tools, files, corrections, loop transitions) linked to that issue ID, chronologically ordered.
 
+### Time limits on optional history reads
+
+A tool that treats history as optional can give a read connection one total time budget instead of a fresh allowance per request or query. When the budget runs out the read fails with a "history unavailable" error rather than continuing: a local `history.db` read is cancelled mid-query, and a remote store read stops waiting on the network, including a slow trickle of response data. Once a connection's budget has expired, every further read on it fails, so a caller opens a new connection for unrelated work.
+
+The budget is a best-effort bound, not an exact wall-clock guarantee: DNS lookups, decoding a large response and filesystem stalls cannot be interrupted, so a read can overrun slightly. Without a budget, reads behave as before. See the [`connect_readonly` deadline reference](../reference/API.md#total-deadline-for-read-only-connections-enh-3720) and the [remote store settings](../reference/CONFIGURATION.md#history) for the per-request caps.
+
 ### Resolve a session's JSONL file
 
 ```bash

@@ -37,7 +37,13 @@ from little_loops.session_store.backend import (
     HistoryUnsupported,
     RemoteTarget,
 )
-from little_loops.session_store.hrana import HranaClient, HranaResult, HranaStreamLost
+from little_loops.session_store.deadline import Deadline
+from little_loops.session_store.hrana import (
+    HranaClient,
+    HranaResult,
+    HranaStreamLost,
+    HranaUnavailable,
+)
 from little_loops.session_store.targets import BackendConfig
 
 logger = logging.getLogger(__name__)
@@ -181,6 +187,7 @@ class LibsqlConnection:
                 "this connection is read-only; refusing a write before any network call",
                 operation="write",
             )
+        self._client.check_deadline()  # an expired bound connection never starts a statement
         if self._config is None:
             return
         endpoint = self._client.base_url
@@ -214,7 +221,9 @@ class LibsqlConnection:
 
     def execute(self, sql: str, parameters: Sequence[Any] = ()) -> LibsqlCursor:
         self._guard(sql)
-        return LibsqlCursor(self._run(self._client.execute, sql, parameters))
+        cursor = LibsqlCursor(self._run(self._client.execute, sql, parameters))
+        self._client.check_deadline()  # building the cursor is synchronous work
+        return cursor
 
     def executemany(self, sql: str, seq_of_parameters: Iterable[Sequence[Any]]) -> LibsqlCursor:
         self._guard(sql)
@@ -246,9 +255,15 @@ class LibsqlBackend:
     def supports(self, capability: str) -> bool:
         return False
 
-    def _client(self, target: RemoteTarget, *, timeout: float = DEFAULT_TIMEOUT_S) -> HranaClient:
+    def _client(
+        self,
+        target: RemoteTarget,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_S,
+        deadline: Deadline | None = None,
+    ) -> HranaClient:
         cfg = target.config
-        return HranaClient(cfg.endpoint(), cfg.auth_token(), timeout=timeout)
+        return HranaClient(cfg.endpoint(), cfg.auth_token(), timeout=timeout, deadline=deadline)
 
     def connect(
         self, target: Path | HistoryTarget, *, check_same_thread: bool = True
@@ -271,14 +286,27 @@ class LibsqlBackend:
         )
 
     def connect_readonly(
-        self, target: Path | HistoryTarget, *, timeout: float = 5.0
+        self,
+        target: Path | HistoryTarget,
+        *,
+        timeout: float = 5.0,
+        deadline: Deadline | None = None,
     ) -> LibsqlConnection:
         """Read-only connection: writes are refused client-side before any network call.
 
         ``timeout`` is accepted for protocol parity and ignored (the client has its own).
+        ``deadline`` (ENH-3720, opt-in) binds a dedicated client to one absolute expiry shared by
+        the lazy access verification and every query; each request is capped by the earlier of
+        that expiry and the client's own per-request timeout. Expiry raises
+        :class:`~little_loops.session_store.hrana.HranaUnavailable`. Read-only connections never
+        use the telemetry marker or the file-backed verification cache.
         """
         remote = _remote(target, "connect_readonly")
-        return LibsqlConnection(self._client(remote), read_only=True, config=remote.config)
+        if deadline is not None and deadline.expired():
+            raise HranaUnavailable("history read deadline expired before opening")
+        return LibsqlConnection(
+            self._client(remote, deadline=deadline), read_only=True, config=remote.config
+        )
 
     def ensure_schema(self, target: Path | HistoryTarget) -> None:
         """Require a current, correctly-stamped remote schema; never migrates.

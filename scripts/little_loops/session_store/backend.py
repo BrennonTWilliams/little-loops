@@ -36,13 +36,15 @@ rather than duplicating the migration/locking sequence.
 from __future__ import annotations
 
 import importlib
+import math
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
 from little_loops.session_store.db import resolve_history_target
+from little_loops.session_store.deadline import PROGRESS_INTERVAL, Deadline
 from little_loops.session_store.targets import (  # noqa: F401 - re-exported
     BackendConfig,
     HistoryTarget,
@@ -222,7 +224,11 @@ class Backend(Protocol):
         self, target: Path | HistoryTarget, *, check_same_thread: bool = True
     ) -> sqlite3.Connection: ...
     def connect_readonly(
-        self, target: Path | HistoryTarget, *, timeout: float = 5.0
+        self,
+        target: Path | HistoryTarget,
+        *,
+        timeout: float = 5.0,
+        deadline: Deadline | None = None,
     ) -> sqlite3.Connection: ...
     def ensure_schema(self, target: Path | HistoryTarget) -> None: ...
     def supports(self, capability: str) -> bool: ...
@@ -233,6 +239,144 @@ class Backend(Protocol):
 # local destination). Gated behind supports(), not the Backend protocol itself.
 CAPABILITIES = frozenset({"attach", "vacuum", "create_function", "wal", "snapshot_export"})
 _SQLITE_CAPABILITIES = CAPABILITIES
+
+
+_T = TypeVar("_T")
+
+_LOCK_ERROR_CODES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+
+
+class _DeadlineConnection(sqlite3.Connection):
+    """A strict read-only connection bound to one :class:`Deadline` for its whole lifetime.
+
+    Opt-in only (``connect_readonly(..., deadline=...)``): ordinary connections are plain
+    :class:`sqlite3.Connection` objects with no handler or cursor adapter. A progress handler
+    installed for the connection's lifetime cancels execution *and* later fetching/iteration
+    (``_DeadlineCursor`` keeps it active); the busy timeout is re-clamped to the remaining
+    budget before every statement. Reuse after expiry is refused.
+    """
+
+    _deadline: Deadline
+    _lock_timeout: float
+    _lock_clamped: bool
+    _tripped: bool
+
+    def _bind(self, deadline: Deadline, lock_timeout: float) -> None:
+        self._deadline = deadline
+        self._lock_timeout = lock_timeout
+        self._lock_clamped = False
+        self._tripped = False
+        self.set_progress_handler(self._progress, PROGRESS_INTERVAL)
+
+    def _progress(self) -> int:
+        if self._deadline.expired():
+            self._tripped = True
+            return 1
+        return 0
+
+    def _check_expired(self, what: str) -> None:
+        if self._tripped or self._deadline.expired():
+            self._tripped = True
+            raise HistoryUnavailable(f"history read deadline expired before {what}")
+
+    def _start_statement(self) -> None:
+        """Refuse an expired connection and clamp the lock wait to the remaining budget."""
+        self._check_expired("starting a statement")
+        remaining = self._deadline.remaining()
+        self._lock_clamped = remaining < self._lock_timeout
+        wait = min(self._lock_timeout, remaining)
+        plain = super().cursor(sqlite3.Cursor)  # bypass the guarded cursor: no recursion
+        plain.execute(f"PRAGMA busy_timeout = {max(1, math.ceil(wait * 1000))}")
+
+    def _translate(self, exc: sqlite3.Error) -> HistoryUnavailable | None:
+        """The ``HistoryUnavailable`` for a deadline-caused failure, else ``None``."""
+        code = getattr(exc, "sqlite_errorcode", None)
+        if self._tripped or (code == sqlite3.SQLITE_INTERRUPT and self._deadline.expired()):
+            self._tripped = True
+            return HistoryUnavailable(f"history read deadline expired: {exc}")
+        if self._lock_clamped and code in _LOCK_ERROR_CODES:
+            self._tripped = self._deadline.expired()
+            return HistoryUnavailable(f"history read deadline exhausted waiting on a lock: {exc}")
+        return None
+
+    def _run(self, call: Callable[[], _T]) -> _T:
+        try:
+            return call()
+        except sqlite3.Error as exc:
+            translated = self._translate(exc)
+            if translated is None:
+                raise
+            raise translated from exc
+
+    def _statement(self, call: Callable[[], _T]) -> _T:
+        self._start_statement()
+        return self._run(call)
+
+    def cursor(self, factory: Any = None) -> Any:  # type: ignore[override]
+        return super().cursor(_DeadlineCursor if factory is None else factory)
+
+    def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+        cur = self.cursor()
+        return cur.execute(sql, parameters)  # type: ignore[no-any-return]
+
+    def executemany(self, sql: str, seq_of_parameters: Any, /) -> sqlite3.Cursor:
+        cur = self.cursor()
+        return cur.executemany(sql, seq_of_parameters)  # type: ignore[no-any-return]
+
+    def executescript(self, sql_script: str, /) -> sqlite3.Cursor:
+        cur = self.cursor()
+        return cur.executescript(sql_script)  # type: ignore[no-any-return]
+
+    def close(self) -> None:
+        try:
+            self.set_progress_handler(None, 0)
+        except sqlite3.ProgrammingError:
+            pass  # already closed
+        super().close()
+
+
+class _DeadlineCursor(sqlite3.Cursor):
+    """Cursor of a :class:`_DeadlineConnection`: statements and fetches share its budget."""
+
+    connection: _DeadlineConnection  # type: ignore[assignment]
+
+    def execute(self, sql: str, parameters: Any = (), /) -> _DeadlineCursor:
+        conn = self.connection
+        conn._statement(lambda: super(_DeadlineCursor, self).execute(sql, parameters))
+        return self
+
+    def executemany(self, sql: str, seq_of_parameters: Any, /) -> _DeadlineCursor:
+        conn = self.connection
+        conn._statement(lambda: super(_DeadlineCursor, self).executemany(sql, seq_of_parameters))
+        return self
+
+    def executescript(self, sql_script: str, /) -> _DeadlineCursor:
+        conn = self.connection
+        conn._statement(lambda: super(_DeadlineCursor, self).executescript(sql_script))
+        return self
+
+    def _fetch(self, call: Callable[[], _T]) -> _T:
+        conn = self.connection
+        conn._check_expired("fetching rows")
+        result = conn._run(call)
+        conn._check_expired("returning rows")
+        return result
+
+    def fetchone(self) -> Any:
+        return self._fetch(lambda: super(_DeadlineCursor, self).fetchone())
+
+    def fetchmany(self, size: int | None = None) -> list[Any]:
+        count = self.arraysize if size is None else size
+        return self._fetch(lambda: super(_DeadlineCursor, self).fetchmany(count))
+
+    def fetchall(self) -> list[Any]:
+        return self._fetch(lambda: super(_DeadlineCursor, self).fetchall())
+
+    def __iter__(self) -> _DeadlineCursor:
+        return self
+
+    def __next__(self) -> Any:
+        return self._fetch(lambda: super(_DeadlineCursor, self).__next__())
 
 
 class SqliteBackend:
@@ -276,18 +420,55 @@ class SqliteBackend:
         return conn
 
     def connect_readonly(
-        self, target: Path | HistoryTarget, *, timeout: float = 5.0
+        self,
+        target: Path | HistoryTarget,
+        *,
+        timeout: float = 5.0,
+        deadline: Deadline | None = None,
     ) -> sqlite3.Connection:
         """Strict read-only open: never creates or migrates the store (D19).
 
         *timeout* is sqlite's busy timeout in seconds (default matches sqlite's own).
+        *deadline* (ENH-3720, opt-in) binds the connection to one absolute expiry for its whole
+        lifetime: opening, execution, fetching and iteration all spend it, lock waits are
+        re-clamped to the remaining budget before each statement, and expiry raises
+        :class:`HistoryUnavailable` (SQLite cause preserved). A connection opened without one is
+        a plain :class:`sqlite3.Connection`.
         """
         path = _local_path(target, "connect_readonly")
+        if deadline is not None:
+            return self._connect_readonly_bound(path, timeout, deadline)
         try:
             conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=timeout)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA query_only = ON")
         except sqlite3.Error as exc:
+            raise HistoryUnavailable(f"could not open {path} read-only: {exc}") from exc
+        return conn
+
+    @staticmethod
+    def _connect_readonly_bound(
+        path: Path, timeout: float, deadline: Deadline
+    ) -> sqlite3.Connection:
+        if deadline.expired():
+            raise HistoryUnavailable(f"history read deadline expired before opening {path}")
+        conn: _DeadlineConnection | None = None
+        try:
+            conn = sqlite3.connect(
+                f"file:{path}?mode=ro",
+                uri=True,
+                timeout=min(timeout, deadline.remaining()),
+                factory=_DeadlineConnection,
+            )
+            conn.row_factory = sqlite3.Row
+            conn._bind(deadline, timeout)
+            conn.execute("PRAGMA query_only = ON")
+            conn._check_expired("completing the open")
+        except (sqlite3.Error, HistoryUnavailable) as exc:
+            if conn is not None:
+                conn.close()
+            if isinstance(exc, HistoryUnavailable):
+                raise
             raise HistoryUnavailable(f"could not open {path} read-only: {exc}") from exc
         return conn
 
@@ -363,11 +544,18 @@ def _resolve_once(
 
 
 def connect_readonly(
-    target: Path | str | HistoryTarget | None = None, *, timeout: float = 5.0
+    target: Path | str | HistoryTarget | None = None,
+    *,
+    timeout: float = 5.0,
+    deadline: Deadline | None = None,
 ) -> sqlite3.Connection:
     """Strict read-only open of the resolved history store (D19: never
     creates or migrates). Raises :class:`HistoryUnavailable` on failure.
     *timeout* is the sqlite busy timeout in seconds (ignored by remote backends).
+    *deadline* (ENH-3720, opt-in) is one absolute :class:`~little_loops.session_store.deadline.Deadline`
+    spent across the connection's whole lifetime — opening, remote access verification and every
+    later read; expiry raises :class:`HistoryUnavailable` (``HranaUnavailable`` remotely) and an
+    expired connection refuses further reads. Omitted, behavior is unchanged.
 
     An already-absolute *target* is honored verbatim (BUG-3181, see
     :func:`_resolve_once`); ``None`` or a relative *target* resolves via the
@@ -375,7 +563,9 @@ def connect_readonly(
     :func:`resolve_history_db`).
     """
     resolved = _resolve_once(target)
-    return resolve_backend(resolved.provider).connect_readonly(resolved, timeout=timeout)
+    return resolve_backend(resolved.provider).connect_readonly(
+        resolved, timeout=timeout, deadline=deadline
+    )
 
 
 def open_history(

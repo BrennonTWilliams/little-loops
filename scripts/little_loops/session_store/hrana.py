@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import base64
 import http.client
+import io
 import json
 import time
 from collections.abc import Iterable, Sequence
@@ -30,12 +31,14 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
+from little_loops.session_store import deadline as _deadline
 from little_loops.session_store.backend import (
     HistoryError,
     HistoryIntegrityError,
     HistoryOperationError,
     HistoryUnavailable,
 )
+from little_loops.session_store.deadline import Deadline
 
 _PIPELINE_PATH = "/v3/pipeline"
 _READ_CHUNK = 65536
@@ -187,16 +190,134 @@ def normalize_url(url: str) -> str:
     return f"{scheme}://{host}"
 
 
+# -- deadline-bound transport ----------------------------------------------
+
+
+class _DeadlineReader(io.RawIOBase):
+    """Raw reader that arms the socket timeout from the remaining budget before every receive.
+
+    ``BufferedReader`` over this loops on ``readinto``, so a trickle of one byte per receive
+    (inside one header parse or one buffered body read) still hits the expiry check each time.
+    """
+
+    def __init__(self, owner: _DeadlineSocket) -> None:
+        super().__init__()
+        self._owner = owner
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        return self._owner.recv_into(buffer)
+
+    def close(self) -> None:
+        if not self.closed:
+            super().close()
+            self._owner._reader_closed()
+
+
+class _DeadlineSocket:
+    """Proxy for the connected (optionally TLS-wrapped) socket of a deadline-bound request.
+
+    Owns the live socket independently of ``HTTPConnection.sock``: ``getresponse()`` detaches
+    that attribute for connection-closing responses while the response still reads, so the
+    expiry must be enforced here. The real socket closes once the connection has closed *and*
+    every reader made by :meth:`makefile` has closed.
+    """
+
+    def __init__(self, sock: Any, expiry: float) -> None:
+        self._sock = sock
+        self._expiry = expiry
+        self._readers = 0
+        self._closing = False
+        self._closed = False
+
+    def _arm(self) -> None:
+        remaining = self._expiry - _deadline.now()
+        if remaining <= 0:
+            raise TimeoutError("request deadline exceeded")
+        self._sock.settimeout(remaining)
+
+    def sendall(self, data: Any) -> None:
+        self._arm()
+        self._sock.sendall(data)
+
+    def recv_into(self, buffer: Any) -> int:
+        self._arm()
+        return int(self._sock.recv_into(buffer))
+
+    def makefile(self, mode: str = "rb", buffering: int | None = None) -> io.BufferedReader:
+        if "r" not in mode or "w" in mode:
+            raise ValueError(f"unsupported mode {mode!r}")
+        self._readers += 1
+        return io.BufferedReader(_DeadlineReader(self))
+
+    def _reader_closed(self) -> None:
+        self._readers -= 1
+        self._maybe_close()
+
+    def close(self) -> None:
+        self._closing = True
+        self._maybe_close()
+
+    def _maybe_close(self) -> None:
+        if self._closing and self._readers <= 0 and not self._closed:
+            self._closed = True
+            self._sock.close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._sock, name)
+
+
+def _connect_budget(expiry: float) -> float:
+    remaining = expiry - _deadline.now()
+    if remaining <= 0:
+        raise TimeoutError("request deadline exceeded")
+    return remaining
+
+
+class _DeadlineHTTPConnection(http.client.HTTPConnection):
+    """Bounds connect by the expiry, then wraps the socket for send/receive enforcement."""
+
+    _expiry: float = 0.0
+
+    def connect(self) -> None:
+        self.timeout = _connect_budget(self._expiry)
+        super().connect()
+        self.sock = _DeadlineSocket(self.sock, self._expiry)  # type: ignore[assignment]
+
+
+class _DeadlineHTTPSConnection(http.client.HTTPSConnection):
+    """As :class:`_DeadlineHTTPConnection`; the TLS handshake is bounded by the same budget."""
+
+    _expiry: float = 0.0
+
+    def connect(self) -> None:
+        self.timeout = _connect_budget(self._expiry)
+        super().connect()
+        self.sock = _DeadlineSocket(self.sock, self._expiry)  # type: ignore[assignment]
+
+
 # -- client ---------------------------------------------------------------
 
 
 class HranaClient:
     """Stateless, thread-safe Hrana pipeline client (one connection per request)."""
 
-    def __init__(self, url: str, auth_token: str | None = None, *, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        url: str,
+        auth_token: str | None = None,
+        *,
+        timeout: float = 10.0,
+        deadline: Deadline | None = None,
+    ) -> None:
         self._base = normalize_url(url)
         self._token = auth_token
         self._timeout = timeout
+        # ENH-3720: an optional caller expiry shared by every request this (dedicated,
+        # never-mutated) client makes; each request is capped by the earlier of it and ``timeout``.
+        self._deadline = deadline
 
     def __repr__(self) -> str:
         return f"HranaClient(url={self._base!r}, timeout={self._timeout})"
@@ -207,6 +328,15 @@ class HranaClient:
     def base_url(self) -> str:
         return self._base
 
+    @property
+    def deadline(self) -> Deadline | None:
+        return self._deadline
+
+    def check_deadline(self) -> None:
+        """Raise :class:`HranaUnavailable` when this client's caller deadline has expired."""
+        if self._deadline is not None and self._deadline.expired():
+            raise HranaUnavailable("history read deadline expired; no request sent")
+
     def _scrub(self, text: str) -> str:
         if self._token and self._token in text:
             text = text.replace(self._token, "***")
@@ -215,31 +345,26 @@ class HranaClient:
     def _post(self, requests: list[dict[str, Any]]) -> dict[str, Any]:
         parts = urlsplit(self._base)
         host = parts.hostname or ""
-        deadline = time.monotonic() + self._timeout
-        conn_cls = (
-            http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
-        )
+        self.check_deadline()
         headers = {"Content-Type": "application/json"}
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         body = json.dumps({"baton": None, "requests": requests})
-        conn = conn_cls(host, parts.port, timeout=self._timeout)
         try:
-            try:
-                conn.request("POST", _PIPELINE_PATH, body, headers)
-                resp = conn.getresponse()
-                raw = self._read(resp, conn, deadline)
-            except (OSError, http.client.HTTPException) as exc:
-                raise HranaUnavailable(
-                    f"could not reach {host}: {type(exc).__name__}: {self._scrub(str(exc))}"
-                ) from None
-        finally:
-            conn.close()
-        status = resp.status
+            if self._deadline is None:
+                status, raw = self._exchange(parts, body, headers)
+            else:
+                expiry = min(_deadline.now() + self._timeout, self._deadline.expires_at)
+                status, raw = self._exchange_bound(parts, body, headers, expiry)
+        except (OSError, http.client.HTTPException) as exc:
+            raise HranaUnavailable(
+                f"could not reach {host}: {type(exc).__name__}: {self._scrub(str(exc))}"
+            ) from None
         try:
             payload = json.loads(raw)
         except ValueError:
             payload = None
+        self.check_deadline()  # synchronous decoding is not preempted; never report late success
         if status != 200:
             message = code = None
             if isinstance(payload, dict):
@@ -250,6 +375,38 @@ class HranaClient:
         if not isinstance(payload, dict):
             raise HranaOperationError(f"{host} returned a non-JSON pipeline response")
         return payload
+
+    def _exchange(self, parts: Any, body: str, headers: dict[str, str]) -> tuple[int, bytes]:
+        """One request/response with the client's per-request cap (no caller deadline)."""
+        conn_cls = (
+            http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+        )
+        deadline = time.monotonic() + self._timeout
+        conn = conn_cls(parts.hostname or "", parts.port, timeout=self._timeout)
+        try:
+            conn.request("POST", _PIPELINE_PATH, body, headers)
+            resp = conn.getresponse()
+            raw = self._read(resp, conn, deadline)
+        finally:
+            conn.close()
+        return resp.status, raw
+
+    def _exchange_bound(
+        self, parts: Any, body: str, headers: dict[str, str], expiry: float
+    ) -> tuple[int, bytes]:
+        """One request/response whose connect, send, header and body I/O all end by *expiry*."""
+        conn_cls = _DeadlineHTTPSConnection if parts.scheme == "https" else _DeadlineHTTPConnection
+        conn = conn_cls(parts.hostname or "", parts.port, timeout=self._timeout)
+        conn._expiry = expiry
+        try:
+            conn.request("POST", _PIPELINE_PATH, body, headers)
+            resp = conn.getresponse()
+            try:
+                return resp.status, resp.read()
+            finally:
+                resp.close()
+        finally:
+            conn.close()
 
     @staticmethod
     def _read(

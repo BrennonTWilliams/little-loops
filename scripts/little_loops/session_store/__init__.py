@@ -92,6 +92,7 @@ from little_loops.session_store.backend import (
 )
 from little_loops.session_store.codex import CodexNormalizer
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_db
+from little_loops.session_store.deadline import Deadline
 from little_loops.session_store.gemini import normalize_gemini_session
 from little_loops.session_store.lifecycle import (
     _REBUILD_SEARCH_KINDS,
@@ -242,6 +243,7 @@ __all__ = [
     "SqliteBackend",
     "resolve_backend",
     "connect_readonly",
+    "Deadline",
     "open_history",
     "open_history_readonly",
     "HistoryError",
