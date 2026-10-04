@@ -1,0 +1,12 @@
+{
+  "id": "095ee6a8-53c5-4c89-a5b3-7b720634e5f1",
+  "type": "decision",
+  "timestamp": "2026-10-04T01:41:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "INFO would be dropped/mis-logged by load_and_validate, widen the documented error|warning contract, and break violations==[] for clean loops; additive portability key has precedent",
+  "rule": "Option B: separate portability report channel (no INFO severity)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: add INFO to ValidationSeverity",
+  "issue": "FEAT-3716"
+}
