@@ -4,7 +4,7 @@ type: BUG
 title: 'refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue
   cannot add Acceptance Criteria'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:46:29Z'
@@ -22,6 +22,7 @@ score_complexity: 13
 score_test_coverage: 18
 score_ambiguity: 20
 score_change_surface: 18
+completed_at: '2026-10-04T01:07:53Z'
 ---
 
 # BUG-3695: refine-to-ready-issue DIRECTIVE_DRIFT cannot be remedied: reconcile-issue cannot add Acceptance Criteria
