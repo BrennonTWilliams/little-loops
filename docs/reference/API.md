@@ -10293,9 +10293,11 @@ def compact(
 ) -> dict[str, int]
 ```
 
-Sweeps `raw_events` rows older than `analytics.retention.raw_event_max_age_days` (default 90) that aren't yet `compacted`, groups them by `session_id`, and inserts one `kind='retention'` `summary_nodes` row per session — a deterministic one-liner (no host-CLI call), distinct from the LLM-backed `history.compaction` feature's `kind='condensed'` nodes so the two features' dedup indexes never collide. Marks the swept rows `compacted=1` with `summary_node_id` set. `and_prune=True` also calls `prune()` afterward.
+Sweeps `raw_events` rows older than `analytics.retention.raw_event_max_age_days` (default 90) that aren't yet `compacted`, groups them by `session_id`, and inserts one `kind='retention'` `summary_nodes` row per session — a deterministic one-liner (no host-CLI call), distinct from the LLM-backed `history.compaction` feature's `kind='condensed'` nodes so the two features' dedup indexes never collide. Marks the swept rows `compacted=1` with `summary_node_id` set. `and_prune=True` also calls `prune()` afterward and adds `pruned_rows`, `retained_rows` and `retention_reasons` to the returned dict.
 
 `prune()` now deletes only `raw_events` rows already marked `compacted=1` past the cutoff (previously it deleted directly from `tool_events`/`cli_events`/`file_events`/`message_events` and never touched `search_index`, leaving stale FTS rows behind a since-deleted event — the "FTS5 leak"). Because `rebuild()` always wipes+re-populates `search_index` from current cache-table state, running `rebuild()` after a `prune()` brings FTS row counts back in sync.
+
+`prune()` never deletes part of a usage-bearing source (BUG-3736): such a source is removed only whole, when every row is old, compacted and at or below a valid current-version usage derive checkpoint, and a `usage_replay_holds` marker is written in the same `BEGIN IMMEDIATE` transaction. Otherwise its rows are kept. The result dict gains `retained` (`{"raw_events": N}`) and a sorted `retention_reasons` list from `usage_derive_unverified`, `usage_derive_pending` and `usage_replay_context_required`. `rebuild()`, `backfill_usage_incremental()` and `refresh_raw_events()` skip held sources: no delete of their non-live usage, no replay of their raw rows, and `refresh_raw_events()` reports `usage_replay_held` before invalidating anything.
 
 ### cli_event_context
 

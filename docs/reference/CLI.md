@@ -4670,7 +4670,7 @@ ll-session recompress --batch 5000              # Rewrite 5000 rows per transact
 | `--dry-run` | Report rows that would be deleted without actually deleting them |
 | `--json` | Output result summary as JSON |
 
-Pruning is dual-gated by `analytics.retention` config: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted (defaults: 365 days, 800 MB). Only `raw_events` rows already marked `compacted=1` (by `compact`) past `raw_event_max_age_days` are deleted (ENH-2581) — issue/loop/commit/cli/file/test_run tables and uncompacted `raw_events` rows are never pruned. See `analytics.retention` in [CONFIGURATION.md](CONFIGURATION.md).
+Pruning is dual-gated by `analytics.retention` config: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted (defaults: 365 days, 800 MB). Only `raw_events` rows already marked `compacted=1` (by `compact`) past `raw_event_max_age_days` are deleted (ENH-2581) — issue/loop/commit/cli/file/test_run tables and uncompacted `raw_events` rows are never pruned. A source that carries replay-derived usage is deleted only whole (every row old, compacted and covered by a valid usage derive checkpoint); otherwise its rows are kept and reported as `retained` with `retention_reasons` in the text and `--json` output of `prune` and `compact --and-prune` (BUG-3736). See `analytics.retention` in [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 

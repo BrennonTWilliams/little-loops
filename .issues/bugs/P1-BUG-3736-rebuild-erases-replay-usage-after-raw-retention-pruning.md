@@ -3,10 +3,11 @@ id: BUG-3736
 type: BUG
 title: Rebuild erases replay usage after raw retention pruning
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T18:19:36Z'
+completed_at: '2026-10-05T21:04:43Z'
 parent: EPIC-3562
 labels:
 - observability
@@ -153,6 +154,12 @@ Reuse stored usage observations, source/raw links, logical observation keys and 
 - **Atomicity.** Prune acquires its write transaction before reading derive/source proof, counting, deleting and writing markers, then commits once; dry-run reads a consistent snapshot and writes nothing.
 - **Version boundary.** No `_USAGE_DERIVE_VERSION` bump. Keep usage-only mutations in helpers already excluded from the non-usage fingerprint; do not exempt real non-usage changes or regenerate away a failing fingerprint.
 
+### Deviations
+
+- 2026-10-05 — Design said legacy seeding holds "any non-live usage with NULL `source_path` or `observation_key`". Implemented as NULL `source_path` or NULL `source_raw_event_id`: `observation_key` is legitimately NULL for every Codex rollout row and for unqualified Claude rows, so keying on it would hold those populations permanently. The population seed also applies only once a derive checkpoint (`usage_derive_version`) exists, because before the first catch-up unlinked legacy rows are expected and the one-time catch-up replaces them.
+- 2026-10-05 — Design said `prune` "holds every usage-capable source". Capability is defined pessimistically: a source is non-capable only when the checkpoint is valid, the source has no linked non-live usage and all its rows are at or below the checkpoint; those keep row-level retention. Every other source is deleted whole or held whole.
+- 2026-10-05 — The held-source guard for replay lives in `writers._backfill_usage_events` (skips held sources' records) plus the `_REBUILD_TABLE_PREDICATES["usage_events"]` literal and the two `_derive_usage_incremental_conn` deletes, so `rebuild`'s hashed body is unchanged and `REBUILD_DERIVE_VERSION` needs no bump.
+
 ## Implementation Steps
 
 1. Add production prune -> full/incremental reproductions, then the partial-Claude, re-ingested-position and Codex missing-context controls. Fix the marker shape and the held-source predicate before touching deletion code.
@@ -203,9 +210,28 @@ Reuse stored usage observations, source/raw links, logical observation keys and 
 - docs/reference/API.md - history rebuild/prune and stored usage contracts.
 - docs/reference/CLI.md - user-visible retained/as-of usage.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-05
+- **Status**: Completed
+
+### Changes Made
+- `session_store/schema.py`: schema v59 — `usage_replay_holds` marker table plus three over-holding legacy seeds (dangling raw link, unlinked usage once a checkpoint exists, missing first line); manifest regenerated.
+- `session_store/writers.py`: shared hold helpers (`USAGE_NOT_HELD_SQL`, `load_usage_replay_holds`); `_backfill_usage_events` skips held sources, which covers rebuild, reset catch-up, per-Codex-source append and refresh replay.
+- `session_store/lifecycle.py`: rebuild usage predicate and both `_derive_usage_incremental_conn` deletes skip held sources; `prune` is one `BEGIN IMMEDIATE` transaction with the whole-source rule, hold markers, `retained`/`retention_reasons` and dry-run parity; `compact(and_prune=True)` propagates them.
+- `session_store/usage_refresh.py`: `refresh_raw_events` rejects a held source (`usage_replay_held`) before invalidating anything.
+- `cli/session.py`, docs (`API.md`, `CLI.md`, `HISTORY_SESSION_GUIDE.md`): render and document retention, whole-source hold and the accepted limits.
+- Tests: new `test_bug3736_usage_replay_holds.py` (37 tests); existing prune tests now establish a verified derive checkpoint; schema-version asserts bumped to 59. `_USAGE_DERIVE_VERSION`, `REBUILD_DERIVE_VERSION` and the non-usage fingerprint are unchanged.
+
+### Verification Results
+- Tests: PASS for every BUG-3736 and session-store suite. Full run: 6 failures and 8 errors outside this change — `test_libsql_integration` (8 errors, identical on a clean checkout) and `test_verify_evidence` (BUG-3738/ENH-3700 issue text); the 5 `test_session_store_writers` version asserts it also showed are fixed.
+- Lint: PASS
+- Types: PASS
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P1
+**Completed** | Created: 2026-10-05 | Completed: 2026-10-05 | Priority: P1
 
 ## Confidence Check Notes
 
@@ -241,6 +267,8 @@ The data loss is real and both sides confirm the cited code facts; the Against c
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-05T21:04:43 - `275ebb58-903a-4210-9cb0-e88316d19a35.jsonl`
+- `/ll:ready-issue` - 2026-10-05T20:46:11 - `220c3879-e2cb-432d-bde7-1606b14318cb.jsonl`
 - `/ll:verify-issues` - 2026-10-05T20:43:16 - `e259c64f-4b41-4ee9-a980-9ce90e13acfc.jsonl`
 - `/ll:go-no-go` - 2026-10-05T20:40:04 - `3f7a6770-0b20-46cd-bb50-8b8d35e47614.jsonl`
 - `/ll:confidence-check` - 2026-10-05T20:36:15 - `7ae7d567-c248-415c-a7a3-57496874466d.jsonl`

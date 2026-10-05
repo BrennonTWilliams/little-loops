@@ -17,7 +17,11 @@ from typing import cast
 from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.sessions import SessionEvent, SessionHandle, iter_events
-from little_loops.session_store.writers import _unpack_payload
+from little_loops.session_store.writers import (
+    _unpack_payload,
+    load_usage_replay_holds,
+    usage_channel_for_host,
+)
 
 
 @dataclass(frozen=True)
@@ -103,7 +107,7 @@ def refresh_raw_events(
     """Replace verified stored source rows from explicit original session handles.
 
     Each source is one transaction. Missing, empty, changed, legacy-attributed,
-    compacted, or host-mismatched sources retain every existing row and receive
+    compacted, usage-replay-held, or host-mismatched sources retain every existing row and receive
     a diagnostic. A failed insert rolls back the whole source. Repeated refresh
     with unchanged parser output does no write. This operation does not
     re-derive cache tables; call ``rebuild(db)`` when the result says
@@ -156,7 +160,13 @@ def refresh_raw_events(
                 (str(path),),
             ).fetchall()
             reason: str | None = None
-            if not rows:
+            # BUG-3736: refreshing a held source would invalidate retained usage that
+            # no surviving raw row can reproduce. Reject before touching anything.
+            if load_usage_replay_holds(conn).holds(
+                str(path), handle.host, usage_channel_for_host(handle.host)
+            ):
+                reason = "usage_replay_held"
+            elif not rows:
                 reason = "not_previously_ingested"
             elif any(row[4] != "handle" or row[3] != handle.host for row in rows):
                 reason = "unverified_host_attribution"

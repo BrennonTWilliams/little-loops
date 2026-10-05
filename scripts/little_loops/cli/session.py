@@ -1048,6 +1048,12 @@ def main_session() -> int:
                 f"Compacted {compact_result['compacted_rows']} raw event(s) into "
                 f"{compact_result['summary_nodes']} retention summary node(s)"
                 + (f"; pruned {compact_result['pruned_rows']} row(s)" if args.and_prune else "")
+                + (
+                    f"; retained {compact_result['retained_rows']} row(s) "
+                    f"({', '.join(compact_result.get('retention_reasons', []))})"
+                    if args.and_prune and compact_result.get("retained_rows")
+                    else ""
+                )
             )
             return 0
 
@@ -1158,13 +1164,21 @@ def main_session() -> int:
 
             deleted = result.get("deleted", {})
             total = sum(deleted.values())
-            if total == 0:
+            retained = sum(result.get("retained", {}).values())
+            if total == 0 and retained == 0:
                 print("Gates met — no eligible rows found.")
+            elif total == 0:
+                print("Gates met — no rows deleted.")
             else:
                 label = "Would delete" if args.dry_run else "Deleted"
                 for table, count in deleted.items():
                     print(f"  {table}: {count:,} rows")
                 print(f"\n{label} {total:,} rows total.")
+            if retained:
+                print(
+                    f"Retained {retained:,} aged compacted rows to keep usage replayable "
+                    f"({', '.join(result.get('retention_reasons', []))})."
+                )
 
             if not args.dry_run and result.get("vacuumed"):
                 print("Database VACUUMed.")

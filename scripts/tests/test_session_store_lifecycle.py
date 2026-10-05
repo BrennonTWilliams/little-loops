@@ -22,6 +22,7 @@ from little_loops.session_store import (
     backfill,
     backfill_incremental,
     backfill_raw_events,
+    backfill_usage_incremental,
     compact,
     compact_session,
     connect,
@@ -2416,6 +2417,7 @@ class TestCompact:
         conn = connect(db)
         self._insert_old_raw_event(conn)
         conn.close()
+        backfill_usage_incremental(db)  # verified derive checkpoint (BUG-3736)
 
         config = {
             "analytics": {
@@ -2479,6 +2481,7 @@ class TestRebuildPreservesRetention:
             conn.commit()
         finally:
             conn.close()
+        backfill_usage_incremental(db)  # verified derive checkpoint (BUG-3736)
 
     @staticmethod
     def _rows(db: Path, sql: str) -> list[tuple]:
@@ -2742,6 +2745,7 @@ class TestPrune:
         conn = connect(db)
         self._insert_raw_event(conn, compacted=1)
         conn.close()
+        backfill_usage_incremental(db)  # verified derive checkpoint (BUG-3736)
 
         config = {**self._GATES_OPEN, "analytics": {**self._GATES_OPEN["analytics"]}}
         config["analytics"]["retention"]["raw_event_max_age_days"] = 90
@@ -2776,6 +2780,7 @@ class TestPrune:
         self._insert_raw_event(conn, "2020-01-01T00:00:00Z", compacted=1, line_no=1)
         self._insert_raw_event(conn, "2099-12-31T00:00:00Z", compacted=1, line_no=2)
         conn.close()
+        backfill_usage_incremental(db)  # verified derive checkpoint (BUG-3736)
 
         result = prune(db, config=self._GATES_OPEN)
         assert result["deleted"]["raw_events"] == 1
@@ -2827,6 +2832,7 @@ class TestPrune:
         conn = connect(db)
         self._insert_raw_event(conn, compacted=1)
         conn.close()
+        backfill_usage_incremental(db)  # verified derive checkpoint (BUG-3736)
 
         result = prune(db, config=self._GATES_OPEN, dry_run=True)
         assert result["pruned"]

@@ -48,6 +48,7 @@ from little_loops.session_store.sessions import (
 )
 from little_loops.session_store.targets import HistoryTarget, LocalTarget
 from little_loops.session_store.writers import (
+    USAGE_NOT_HELD_SQL,
     _backfill_assistant_messages,
     _backfill_commit_events,
     _backfill_issues_and_snapshots,
@@ -65,6 +66,7 @@ from little_loops.session_store.writers import (
     _pack_payload,
     _unpack_payload,
     host_layout_for,
+    load_usage_replay_holds,
     mine_corrections_from_messages,
 )
 
@@ -1036,7 +1038,12 @@ _REBUILD_TABLES = (
 )
 
 _REBUILD_TABLE_PREDICATES = {
-    "usage_events": "channel IS NOT 'live'",
+    "usage_events": (
+        "channel IS NOT 'live' AND NOT EXISTS (SELECT 1 FROM usage_replay_holds h WHERE "
+        "(h.source_path IS NOT NULL AND h.source_path = usage_events.source_path) OR "
+        "(h.source_path IS NULL AND (h.host = '*' OR h.host IS usage_events.host) "
+        "AND (h.channel = '*' OR h.channel IS usage_events.channel)))"
+    ),
     "summary_nodes": "kind IS NOT 'retention'",
 }
 
@@ -1295,18 +1302,23 @@ def _derive_usage_incremental_conn(conn: sqlite3.Connection) -> int:
     if rows.get("usage_derive_version") != _USAGE_DERIVE_VERSION or max_id < checkpoint:
         # One-time first-enable or normalizer-upgrade catch-up. Legacy derived
         # rows have no source link; replace them once while preserving live.
-        conn.execute("DELETE FROM usage_events WHERE channel IS NOT 'live'")
+        # BUG-3736: held sources keep their usage; the replay writer skips their rows.
+        conn.execute(
+            f"DELETE FROM usage_events WHERE channel IS NOT 'live' AND {USAGE_NOT_HELD_SQL}"
+        )
         conn.execute("DELETE FROM search_index WHERE kind = 'usage'")
         count = _backfill_usage_events(conn, _usage_raw_cursor(conn))
     elif max_id == checkpoint:
         return 0
     else:
+        holds = load_usage_replay_holds(conn)
         codex_sources = [
             row[0]
             for row in conn.execute(
                 "SELECT DISTINCT source_path FROM raw_events WHERE id > ? AND host = 'codex'",
                 (checkpoint,),
             )
+            if not holds.holds(row[0], "codex", "rollout")
         ]
         count = 0
         for source in codex_sources:
@@ -1989,7 +2001,7 @@ def compact(
     *,
     config: dict | None = None,
     and_prune: bool = False,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Sweep old ``raw_events`` rows into per-session retention summaries.
 
     Reads ``analytics.retention.raw_event_max_age_days`` (default 90) from
@@ -2004,14 +2016,21 @@ def compact(
     ``idx_summary_nodes_retention_dedup``.
 
     If *and_prune*, calls :func:`prune` afterward and folds its deleted-row
-    count into the return value.
+    count, held-row count (``retained_rows``) and ``retention_reasons`` into the
+    return value.
     """
     refuse_on_remote(db, "compact")
     from little_loops.config.features import RetentionConfig
 
     raw = (config or {}).get("analytics", {}).get("retention", {})
     retention_cfg = RetentionConfig.from_dict(raw)
-    result: dict[str, int] = {"compacted_rows": 0, "summary_nodes": 0, "pruned_rows": 0}
+    result: dict[str, Any] = {
+        "compacted_rows": 0,
+        "summary_nodes": 0,
+        "pruned_rows": 0,
+        "retained_rows": 0,
+        "retention_reasons": [],
+    }
 
     if retention_cfg.raw_event_max_age_days is not None:
         cutoff = datetime.now(UTC) - timedelta(days=retention_cfg.raw_event_max_age_days)
@@ -2071,8 +2090,91 @@ def compact(
     if and_prune:
         prune_result = prune(db, config=config)
         result["pruned_rows"] = sum(prune_result.get("deleted", {}).values())
+        result["retained_rows"] = prune_result.get("retained", {}).get("raw_events", 0)
+        result["retention_reasons"] = list(prune_result.get("retention_reasons", []))
 
     return result
+
+
+# Reasons a compacted, aged raw row is kept by prune's whole-source usage rule.
+# ``usage_derive_unverified``: the derive checkpoint is missing, malformed, negative
+# or from another normalizer version. ``usage_derive_pending``: the checkpoint lags
+# the source's newest row. ``usage_replay_context_required``: part of the source is
+# still recent or uncompacted, and a partial source cannot be replayed faithfully.
+_RETENTION_UNVERIFIED = "usage_derive_unverified"
+_RETENTION_PENDING = "usage_derive_pending"
+_RETENTION_CONTEXT = "usage_replay_context_required"
+
+
+def _valid_usage_checkpoint(conn: sqlite3.Connection) -> int | None:
+    """Return the current-version usage derive high-water raw ID, or None if unproven."""
+    rows = dict(
+        conn.execute(
+            "SELECT key, value FROM meta WHERE key IN "
+            "('usage_derive_version', 'usage_derive_raw_id')"
+        ).fetchall()
+    )
+    if rows.get("usage_derive_version") != _USAGE_DERIVE_VERSION:
+        return None
+    try:
+        checkpoint = int(rows.get("usage_derive_raw_id") or "")
+    except ValueError:
+        return None
+    return checkpoint if checkpoint >= 0 else None
+
+
+def _plan_raw_prune(
+    conn: sqlite3.Connection, cutoff_str: str
+) -> tuple[list[str], list[str], int, int, set[str]]:
+    """Decide which compacted, aged raw rows prune may delete (BUG-3736).
+
+    Must run inside the transaction that deletes, so the derive checkpoint and
+    source state it proves cannot change before commit. A source that may carry
+    replay-derived usage (it has linked non-live usage, or the derive checkpoint
+    does not cover it) is deleted whole or held whole: payload keys, raw pointers
+    and token equality are never used as proof of replayability. Returns
+    ``(delete_sources, marker_sources, deletable_rows, held_rows, reasons)`` where
+    ``delete_sources`` are the sources whose aged compacted rows are removed and
+    ``marker_sources`` is the subset of those that carry usage and need a hold marker.
+    """
+    checkpoint = _valid_usage_checkpoint(conn)
+    linked = {
+        row[0]
+        for row in conn.execute(
+            "SELECT source_path FROM usage_events "
+            "WHERE channel IS NOT 'live' AND source_path IS NOT NULL "
+            "UNION SELECT r.source_path FROM usage_events u "
+            "JOIN raw_events r ON r.id = u.source_raw_event_id WHERE u.channel IS NOT 'live'"
+        )
+    }
+    delete_sources: list[str] = []
+    marker_sources: list[str] = []
+    deletable = held = 0
+    reasons: set[str] = set()
+    for source_path, total, eligible, max_id in conn.execute(
+        "SELECT source_path, COUNT(*), "
+        "SUM(CASE WHEN ts < ? AND compacted = 1 THEN 1 ELSE 0 END), MAX(id) "
+        "FROM raw_events GROUP BY source_path HAVING SUM(CASE WHEN ts < ? AND compacted = 1 "
+        "THEN 1 ELSE 0 END) > 0",
+        (cutoff_str, cutoff_str),
+    ).fetchall():
+        capable = checkpoint is None or source_path in linked or max_id > checkpoint
+        if not capable:
+            delete_sources.append(source_path)
+            deletable += eligible
+        elif checkpoint is not None and eligible == total and max_id <= checkpoint:
+            delete_sources.append(source_path)
+            marker_sources.append(source_path)
+            deletable += eligible
+        else:
+            held += eligible
+            if checkpoint is None:
+                reasons.add(_RETENTION_UNVERIFIED)
+            elif max_id > checkpoint:
+                reasons.add(_RETENTION_PENDING)
+            else:
+                reasons.add(_RETENTION_CONTEXT)
+    return delete_sources, marker_sources, deletable, held, reasons
 
 
 def prune(
@@ -2094,6 +2196,15 @@ def prune(
     - ``min_project_age_days``: project age (MIN(started_at) from sessions table)
     - ``min_db_size_mb``: DB file size on disk
 
+    Usage-bearing sources are never deleted in part (BUG-3736). A source that
+    carries, or may yet carry, replay-derived usage is deleted only when every row
+    is old, compacted and at or below a valid current-version usage derive
+    checkpoint; otherwise the whole source is retained. Deleting such a source
+    writes a ``usage_replay_holds`` marker in the same transaction, so a later
+    rebuild or catch-up leaves its retained usage alone. Proof, count, delete and
+    marker share one ``BEGIN IMMEDIATE`` transaction; a dry run reads one snapshot
+    and writes nothing.
+
     Args:
         db: Path to the history database.
         config: Project config dict (reads ``analytics.retention``). ``None`` uses defaults.
@@ -2106,6 +2217,10 @@ def prune(
         - ``project_age_days`` (int): measured project age
         - ``db_size_mb`` (float): DB file size in MB
         - ``deleted`` (dict[str, int]): ``{"raw_events": count}`` (actual or projected)
+        - ``retained`` (dict[str, int]): ``{"raw_events": count}`` of aged compacted rows
+          kept by the whole-source usage rule, each counted once
+        - ``retention_reasons`` (list[str]): sorted subset of ``usage_derive_unverified``,
+          ``usage_derive_pending`` and ``usage_replay_context_required``
         - ``vacuumed`` (bool): whether VACUUM ran (always False in dry_run)
     """
     refuse_on_remote(db, "prune")
@@ -2121,6 +2236,8 @@ def prune(
         "project_age_days": 0,
         "db_size_mb": 0.0,
         "deleted": {},
+        "retained": {"raw_events": 0},
+        "retention_reasons": [],
         "vacuumed": False,
     }
 
@@ -2163,18 +2280,37 @@ def prune(
         cutoff = datetime.now(UTC) - timedelta(days=retention_cfg.raw_event_max_age_days)
         cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        count_row = conn.execute(
-            "SELECT COUNT(*) FROM raw_events WHERE ts < ? AND compacted = 1", (cutoff_str,)
-        ).fetchone()
-        deleted_count = count_row[0] if count_row else 0
-        if not dry_run and deleted_count > 0:
-            conn.execute("DELETE FROM raw_events WHERE ts < ? AND compacted = 1", (cutoff_str,))
+        # Take the write lock before reading derive/source proof so a concurrent
+        # derive or refresh cannot invalidate it before the delete commits. A dry
+        # run needs only one consistent read snapshot.
+        conn.execute("BEGIN" if dry_run else "BEGIN IMMEDIATE")
+        try:
+            delete_sources, marker_sources, deleted_count, held_count, reasons = _plan_raw_prune(
+                conn, cutoff_str
+            )
+            if not dry_run:
+                now = _now()
+                conn.executemany(
+                    "INSERT OR IGNORE INTO usage_replay_holds"
+                    "(source_path, host, channel, reason, created_at) "
+                    "VALUES(?, '*', '*', 'pruned_whole_source', ?)",
+                    [(source_path, now) for source_path in marker_sources],
+                )
+                conn.executemany(
+                    "DELETE FROM raw_events WHERE source_path = ? AND ts < ? AND compacted = 1",
+                    [(source_path, cutoff_str) for source_path in delete_sources],
+                )
+                conn.commit()
+            else:
+                conn.rollback()
+        except BaseException:
+            conn.rollback()
+            raise
 
         result["deleted"] = {"raw_events": deleted_count}
+        result["retained"] = {"raw_events": held_count}
+        result["retention_reasons"] = sorted(reasons)
         result["pruned"] = True
-
-        if not dry_run:
-            conn.commit()
     finally:
         conn.close()
 

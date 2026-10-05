@@ -3738,6 +3738,57 @@ def _derive_run_id_for_ts(ts: str, windows: list[tuple[str, str, str]]) -> str |
     return matches[0] if len(matches) == 1 else None
 
 
+# BUG-3736: SQL fragment true for a ``usage_events`` row that no usage replay hold
+# covers. Mirrored literally in ``lifecycle._REBUILD_TABLE_PREDICATES`` (that dict must
+# stay a literal for the rebuild fingerprint); a test pins the two together.
+USAGE_NOT_HELD_SQL = (
+    "NOT EXISTS (SELECT 1 FROM usage_replay_holds h WHERE "
+    "(h.source_path IS NOT NULL AND h.source_path = usage_events.source_path) OR "
+    "(h.source_path IS NULL AND (h.host = '*' OR h.host IS usage_events.host) "
+    "AND (h.channel = '*' OR h.channel IS usage_events.channel)))"
+)
+
+
+def usage_channel_for_host(host: str | None) -> str:
+    """Acquisition channel replay assigns to a raw row of *host*."""
+    return "rollout" if host == "codex" else "transcript"
+
+
+@dataclass(frozen=True)
+class UsageReplayHolds:
+    """Sources and host/channel populations whose retained usage replay must not touch.
+
+    Written only by ``prune`` (whole-source deletion) and the v59 migration seeds;
+    never lifted by Stage 1. ``'*'`` in a population entry matches any host/channel.
+    """
+
+    sources: frozenset[str]
+    populations: tuple[tuple[str, str], ...]
+
+    def holds(self, source_path: str | None, host: str | None, channel: str | None) -> bool:
+        """Whether usage for this source/host/channel is held."""
+        if source_path is not None and source_path in self.sources:
+            return True
+        return any(
+            (pop_host == "*" or pop_host == host) and (pop_channel == "*" or pop_channel == channel)
+            for pop_host, pop_channel in self.populations
+        )
+
+
+def load_usage_replay_holds(conn: sqlite3.Connection) -> UsageReplayHolds:
+    """Read every replay hold marker visible to *conn*."""
+    sources: set[str] = set()
+    populations: list[tuple[str, str]] = []
+    for source_path, host, channel in conn.execute(
+        "SELECT source_path, host, channel FROM usage_replay_holds"
+    ):
+        if source_path is None:
+            populations.append((host, channel))
+        else:
+            sources.add(source_path)
+    return UsageReplayHolds(frozenset(sources), tuple(populations))
+
+
 @dataclass(frozen=True)
 class UsageReplayRecord:
     """One replay row with envelope metadata kept separate from its payload."""
@@ -4161,14 +4212,22 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     codex_states: dict[str, _CodexReplayState] = {}
     codex_candidates: list[_CodexCandidate] = []
     host_states: dict[tuple[str, str | None, str | None], HostUsageState] = {}
+    holds = load_usage_replay_holds(conn)
     for replay in _iter_usage_replay_records(source):
         record = replay.payload
-        if replay.event_type in {
+        is_codex_record = replay.event_type in {
             "session_meta",
             "turn_context",
             "token_usage_record",
             "event_msg",
-        } and (replay.host == "codex" or replay.event_type == "session_meta"):
+        } and (replay.host == "codex" or replay.event_type == "session_meta")
+        # BUG-3736: a held source's retained usage cannot be reconstructed from the
+        # raw rows that survive; replaying them would roll it back or duplicate it.
+        if holds.holds(
+            replay.source_label, replay.host, "rollout" if is_codex_record else "transcript"
+        ):
+            continue
+        if is_codex_record:
             state = codex_states.setdefault(replay.source_label, _CodexReplayState())
             if replay.event_type == "session_meta":
                 header_id = record.get("id")

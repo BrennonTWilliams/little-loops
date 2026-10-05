@@ -637,6 +637,16 @@
       "partial": true,
       "unique": true
     },
+    "idx_usage_replay_holds_key": {
+      "columns": [
+        null,
+        "host",
+        "channel"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": true
+    },
     "idx_verdict_kind": {
       "columns": [
         "verdict_kind"
@@ -2918,6 +2928,41 @@
       ],
       "type": "table"
     },
+    "usage_replay_holds": {
+      "columns": [
+        {
+          "name": "source_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "host",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "channel",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "reason",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "created_at",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
     "usage_source_cursors": {
       "columns": [
         {
@@ -3114,5 +3159,5 @@
       "type": "table"
     }
   },
-  "schema_version": 58
+  "schema_version": 59
 }

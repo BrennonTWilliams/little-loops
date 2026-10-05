@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 58
+SCHEMA_VERSION = 59
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -99,6 +99,8 @@ _KINDLESS_TABLES = frozenset(
         "raw_events",
         # Source-tail checkpoints are internal replay state, not searchable events.
         "usage_source_cursors",
+        # Replay hold markers are internal retention state (BUG-3736).
+        "usage_replay_holds",
         "correction_retirements",
         # (ENH-2997) keyed by issue_id, not session_id — readers take the most
         # recent row for an issue, so there is no "recent by kind" concept to
@@ -1518,6 +1520,48 @@ _MIGRATIONS: list[str] = [
         status TEXT NOT NULL,
         updated_at TEXT NOT NULL
     );
+    """,
+    # v59 (BUG-3736): usage replay hold markers. A hold says retained non-live
+    # usage for a source (or a host/channel population, ``source_path`` NULL)
+    # can no longer be faithfully reconstructed from ``raw_events``, so rebuild,
+    # catch-up and refresh must neither delete nor re-derive it. ``'*'`` is a
+    # wildcard host/channel. Seeds over-hold rather than prove: a dangling raw
+    # link, usage with no source link (only once a derive checkpoint exists —
+    # before it, the one-time catch-up legitimately replaces unlinked rows),
+    # and a source whose earliest surviving line is not line 1.
+    """
+    CREATE TABLE usage_replay_holds (
+        source_path TEXT,
+        host TEXT NOT NULL DEFAULT '*',
+        channel TEXT NOT NULL DEFAULT '*',
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX idx_usage_replay_holds_key
+        ON usage_replay_holds(COALESCE(source_path, ''), host, channel);
+    INSERT OR IGNORE INTO usage_replay_holds(source_path, host, channel, reason, created_at)
+        SELECT DISTINCT u.source_path, '*', '*', 'dangling_raw_link',
+               strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        FROM usage_events u
+        WHERE u.channel IS NOT 'live' AND u.source_raw_event_id IS NOT NULL
+          AND u.source_path IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM raw_events r WHERE r.id = u.source_raw_event_id);
+    INSERT OR IGNORE INTO usage_replay_holds(source_path, host, channel, reason, created_at)
+        SELECT DISTINCT NULL, COALESCE(u.host, '*'), COALESCE(u.channel, '*'), 'unlinked_usage',
+               strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        FROM usage_events u
+        WHERE u.channel IS NOT 'live'
+          AND (u.source_path IS NULL OR u.source_raw_event_id IS NULL)
+          AND EXISTS (SELECT 1 FROM meta WHERE key = 'usage_derive_version');
+    INSERT OR IGNORE INTO usage_replay_holds(source_path, host, channel, reason, created_at)
+        SELECT r.source_path, '*', '*', 'missing_first_line',
+               strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        FROM raw_events r
+        WHERE r.source_path IN (
+            SELECT source_path FROM usage_events
+            WHERE channel IS NOT 'live' AND source_path IS NOT NULL
+        )
+        GROUP BY r.source_path HAVING MIN(r.line_no) > 1
     """,
 ]
 
