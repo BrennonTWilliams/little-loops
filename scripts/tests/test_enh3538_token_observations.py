@@ -458,7 +458,8 @@ def _insert(db: Path, rows: list[tuple[int | None, float | None]]) -> None:
             conn.execute(
                 "INSERT INTO usage_events(ts, model, input_tokens, output_tokens, "
                 "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
-                "invocation_id, channel) VALUES('t', 'm', ?, 0, 0, 0, ?, 'inv', 'live')",
+                "invocation_id, channel, provenance) "
+                "VALUES('t', 'm', ?, 0, 0, 0, ?, 'inv', 'live', 'measured')",
                 (tokens, cost),
             )
         conn.commit()
@@ -485,19 +486,32 @@ class TestSqlCompleteness:
         assert result["input_tokens"] == total
         assert result["input_tokens_missing"] == missing
         assert (result["cost_usd"] is None) == (missing > 0)
-        assert result["output_tokens"] == 0
+        # The four token components qualify together (ENH-3731).
+        assert result["output_tokens"] == (0 if missing == 0 else None)
+        assert (result["qualification_reason"] is None) == (missing == 0)
 
-    def test_cost_attribution_omits_partial_attribute_keeps_complete_sibling(
+    def test_cost_attribution_omits_every_token_attribute_after_any_token_failure(
         self, tmp_path: Path
     ) -> None:
+        """ENH-3731: row admission is per row, so a complete sibling no longer survives."""
         db = tmp_path / "h.db"
         ensure_db(db)
         _insert(db, [(100, 1.0), (None, None)])
         (result,) = cost_attribution(db=db)
-        assert "gen_ai.usage.input_tokens" not in result
-        assert result["gen_ai.usage.output_tokens"] == 0
+        assert not [key for key in result if key.startswith("gen_ai.usage.")]
         assert result["cost_usd"] is None
         assert result["input_tokens_missing"] == 1
+        assert result["qualification_reason"] == "missing_token_component"
+
+    def test_complete_tokens_survive_missing_cost(self, tmp_path: Path) -> None:
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        _insert(db, [(100, None), (50, 1.0)])
+        (result,) = cost_attribution(db=db)
+        assert result["gen_ai.usage.input_tokens"] == 150
+        assert result["qualification_reason"] is None
+        assert result["cost_usd"] is None
+        assert result["cost_qualification_reason"] == "unpriced_contributor"
 
 
 @dataclass

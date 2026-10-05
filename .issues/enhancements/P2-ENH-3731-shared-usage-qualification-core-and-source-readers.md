@@ -3,9 +3,10 @@ id: ENH-3731
 type: ENH
 title: Shared usage qualification core and source readers
 priority: P2
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-10-05'
+completed_at: '2026-10-05T21:25:45Z'
 parent: ENH-3723
 decision_needed: false
 testable: true
@@ -240,20 +241,20 @@ _Historical sample recorded 2026-10-04 from the maintainer's local `.ll/history.
 
 ## Acceptance Criteria
 
-- [ ] Implementation, tests and docs match the recorded policy: legacy absent/NULL audit-only, complete estimated transcript/live rows labeled numeric consumption, cache rates measured-only. No migration, derive-version bump or automatic rebuild/refresh. End-user docs describe unavailable-figure behavior, ordinary replay vs explicit verified-source recovery, nullable canonical figures and existing audit surfaces without maintainer-store sample counts.
-- [ ] `qualify_usage`/`UsageQualification`/`UsageComponentCounts` and the two constants exist as specified in Program Design; results are deeply immutable, count each rejected row once across all flag combinations, partition per-column counts, and give permutation-invariant reasons using status-based coverage codes. `ObservationGroup.subtotal` is renamed `audit_subtotal`; `total`/`entry` qualify with `require_cost` set by column.
-- [ ] The result's provenance label is unmasked by coverage, while existing public `provenance` fields keep their masking; ENH-3543/ENH-3549 controls pass unchanged.
-- [ ] Within the invariant scope, pointer value, availability, coverage and figure reason agree (`None` iff unavailable with a reason); stored-cache pointers carry the actual selection coverage; counts are truthful with separate invalid/rejected counts; no count-reset workaround or `partial` remains. Direct-JSONL rendering and metadata are unchanged.
-- [ ] Source rows carry independent token `qualification_reason` / `cost_qualification_reason` matching ENH-3733; missing/invalid cost never blanks tokens; the four token fields and OTel attributes qualify together. Waste has a separate ratio reason. Stored-cache result and pointers use `unverified_usage` for `unknown_provenance`/`not_measured`.
-- [ ] Waste is qualified once per loop over the full joined population for both token figures; ratio counts use denominator-pair evidence; reason precedence starts with `empty_selection`; no `unrecognized_provenance`; `cost_usd` is not in `channel_subtotals()`.
-- [ ] The matrix in Tests → New tests passes, including the estimated Codex rollout control (`coverage_unknown`).
-- [ ] An in-filter ineligible row can never be silently dropped to make a total or rate qualify; numeric stored cost cannot bypass token/provenance prerequisites; empty selection is unavailable while a qualified observed zero is zero.
-- [ ] A complete measured observation plus any in-filter missing/invalid/unknown/estimated or unresolved audit observation (including missing **output**) makes the stored-session rate unavailable; one measured-only result over `selection.audit_rows` governs the rate, operands and metadata; no coercion or complete-subset rate remains; qualified zero operands survive a `zero_denominator` rate.
-- [ ] `ll-ctx-stats` JSON keeps existing canonical numeric keys and valid pointers; waste/cache text and JSON agree, with bounded figure reasons in text footnotes; `same_metadata` compares the three new keys while ignoring free-form prose; zero denominator emits no unverified-producer warning; qualified current Claude/Codex controls keep clean stderr; dollars are visibly estimates and finite audit-dollar subtotals survive canonical cost rejection.
-- [ ] Claude/Codex text and JSON retain qualified as-of values and freshness diagnostics after append/source loss; stale/unknown is never described as current; failed derive is unavailable/unknown, not a fresh zero.
-- [ ] Replay, rebuild and unchanged tail refresh preserve unknown ingest-time evidence; stored numeric cost cannot promote it; explicit verified-source recovery still works and is stable on repeat.
-- [ ] Invalid contributors cannot crash accumulation or serialize non-finite values; token sums are exact; cost totals/overflow are order-independent; aggregate overflow affects only cost.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] Implementation, tests and docs match the recorded policy: legacy absent/NULL audit-only, complete estimated transcript/live rows labeled numeric consumption, cache rates measured-only. No migration, derive-version bump or automatic rebuild/refresh. End-user docs describe unavailable-figure behavior, ordinary replay vs explicit verified-source recovery, nullable canonical figures and existing audit surfaces without maintainer-store sample counts.
+- [x] `qualify_usage`/`UsageQualification`/`UsageComponentCounts` and the two constants exist as specified in Program Design; results are deeply immutable, count each rejected row once across all flag combinations, partition per-column counts, and give permutation-invariant reasons using status-based coverage codes. `ObservationGroup.subtotal` is renamed `audit_subtotal`; `total`/`entry` qualify with `require_cost` set by column.
+- [x] The result's provenance label is unmasked by coverage, while existing public `provenance` fields keep their masking; ENH-3543/ENH-3549 controls pass unchanged.
+- [x] Within the invariant scope, pointer value, availability, coverage and figure reason agree (`None` iff unavailable with a reason); stored-cache pointers carry the actual selection coverage; counts are truthful with separate invalid/rejected counts; no count-reset workaround or `partial` remains. Direct-JSONL rendering and metadata are unchanged.
+- [x] Source rows carry independent token `qualification_reason` / `cost_qualification_reason` matching ENH-3733; missing/invalid cost never blanks tokens; the four token fields and OTel attributes qualify together. Waste has a separate ratio reason. Stored-cache result and pointers use `unverified_usage` for `unknown_provenance`/`not_measured`.
+- [x] Waste is qualified once per loop over the full joined population for both token figures; ratio counts use denominator-pair evidence; reason precedence starts with `empty_selection`; no `unrecognized_provenance`; `cost_usd` is not in `channel_subtotals()`.
+- [x] The matrix in Tests → New tests passes, including the estimated Codex rollout control (`coverage_unknown`).
+- [x] An in-filter ineligible row can never be silently dropped to make a total or rate qualify; numeric stored cost cannot bypass token/provenance prerequisites; empty selection is unavailable while a qualified observed zero is zero.
+- [x] A complete measured observation plus any in-filter missing/invalid/unknown/estimated or unresolved audit observation (including missing **output**) makes the stored-session rate unavailable; one measured-only result over `selection.audit_rows` governs the rate, operands and metadata; no coercion or complete-subset rate remains; qualified zero operands survive a `zero_denominator` rate.
+- [x] `ll-ctx-stats` JSON keeps existing canonical numeric keys and valid pointers; waste/cache text and JSON agree, with bounded figure reasons in text footnotes; `same_metadata` compares the three new keys while ignoring free-form prose; zero denominator emits no unverified-producer warning; qualified current Claude/Codex controls keep clean stderr; dollars are visibly estimates and finite audit-dollar subtotals survive canonical cost rejection.
+- [x] Claude/Codex text and JSON retain qualified as-of values and freshness diagnostics after append/source loss; stale/unknown is never described as current; failed derive is unavailable/unknown, not a fresh zero.
+- [x] Replay, rebuild and unchanged tail refresh preserve unknown ingest-time evidence; stored numeric cost cannot promote it; explicit verified-source recovery still works and is stable on repeat.
+- [x] Invalid contributors cannot crash accumulation or serialize non-finite values; token sums are exact; cost totals/overflow are order-independent; aggregate overflow affects only cost.
+- [ ] `python -m pytest scripts/tests/` exits 0. _(28,338 passed; 3 failures/8 errors are pre-existing and unrelated — `test_verify_evidence` on other issues' working-tree edits and `test_libsql_integration::TestLive` against a live remote — reproduced with these changes stashed.)_
 
 ## Impact
 
@@ -277,6 +278,8 @@ _Historical. The 2026-10-05 re-score (Readiness 95, Outcome 63 — below `outcom
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-05T21:25:45 - `e3910704-e882-42a1-b4c6-d89b0cf4f682.jsonl`
+- `/ll:ready-issue` - 2026-10-05T21:06:24 - `a42b7740-2467-45ad-a266-67f4a5e09c4c.jsonl`
 - `/ll:confidence-check` - 2026-10-05T20:41:58 - `db871f03-686f-4948-9fc4-2cabe2027d34.jsonl`
 - Pre-implementation review - 2026-10-05 - `/ll:advise` with `claude-fable-5-1` (confidence 0.85) plus code checks. Split the `channel=` selector scope to ENH-3748; added `blocked_by: BUG-3735` (in flight in the working tree, same selector) and removed the either-landing-order clauses; moved maintainer-store sample counts out of the end-user docs requirement; decided the `subtotal` → `audit_subtotal` rename and the per-column `require_cost` mapping; resolved the provenance-label masking contradiction (result unmasked, public fields masked), the stored-cache pointer reason vocabulary, the estimated Codex rollout coverage rule and the invariant scope vs direct-JSONL `partial`; put `empty_selection` first in precedence; converted the publication-gate AC to a verified note; consolidated normative rules into Decision Rules. Stale scores removed; rerun the confidence gate.
 - `/ll:confidence-check` - 2026-10-05T20:20:41 - `ae6dd8ed-dfaf-4c44-8d2a-2461e60f636e.jsonl`
@@ -291,6 +294,15 @@ _Historical. The 2026-10-05 re-score (Readiness 95, Outcome 63 — below `outcom
 - `/ll:refine-issue` - 2026-10-05T03:13:46 - `ca3640c2-fc5f-47d0-9305-872e41fc20ff.jsonl`
 - `/ll:issue-size-review` - 2026-10-05T00:00:00 - `<session-dir>/session.jsonl`
 
+## Resolution
+
+**Implemented 2026-10-05** (`/ll:manage-issue`).
+
+- `token_provenance.py`: `UsageComponentCounts`, `UsageQualification`, `qualify_usage`, `USAGE_QUALIFICATION_POLICY_VERSION`, `USAGE_QUALIFICATION_REASONS`; strict per-row admission and validated accumulation in `ObservationGroup.add` (per-row rejection counters for all flag combinations); `total`/`entry` qualify by column; `subtotal` → `audit_subtotal`; order-independent `math.fsum` cost totals with overflow → `invalid_cost`; `_META_KEYS` gains the three qualification keys. Helpers `valid_token_value`/`valid_cost_value` are public additions.
+- `history_reader/usage.py`: `aggregate_usage`/`cost_attribution` gain `qualification_reason`, `cost_qualification_reason` and `<col>_invalid`; `waste_attribution` qualifies once per loop over the full joined population with pair-level missing/invalid counts and a separate ratio reason. `history_reader/__init__.py` re-exports `qualify_usage`/`UsageQualification`.
+- `cli/ctx_stats.py`: `_aggregate_usage_events` publishes via `total()`; the stored cache reader runs one measured-only qualification over `selection.audit_rows` (no complete-subset rate, no coercion) with truthful counts, `invalid_counts`, `rejected_contributors` and `zero_denominator`; stored cache/waste pointers follow the published value (no `partial`, actual coverage); text distinguishes coverage/missing/invalid/unverified/zero-denominator reasons with a `* qualification:` footnote.
+- Tests: new `test_enh3731_usage_qualification.py` (63 tests); fixtures flipped to explicit `provenance='measured'` in the affected suites; `test_cost_attribution_omits_partial_attribute_keeps_complete_sibling` reversed as specified. Docs: CLI.md, API.md, HOST_COMPATIBILITY.md, ARCHITECTURE.md, otel-mapping.md.
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P2
+**Done** | Created: 2026-10-05 | Priority: P2

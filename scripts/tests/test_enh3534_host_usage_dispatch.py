@@ -123,3 +123,11 @@ def test_opencode_shape_rebuild_preserves_unknown_provenance(tmp_path: Path) -> 
             conn.close()
         assert count == 1
         assert tuple(row) == ("opencode", "handle", "unknown", None, 3, 7)
+        # ENH-3731: replay cannot promote ingest-time unknown evidence; the readers keep the
+        # row audit-only (labeled subtotal, no canonical figure) however often it is rebuilt.
+        from little_loops.history_reader import aggregate_usage
+
+        (aggregated,) = aggregate_usage(db=db)
+        assert aggregated["input_tokens"] is None
+        assert aggregated["qualification_reason"] == "unknown_provenance"
+        assert aggregated["channel_subtotals"]["transcript"]["input_tokens"] == 3

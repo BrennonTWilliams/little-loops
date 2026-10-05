@@ -27,8 +27,10 @@ from little_loops.history_reader.models import UsageEvent
 from little_loops.token_provenance import (
     ObservationGroup,
     group_rows,
+    qualify_usage,
     row_channel,
     row_host_verified,
+    valid_token_value,
 )
 
 __all__ = [
@@ -510,6 +512,23 @@ def _sort_desc(value: Any) -> tuple[bool, float]:
     return (value is not None, value if value is not None else 0.0)
 
 
+def _qualification_fields(group: ObservationGroup) -> dict[str, Any]:
+    """Independent token/cost qualification reasons and invalid counts (ENH-3731).
+
+    Tokens qualify with ``require_cost=False`` and cost separately with
+    ``require_cost=True``, so a missing cost never blanks qualified tokens.
+    """
+    token = qualify_usage(group)
+    cost = qualify_usage(group, require_cost=True)
+    fields: dict[str, Any] = {
+        "qualification_reason": token.reason,
+        "cost_qualification_reason": cost.reason,
+    }
+    for counts in cost.component_counts:
+        fields[f"{counts.column}_invalid"] = counts.invalid_count
+    return fields
+
+
 def _read_groups(
     db: Path | str, key: Any, *, since: str | None, name: str, require_run_id: bool = False
 ) -> dict[Any, ObservationGroup] | None:
@@ -549,11 +568,14 @@ def cost_attribution(
     ``GROUP BY gen_ai.invocation.id`` rollup matches raw ``result``-event
     ``usage`` totals row-for-row (see FEAT-2478 § Acceptance Criteria).
 
-    ENH-3538: a token component (or ``cost_usd``) with any NULL contributor is
-    unavailable — the flat field is ``None`` and the ``gen_ai.usage.*``
-    attribute is omitted rather than exported as a partial subtotal. Each row
-    also carries ``<column>_missing`` counts for the four token columns and
-    ``cost_usd``.
+    ENH-3538/ENH-3731: the four token components qualify together — a group
+    publishes them only when every contributing row is admitted (all four token
+    columns valid) and has measured or estimated provenance; otherwise every flat
+    field is ``None`` and every ``gen_ai.usage.*`` attribute is omitted. ``cost_usd``
+    qualifies independently (every contributor needs a valid stored cost), so a
+    missing cost never blanks qualified tokens. Each row carries
+    ``<column>_missing`` / ``<column>_invalid`` counts, token
+    ``qualification_reason`` and ``cost_qualification_reason``.
 
     ENH-3528: rows are read through :func:`select_usage_observations` and
     grouped in Python; each dict also carries ``provenance``, ``coverage`` and
@@ -583,7 +605,9 @@ def cost_attribution(
         "cache_creation_input_tokens": GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
     }
     ordered = sorted(
-        groups.items(), key=lambda kv: _sort_desc(kv[1].subtotal("input_tokens")), reverse=True
+        groups.items(),
+        key=lambda kv: _sort_desc(kv[1].audit_subtotal("input_tokens")),
+        reverse=True,
     )
     result: list[dict] = []
     for key, group in ordered:
@@ -596,6 +620,7 @@ def cost_attribution(
         entry["invocations"] = group.rows
         for col in (*_USAGE_TOKEN_COLUMNS, "cost_usd"):
             entry[f"{col}_missing"] = group.missing(col)
+        entry.update(_qualification_fields(group))
         entry.update(_provenance_fields(group))
         result.append(entry)
     return result
@@ -624,13 +649,16 @@ def waste_attribution(
     excluded rather than misattributed. See ``_WASTED_RUN_PREDICATE`` for the
     "wasted" definition.
 
-    ENH-3528: the join happens in Python over
-    :func:`select_usage_observations`. A row missing ``input_tokens`` or
-    ``output_tokens`` has an unavailable token count, so ``tokens_total`` /
-    ``tokens_wasted`` are ``None`` when any contributor is missing (with the
-    shortfall in ``tokens_total_missing`` / ``tokens_wasted_missing``) and
-    ``waste_pct`` is ``None`` when either operand is ``None`` or the
-    denominator is zero. Each dict also carries ``provenance`` / ``coverage`` /
+    ENH-3528/ENH-3731: the join happens in Python over
+    :func:`select_usage_observations`. One per-loop qualification over the full
+    joined population (all four token columns valid, measured or estimated
+    provenance, resolved coverage) governs both ``tokens_total`` and
+    ``tokens_wasted``; either is ``None`` when it fails, with the
+    ``input_tokens``/``output_tokens`` pair shortfall in ``tokens_total_missing`` /
+    ``tokens_wasted_missing`` (and ``*_invalid``) and the bounded
+    ``qualification_reason``. ``waste_pct`` is ``None`` when the base figures are
+    unavailable or the denominator is zero (``waste_pct_qualification_reason``). Each dict also carries
+    ``provenance`` / ``coverage`` /
     ``channel_subtotals`` (see :func:`cost_attribution`).
     """
     db_path = Path(db)
@@ -660,20 +688,30 @@ def waste_attribution(
                     "wasted_runs": set(),
                     "total": 0,
                     "total_missing": 0,
+                    "total_invalid": 0,
                     "wasted": 0,
                     "wasted_missing": 0,
+                    "wasted_invalid": 0,
                 },
             )
             slot["group"].add(row)
             slot["runs"].add(row["run_id"])
-            known = row["input_tokens"] is not None and row["output_tokens"] is not None
-            tokens = row["input_tokens"] + row["output_tokens"] if known else 0
+            operands = (row["input_tokens"], row["output_tokens"])
+            if any(value is None for value in operands):
+                state = "missing"
+            elif not all(valid_token_value(value) for value in operands):
+                state = "invalid"
+            else:
+                state = "known"
+            tokens = sum(operands) if state == "known" else 0
             slot["total"] += tokens
-            slot["total_missing"] += 0 if known else 1
+            if state != "known":
+                slot[f"total_{state}"] += 1
             if wasted:
                 slot["wasted_runs"].add(row["run_id"])
                 slot["wasted"] += tokens
-                slot["wasted_missing"] += 0 if known else 1
+                if state != "known":
+                    slot[f"wasted_{state}"] += 1
     except sqlite3.Error:
         logger.warning("history_reader: waste_attribution query failed", exc_info=True)
         return []
@@ -681,9 +719,10 @@ def waste_attribution(
         conn.close()
     result: list[dict] = []
     for loop_name, slot in per_loop.items():
-        canonical = slot["group"].coverage() == "non_overlapping"
-        tokens_total = None if slot["total_missing"] or not canonical else slot["total"]
-        tokens_wasted = None if slot["wasted_missing"] or not canonical else slot["wasted"]
+        qualification = qualify_usage(slot["group"])
+        tokens_total = slot["total"] if qualification.eligible else None
+        tokens_wasted = slot["wasted"] if qualification.eligible else None
+        ratio_reason = qualification.reason or ("zero_denominator" if not slot["total"] else None)
         result.append(
             {
                 "loop_name": loop_name,
@@ -691,13 +730,14 @@ def waste_attribution(
                 "tokens_wasted": tokens_wasted,
                 "tokens_total_missing": slot["total_missing"],
                 "tokens_wasted_missing": slot["wasted_missing"],
-                "waste_pct": (
-                    tokens_wasted / tokens_total
-                    if tokens_total and tokens_wasted is not None
-                    else None
-                ),
+                "tokens_total_invalid": slot["total_invalid"],
+                "tokens_wasted_invalid": slot["wasted_invalid"],
+                "waste_pct": (tokens_wasted / tokens_total if ratio_reason is None else None),
                 "runs_total": len(slot["runs"]),
                 "runs_wasted": len(slot["wasted_runs"]),
+                "qualification_reason": qualification.reason,
+                "waste_pct_qualification_reason": ratio_reason,
+                "rejected_contributors": qualification.rejected_contributors,
                 **_provenance_fields(slot["group"]),
             }
         )
@@ -789,7 +829,9 @@ def aggregate_usage(
     if groups is None:
         return []
     ordered = sorted(
-        groups.items(), key=lambda kv: _sort_desc(kv[1].subtotal("cost_usd")), reverse=True
+        groups.items(),
+        key=lambda kv: _sort_desc(kv[1].audit_subtotal("cost_usd")),
+        reverse=True,
     )
     return [
         {
@@ -798,6 +840,7 @@ def aggregate_usage(
             **{col: group.total(col) for col in _USAGE_TOKEN_COLUMNS},
             "cost_usd": group.total("cost_usd"),
             **{f"{col}_missing": group.missing(col) for col in (*_USAGE_TOKEN_COLUMNS, "cost_usd")},
+            **_qualification_fields(group),
             **_provenance_fields(group),
         }
         for key, group in ordered

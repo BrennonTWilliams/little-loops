@@ -53,6 +53,7 @@ from little_loops.token_provenance import (
     footnotes,
     format_figure,
     json_pointer,
+    qualify_usage,
     row_channel,
     same_metadata,
     suffix_for,
@@ -242,10 +243,13 @@ def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
             "provenance": {"<RFC 6901 pointer>": {<token_provenance entry>}},
         }
 
-    A component is the sum of its *known* contributors and is ``None`` when no
-    observation supplied it (missing is unavailable, never a measured zero);
-    ``provenance`` entries carry the known/missing counts, so a partial
-    subtotal is labeled ``availability='partial'``. Rows with a NULL model
+    A component is published only when it qualifies (ENH-3731): every
+    contributing row has all four token columns valid and measured/estimated
+    provenance (cost additionally needs a valid stored cost) over resolved
+    coverage; otherwise it is ``None``. Missing is unavailable, never a zero.
+    ``provenance`` entries carry the known/missing/invalid counts and the
+    bounded ``qualification_reason``; labeled audit subtotals live in
+    ``composition``. Rows with a NULL model
     share the reserved ``"(unknown model)"`` bucket, distinct from a model
     literally named ``"unknown"``. ``provenance`` is keyed by pointers relative
     to the ``--json`` document root (``/usage_by_model/...``).
@@ -277,12 +281,12 @@ def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
 
     columns = (*TOKEN_COLUMNS, COST_COLUMN)
     provenance: dict[str, dict[str, Any]] = {}
-    totals = {col: total.subtotal(col) for col in columns}
+    totals = {col: total.total(col) for col in columns}
     for col in columns:
         provenance[json_pointer("usage_by_model", "totals", col)] = total.entry(col)
     per_model: dict[str, dict[str, Any]] = {}
     for model, group in by_model.items():
-        per_model[model] = {"events": group.rows, **{c: group.subtotal(c) for c in columns}}
+        per_model[model] = {"events": group.rows, **{c: group.total(c) for c in columns}}
         for col in columns:
             provenance[json_pointer("usage_by_model", "per_model", model, col)] = group.entry(col)
     return {"totals": totals, "per_model": per_model, "provenance": provenance}
@@ -449,7 +453,8 @@ def _compute_cache_rate_from_usage(
     """Read one verified Claude or Codex session's stored usage.
 
     The second return value is a diagnostic code for a missing store or
-    observation. Source freshness is read from ENH-3651's committed cursor;
+    observation. The rate and operands publish only when every selected audit
+    observation is eligible and measured (see ``qualify_usage``). Source freshness is read from ENH-3651's committed cursor;
     it is never inferred from a usage row's timestamp.
     """
     from little_loops.history_reader.usage import select_usage_coverage
@@ -483,60 +488,60 @@ def _compute_cache_rate_from_usage(
     if not selection.audit_rows:
         return None, "ingested_without_usage"
 
-    rows = selection.selected_rows
-
+    # One measured-only qualification over every audit observation governs the rate,
+    # every operand and their metadata (ENH-3731): an ineligible in-filter row is never
+    # dropped to make a total qualify, and no complete-subset rate exists.
+    audit_group = ObservationGroup()
+    for row in selection.audit_rows:
+        audit_group.add(row)
+    group = ObservationGroup()
+    for row in selection.selected_rows:
+        group.add(row)
+    qualification = qualify_usage(audit_group, measured_only=True)
     fields = (
         ("cache_read", "cache_read_input_tokens"),
         ("cache_write", "cache_creation_input_tokens"),
         ("uncached", "input_tokens"),
     )
-    sums = {name: 0 for name, _ in fields}
-    known = {name: 0 for name, _ in fields}
-    missing = {name: 0 for name, _ in fields}
-    eligible = {name: 0 for name, _ in fields}
-    eligible_events = excluded_events = 0
-    group = ObservationGroup()
-    audit_group = ObservationGroup()
-    for row in selection.audit_rows:
-        audit_group.add(row)
-    for row in rows:
-        group.add(row)
-        values = {name: _known_int(row[column]) for name, column in fields}
-        for name, value in values.items():
-            if value is None:
-                missing[name] += 1
-            else:
-                known[name] += 1
-                sums[name] += value
-        if all(value is not None for value in values.values()):
-            eligible_events += 1
-            for name, value in values.items():
-                eligible[name] += value or 0
+    values: dict[str, int | None] = {
+        name: audit_group.audit_subtotal(column) if qualification.eligible else None
+        for name, column in fields
+    }
+    base_reason = _stored_reason(qualification.reason)
+    rate: int | None = None
+    rate_reason = base_reason
+    if qualification.eligible:
+        denominator = sum(int(value or 0) for value in values.values())
+        if denominator:
+            rate = round(int(values["cache_read"] or 0) / denominator * 100)
         else:
-            excluded_events += 1
-    counts = {name: {"known": known[name], "missing": missing[name]} for name in sums}
-    counts["hit_rate_pct"] = {"known": eligible_events, "missing": excluded_events}
-    total = sum(eligible.values())
+            rate_reason = "zero_denominator"
+    operand_counts = {column: qualification.counts(column) for _, column in fields}
+    counts = {
+        name: {
+            "known": operand_counts[column].known_count,
+            "missing": operand_counts[column].missing_count,
+        }
+        for name, column in fields
+    }
+    counts["hit_rate_pct"] = {
+        "known": qualification.contributors - qualification.rejected_contributors,
+        "missing": qualification.rejected_contributors,
+    }
     freshness = usage_source_freshness(db_path, handle.path)
-    coverage = selection.coverage
-    provenance = group.aggregate_provenance("input_tokens")
-    reportable = coverage == "non_overlapping" and provenance == "measured"
-    qualification_reason = (
-        "unverified_usage" if coverage == "non_overlapping" and provenance != "measured" else None
-    )
     result: dict[str, Any] = {
-        **{name: (sums[name] if reportable and known[name] else None) for name in sums},
-        "hit_rate_pct": (
-            round(eligible["cache_read"] / total * 100) if total and reportable else None
-        ),
+        **values,
+        "hit_rate_pct": rate,
         "host": handle.host,
         "session_id": handle.session_id,
-        "provenance": provenance,
-        "qualification_reason": qualification_reason,
+        "provenance": group.aggregate_provenance("input_tokens"),
+        "qualification_reason": rate_reason,
         "counts": counts,
+        "invalid_counts": {name: operand_counts[column].invalid_count for name, column in fields},
+        "rejected_contributors": qualification.rejected_contributors,
         "source": "stored_usage",
         "channels": sorted({row_channel(row) for row in selection.audit_rows}),
-        "coverage": coverage,
+        "coverage": selection.coverage,
         "channel_subtotals": audit_group.channel_subtotals(),
         "coverage_reason": selection.reason,
         "freshness": freshness["status"],
@@ -545,6 +550,11 @@ def _compute_cache_rate_from_usage(
         "as_of_offset": freshness.get("as_of_offset"),
     }
     return result, None
+
+
+def _stored_reason(code: str | None) -> str | None:
+    """Map a shared qualification code to the stored-cache vocabulary (ENH-3731)."""
+    return "unverified_usage" if code in ("unknown_provenance", "not_measured") else code
 
 
 _STORED_USAGE_DIAGNOSTICS = {
@@ -567,8 +577,39 @@ def _known_int(value: Any) -> int | None:
         return None
 
 
+_QUALIFICATION_LABELS = {
+    "unverified_usage": "usage unverified",
+    "missing_token_component": "missing usage component",
+    "invalid_token_component": "invalid usage component",
+    "zero_denominator": "zero denominator",
+}
+
+#: Stored-cache reasons for which the "producer usage ... unverified" stderr line applies.
+_UNVERIFIED_USAGE_REASONS = frozenset(
+    {"unverified_usage", "missing_token_component", "invalid_token_component"}
+)
+
 _CACHE_SCOPE_REASON = "single-session transcript read (newest session only, not the whole history)"
 _STORED_CACHE_SCOPE_REASON = "single-session stored usage (newest session only)"
+
+
+def _finish_stored_entry(
+    entry: dict[str, Any],
+    *,
+    value: Any,
+    qualification_reason: str | None,
+    invalid: int,
+    rejected: int,
+) -> dict[str, Any]:
+    """Make a stored-usage pointer truthful: availability follows the published value."""
+    entry["availability"] = "available" if value is not None else "unavailable"
+    entry["invalid_count"] = invalid
+    entry["rejected_contributors"] = rejected
+    entry["qualification_reason"] = qualification_reason
+    if qualification_reason:
+        note = f"qualification {qualification_reason}"
+        entry["reason"] = f"{entry['reason']}; {note}" if entry.get("reason") else note
+    return entry
 
 
 def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -577,12 +618,9 @@ def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, An
     provenance = cache_rate.get("provenance") or "unknown"
     host = cache_rate.get("host")
     channels = cache_rate.get("channels") or ["transcript_file"]
-    reason = (
-        _STORED_CACHE_SCOPE_REASON
-        if cache_rate.get("source") == "stored_usage"
-        else _CACHE_SCOPE_REASON
-    )
-    if cache_rate.get("source") == "stored_usage":
+    stored = cache_rate.get("source") == "stored_usage"
+    reason = _STORED_CACHE_SCOPE_REASON if stored else _CACHE_SCOPE_REASON
+    if stored:
         reason += f"; stored as of {cache_rate.get('as_of') or 'unknown'}"
         reason += f"; freshness {cache_rate.get('freshness') or 'unknown'}"
         if cache_rate.get("lag_reason"):
@@ -597,13 +635,17 @@ def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, An
         ("uncached_tokens", "uncached", "input_tokens"),
         ("cache_hit_rate_pct", "hit_rate_pct", "cache_hit_rate_pct"),
     )
+    rate_reason = cache_rate.get("qualification_reason")
+    base_reason = None if rate_reason == "zero_denominator" else rate_reason
+    invalid_counts = cache_rate.get("invalid_counts") or {}
     entries: dict[str, dict[str, Any]] = {}
     for json_key, src_key, metric in fields:
         default_known = 1 if cache_rate.get(src_key) is not None else 0
         count = counts.get(src_key) or {"known": default_known, "missing": 0}
-        if cache_rate.get("source") == "stored_usage" and cache_rate.get(src_key) is None:
-            count = {"known": 0, "missing": int(count["known"]) + int(count["missing"])}
-        entries[json_pointer(json_key)] = counted_entry(
+        extra: dict[str, Any] = (
+            {"coverage": cache_rate.get("coverage") or "unknown"} if stored else {}
+        )
+        entry = counted_entry(
             metric,
             provenance=provenance,
             known=int(count["known"]),
@@ -613,35 +655,73 @@ def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, An
             channels=channels,
             session_id=cache_rate.get("session_id"),
             reason=reason,
+            **extra,
         )
+        if stored:
+            _finish_stored_entry(
+                entry,
+                value=cache_rate.get(src_key),
+                qualification_reason=rate_reason if src_key == "hit_rate_pct" else base_reason,
+                invalid=int(invalid_counts.get(src_key) or 0),
+                rejected=int(cache_rate.get("rejected_contributors") or 0),
+            )
+        entries[json_pointer(json_key)] = entry
     return entries
 
 
 def _waste_provenance(waste: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Pointer → entry for each loop's token totals and waste ratio."""
+    """Pointer → entry for each loop's token totals and waste ratio (ENH-3731).
+
+    Availability follows the published value; counts stay truthful when
+    qualification fails. The ratio's counts are the denominator-pair counts.
+    """
     entries: dict[str, dict[str, Any]] = {}
     for index, row in enumerate(waste):
         subtotals = row.get("channel_subtotals") or {}
         events = sum(int(sub.get("events", 0)) for sub in subtotals.values())
-        reason = row.get("coverage_reason")
         base: dict[str, Any] = {
             "provenance": row.get("provenance") or "unknown",
             "coverage": row.get("coverage") or "unknown",
             "channels": sorted(subtotals) or None,
-            "reason": reason,
+            "reason": row.get("coverage_reason"),
         }
-        for key, missing_key in (
-            ("tokens_total", "tokens_total_missing"),
-            ("tokens_wasted", "tokens_wasted_missing"),
-        ):
-            missing = int(row.get(missing_key) or 0)
-            entries[json_pointer("waste", str(index), key)] = counted_entry(
-                key, known=max(events - missing, 0), missing=missing, **base
-            )
-        known = events if row.get("waste_pct") is not None else 0
-        entries[json_pointer("waste", str(index), "waste_pct")] = counted_entry(
-            "waste_pct", known=known, missing=events - known, **base
+        rejected = int(row.get("rejected_contributors") or 0)
+        total_missing = int(row.get("tokens_total_missing") or 0)
+        total_invalid = int(row.get("tokens_total_invalid") or 0)
+        figures = (
+            (
+                "tokens_total",
+                "tokens_total",
+                row.get("qualification_reason"),
+                total_missing,
+                total_invalid,
+            ),
+            (
+                "tokens_wasted",
+                "tokens_wasted",
+                row.get("qualification_reason"),
+                int(row.get("tokens_wasted_missing") or 0),
+                int(row.get("tokens_wasted_invalid") or 0),
+            ),
+            (
+                "waste_pct",
+                "waste_pct",
+                row.get("waste_pct_qualification_reason"),
+                total_missing,
+                total_invalid,
+            ),
         )
+        for key, metric, code, missing, invalid in figures:
+            entry = counted_entry(
+                metric, known=max(events - missing - invalid, 0), missing=missing, **base
+            )
+            entries[json_pointer("waste", str(index), key)] = _finish_stored_entry(
+                entry,
+                value=row.get(key),
+                qualification_reason=code,
+                invalid=invalid,
+                rejected=rejected,
+            )
     return entries
 
 
@@ -751,7 +831,11 @@ def _render(
             if cache_rate.get("coverage") in {"overlap_unresolved", "unknown"}:
                 print(f"Cache hit rate: unavailable (coverage unresolved) {suffix_for(rate_entry)}")
             elif cache_rate.get("qualification_reason"):
-                print(f"Cache hit rate: unavailable (usage unverified) {suffix_for(rate_entry)}")
+                label = _QUALIFICATION_LABELS.get(
+                    cache_rate["qualification_reason"],
+                    str(cache_rate["qualification_reason"]).replace("_", " "),
+                )
+                print(f"Cache hit rate: unavailable ({label}) {suffix_for(rate_entry)}")
             elif good == 0 and not bad:
                 print(f"Cache hit rate: no usage observed {suffix_for(rate_entry)}")
             else:
@@ -784,7 +868,7 @@ def _render(
                 print(f"Cache hit rate: {shown} {suffix_for(rate_entry)}  ({' | '.join(parts)})")
             if bad:
                 print(f"  based on {good} accepted observation(s); {bad} excluded as inconsistent")
-            elif excluded:
+            elif excluded and cache_rate.get("source") != "stored_usage":
                 print(
                     f"  based on {(counts['hit_rate_pct'] or {}).get('known')} eligible "
                     f"record(s); {excluded} excluded (missing usage component)"
@@ -797,6 +881,8 @@ def _render(
         )
         print(f"* {scope_reason}{host_note}")
         if cache_rate.get("source") == "stored_usage":
+            if cache_rate.get("qualification_reason"):
+                print(f"* qualification: {cache_rate['qualification_reason']}")
             as_of = cache_rate.get("as_of") or "unknown"
             freshness = cache_rate.get("freshness") or "unknown"
             lag = cache_rate.get("lag_reason")
@@ -1208,7 +1294,10 @@ def main_ctx_stats(argv: list[str] | None = None) -> int:
                     f"Stored {stored_host} usage unavailable for {selected.session_id}: "
                     f"{_STORED_USAGE_DIAGNOSTICS[diagnostic]}.\n"
                 )
-            elif cache_rate is not None and cache_rate.get("qualification_reason"):
+            elif (
+                cache_rate is not None
+                and cache_rate.get("qualification_reason") in _UNVERIFIED_USAGE_REASONS
+            ):
                 sys.stderr.write(
                     f"Stored {stored_host} usage unavailable for {selected.session_id}: "
                     "producer usage identity or components are unverified.\n"

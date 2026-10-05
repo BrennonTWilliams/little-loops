@@ -8581,6 +8581,8 @@ from little_loops.history_reader import (
     waste_attribution,       # ENH-2722
     recent_usage_events,     # ENH-2461
     aggregate_usage,         # ENH-2461
+    qualify_usage,           # ENH-3731
+    UsageQualification,      # ENH-3731
     context_pressure_curve,  # ENH-2507
     pressure_crossings,      # ENH-2507
     pressure_summary,        # ENH-2507
@@ -8958,6 +8960,16 @@ OTel names (`gen_ai.usage.input_tokens`, `gen_ai.usage.cache_read.input_tokens`,
 `cost_usd`, and `invocations`, so a `GROUP BY gen_ai.invocation.id` rollup matches raw
 `result`-event `usage` totals row-for-row.
 
+ENH-3731: the four token components qualify together — a group publishes them only
+when every contributing row has all four token columns valid (non-negative integers)
+and `measured` or `estimated` provenance over resolved coverage; otherwise every
+token field is `None` and every `gen_ai.usage.*` attribute is omitted. `cost_usd`
+qualifies independently (every row needs a valid stored cost; no priced-subset
+sums), so a missing cost never blanks qualified tokens. Each dict carries
+`<column>_missing` / `<column>_invalid` counts and the bounded
+`qualification_reason` / `cost_qualification_reason`. See
+[`qualify_usage`](#qualify_usage--usagequalification).
+
 ### waste_attribution
 
 ```python
@@ -8987,16 +8999,49 @@ follow-on). Each returned dict carries `loop_name`, `tokens_total`,
 no matching `loop_runs` row are excluded by the inner join. Returns `[]` on a
 missing/unreadable DB.
 
-ENH-3528: the join runs in Python over `select_usage_observations()`. A row
-missing `input_tokens` or `output_tokens` has an unavailable count, so
-`tokens_total` / `tokens_wasted` are `None` when any contributing row is missing a component
-(the shortfall is in `tokens_total_missing` / `tokens_wasted_missing`) and `waste_pct` is
-`None` when either operand is `None` or the denominator is 0. Each dict also
+ENH-3528/ENH-3731: the join runs in Python over `select_usage_observations()`. One
+per-loop qualification over the full joined population (all four token columns valid,
+`measured` or `estimated` provenance, resolved coverage) governs both `tokens_total`
+and `tokens_wasted`: either is `None` when it fails (`qualification_reason` names the
+blocker), even when only a cache column is missing. The `input_tokens`/`output_tokens`
+pair shortfall is in `tokens_total_missing` / `tokens_wasted_missing` (and
+`tokens_total_invalid` / `tokens_wasted_invalid`), `rejected_contributors` counts rows
+that failed qualification, and `waste_pct` is `None` when either figure is unavailable
+or the total is 0 (`waste_pct_qualification_reason`, `zero_denominator` for a
+qualified zero total). Each dict also
 carries `provenance`, `coverage` (`overlap_unresolved` when live and transcript
 rows may cover the same work) and per-channel `channel_subtotals`;
 `aggregate_usage()` and `cost_attribution()` add the same three fields.
 When coverage is unresolved or unknown, canonical token/cost totals and waste
 rates are `None`; channel subtotals still describe the raw audit observations.
+
+### qualify_usage / UsageQualification
+
+```python
+from little_loops.history_reader import UsageQualification, qualify_usage
+
+def qualify_usage(
+    group: ObservationGroup, *, require_cost: bool = False, measured_only: bool = False
+) -> UsageQualification
+```
+
+Decides whether an observation group may publish a canonical stored-usage figure
+(ENH-3731; defined in `little_loops.token_provenance`). Row admission (all four token
+columns valid) and the provenance gate (`measured`/`estimated`) always apply;
+`require_cost` (every row needs a valid stored cost) and `measured_only`
+(every row must be `measured`) can only tighten the result. The returned
+frozen `UsageQualification` carries `eligible`, `provenance` (`measured` / `estimated`
+/ `mixed` / `unknown`, computed from all rows without coverage masking),
+`reason` (`None` iff eligible), `contributors` (the row total) and `rejected_contributors` <!-- ll-audience-ok: public result field names -->
+(rows failing any prerequisite; a row failing several counts once), per-column `component_counts` (known / missing /
+invalid) and `policy_version`. The first applicable group-wide failure wins, independent
+of insertion order: `empty_selection`, `coverage_overlap_unresolved`, `coverage_unknown`,
+`unclassified`, `missing_token_component`, `invalid_token_component`,
+`unknown_provenance`, `not_measured`, `invalid_cost`, `unpriced_contributor`.
+`USAGE_QUALIFICATION_REASONS` is that vocabulary plus `zero_denominator`;
+`USAGE_QUALIFICATION_POLICY_VERSION` versions the policy. `ObservationGroup.total()`
+publishes a canonical value only when its qualification is eligible, and
+`ObservationGroup.audit_subtotal()` returns the valid-value sum with no gate.
 
 ### select_usage_coverage / select_usage_observations
 

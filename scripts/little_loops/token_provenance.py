@@ -11,6 +11,7 @@ capabilities.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -23,6 +24,30 @@ TOKEN_COLUMNS = (
 )
 COST_COLUMN = "cost_usd"
 AGGREGATE_COLUMNS = (*TOKEN_COLUMNS, COST_COLUMN)
+
+#: Version of the qualification policy carried on every :class:`UsageQualification`
+#: (ENH-3731). Bump together with the shared behavioral matrix whenever row
+#: admission, provenance, figure prerequisites or reason precedence change;
+#: coverage-policy and export-allowlist versions are separate.
+USAGE_QUALIFICATION_POLICY_VERSION = 1
+
+#: Bounded handoff vocabulary for figure qualification reasons (ENH-3731). Coverage
+#: diagnostic prose never enters these codes; unknown reasons become ``unclassified``.
+USAGE_QUALIFICATION_REASONS = frozenset(
+    {
+        "empty_selection",
+        "coverage_overlap_unresolved",
+        "coverage_unknown",
+        "unclassified",
+        "missing_token_component",
+        "invalid_token_component",
+        "unknown_provenance",
+        "not_measured",
+        "invalid_cost",
+        "unpriced_contributor",
+        "zero_denominator",
+    }
+)
 
 #: Reserved model bucket for rows with a NULL model; no model ID can produce it.
 UNKNOWN_MODEL_BUCKET = "(unknown model)"
@@ -93,22 +118,120 @@ def row_host_verified(row: Any) -> bool:
     return _row_get(row, "host_basis") == "handle"
 
 
+def valid_token_value(value: Any) -> bool:
+    """Whether *value* is an admissible stored token count (a non-negative ``int``)."""
+    return type(value) is int and value >= 0
+
+
+def valid_cost_value(value: Any) -> bool:
+    """Whether *value* is an admissible stored cost (finite non-bool ``int``/``float`` >= 0)."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value) and value >= 0
+    except OverflowError:
+        return False
+
+
+def _stable_sum(values: list[Any]) -> float | None:
+    """Order-independent finite sum of *values*; ``None`` when it overflows."""
+    try:
+        total = math.fsum(values)
+    except OverflowError:
+        return None
+    return total if math.isfinite(total) else None
+
+
+@dataclass
+class _Slot:
+    count: int = 0
+    int_total: int = 0
+    values: list[Any] = field(default_factory=list)
+
+
 @dataclass
 class _Component:
+    cost: bool = False
     known: int = 0
     missing: int = 0
-    total: float = 0
-    by_provenance: dict[str, dict[str, float]] = field(default_factory=dict)
+    invalid: int = 0
+    slots: dict[str, _Slot] = field(default_factory=dict)
+    _final: tuple[Any, ...] | None = None
 
-    def add(self, value: Any, provenance: str) -> None:
-        slot = self.by_provenance.setdefault(provenance, {"count": 0, "subtotal": 0})
+    @property
+    def by_provenance(self) -> dict[str, dict[str, Any]]:
+        return {
+            k: {"count": v.count, "subtotal": self._slot_total(v)} for k, v in self.slots.items()
+        }
+
+    def add(self, value: Any, provenance: str) -> str:
+        """Record *value*; returns ``missing`` | ``invalid`` | ``valid``."""
+        slot = self.slots.setdefault(provenance, _Slot())
         if value is None:
             self.missing += 1
-            return
+            return "missing"
+        if not (valid_cost_value(value) if self.cost else valid_token_value(value)):
+            self.invalid += 1
+            return "invalid"
         self.known += 1
-        self.total += value
-        slot["count"] += 1
-        slot["subtotal"] += value
+        slot.count += 1
+        if self.cost:
+            slot.values.append(value)
+        else:
+            slot.int_total += value
+        self._final = None
+        return "valid"
+
+    def _slot_total(self, slot: _Slot) -> Any:
+        if not self.cost:
+            return slot.int_total
+        return _stable_sum(slot.values) if slot.values else 0
+
+    def total(self) -> Any:
+        """Finalized sum of valid values; ``None`` without valid values or on overflow."""
+        if not self.known:
+            return None
+        if self._final is None:
+            if self.cost:
+                self._final = (_stable_sum([v for s in self.slots.values() for v in s.values]),)
+            else:
+                self._final = (sum(s.int_total for s in self.slots.values()),)
+        return self._final[0]
+
+    def overflowed(self) -> bool:
+        return bool(self.cost and self.known and self.total() is None)
+
+    def counts(self, column: str) -> UsageComponentCounts:
+        return UsageComponentCounts(column, self.known, self.missing, self.invalid)
+
+
+@dataclass(frozen=True)
+class UsageComponentCounts:
+    """Valid/NULL/present-invalid observation counts of one column (ENH-3731)."""
+
+    column: str
+    known_count: int
+    missing_count: int
+    invalid_count: int
+
+
+@dataclass(frozen=True)
+class UsageQualification:
+    """Result of :func:`qualify_usage`; ``eligible`` iff ``reason is None`` (ENH-3731)."""
+
+    eligible: bool
+    provenance: str
+    reason: str | None
+    contributors: int
+    rejected_contributors: int
+    component_counts: tuple[UsageComponentCounts, ...]
+    policy_version: int
+
+    def counts(self, column: str) -> UsageComponentCounts:
+        for item in self.component_counts:
+            if item.column == column:
+                return item
+        raise KeyError(column)
 
 
 class ObservationGroup:
@@ -116,7 +239,9 @@ class ObservationGroup:
 
     def __init__(self) -> None:
         self.rows = 0
-        self.components: dict[str, _Component] = {c: _Component() for c in AGGREGATE_COLUMNS}
+        self.components: dict[str, _Component] = {
+            c: _Component(cost=(c == COST_COLUMN)) for c in AGGREGATE_COLUMNS
+        }
         self.hosts: set[str] = set()
         self.unverified_host_rows = 0
         self.channels: dict[str, dict[str, Any]] = {}
@@ -132,6 +257,15 @@ class ObservationGroup:
         self._coverage_labels: set[str] = set()
         self._coverage_reasons: set[str] = set()
         self._unannotated_rows = False
+        # Per-row qualification counters (ENH-3731); a row is counted once per counter.
+        self._rows_missing_token = 0
+        self._rows_invalid_token = 0
+        self._rows_unknown_provenance = 0
+        self._rows_not_measured = 0
+        self._rows_invalid_cost = 0
+        self._rows_missing_cost = 0
+        # Rejected rows keyed by (measured_only, require_cost).
+        self._rejected = {(m, c): 0 for m in (False, True) for c in (False, True)}
 
     def add(self, row: Any) -> None:
         self.rows += 1
@@ -148,11 +282,31 @@ class ObservationGroup:
         self.provenances.add(provenance)
         sub = self.channels.setdefault(channel, {"events": 0, **dict.fromkeys(TOKEN_COLUMNS, 0)})
         sub["events"] += 1
+        states: dict[str, str] = {}
         for col in AGGREGATE_COLUMNS:
             value = _row_get(row, col)
-            self.components[col].add(value, provenance)
-            if value is not None and col in TOKEN_COLUMNS:
+            states[col] = self.components[col].add(value, provenance)
+            if states[col] == "valid" and col in TOKEN_COLUMNS:
                 sub[col] += value
+        token_states = {states[c] for c in TOKEN_COLUMNS}
+        missing_token = "missing" in token_states
+        invalid_token = "invalid" in token_states
+        admitted = not (missing_token or invalid_token)
+        self._rows_missing_token += missing_token
+        self._rows_invalid_token += invalid_token
+        self._rows_unknown_provenance += provenance == "unknown"
+        self._rows_not_measured += provenance != "measured"
+        self._rows_invalid_cost += states[COST_COLUMN] == "invalid"
+        self._rows_missing_cost += states[COST_COLUMN] == "missing"
+        base_ok = admitted and provenance != "unknown"
+        for measured_only, require_cost in self._rejected:
+            ok = (
+                base_ok
+                and (not measured_only or provenance == "measured")
+                and (not require_cost or states[COST_COLUMN] == "valid")
+            )
+            if not ok:
+                self._rejected[(measured_only, require_cost)] += 1
         host = _row_get(row, "host")
         if host:
             if row_host_verified(row):
@@ -220,18 +374,14 @@ class ObservationGroup:
         return "mixed"
 
     def total(self, column: str) -> Any:
-        """Canonical total; unavailable for missing data or unresolved coverage."""
-        comp = self.components[column]
-        return (
-            None
-            if self.coverage() != "non_overlapping" or comp.missing or not comp.known
-            else comp.total
-        )
+        """Canonical total; ``None`` unless :func:`qualify_usage` finds the column eligible."""
+        if not qualify_usage(self, require_cost=(column == COST_COLUMN)).eligible:
+            return None
+        return self.components[column].total()
 
-    def subtotal(self, column: str) -> Any:
-        """Known canonical subtotal; raw audit sums remain in channel subtotals."""
-        comp = self.components[column]
-        return comp.total if comp.known and self.coverage() == "non_overlapping" else None
+    def audit_subtotal(self, column: str) -> Any:
+        """Sum of valid values (``None`` without one); no coverage/provenance gate."""
+        return self.components[column].total()
 
     def missing(self, column: str) -> int:
         return self.components[column].missing
@@ -242,12 +392,8 @@ class ObservationGroup:
     def entry(self, column: str, *, extra_reason: str | None = None) -> dict[str, Any]:
         """Build the ``token_provenance`` metadata entry for *column*."""
         comp = self.components[column]
-        if self.coverage() != "non_overlapping" or not comp.known:
-            availability = "unavailable"
-        elif comp.missing:
-            availability = "partial"
-        else:
-            availability = "available"
+        qualification = qualify_usage(self, require_cost=(column == COST_COLUMN))
+        availability = "available" if qualification.eligible else "unavailable"
         coverage = self.coverage()
         reasons: list[str] = []
         if extra_reason:
@@ -270,8 +416,11 @@ class ObservationGroup:
             "availability": availability,
             "known_count": comp.known,
             "missing_count": comp.missing,
+            "invalid_count": comp.invalid,
+            "rejected_contributors": qualification.rejected_contributors,
+            "qualification_reason": qualification.reason,
             "composition": {
-                kind: {"count": int(v["count"]), "subtotal": v["subtotal"]}
+                kind: {"count": v["count"], "subtotal": v["subtotal"]}
                 for kind, v in sorted(comp.by_provenance.items())
                 if v["count"]
             },
@@ -291,6 +440,60 @@ class ObservationGroup:
         if reasons:
             entry["reason"] = "; ".join(reasons)
         return entry
+
+
+def qualify_usage(
+    group: ObservationGroup, *, require_cost: bool = False, measured_only: bool = False
+) -> UsageQualification:
+    """Decide whether *group* may publish a canonical stored-usage figure (ENH-3731).
+
+    Pure over *group* state. Row admission (all four token columns valid) and the
+    provenance gate always apply; ``require_cost`` and ``measured_only`` can only
+    tighten the result. The first applicable group-wide failure wins, independent
+    of insertion order: empty selection, coverage, missing/invalid token component,
+    unknown provenance, not measured, invalid cost, unpriced contributor.
+    """
+    provenances = group.provenances
+    if not provenances or "unknown" in provenances:
+        label = "unknown"
+    elif len(provenances) > 1:
+        label = "mixed"
+    else:
+        label = next(iter(provenances))
+    reason: str | None = None
+    if not group.rows:
+        reason = "empty_selection"
+    else:
+        coverage = group.coverage()
+        if coverage == "overlap_unresolved":
+            reason = "coverage_overlap_unresolved"
+        elif coverage == "unknown":
+            reason = "coverage_unknown"
+        elif coverage != "non_overlapping":
+            reason = "unclassified"
+        elif group._rows_missing_token:
+            reason = "missing_token_component"
+        elif group._rows_invalid_token:
+            reason = "invalid_token_component"
+        elif group._rows_unknown_provenance:
+            reason = "unknown_provenance"
+        elif measured_only and group._rows_not_measured:
+            reason = "not_measured"
+        elif require_cost and (
+            group._rows_invalid_cost or group.components[COST_COLUMN].overflowed()
+        ):
+            reason = "invalid_cost"
+        elif require_cost and group._rows_missing_cost:
+            reason = "unpriced_contributor"
+    return UsageQualification(
+        eligible=reason is None,
+        provenance=label,
+        reason=reason,
+        contributors=group.rows,
+        rejected_contributors=group._rejected[(measured_only, require_cost)],
+        component_counts=tuple(group.components[c].counts(c) for c in AGGREGATE_COLUMNS),
+        policy_version=USAGE_QUALIFICATION_POLICY_VERSION,
+    )
 
 
 def _single(values: set[str]) -> str:
@@ -421,6 +624,9 @@ _META_KEYS = (
     "observed_from",
     "observed_to",
     "composition",
+    "qualification_reason",
+    "invalid_count",
+    "rejected_contributors",
 )
 
 

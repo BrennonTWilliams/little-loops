@@ -356,8 +356,10 @@ supported evidence notes, production-host coverage, and summary parity.
     usage and reports the source cursor's as-of/freshness status. On the
     captured two-request transcript, this removes duplicated outer-UUID
     snapshots: cache read 76,858 → 38,429, cache creation 22,446 → 11,223,
-    uncached input 36 → 18, with the same 77% hit rate. Missing or unverified
-    usage stays unavailable.
+    uncached input 36 → 18, with the same 77% hit rate. The rate and operands
+    publish only when every observation of the session is complete and
+    `measured`; a missing, invalid, estimated or unverified observation makes
+    them unavailable rather than computing over a complete subset (ENH-3731).
     ENH-3546 records the capture and its limits.
 
 [^tok]: **OpenCode — deferred pending orchestration, not a permanent gap (FEAT-2123).** `opencode run --format json` *does* expose per-invocation usage: a live probe (`.ll/learning-tests/opencode.md`, 2026-08-31) confirms a `step_finish` event (`part.type == "step-finish"`) carries `part.tokens` (`input`/`output`/`reasoning`/`cache.read`/`cache.write`) and `part.cost`; no model-identifier field was found on that event. The blocker is upstream of parsing: `OpenCodeRunner.build_streaming()` (`host_runner.py`) unconditionally raises `HostNotConfigured` — no subprocess is ever spawned for OpenCode today, so there is no stream to parse until OpenCode orchestration itself is wired (a separate, larger gap than this issue's scope). Once that wiring lands, `step_finish.part.tokens` is the confirmed parse target.
@@ -382,7 +384,9 @@ supported evidence notes, production-host coverage, and summary parity.
     identity can contribute once to the canonical cache rate; old 0.152.1
     `token_count`-only rows are audit-only because their request identity is
     unverified. A same-thread live row without a proven join makes combined
-    totals unavailable while preserving live and rollout subtotals. Codex
+    totals unavailable while preserving live and rollout subtotals. The cache
+    rate is measured-only over every selected observation, and a rollout row
+    whose provenance is not `measured` stays coverage-unknown (ENH-3731). Codex
     `input_tokens` includes cache-read and cache-write input, so the rollout
     normalizer subtracts those components before storage. Source freshness and
     as-of status are shown with the rate; reads never trigger ingestion.

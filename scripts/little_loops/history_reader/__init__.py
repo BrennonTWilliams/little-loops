@@ -83,6 +83,9 @@ Public API:
     select_usage_observations(conn, *, since, require_run_id, host, session_id)
         -> Iterator[Mapping] of annotated audit rows (ENH-3528/3543)
     aggregate_usage(group_by, ...) -> list[dict]
+    qualify_usage(group, *, require_cost, measured_only) -> UsageQualification
+        (canonical stored-usage qualification, re-exported from
+        ``little_loops.token_provenance``; ENH-3731)
     context_pressure_curve(session_id, ...) -> list[ContextPressureEvent]
     pressure_crossings(session_id, ...) -> list[ContextPressureEvent]
     pressure_summary(session_id, ...) -> dict | None
@@ -272,6 +275,7 @@ from little_loops.history_reader.usage import (
     select_usage_observations,
     waste_attribution,
 )
+from little_loops.token_provenance import UsageQualification, qualify_usage
 
 __all__ = [
     "CoverageGroup",
@@ -374,6 +378,8 @@ __all__ = [
     "subagent_tree",
     "summarize_skills",
     "verdict_pass_rate",
+    "UsageQualification",
+    "qualify_usage",
     "waste_attribution",
     "worktree_summary",
     # Private functions re-exported for test access and for the three

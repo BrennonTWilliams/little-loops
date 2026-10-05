@@ -70,8 +70,8 @@ class TestCostAttribution:
         conn.executemany(
             "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
             "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
-            "cost_usd, invocation_id, provider_vendor) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "cost_usd, invocation_id, provider_vendor, provenance) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,'measured')",
             rows,
         )
         conn.commit()
@@ -116,8 +116,8 @@ class TestCostAttribution:
         conn = connect(db)
         conn.execute(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
-            "VALUES(?,?,?,?,?,?,?,?,?)",
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, "
+            "provenance) VALUES(?,?,?,?,?,?,?,?,?,'measured')",
             ("2026-07-21T19:00:00Z", "claude", "check", 100, 20, 5, 7, 0.01, "run-1-loop"),
         )
         conn.commit()
@@ -158,8 +158,8 @@ class TestWasteAttribution:
         conn = connect(db)
         conn.execute(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
-            "VALUES(?,?,?,?,?,?,?,?,?)",
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, "
+            "provenance) VALUES(?,?,?,?,?,?,?,?,?,'measured')",
             (
                 "2026-07-21T19:00:00Z",
                 "claude",
@@ -353,8 +353,8 @@ class TestWasteAttribution:
         conn = connect(db)
         conn.execute(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
-            "VALUES(?,?,?,?,?,?,?,?,?)",
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, "
+            "provenance) VALUES(?,?,?,?,?,?,?,?,?,'measured')",
             ("2026-07-21T19:00:00Z", "claude", "check", 100, 20, 0, 0, 0.0, "orphan-run"),
         )
         conn.commit()
@@ -374,7 +374,7 @@ class TestUsageEventReaders:
                 conn.execute(
                     "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
                     "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
-                    "cost_usd) VALUES(?,?,?,?,?,?,?,?,?)",
+                    "cost_usd, provenance) VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (
                         r["ts"],
                         r.get("session_id"),
@@ -385,6 +385,7 @@ class TestUsageEventReaders:
                         r.get("cache_read_input_tokens", 0),
                         r.get("cache_creation_input_tokens", 0),
                         r.get("cost_usd"),
+                        r.get("provenance", "measured"),
                     ),
                 )
             conn.commit()
@@ -475,7 +476,14 @@ class TestUsageEventReaders:
         db = tmp_path / "history.db"
         self._seed(
             db,
-            [{"ts": "2026-09-27T00:00:00Z", "session_id": "s1", "model": "m1"}],
+            [
+                {
+                    "ts": "2026-09-27T00:00:00Z",
+                    "session_id": "s1",
+                    "model": "m1",
+                    "provenance": None,
+                }
+            ],
         )
         event = recent_usage_events(db=db)[0]
         assert event.provenance == "unknown"

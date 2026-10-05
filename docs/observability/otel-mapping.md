@@ -76,6 +76,11 @@ dotted OTel names. `group_by` accepts `gen_ai.invocation.id`,
 `invocation_id` / `provider_vendor` / `run_id`); any other value raises
 `ValueError` (the `GROUP BY` clause is whitelisted, never interpolated raw).
 
+The four `gen_ai.usage.*` token attributes are present or absent together: they are
+omitted for a group whose token figure does not qualify (a missing or invalid token
+component, unknown provenance, or unresolved coverage on any contributing row). A
+missing cost never removes them; `cost_usd` qualifies separately.
+
 ## Phoenix ingest
 
 `phoenix serve` (≥ `arize-phoenix 15.10.0`) normalizes raw OTel `gen_ai.usage.*`

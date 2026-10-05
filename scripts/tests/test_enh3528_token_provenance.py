@@ -88,35 +88,41 @@ class TestPointers:
 class TestUsageAggregation:
     def test_null_components_are_missing_not_zero(self, tmp_path: Path) -> None:
         db = tmp_path / "h.db"
-        _insert(db, input_tokens=10, output_tokens=None)
-        _insert(db, input_tokens=5, output_tokens=None)
+        _insert(db, input_tokens=10, output_tokens=None, provenance="measured")
+        _insert(db, input_tokens=5, output_tokens=None, provenance="measured")
         result = _aggregate_usage_events(db)
         assert result is not None
         assert result["totals"]["output_tokens"] is None
         entry = result["provenance"]["/usage_by_model/totals/output_tokens"]
         assert entry["availability"] == "unavailable"
         assert entry["known_count"] == 0 and entry["missing_count"] == 2
-        assert result["totals"]["input_tokens"] == 15
+        assert entry["qualification_reason"] == "missing_token_component"
+        # Row admission: the four token components qualify together (ENH-3731).
+        assert result["totals"]["input_tokens"] is None
+        audit = result["provenance"]["/usage_by_model/totals/input_tokens"]
+        assert audit["composition"] == {"measured": {"count": 2, "subtotal": 15}}
 
-    def test_partial_subtotal_is_labeled(self, tmp_path: Path) -> None:
+    def test_partial_subtotal_is_labeled_audit_only(self, tmp_path: Path) -> None:
         db = tmp_path / "h.db"
-        _insert(db, input_tokens=10)
-        _insert(db, input_tokens=None)
-        _insert(db, input_tokens=4)
+        _insert(db, input_tokens=10, provenance="measured")
+        _insert(db, input_tokens=None, provenance="measured")
+        _insert(db, input_tokens=4, provenance="measured")
         result = _aggregate_usage_events(db)
         assert result is not None
-        assert result["totals"]["input_tokens"] == 14
+        # The canonical total is retired; the valid-value sum survives as labeled audit.
+        assert result["totals"]["input_tokens"] is None
         entry = result["provenance"]["/usage_by_model/totals/input_tokens"]
         assert (entry["availability"], entry["known_count"], entry["missing_count"]) == (
-            "partial",
+            "unavailable",
             2,
             1,
         )
-        assert suffix_for(entry).endswith("partial 2/3]")
+        assert entry["composition"] == {"measured": {"count": 2, "subtotal": 14}}
+        assert suffix_for(entry).endswith("unavailable]")
 
     def test_known_zero_stays_zero(self, tmp_path: Path) -> None:
         db = tmp_path / "h.db"
-        _insert(db, cache_read_input_tokens=0)
+        _insert(db, cache_read_input_tokens=0, provenance="measured")
         result = _aggregate_usage_events(db)
         assert result is not None
         assert result["totals"]["cache_read_input_tokens"] == 0
@@ -354,13 +360,15 @@ class TestHistoryReaderNullContract:
         assert row["input_tokens"] is None
         assert row["input_tokens_missing"] == 1
 
-    def test_ctx_stats_partial_vs_reader_none_on_same_fixture(self, tmp_path: Path) -> None:
+    def test_ctx_stats_and_reader_agree_on_same_fixture(self, tmp_path: Path) -> None:
         db = tmp_path / "h.db"
-        _insert(db, input_tokens=10)
-        _insert(db, input_tokens=None)
+        _insert(db, input_tokens=10, provenance="measured")
+        _insert(db, input_tokens=None, provenance="measured")
         assert aggregate_usage(db=db)[0]["input_tokens"] is None
         result = _aggregate_usage_events(db)
-        assert result is not None and result["totals"]["input_tokens"] == 10
+        assert result is not None and result["totals"]["input_tokens"] is None
+        entry = result["provenance"]["/usage_by_model/totals/input_tokens"]
+        assert entry["composition"] == {"measured": {"count": 1, "subtotal": 10}}
 
     def test_waste_zero_denominator(self, tmp_path: Path) -> None:
         from little_loops.session_store import record_loop_run_summary
@@ -370,9 +378,11 @@ class TestHistoryReaderNullContract:
         record_loop_run_summary(
             db, run_id="r1", loop_name="lp", terminated_by="max_steps", final_state=None
         )
-        _insert(db, run_id="r1", input_tokens=0, output_tokens=0)
+        _insert(db, run_id="r1", input_tokens=0, output_tokens=0, provenance="measured")
         row = waste_attribution(db=db)[0]
         assert row["tokens_total"] == 0 and row["waste_pct"] is None
+        assert row["qualification_reason"] is None
+        assert row["waste_pct_qualification_reason"] == "zero_denominator"
 
 
 class TestTextFormat:

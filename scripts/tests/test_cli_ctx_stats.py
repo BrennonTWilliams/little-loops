@@ -99,8 +99,8 @@ def _populate_waste_run(
     try:
         conn.execute(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
-            "VALUES(?,?,?,?,?,?,?,?,?)",
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, "
+            "provenance) VALUES(?,?,?,?,?,?,?,?,?,'measured')",
             (
                 "2026-07-21T19:00:00Z",
                 "claude",
@@ -251,7 +251,7 @@ class TestAggregateUsageEvents:
             conn.executemany(
                 "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
                 "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
-                "cost_usd) VALUES(?,?,?,NULL,?,?,?,?,?)",
+                "cost_usd, provenance) VALUES(?,?,?,NULL,?,?,?,?,?,'measured')",
                 rows,
             )
             conn.commit()
@@ -282,10 +282,16 @@ class TestAggregateUsageEvents:
         assert result is not None
         assert result["totals"]["input_tokens"] == 45
         assert result["totals"]["output_tokens"] == 9
-        assert result["totals"]["cost_usd"] == pytest.approx(0.40)
+        # No priced-subset sums: one unpriced contributor blanks the aggregate cost (ENH-3731).
+        assert result["totals"]["cost_usd"] is None
+        cost_entry = result["provenance"]["/usage_by_model/totals/cost_usd"]
+        assert cost_entry["availability"] == "unavailable"
+        assert cost_entry["qualification_reason"] == "unpriced_contributor"
         assert result["per_model"]["m1"]["events"] == 2
         assert result["per_model"]["m1"]["input_tokens"] == 40
+        assert result["per_model"]["m1"]["cost_usd"] == pytest.approx(0.40)
         assert result["per_model"]["m2"]["events"] == 1
+        assert result["per_model"]["m2"]["cost_usd"] is None
 
 
 class TestAggregateContextPressure:

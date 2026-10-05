@@ -297,6 +297,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/API.md", "| `advise-consult` |", "ENH-3632"),
     ("docs/reference/API.md", "| `little_loops.cli.issues.advise_consult` |", "ENH-3632"),
     ("docs/reference/CONFIGURATION.md", "is required for", "ENH-3632"),
+    ("docs/reference/API.md", "qualify_usage", "ENH-3731"),
 ]
 
 
