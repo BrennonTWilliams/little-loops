@@ -34,9 +34,11 @@ FEAT-3584/3585/3586 depend on FEAT-3667 -> FEAT-3582 -> FEAT-3583 and remain ind
 
 ENH-3734 runs after all three capabilities plus FEAT-3596's core evidence. It owns the eight-combination matrix, targeted filtering/fallback/skip failures, one mixed reference run and final cumulative budget. It has no reverse dependency on the core epic. No v1 reserve-promotion fixture is required while web grounding remains unbuilt.
 
+Current executor constraints are shared across children: zero rate-limit waits require both zero retry/wait knobs **and** rate_limit_long_wait_ladder:[0]; API/infra retries still consume visits/backoff. Runner exceptions may retain old captures, so error/skip/fallback decisions need fixed route status or verified current-attempt identity. Raw captures use the core printf/:shell transport. Grounding shares bounded exact-identity indexes rooted in consuming configuration; materialize staging is bound to attempt/input/source hashes. ENH-3734 executes real deterministic engine actions with stub prompts/browser and advances the executor clock in budget fixtures. Nominal success must fit; retry-driven cap failure and outer timeout remain distinct outcomes, not guaranteed successful completion.
+
 ## Children
 
-- **FEAT-3584** — Brainstorm ground state with codebase and web evidence probes (open; current implementation is codebase only; web deferred).
+- **FEAT-3584** — Brainstorm codebase grounding with bounded anchor validation (open; v1 implementation scope is codebase only; web deferred).
 - **FEAT-3585** — Brainstorm materialize state: rendered mockups judged visually (open; source-valid fallback, no schedule restart).
 - **FEAT-3586** — Brainstorm optional pre-mortem finisher (open; annotate-only, host failure skips annotations).
 - **ENH-3734** — Brainstorm optional capability integration and cumulative budget verification (open; closes the coverage/budget ownership gap).
@@ -48,6 +50,7 @@ ENH-3734 runs after all three capabilities plus FEAT-3596's core evidence. It ow
 - Visual runs never judge unauthored candidates; degraded judging uses valid sources, records image/html mode separately from its cause, and checks finalist floors before judging. A completed render manifest replays without new codes/calls; changed source/PNG inputs fail rather than corrupting committed verdicts. Digest-only code metadata improves the sanity check without claiming read isolation.
 - Pre-mortem data/host failure/timeout preserves bodies, ranking, slots and sink content, flags a skip and continues. Successful annotations remain risks/kill criteria, with fatal flags visible but non-gating.
 - Three individual reference runs plus ENH-3734's mixed run/actual usage/import origin are recorded; deterministic combination fixtures require no live browser/LLM.
+- The mixed run enables all three capabilities and demonstrates verified grounding, image judging and successful annotations. All-unknown/degraded/skipped runs remain failure-path evidence. Optional CLI extensions are explicitly owned/tested while core disabled semantics remain compatible.
 - Cumulative step/time guards include bounded retry behavior, browser deadlines, salvage, two post-tournament calls, every sink and finalization. Both loops validate and the local suite passes.
 - Four children resolve to done/cancelled; deferred web/reframe work does not hold this epic open.
 

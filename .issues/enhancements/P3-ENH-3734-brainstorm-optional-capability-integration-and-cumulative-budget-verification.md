@@ -30,11 +30,11 @@ The pre-review EPIC-3687 Scope Boundary promised cross-capability fixtures and t
 
 ## Expected Behavior
 
-- Deterministic executor fixtures exercise all eight combinations of the three built capability knobs, including explicit mixed-mode overrides. Add interrupted materialize publication and tournament restart after committed image verdicts: reuse the manifest/probe plan without new calls; changed assets/inputs must fail without overwriting results. No fixture requires a live LLM or Playwright.
+- Deterministic executor fixtures exercise all eight combinations of the three built capability knobs, including explicit mixed-mode overrides. Artifact-invariant fixtures execute real deterministic engine shell actions while stubbing prompt/browser responses; fully mocked actions are suitable for additional route-only checks, not evidence of file publication/recovery. Add interrupted materialize publication and tournament restart after committed image verdicts: reuse the manifest/probe plan without new calls; changed assets/inputs must fail without overwriting results. No fixture requires a live LLM or Playwright.
 - Grounding runs before shortlisting; materialize only receives surviving finalists; the pre-tournament floor prevents judging an empty or one-player field. Candidates without valid mockup source never enter HTML fallback judging.
 - Pre-mortem malformed output, host error, and timeout preserve idea bodies, ranking, slots and winners.md, mark the skip, and continue to render/validate/sinks. A deterministic engine I/O error remains a run failure.
-- The cumulative parent step/time budget includes the auto classifier, the maximum nine lenses with bounded ingestion, grounding's complete 60 s deadline/publication/state-timeout cost before shortlisting, materialize's preparation/render/compositing bounds, bounded retries, tournament salvage, both pre-mortem calls, every sink branch, and finalization. Grounding belongs to pre-tournament work rather than the post-tournament tail; its timeout may not consume the later reporting reserve. Engine time-guard values agree with shipped YAML.
-- A documented mixed-capability reference run proves the interaction; record actual calls (including retries), input/output/cache tokens, elapsed time, selected judge mode, degradation reasons and import origin. This is separate from the individual capability runs owned by FEAT-3584/3585/3586.
+- The cumulative parent step/time budget includes the auto classifier, the maximum nine lenses with bounded ingestion and each bounded grounding inventory, grounding's complete 60 s deadline/publication/state-timeout cost before shortlisting, materialize's preparation/render/compositing bounds, bounded retries, tournament salvage, both pre-mortem calls, every sink branch, and finalization. Grounding/materialize extend pre-tournament work; pre-mortem extends the post-tournament tail. Engine time-guard values agree with shipped YAML. All rate-limited prompt states explicitly disable both tiers, including rate_limit_long_wait_ladder:[0]. API/infra retries still count as dispatches and state visits.
+- A documented all-three-enabled reference run proves the interaction (for example functional mode with materialize=render). Record true/false/unknown grounding counts, at least one verified true anchor, source-valid/rendered counts, image judge mode, successful winner/runner-up annotations, actual calls/retries, input/output/cache tokens, elapsed time, degradation reasons and import origin. A degraded/skipped run remains honest failure-path evidence and does not satisfy the all-three happy-path criterion. This is separate from the individual capability runs owned by FEAT-3584/3585/3586.
 - Web grounding, reserve promotion, and reframe remain deferred and do not gate closure.
 
 ## Motivation
@@ -43,7 +43,7 @@ Independent feature fixtures cannot show that one capability's filtering, fallba
 
 ## Proposed Solution
 
-Use the real FSM executor with MockActionRunner outputs and temporary run artifacts. Extend scripts/tests/test_brainstorm.py for orchestration and scripts/tests/test_brainstorm_engine.py for artifact invariants. Derive budget assertions from the actual built state paths, rather than each child adding to a stale max_steps == 60 assertion.
+Use the real FSM executor with a hybrid test runner and temporary run artifacts: execute deterministic engine actions with LL_PYTHON=sys.executable from a consuming-project cwd, and return stubbed outputs only for prompt/browser actions. MockActionRunner.run returns ActionResult metadata and performs no shell commands or artifact writes. Extend scripts/tests/test_brainstorm.py for orchestration and scripts/tests/test_brainstorm_engine.py for direct artifact invariants. Each feature that lands extends the assertion derived from built paths; this final child verifies it rather than owning the first replacement of max_steps == 60.
 
 ## Integration Map
 
@@ -64,6 +64,7 @@ Use the real FSM executor with MockActionRunner outputs and temporary run artifa
 
 ### Tests
 - The existing local pytest suite enforces these fixtures, without live services or browser dependencies.
+- `scripts/tests/test_fsm_executor.py::MockActionRunner.run` is a route-test convention, not an artifact integration runner. `scripts/little_loops/fsm/executor.py::FSMExecutor.run` and `_build_context` use the executor clock; fake-duration metadata alone does not advance elapsed time. Budget fixtures inject/advance that clock and transient-handler sleep, while direct engine deadline fixtures inject their own monotonic clock. Pytest never waits for live retry backoff.
 
 ### Documentation
 - scripts/little_loops/loops/README.md — measured combined cost/fallback behavior, if clarification is needed.
@@ -77,7 +78,7 @@ Use the real FSM executor with MockActionRunner outputs and temporary run artifa
 
 ### Signatures
 
-- `run_capability_case(case: CapabilityCase, tmp_path: Path) -> ExecutionResult` — test helper driving FSMExecutor with MockActionRunner (existing little_loops.fsm.executor.ExecutionResult).
+- `run_capability_case(case: CapabilityCase, tmp_path: Path) -> ExecutionResult` — test helper driving FSMExecutor with real deterministic actions and stub prompt/browser actions (existing little_loops.fsm.executor.ExecutionResult).
 - `assert_portfolio_invariants(run_dir: Path) -> None` — test helper asserting eligible-only distinct slots, immutable sink bodies, and recorded skip/degradation flags.
 
 ### Call Path
@@ -105,9 +106,9 @@ Owns optional-capability combinations and cumulative step/time verification only
 ## Acceptance Criteria
 
 - All eight knob combinations and mixed-mode overrides have deterministic passing fixtures; ground-false ideas never reach materialize or judging.
-- Targeted fixtures cover grounding reducing eligible ideas below the generation floor, non-Git/deadline unknown evidence remaining eligible, materialize reducing valid-source finalists below two, HTML fallback restoring only source-valid render failures, interrupted manifest publication, image-tournament replay/asset conflict, and pre-mortem error/timeout preserving ranked results and sink bodies.
-- The longest success and salvage paths fit the cumulative max_steps/timeout values with the required tail reserve; engine/YAML budget agreement is asserted.
-- One mixed-capability reference run and its actual resource usage/import origin are recorded; it does not replace the individual feature runs.
+- Targeted fixtures cover grounding reducing eligible ideas below the generation floor, non-Git/deadline unknown evidence remaining eligible, materialize reducing valid-source finalists below two, HTML fallback restoring only source-valid render failures, interrupted manifest publication, stale staging after a new render failure, image-tournament replay/asset conflict, stale pre-mortem/canary captures after runner exception/resume, and pre-mortem error/timeout preserving ranked results and sink bodies. Real engine actions establish the artifact outcomes, not pre-seeded expected end-state files.
+- Nominal nine-lens success and recoverable salvage paths fit the cumulative max_steps/timeout values with the required tail reserve; engine/YAML budget agreement is asserted. API/infra/rate-limit error fixtures advance the executor clock and assert dispatch/visit/backoff counts. Retry-triggered step exhaustion follows finalize_failed; do not promise every retry pattern completes within the nominal cap. The guard reserves child timeout + final judge action + final maximum backoff + the derived post-tournament tail. Outer timeout termination is distinct from recoverable child-timeout salvage and cannot promise later finalization.
+- One all-three-enabled successful mixed-capability reference run and its actual resource usage/import origin are recorded; it does not replace individual feature runs or count all-unknown/HTML-only/skipped execution as image/annotation success.
 - python -m pytest scripts/tests/ exits 0 and both brainstorm loops validate.
 - EPIC-3687 can close on the three capabilities plus this verification; deferred web/reframe work is not a closing requirement.
 
@@ -117,8 +118,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Review Notes
 
+_2026-10-05 executor review and `/ll:advise` with Opus (confidence 0.70):_ all four existing children suffice. Adopted real deterministic shell integration, fresh-attempt/render-source matching, bounded annotation/source validation, explicit retry/clock accounting and an all-three-enabled evidence run. Retained the eight-combination matrix with real artifact effects. Dissent: per-verdict stamp/compositing remains the heaviest P3 mechanism; no reversal of its existing capability-sanity purpose is warranted. Bounds are design choices, not live measurements.
+
 _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ added manifest/verdict restart and grounding-deadline combinations. Count grounding in pre-tournament elapsed time, not the post-tournament tail suggested by the advisor. No new live measurements; scope/ownership and deferred capabilities are unchanged.
 
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
+
+## Session Log
+- `/ll:refine-issue` - 2026-10-05T17:31:36-06:00 - `EPIC-3687 pre-implementation review`
