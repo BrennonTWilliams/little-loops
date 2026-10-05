@@ -9,9 +9,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-04'
 captured_at: '2026-10-04T01:15:41Z'
 parent: EPIC-3562
-blocked_by:
-- BUG-3696
 relates_to:
+- BUG-3696
 - BUG-3724
 ---
 
@@ -87,7 +86,7 @@ Four tests, deliberately not an exhaustive byte-pinning matrix (over-specified w
 1. **Parametrized classification matrix** (`test_fsm_cost_graph.py`): model {known, unknown concrete, each sentinel `unknown`/`None`/`""`/whitespace} × tokens {complete, explicit null component, positive `*_missing`}. Unknown+incomplete names the ID; known+incomplete does not. Include multiple unpriced IDs across states, repeated IDs, mixed priced/unpriced contributors (one sorted footer; affected state and run costs null; complete known-only states keep numeric costs), and dated, `anthropic.`-prefixed and `[1m]` Sonnet 5.5 IDs staying unpriced and appearing verbatim. Legacy absent-token keys keep their zero defaults. Patch the table with `patch.dict` in at least one case to prove footer and estimator read the same table.
 2. **Exact bytes** (`test_cli_cost_table.py`): one footer-present table (concrete-only, sentinel-only and mixed two-line block, including trailing newline), one complete all-priced table byte-identical to the legacy output, and a no-states report with no footer. `fixture_jsonl` in `test_fsm_cost_graph.py` and `test_cli_cost_table.py` uses unpriced Sonnet 4.5, so its table deliberately gains the footer; do not relabel it as priced. Preserve the reporter's existing silence for missing/empty files.
 3. **Unknown-model JSON round-trip**: `loaded.to_dict() == report.to_dict()`, null costs preserved, no `unpriced_models` key, loaded list empty, loaded table has no footer. Do not assert dataclass equality. The existing `test_enh3538_token_observations.py` incomplete-known-model round-trip stays valid but cannot alone prove unknown-model metadata loss.
-4. **Reporter** (`test_usage_reporter.py`): `_print_usage_summary` with an unknown-model fixture and a `cost_output_json` destination together: stdout contains the footer while the written JSON keeps its locked keys and null costs with no diagnostic list. A second case uses the observed run's exact-ID Sonnet 5.5 projection (first row: 14 input, 5748 output, 433686 cache-read, 70335 cache-creation → $0.3200827, rendered `$0.3201`) and asserts the price renders with no footer and no `n/a`. Requires BUG-3696's rate.
+4. **Reporter** (`test_usage_reporter.py`): `_print_usage_summary` with an unknown-model fixture and a `cost_output_json` destination together: stdout contains the footer while the written JSON keeps its locked keys and null costs with no diagnostic list. A second case uses the observed run's exact-ID Sonnet 5.5 projection (first row: 14 input, 5748 output, 433686 cache-read, 70335 cache-creation → $0.3200827, rendered `$0.3201`) and asserts the price renders with no footer and no `n/a`. Relies on the Sonnet 5.5 rate already in `MODEL_PRICING`.
 
 Keep the locked per-state/top-level JSON key tests.
 
@@ -109,7 +108,7 @@ Keep the locked per-state/top-level JSON key tests.
 
 ## Implementation Steps
 
-1. Land BUG-3696 first so Sonnet 5.5 has an exact price.
+1. BUG-3696 has landed, so Sonnet 5.5 has an exact price.
 2. Add independent unpriced-ID collection (module-attribute table lookup, pinned sentinel set) and the conditional footer; implement test 1 (matrix) and test 2 (exact bytes).
 3. Add test 3 (JSON round-trip) and test 4 (reporter stdout/JSON plus observed-run projection).
 4. Correct the listed reference/observability docs and examples; record the mixed-model, exact-match and no-backfill limitations.
@@ -137,7 +136,7 @@ Keep the locked per-state/top-level JSON key tests.
 
 ## Related
 
-- BUG-3696 — adds the Sonnet 5.5 price and alias/rank/price coverage; hard dependency (test 4's priced projection needs the rate)
+- BUG-3696 — adds the Sonnet 5.5 price and alias/rank/price coverage; landed; test 4's priced projection relies on the rate
 - BUG-3701 — alias/rank correction; independent of this footer
 - ENH-3703 — deferred family-prefix approximate pricing decision after this footer; retained under EPIC-3562
 - BUG-3724 — model/batch attribution repair; coordinate the documented behavior without expanding this footer's scope
