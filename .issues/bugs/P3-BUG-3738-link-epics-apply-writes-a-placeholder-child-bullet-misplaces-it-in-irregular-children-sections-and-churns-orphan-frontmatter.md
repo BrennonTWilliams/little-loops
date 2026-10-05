@@ -42,6 +42,9 @@ Verified on branch `main` on 2026-10-05:
 5. A word-boundary ID search across the whole EPIC suppresses insertion when the ID appears only in frontmatter, prose, another section, or a fenced example.
 6. Proposals are sorted by descending score and all are applied. In a reproduction with scores `1.0` and `0.667`, both EPICs received the child and the orphan ended with the `0.667` EPIC as parent.
 7. Universal-newline reads convert CRLF to LF. Default `atomic_write()` replaces existing modes with `0600`; its `shared_mode=True` option preserves a regular file's mode.
+8. `apply_assignment()` takes no lock, while every other issue mutator (`set-status`, `link`, `set-scores`, `append_session_log_entry`) wraps its read-modify-write in `acquire_lock(issue_lock_path(path, base_dir))` (BUG-3150). A concurrent mutation between apply's read and write is silently lost or overwritten.
+9. `is_orphan()` requires `parent is None and epic is None`, so on the normal CLI path an orphan never has a conflicting parent/epic. The conflict case is reachable only via a race (see 8), a multi-block shadow, or a direct `apply_assignment()` call.
+10. `apply_assignment()` writes the orphan first. If the EPIC write then fails, the orphan carries a parent and is no longer an orphan, so `link-epics --apply` never re-proposes it; reapply recovers the pair only when `apply_assignment()` is called directly. CLI-level recovery is `epic-consistency --fix` (category-(a) drift).
 
 ## Expected Behavior
 
@@ -51,6 +54,9 @@ Verified on branch `main` on 2026-10-05:
 - Only the orphan's parent/epic entries change. Unrelated content, line endings, final-newline state, and existing file modes survive.
 - Reapplying the same pair changes neither file and performs no write when the content is already correct.
 - One apply run selects at most one EPIC per orphan. A conflicting existing parent/epic is reported and never silently overwritten.
+- Each pair's read-validate-write runs under the issue-tree mutation lock, so a concurrent `set-status`, `link`, `create --parent`, or session-log append cannot interleave with it.
+- One rejected pair (ambiguous Children section, conflicting metadata discovered under the lock, lock timeout, write failure) does not abort the run: the remaining orphans are still applied, the rejection is listed in an additive `rejected` JSON key and on stderr, and the exit code is nonzero.
+- Issue creation/scaffolding never fails because of Children wiring: an ambiguous Children section skips the EPIC body write with a stderr warning, exactly like the no-heading skip.
 
 ## Steps to Reproduce
 
@@ -71,6 +77,10 @@ Verified on branch `main` on 2026-10-05:
 
 Improve the existing `_append_child_to_epic_children()` helper and reuse it from `apply_assignment()` through a deferred import. Its current callers in create and scaffold already share it, and create has no import of link_epics. A new generic Markdown framework or a rewrite of the consistency fixer is unnecessary.
 
+**Shared recognizer (coordinate with BUG-3739).** Both issues need the same pure, fence-aware Children grammar: exact-heading section selection, bullet/H3–H6 entry recognition, whole-ID matching. Do not write it twice. Whichever issue lands first creates it in `scripts/little_loops/cli/issues/epic_consistency.py` as public helpers (`find_children_section(content) -> tuple[int, int] | None` and `iter_child_entries(section_text) -> list[ChildEntry]`, with `ChildEntry` carrying the ID, kind, and source span) and repoints `_section_bounds`/`_parse_children_body` at them; the other adopts them. This issue's writer-only logic (placement after the last bullet and its continuations, spacing, ambiguity rejection) stays in `create.py` and builds on those helpers. Land the two issues serially, not under parallel workers: both edit `link_epics.py`, `epic_consistency.py`, `docs/reference/CLI.md`, `COMMANDS.md`, and `skills/link-epics/SKILL.md`.
+
+**Locking.** `apply_assignment()` wraps its whole pair operation (re-read both files, validate, compute both texts, write) in one `acquire_lock(issue_lock_path(orphan_path, base_dir))`. The lock is tree-wide and non-reentrant (`flock` contends within a process), so a single acquisition per pair covers both files, nothing inside the block may call another lock holder (`session_log`, `set-status`, `link`), and `cmd_link_epics` locks per pair, never around the whole run. `TimeoutError` becomes a rejected pair. This is one wrapper plus one test, so it stays in this issue; if implementation shows it needs more than that, split it into its own ENH and also cover `fix_epic`, which has the same omission.
+
 Add a scalar-only frontmatter upsert in `frontmatter.py` for assignment metadata. Bound edits to the canonical identity block, or the first block when no block has an ID, using the existing block-selection contract. Preserve source spans rather than reserializing unrelated YAML. Keep `update_frontmatter()` unchanged.
 
 Keep proposal scoring/output unchanged, and deduplicate the ordered proposals by orphan ID only when applying. Pre-read and validate both files and construct both updated texts before the first write. Use preserving atomic writes only for changed content. This is preflight validation, not a claim of an atomic transaction across two files; surface write failures, and same-pair reapply must repair a missing side.
@@ -81,7 +91,7 @@ The earlier `/ll:decide-issue` selection, **Option A**, remains binding: no exac
 
 ### Behavior Parity
 
-Keep all alternatives, scores, tiers, and `EpicProposal.to_dict()` fields in proposal output; synthesis behavior is unchanged. Preserve the create/scaffold no-heading skip contract and standard `(open)` bullet format. The intentional behavior change is that apply chooses one winner per orphan instead of writing contradictory memberships.
+Keep all alternatives, scores, tiers, and `EpicProposal.to_dict()` fields in proposal output; synthesis behavior is unchanged. The only payload change is the additive `rejected` list (assign mode; empty when nothing was rejected), which must coexist with BUG-3739's additive report keys. Preserve the create/scaffold no-heading skip contract and standard `(open)` bullet format. The intentional behavior change is that apply chooses one winner per orphan instead of writing contradictory memberships.
 
 ## Program Design
 
@@ -98,16 +108,19 @@ child_title: str | None
 Proposed signatures for implementation (documentation notation):
 
 ```python
-apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path, child_title: str | None = None) -> None
+class AmbiguousChildrenSection(ValueError): ...   # in create.py
+apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path, child_title: str | None = None, base_dir: str = ".issues") -> None
 _append_child_to_epic_children(content: str, child_id: str, child_title: str) -> str | None
 upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str
 ```
+
+`_append_child_to_epic_children` keeps its signature and has three distinct outcomes: **no exact Children heading** → returns `None` (unchanged contract); **child already an actual entry** → returns `content` unchanged (callers treat equality as "no write"); **ambiguous extent** (lazy continuation, unparseable list shape) → raises `AmbiguousChildrenSection`. `create_issue` and `scaffold_epic` catch it, print a one-line stderr warning naming the EPIC, and skip the EPIC body write exactly as for `None`; the child file is still created. `apply_assignment` lets it propagate as a rejected pair. `apply_assignment` raises `ValueError` for a conflicting parent/epic, `TimeoutError` for lock contention, and `OSError` for write failure; `cmd_link_epics` converts each into a `rejected` entry.
 
 `cmd_link_epics` passes `IssueInfo.title`. Existing direct apply calls remain supported by an optional title argument; fallback reads frontmatter title, then an H1 title, then filename stem. In particular, a title-less `# FEAT-1` H1 is valid input, not an exception. Collapse title whitespace to one line so a wrapped frontmatter title cannot inject another bullet or heading.
 
 ### Call Path
 
-`cmd_link_epics` → `propose_assignments` → first proposal per orphan → `apply_assignment` → preserving scalar upsert + shared Children helper → changed-file atomic writes.
+`cmd_link_epics` → `propose_assignments` → first proposal per orphan → `apply_assignment` → `acquire_lock(issue_lock_path(...))` → re-read both files → preserving scalar upsert + shared Children helper → changed-file atomic writes; per-pair exceptions are collected into `rejected` and the loop continues.
 
 `create_issue` and scaffold retain their calls to `_append_child_to_epic_children`.
 
@@ -118,21 +131,26 @@ upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str
 - **Spacing**: no new blank line between adjacent child bullets; preserve existing separation from trailing notes/headings, adding one blank line if necessary to keep following prose/headings from becoming a lazy continuation of the new item. Never insert inside a fenced block or between a bullet and its continuation. Preserve LF/CRLF and whether the file ends with a newline. Match backtick and tilde fences by character and closing length using the existing fence utilities.
 - **Duplicate detection**: only an actual whole-ID child entry inside the selected Children section counts, including recognized bullet or per-child H3–H6 forms. Ignore fenced examples and mentions elsewhere. A prefix such as `FEAT-1` inside `FEAT-10` or `FEAT-1suffix` does not count.
 - **Winner selection**: preserve the existing `(-score, orphan_id, epic_id)` ordering and apply the first pair for each orphan. Equal-score ties therefore follow the existing EPIC-ID order. `applied` lists only selected successful pairs; proposal output still lists every alternative.
-- **Existing relationship**: absent/null parent or epic may be filled; a value already equal to the selected EPIC is retained in its original representation. Any non-null conflicting parent/epic rejects that pair before either file changes, names the orphan and conflicting field, and causes a nonzero command result. Do not implicitly reparent. Do not fall through to a lower-ranked alternative after a rejected winner.
+- **Existing relationship**: absent/null parent or epic may be filled; a value already equal to the selected EPIC is retained in its original representation. Any non-null conflicting parent/epic rejects that pair before either file changes, names the orphan and conflicting field, and causes a nonzero command result. Do not implicitly reparent. Do not fall through to a lower-ranked alternative after a rejected winner. This check is the **under-lock re-validation** of what `is_orphan()` saw at scan time: on the normal CLI path it fires only when a concurrent writer assigned a parent in between (or a multi-block shadow exists), so it gets one deterministic test (set the conflicting parent after the scan, before apply) and no separate documentation section beyond the `rejected` entry.
+- **Locking**: the whole pair (re-read, validate, compute, write) executes inside one `acquire_lock(issue_lock_path(orphan_path, base_dir))`; both files are re-read under the lock, never reused from the scan. Lock timeout rejects the pair with no write.
+- **Per-pair failure policy**: continue-and-report. Each rejected pair appends `{"orphan_id", "epic_id", "reason"}` to `rejected` (`reason` one of `conflicting_parent`, `ambiguous_children_section`, `lock_timeout`, `write_failed`, `metadata_unsafe`, plus a human-readable `detail`), prints one stderr line, and the command exits 1 after processing every orphan. `applied` lists only fully successful pairs. A rejected winner never falls through to a lower-ranked EPIC. A pair rejected before any write (everything except `write_failed`) leaves both files byte-identical. This is a flat reason code on failures only, not the broad per-proposal outcome enum declined earlier.
+- **Missing heading is visible**: a pair whose EPIC has no exact Children heading still applies the orphan frontmatter and is listed in `applied`, but the apply output (text and JSON `applied[]` entry via an additive `children_wired: false` field) states that the EPIC body write was skipped, so the skip is never silent.
 - **Frontmatter safety**: the new helper supports only single-line scalar assignment entries, including null/empty values. Reject multiline/block/collection values and duplicate assignment keys rather than changing only their first line. A same-value reapply preserves the original quote/comment representation. No frontmatter means prepend a minimal block while preserving the body. Unterminated/malformed blocks or conflicts reject the pair before writing. Re-parse the proposed text using the existing merged semantics and require both parent and epic to equal the selected ID; a later block containing null can shadow an update just as a different parent can. Keep exact issue-ID identity rather than silently equating padded IDs, and do not rely on YAML's last-key-wins behavior.
-- **Writes**: read without universal-newline conversion; use `atomic_write(..., shared_mode=True)` for changed existing files. Compute/validate both texts first; unchanged texts produce no write. Preserve raw newline offsets in the narrow helper without changing general parser precedence. Write orphan then EPIC; if the second write fails, report a nonzero error naming the partial pair. Reapply must repair a missing EPIC bullet even when both frontmatter values were already correct.
+- **Writes**: read without universal-newline conversion; use `atomic_write(..., shared_mode=True)` for changed existing files. Compute/validate both texts first; unchanged texts produce no write. Preserve raw newline offsets in the narrow helper without changing general parser precedence. Write orphan then EPIC (orphan-first is deliberate: a failed EPIC write leaves category-(a) drift, which `epic-consistency --fix` repairs; EPIC-first would leave unrepairable category-(b) drift). If the second write fails, reject the pair as `write_failed` with a message naming the partial pair and the remedy (`ll-issues epic-consistency --fix <EPIC>`). Direct `apply_assignment()` reapply repairs a missing EPIC bullet even when both frontmatter values were already correct; the CLI does not re-propose such an orphan (it is no longer parentless), so docs must state that CLI-level recovery is the epic-consistency fixer, not reapply.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/cli/issues/link_epics.py` — title plumbing, scoped duplicate handling, preflight/conditional writes, and one-winner apply bookkeeping.
-- `scripts/little_loops/cli/issues/create.py` — shared Children helper's placement, fence awareness, entry recognition, and source preservation.
+- `scripts/little_loops/cli/issues/link_epics.py` — title plumbing, scoped duplicate handling, per-pair lock, preflight/conditional writes, one-winner apply bookkeeping, and `rejected`/continue-and-report handling with exit code 1.
+- `scripts/little_loops/cli/issues/create.py` — shared Children helper's placement, three-outcome contract (`None` / unchanged / `AmbiguousChildrenSection`), fence awareness, and source preservation; `create_issue` catches the ambiguous case and skips wiring with a warning.
+- `scripts/little_loops/cli/issues/epic_consistency.py` — only if this issue lands first: create the shared `find_children_section`/`iter_child_entries` recognizer (see Proposed Solution); otherwise adopt BUG-3739's.
 - `scripts/little_loops/frontmatter.py` — add scalar upsert; reuse `_iter_frontmatter_blocks` and `_canonical_frontmatter_block` selection semantics without changing general YAML-dump behavior.
 
 ### Dependent Files
 
-- `scripts/little_loops/cli/issues/scaffold_epic.py` imports the create helper; retain its signature and skip behavior.
+- `scripts/little_loops/cli/issues/scaffold_epic.py` imports the create helper; retain its signature and skip behavior, and catch `AmbiguousChildrenSection` per child (warn, skip the EPIC body write for that child, keep creating files).
+- `scripts/little_loops/file_utils.py` — consumed only: `acquire_lock` and `issue_lock_path` (same pattern as `cli/issues/link.py`, `set_status.py`, `set_scores.py`). No change.
 - `scripts/little_loops/mcp_server/tools.py` reaches the helper through `create_issue`; no MCP API change.
 - `scripts/little_loops/cli/issues/epic_consistency.py` reads the resulting bullet format. Its `fix_epic` writer and missing-heading behavior stay out of scope.
 - `scripts/little_loops/issues/prose_deps.py` scans child titles/continuations; keep existing title-based subject attribution working.
@@ -142,12 +160,12 @@ upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str
 
 - `scripts/tests/test_link_epics_cli.py` — actual bullet content, body mentions versus membership, first-winner/tie behavior, existing-parent conflicts, missing heading, exact-ID/fence cases, and repeated apply with no writes. Replace whole-file ID-count assertions with assertions on actual child entries; valid titles may repeat an ID.
 - `scripts/tests/test_ll_issues_create.py` and `scripts/tests/test_ll_issues_scaffold_epic.py` — shared-helper placement, intro prose before bullets, loose lists, nested/paragraph continuations, ambiguous lazy continuations, prose-only separation, no-heading skip, multi-child creation, and final-newline preservation.
-- `scripts/tests/test_frontmatter.py` — absent/null/existing scalar keys, same-value representation, comments/flow lists/wrapped titles/Unicode, multi-block precedence (including later-block null shadowing), multiline/collection/malformed/duplicate metadata rejection, no-frontmatter, and LF/CRLF cases. Apply tests also cover a failed second write and recovery by reapplying the pair.
+- `scripts/tests/test_frontmatter.py` — absent/null/existing scalar keys, same-value representation, comments/flow lists/wrapped titles/Unicode, multi-block precedence (including later-block null shadowing), multiline/collection/malformed/duplicate metadata rejection, no-frontmatter, and LF/CRLF cases. Apply tests also cover a failed second write (reason `write_failed`, remedy message) and recovery by calling `apply_assignment()` again directly; a CLI-level test asserts the orphan is *not* re-proposed after a partial write and that `epic-consistency --fix` repairs it. Further tests: a conflicting parent set after the scan but before apply is rejected under the lock (single deterministic test, no docs surface); lock `TimeoutError` becomes `lock_timeout` with both files untouched; one rejected pair does not stop later orphans and the exit code is 1 with a populated `rejected` list; the no-heading apply output flags `children_wired: false`; `create_issue` and `scaffold_epic` on an ambiguous Children section still create the child file and warn.
 - `scripts/tests/test_epic_consistency.py`, `scripts/tests/test_link_epics_skill.py`, and `scripts/tests/test_prose_deps.py` — consumer regression coverage. Assert observable output; a source-text ban on the placeholder is unnecessary.
 
 ### Documentation
 
-Update `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/COMMANDS.md`, and `skills/link-epics/SKILL.md` for one-winner apply, title bullets, no-heading skip, and conflict/reapply behavior. The skill currently promises every above-threshold pair is applied; revise that promise. Do not claim a score threshold can represent an arbitrary user-selected subset. Keep this issue to truthful documentation of the existing CLI; adding pair-selection flags is separate work.
+Update `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/COMMANDS.md`, and `skills/link-epics/SKILL.md` for one-winner apply, title bullets, no-heading skip (and its visible `children_wired: false` flag), the `rejected` list with continue-and-report and exit code 1, and the truthful recovery story (partial writes are repaired by `ll-issues epic-consistency --fix`, not by re-running link-epics). The skill must also stop suggesting a threshold as a way to pick a non-top EPIC for an orphan (one-winner makes that impossible); say a different EPIC requires a manual edit. A parent-assignment option for `ll-issues link` would close that gap and is tracked as follow-up, not part of this issue. The skill currently promises every above-threshold pair is applied; revise that promise. Do not claim a score threshold can represent an arbitrary user-selected subset. Keep this issue to truthful documentation of the existing CLI; adding pair-selection flags is separate work.
 
 Check child-wiring instructions in `skills/capture-issue/SKILL.md` for agreement with the selected skip/placement contract. Regenerate affected host mirrors with `ll-adapt` when skill text changes; use the repository's mirror gates. Add API documentation for the new scalar helper.
 
@@ -158,9 +176,9 @@ No new setting, dependency, or host invocation.
 ## Implementation Steps
 
 1. Add temporary-tree regressions for the observed placement/churn/duplicate defects and two-EPIC contradictory assignment.
-2. Improve the existing shared Children helper according to the Decision Rules and wire apply's title/duplicate behavior to it.
-3. Add preserving scalar upsert and preflight both sides; reject conflicting metadata, preserve modes/newlines, and skip identical writes.
-4. Keep all proposed alternatives but apply only the first ranked pair per orphan. Update result bookkeeping and user-facing contracts.
+2. Check whether BUG-3739 has landed the shared Children recognizer; if not, create it in `epic_consistency.py` first (small prerequisite commit with its own tests). Then improve the existing shared Children helper according to the Decision Rules (three outcomes; create/scaffold catch the ambiguous case) and wire apply's title/duplicate behavior to it.
+3. Add preserving scalar upsert and preflight both sides inside the per-pair lock; reject conflicting metadata, preserve modes/newlines, and skip identical writes.
+4. Keep all proposed alternatives but apply only the first ranked pair per orphan. Add continue-and-report with the `rejected` list, `children_wired`, and exit code 1; update result bookkeeping and user-facing contracts.
 5. Run the focused tests above, then the authoritative `python -m pytest scripts/tests/`, lint and type checks for changed Python, and mirror checks when skill text changes.
 
 ## Acceptance Criteria
@@ -169,6 +187,9 @@ No new setting, dependency, or host invocation.
 - [ ] Flat, empty, prose-only, wrapped/multi-paragraph, subsection, noncanonical bullet, sub-EPIC, fenced example, duplicate-heading, and absent-heading shapes obey the specified placement/skip rules without disturbing existing content.
 - [ ] Exact child entries suppress duplicates; prose/frontmatter/other-section mentions and partial IDs do not. Reapply leaves both files byte-identical and invokes no writer for unchanged content.
 - [ ] Orphan bytes outside updated parent/epic entries, LF/CRLF style, final newline, and existing file modes are preserved. Null, missing, already-correct, malformed, duplicate-key, and multi-block inputs have explicit tests.
+- [ ] Each pair applies under the issue-tree lock with both files re-read under it; lock timeout, ambiguous Children sections, conflicting metadata, and write failures reject only that pair (listed in `rejected`, exit 1) while later orphans still apply. The no-heading skip is visible in apply output. Create/scaffold never fail over an ambiguous Children section.
+- [ ] Docs state the real recovery path (`epic-consistency --fix`) and no document or skill claims that re-running `link-epics --apply` repairs a partial write.
+- [ ] The shared Children recognizer exists once (in `epic_consistency.py`) and is used by this writer, BUG-3739's reader/index, and the consistency checker.
 - [ ] With multiple matches, only the highest-ranked EPIC is applied/listed for each orphan; ties are deterministic and all alternatives remain in `proposals`. Existing conflicting relationships cause no writes for the rejected pair and a visible nonzero result.
 - [ ] Create/scaffold/MCP child wiring retains the no-heading contract; the focused regression suites and full local test suite pass, with docs and skill mirrors describing the final behavior.
 
@@ -186,6 +207,8 @@ No new setting, dependency, or host invocation.
 2026-10-05: Reconciled the earlier refine/wire/decision findings into one directive specification. Verified on `main`; temporary-file reproductions confirmed misplaced placeholders, lost flow style/comments, prose-mention suppression, and lowest-score overwrite. They did not confirm the reported wrapped-bullet split. Existing relevant suites passed: **235 tests** across link-epics, create, scaffold, consistency, frontmatter, and skill tests. These establish a baseline, not proof that the proposed fix exists.
 
 Used `/ll:advise --signal user_requested --host claude-code --model opus` for critique (confidence **0.76**). Adopted its prose-separation, merged-result validation, scalar-only safety, and partial-write tests. Kept the selected missing-heading skip and bounded single-winner fix. Advisor dissent concerned ties, CRLF scope, and whether the other issue should depend on this one: retain deterministic existing tie order, preserve bytes at these write sites, and keep the two issues independently implementable. Numeric-ID normalization and a broad per-proposal outcome enum are outside this change.
+
+2026-10-05 (second pre-implementation review, with `/ll:advise --signal user_requested --host claude-code --model fable`, confidence **0.82**): verified in code that `is_orphan()` makes the conflicting-parent path race-only, that `apply_assignment()` is the only issue mutator without `acquire_lock(issue_lock_path(...))`, that orphan-first ordering means CLI reapply cannot recover a partial write, and that the shared helper had a single `None` channel for several outcomes. Adopted: honest recovery story (orphan-first retained; fixer is `epic-consistency --fix`), per-pair lock with under-lock re-validation (kept in this issue — one wrapper plus one test; split into its own ENH if it grows, and cover `fix_epic` there), continue-and-report with a flat `rejected` reason list, three-outcome helper contract with create/scaffold never failing over wiring, visible no-heading skip, and a single shared Children recognizer landed by whichever of this issue/BUG-3739 goes first (serial landing, not parallel). Follow-up not in scope: a parent-assignment option for `ll-issues link` (single-pair assignment and the remedy for children-listed drift). Advisor dissent (lock may belong in its own issue since `fix_epic` shares the gap) is handled by the split-if-it-grows condition. Confidence/outcome scores predate these edits; re-run `/ll:confidence-check` before implementation.
 
 ## Status
 
