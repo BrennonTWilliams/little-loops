@@ -20,6 +20,9 @@ relates_to:
 - EPIC-3581
 - FEAT-3667
 - FEAT-2354
+learning_tests_required:
+- pyyaml
+- ruamel.yaml
 ---
 
 # FEAT-3717: ll-loop export: bundle a loop with its sub-loops, fragments and version pin to run standalone
@@ -72,7 +75,7 @@ Consume FEAT-3716's `resolve_loop_graph(root_file, loops_dir=..., cwd=...)` and 
 
 `ExportFile` records source, destination-relative path, role and analyzed source digest; `ExportClosure` records the root run target, planned placements, dependency edges and every runnable placement to validate. A source can be copied to multiple destinations when the loader's consumer-relative semantics require that. A destination can receive only identical final bytes with compatible roles from multiple sources; conflicting content is a refusal naming both edges/sources. A placement required both as a byte-identical fragment library and as a loop needing a new pin is refused if stamping would change the library; do not let traversal order decide the winning role.
 
-- Root: preserve its alias/path relative to the project/built-in runtime root and the winning `.fsm.yaml`/`.yaml` suffix. An explicit root outside those roots is allowed and gets its source filename under `.loops/`. The README's run target must resolve to the selected root, not just a matching basename. Use a root path such as `.loops/example.yaml` when needed to retain explicit suffix selection; this is within the isolated bundle cwd and does not alter the shared child root. If the supported command cannot preserve selection, refuse rather than run a different FSM.
+- Root: preserve its alias/path relative to the project/built-in runtime root and the winning `.fsm.yaml`/`.yaml` suffix. An explicit root outside those roots is allowed and gets its source filename under `.loops/`. The README's run target must resolve to the selected root, not just a matching basename. Use a root path such as `.loops/example.yaml` (new) bundle output when needed to retain explicit suffix selection; this is within the isolated bundle cwd and does not alter the shared child root. If the supported command cannot preserve selection, refuse rather than run a different FSM.
 - Static `loop: <name>` children: place the winning file at the matching alias under the bundle's shared `.loops` root. Preserve suffix priority and project shadowing. Resolve all descendants against that same runtime root.
 - `from:` parents: place each parent at its referenced alias relative to the destination of the consumer that loads it; recurse through ancestor references. Parent fields are merged by the existing loader, not flattened into the child.
 - Effective fragment imports: place each library at the authored relative path beside the final consuming loop. In a new test fixture, a built-in `lib/common.yaml` needed by `oracles/example.yaml` (new) is therefore copied to `.loops/oracles/lib/common.yaml` (new output file). An inherited import is copied relative to the final child's destination, as runtime expects.
@@ -155,6 +158,14 @@ Require an existing destination parent and explicit `--output/-o`. Create a uniq
 - Plain install instructions use the matching wheel/version; never silently fall back to latest. Generated `uvx` instructions and smokes are deferred from v1; any future support requires a passing integration smoke, and an unavailable/skipped test is not evidence.
 - A packaged README template is optional. Prefer small typed rendering unless a template helps; register any template file in `PACKAGE_DATA_ASSETS`. Do not create an entire templating framework.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+
+- Define allowance roots separately from validation roots. Every runnable placement still receives standalone declaration/pin/validity checks. Requirement acknowledgments are the union of effective core requirements relative to the selected root and the conservatively included runnable-parent entry points. A child reached only through adapter paths does not demand flags merely because its standalone report calls those requirements core. If any selected-root or runnable-parent entry reaches it through a core path, those requirements do require acknowledgment. Preserve per-entry provenance in README reports.
+- A simulation runner is not a pin-enforcement exemption. Current `cmd_simulate` uses `SimulationActionRunner`, but `FSMExecutor._run_action` can bypass it for MCP/contributed actions and SDK/batch prompts, while `_evaluate` and `cmd_test` can still dispatch real evaluators. In v1, `cmd_simulate` and `cmd_test` reject a mismatching pin before those paths, including when the action itself is simulated. The earlier nonexecuting inspection allowance remains available to list/show/topology inspection; it does not promise mismatching-pin CLI simulation. Do not expand this feature into a simulation-engine rewrite.
+- Export explicitly refuses recursive raw YAML dict/list alias graphs with a source/field diagnostic before pin editing, proof-driver serialization or semantic equality. A loop-reference visited set does not protect these operations, and ordinary equality between separately parsed recursive mappings can raise `RecursionError`. Shared acyclic aliases remain supported under the existing runtime-semantic preservation checks. This bounded export refusal adds no global rejection rule for ordinary unexported loops.
+
 ## Integration Map
 
 ### Files to Modify
@@ -194,6 +205,14 @@ Require an existing destination parent and explicit `--output/-o`. Create a uniq
 ### Documentation
 
 Update `docs/reference/{CLI,API,loops}.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/ARCHITECTURE.md`, `skills/create-loop/reference.md` and `scripts/little_loops/loops/README.md`. Describe exact-only `requires`, strict static closure, `--allow-requirement`, independent requirements, supported working-directory/root layouts and development-export limitations. Add existing CLI/docs wiring assertions; regenerate existing touched host mirrors if applicable. Mirror `README.md` to `scripts/README.md` if edited. Do not advertise `uvx` or all-host compatibility before evidence exists.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+
+- `scripts/little_loops/cli/loop/runner.py:run_background` owns detached run/resume preflight and currently loads the FSM before spawning. Preserve explicit runtime-root forwarding through its load and enforce mismatch refusal before launch; `scripts/tests/test_cli_loop_background.py` owns this seam.
+- `scripts/little_loops/cli/loop/testing.py:cmd_simulate` and `cmd_test` are version-enforced execution surfaces, despite simulated actions. `scripts/little_loops/fsm/executor.py:_run_action` bypasses the runner for several modes, and `_evaluate` may dispatch a live evaluator. Cover these paths with fake subprocess/SDK/evaluator counters that remain zero on a mismatch; retain non-raising inspection only on proven nonexecuting paths.
+- Add export fixtures for adapter-only child allowance provenance and recursive YAML containers. A portable root with an adapter child requiring both plugin/issues exports without acknowledgment flags; adding a core reference requires both flags. A recursive alias in context or an active binding refuses without traceback and leaves no published bundle; acyclic shared aliases remain covered by semantic-preservation tests.
 
 ## Program Design
 
@@ -251,13 +270,23 @@ The closure/refusal/exact-pin/publication rules in Proposed Solution are normati
 - [ ] Bare-repo fake-host/interpreter-isolation smoke and README-command execution beneath a conflicting ancestor project pass in the default suite; matching fresh-wheel integration smoke and post-FEAT-3582 brainstorm `sink=file` acceptance pass before calling the pilot distributable.
 - [ ] Existing JSON/persistence/install/dispatch/docs gates remain valid; `python -m pytest scripts/tests/`, lint and type checks pass. V1 does not advertise uvx support.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+
+- [ ] Standalone validation of an adapter-only child does not promote its prerequisites into mandatory core export acknowledgments; core reachability from any allowance root does, and README reports retain that provenance.
+- [ ] Background preflight and CLI simulation/testing reject mismatching pins before detached launch, direct subprocess/SDK dispatch or a real evaluator, with zero-call assertions. Read-only mismatch inspection remains usable.
+- [ ] Recursive raw YAML containers fail export with a bounded diagnostic and cleanup before stamping/serialization/comparison, without rejecting safe shared acyclic aliases.
+
 ## Out of Scope
 
 Dynamic candidate-domain declarations; nested fragment-library imports; asset discovery/vendoring; alternate-harness compilation; generic adapter installation preflight; overwrite/replacement; install-with-dependencies; environment lockfiles; host-by-host certification. Exact identity pins the little-loops runtime, not all Python dependencies, host versions or model outputs.
 
 ## Review Notes
 
-2026-10-05 source/probe review and `/ll:advise --signal user_requested --host claude-code --model opus` (confidence 0.72): Opus recommended revising the resolver/report seam, binding recursion, inherited pins, alias parity, runtime-parser comparisons and source/stage provenance before implementation. Accepted those constraints and bounded state-binding detection in FEAT-3716. A local probe confirmed that an explicit `example.yaml` and the alias `example` can select different files when `example.fsm.yaml` exists; the current code/metadata identities also remain 1.166.0/1.165.0. Kept conservative validation of copied runnable parents (an explicit Opus dissent accepted that choice if runnability is mechanical), and kept the isolated driver; explicit context plus containment/semantic parity is still required. Renamed acknowledgments to `--allow-requirement` before the command exists, and deferred contradictory optional uvx scope. Ancestor-config recipient execution and direct executor checks are acceptance requirements, not claims of completed feature tests.
+2026-10-05 source/probe review and `/ll:advise --signal user_requested --host claude-code --model opus` (confidence 0.72): Opus recommended revising the resolver/report seam, binding recursion, inherited pins, alias parity, runtime-parser comparisons and source/stage provenance before implementation. Accepted those constraints and bounded state-binding detection in FEAT-3716. A local probe confirmed that an explicit `example.yaml` and the alias `example` can select different files when `example.fsm.yaml` exists; the current code/metadata identities also remain 1.166.0/1.165.0. Kept conservative validation of copied runnable parents (an explicit Opus dissent accepted that choice if runnability is mechanical), and kept the isolated driver; explicit context plus containment/semantic parity is still required.
+
+Renamed acknowledgments to `--allow-requirement` before the command exists, and deferred contradictory optional uvx scope. Ancestor-config recipient execution and direct executor checks are acceptance requirements, not claims of completed feature tests.
 
 2026-10-04: Reconciled the earlier contradictory research after source review and `/ll:advise --signal user_requested --host claude-code --model opus` (confidence 0.74). Removed the stale NON_VALID label rather than claiming an unrun re-verification. Accepted a static refuse-first scope, shared source-resolution trace, independent requirements, exact-only pins on every runnable file, explicit child enforcement, isolated containment proof and new-directory publication. Used the already-declared ruamel round-trip support instead of an append-only YAML edit; no packaging dependency is needed for the restricted identity contract. Opus's dissent favored patch-compatible PEP 440 pins or deferring export until the classifier is exercised; v1 makes no untested patch-compatibility claim and retains the existing blocker on FEAT-3716.
 
@@ -277,6 +306,7 @@ A consultant exports brainstorm for a client who will install the matching wheel
 
 
 ## Session Log
+- `/ll:refine-issue:gap-analysis` - 2026-10-05T20:31:49 - `e4d031f4-efb7-4acd-b532-6b7d02eab780.jsonl`
 - Pre-implementation review (Codex; `/ll:advise` with Opus, confidence 0.72; source, alias and parser probes) - 2026-10-05
 - `/ll:verify-issues` - 2026-10-04T02:47:52 - `334d5872-a8ff-4d86-9e1f-5c1cd897a218.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-04T02:44:23 - `80601c5b-ccf3-4432-90f3-bdfce27b419c.jsonl`

@@ -21,6 +21,8 @@ relates_to:
 - FEAT-3717
 blocks:
 - FEAT-3717
+learning_tests_required:
+- pyyaml
 ---
 
 # FEAT-3716: Loop portability tiers: classify ecosystem dependencies in ll-loop validate, list and show
@@ -126,6 +128,13 @@ The classifier can land against the current brainstorm loop; FEAT-3717 owns the 
 
 Test that default `sink=none` and `sink=file` bypass issue/decision adapters and touch no issue tree. Adapter prerequisites are documented; automatic cross-host "plugin installed" preflight is outside this issue and FEAT-3717.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+
+- Active MCP arguments are another bounded operational field: scan literal string leaves in `StateConfig.params` only when the effective action mode is `mcp_tool`. `FSMExecutor._run_action` interpolates this mapping and passes it to the tool, so an argument containing a bounded issue path or issue-command token must contribute to its owning state's core/adapter channel. Ignore inert `params` on other action modes. This does not expand arbitrary context/environment values or collect MCP assets.
+- The literal-leaf walk needs an object-identity guard independent of the loop-file cycle guard. PyYAML can construct recursive dict/list aliases. A revisit must terminate while preserving every other reachable string leaf, and aliases reused by another state/channel must still receive that state's evidence. Scope traversal guards to the owning scan/channel rather than globally suppressing an aliased value after its first use. This guards analysis only; it does not certify recursive data for execution.
+
 ## Integration Map
 
 ### Files to Modify
@@ -140,7 +149,8 @@ Test that default `sink=none` and `sink=file` bypass issue/decision adapters and
 
 ### Dependent Files and Constraints
 
-- Do not widen `ValidationSeverity` or `validate_fsm`; `scripts/tests/spike/enh3342_scan_action_file_param/test_file_param.py` pins the latter signature. `scaffold_verify`/`scaffold_eval` in-process validation has no filesystem context and must document that it does not classify transitive dependencies.
+- Do not widen `ValidationSeverity`.
+- Preserve `validate_fsm`; `scripts/tests/spike/enh3342_scan_action_file_param/test_file_param.py` pins that signature. `scaffold_verify`/`scaffold_eval` in-process validation has no filesystem context and must document that it does not classify transitive dependencies.
 - `cli/logs._validate_builtin_loop` returns a tuple of validity/violations, not a JSON payload. Preserve that API; it receives registered diagnostics automatically and does not need an invented report key. `ll-doctor` and `fleet_improve` continue consuming errors/warnings.
 - `_GATE_COMPLETENESS_TABLES` checks routing vocabulary. Portability is metadata, not a routing token set; do not register its enum there.
 - `fsm.to_dict` is used by persistence/scaffolding; omit absent `portability` and false `adapter`, preserving existing output.
@@ -175,6 +185,14 @@ Test that default `sink=none` and `sink=file` bypass issue/decision adapters and
 ### Documentation
 
 Update `docs/reference/{CLI,API,json-output-contracts,loops}.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/generalized-fsm-loop.md`, `docs/ARCHITECTURE.md`, `docs/guides/MCP_SERVER_GUIDE.md`, `skills/{create-loop,review-loop}/reference.md` and `scripts/little_loops/loops/README.md`. Describe detection limitations, independent requirements, declared vs detected tiers, incomplete reports and the adapter author assertion. Update relevant docs wiring gates; regenerate only existing touched host mirrors with `ll-adapt`, and mirror `README.md` to `scripts/README.md` if edited.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+
+- Direct validity/edit consumers also need an explicit resolution policy: `scripts/little_loops/cli/logs.py:_validate_builtin_loop` validates nested built-ins; `scripts/little_loops/cli/doctor.py:_loop_validity_data` enumerates project and built-in files; `scripts/little_loops/cli/loop/edit_routes.py:cmd_edit_routes` knows the caller's runtime `loops_dir`. Their load calls currently omit that root. Forward the appropriate known shared root so diagnostics agree with run/validate; preserve existing result shapes. Cover these seams in `scripts/tests/test_ll_logs.py`, `scripts/tests/test_cli_doctor_install_checks.py` and `scripts/tests/test_ll_loop_edit_routes.py`.
+- `scripts/little_loops/cli/artifact/policy_revision.py:validate_policy_revision` validates temporary candidate YAML below a policy-builder directory. Its standalone candidate-validation scope must remain explicit rather than silently treating the temporary file's parent as a configured project runtime root. No runtime-root inference or project config loading belongs in the resolve-only helper.
+- `scripts/little_loops/fsm/executor.py:_run_action` is the evidence for the active MCP `params` scan: it sends interpolated arguments directly to `mcp-call`. Recursive-container handling already has a bounded ancestry-identity convention in `scripts/little_loops/cli/issues/create.py:validate_metadata`; the new analysis must uphold termination while retaining repeated state/channel attribution, rather than copy that unrelated command's rejection policy.
 
 ## Program Design
 
@@ -233,6 +251,14 @@ The detection/channel/declaration/report rules in Proposed Solution are normativ
 - [ ] Corpus testing covers a nonempty declared-portable subset, records distribution and detects a deliberate regression; it does not assert equality to the historical 39/97 raw-text grep.
 - [ ] Docs and relevant wiring gates are updated; `python -m pytest scripts/tests/`, lint and type checks pass. Use the existing suite, with no new CI workflow.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+
+- [ ] Nested literal MCP arguments count only on effective MCP actions, with core/adapter attribution; the same inert mapping on a shell action contributes nothing.
+- [ ] Recursive YAML binding/default/MCP-argument aliases cannot recurse indefinitely or hide sibling requirements. Shared acyclic aliases used by different states or channels retain each relevant evidence record.
+- [ ] Nested built-in/project validity diagnostics and route-edit validation use their explicit shared runtime root and agree with run/validate on child shadowing; standalone temporary candidate validation retains its documented scope.
+
 ## Review Notes
 
 2026-10-05 source/probe review and `/ll:advise --signal user_requested --host claude-code --model opus` (confidence 0.72): a partial parent lacking `name`/`initial` successfully loaded through its child, and an overridden `.issues/` action disappeared from the effective FSM. A bounded cyclic-binding probe reached nine child reload attempts; a classifier-only cycle guard would not repair that validator path. Two symlink aliases to the same source selected different relative fragment libraries. These observations motivate the raw-source/executable-node distinction, context-aware keys and resolve-only binding contracts above. Accepted Opus's explicit operation context/report access, root-relative declaration diagnostics and bounded state-binding detection; also filled literal evaluator/issue-command gaps and clarified catalog discovery limits. Kept the interpreter warning here because FEAT-3667 already depends on this ownership. These were inspection/load probes, not execution of the proposed feature or a full-suite result.
@@ -257,6 +283,7 @@ A developer searches for a loop to run in a client repo with no issue setup. The
 
 
 ## Session Log
+- `/ll:refine-issue:gap-analysis` - 2026-10-05T20:31:49 - `e4d031f4-efb7-4acd-b532-6b7d02eab780.jsonl`
 - Pre-implementation review (Codex; `/ll:advise` with Opus, confidence 0.72; source and bounded load probes) - 2026-10-05
 - `/ll:verify-issues` - 2026-10-04T02:15:17 - `7338e0e0-45bb-417c-9acd-76d793d69fe6.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-04T02:12:21 - `e92024fd-e3f0-4727-b856-b77ba777115a.jsonl`

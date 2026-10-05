@@ -3,10 +3,11 @@ id: BUG-3735
 type: BUG
 title: Scoped usage selection hides unverified overlap candidates
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T17:27:31Z'
+completed_at: '2026-10-05T20:33:41Z'
 parent: EPIC-3562
 labels:
 - observability
@@ -176,8 +177,17 @@ Stored usage → `select_usage_coverage` acquisition candidates (logical channel
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-05T20:33:41 - `f5a1b523-6452-4ef2-b7df-927c51b9b006.jsonl`
+- `/ll:ready-issue` - 2026-10-05T20:24:02 - `7ea957ea-936a-4160-a3b8-dd75a58926b9.jsonl`
 - `/ll:confidence-check` - 2026-10-05T20:19:17 - `f6d5bda9-e0b6-40a7-a941-d62aa0ca7fa2.jsonl`
 - `/ll:capture-issue` - 2026-10-05T17:36:12 - `b20687c5-3662-40c9-ac0d-0a4ae5fef8fe.jsonl`
 - Pre-implementation epic review - 2026-10-05 - Captured the scoped overlap defect after Opus critique (confidence 0.74) and synthetic same-host/sessionless and no-host probe reproduction. Full selection is unresolved while host/session output narrowing falsely certifies it; ENH-3730 remains separate availability work.
 - Pre-implementation issue review - 2026-10-05 - Reproduced both scoped-certification defects in temporary databases; confirmed pair SQL admits an identity-unverified rollout to audit output and excludes verified logical transcripts with NULL channel. A mixed-failure control also paired overlap status with an unrelated unknown reason. Added shared-helper admission after the existing schema gate, scoped group/count and deterministic status/reason controls, and the six declared delivery-blocking edges. Opus consult (`/ll:advise`, `claude-opus-5-5`, confidence 0.78) clarified NULL-value versus absent-schema scope; older pair-schema support is deferred. Existing focused reader/selector/lifecycle/version tests passed (86 tests); the new cases remain implementation regression requirements.
 - Follow-up implementation-readiness review - 2026-10-05 - Kept the already specified conservative global ambiguity policy; Opus (`/ll:advise`, `claude-opus-5-5`, confidence 0.72) found no blocking design gap. Added the latent stored-reader channel-label mismatch exposed by NULL-channel admission, a retained-evidence integration control with BUG-3736, and explicit separation of retained-source admission from overlap acquisition. Existing focused selector/reader/refresh tests passed (38 tests); no implementation or new regression-test coverage is claimed.
+
+## Resolution
+
+- **Action**: fix
+- `select_usage_coverage` now acquires the full usage population and classifies ambiguity over it; `host`/`session_id` only narrow returned rows (pair output reuses `_verified_usage_identity`; host-only keeps unverified host-attributed audit rows). Aggregate reason comes from groups with the winning status (lexical tie-break). `_compute_cache_rate_from_usage` channel labels now use `row_channel`.
+- Tests: 7 new controls in `scripts/tests/test_enh3543_usage_coverage.py`; docs in `docs/reference/API.md`.
+- Full suite: 28239 passed; unrelated failures — `test_verify_evidence` corpus gate (BUG-3738/ENH-3700 issue text) and `test_libsql_integration` live-endpoint errors.

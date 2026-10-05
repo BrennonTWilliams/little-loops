@@ -135,6 +135,14 @@ All six link ENH-3723 and its actual owners ENH-3731/3732/3733 plus BUG-3735/373
 - **ENH-3703** — Evaluate optional family-prefix approximate pricing after ENH-3719; implement or cancel with a rationale before epic closure, unless scope is explicitly revised
 
 Standalone ENH-3649 (reader isolation and diagnostics) is done. Standalone ENH-3725 (Sonnet 5.5 cacheable-prefix minimum) relates to the completed EPIC-2456 and does not reopen it. Neither is included in this epic's child count.
+- **ENH-3744** — Semantic usage-candidate proof, derive-gap retention and held-source derivation (open)
+- **ENH-3745** — Usage derive freshness after retention: processed-boundary floor, per-source held status and safe checkpoint reads (open)
+- **ENH-3746** — Recognize retained-source ingestion in the stored cache-rate reader after raw pruning (open)
+- **ENH-3747** — Preserve usage search evidence across rebuild for held and retained usage (open)
+
+
+
+
 
 ## Nested qualification owners
 

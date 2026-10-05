@@ -9021,8 +9021,15 @@ def select_usage_observations(
 ```
 
 The shared coverage policy reconciles the full candidate set before applying
-`since` or `require_run_id` (ENH-3543). A paired `session_id` filter requires
-`host` and admits verified live or replay identities only. Missing columns on
+`since` or `require_run_id` (ENH-3543). `host` and `session_id` narrow only the
+returned rows, never the population used for overlap analysis: an unverified
+opposite-channel row (no session, or no verified host) outside the requested
+scope still makes the scoped result `overlap_unresolved`, so a previously
+displayed rate may become unavailable. A paired `session_id` filter requires
+`host` and returns verified live, rollout, or replay identities only (a replay
+row with a NULL `channel` counts as `transcript`); host-only selection keeps
+unverified host-attributed rows in `audit_rows`. The aggregate `reason` comes
+from the groups with the winning status (lexically first on ties). Missing columns on
 older schemas read as `NULL`; an absent table raises `sqlite3.OperationalError`.
 `CoverageSelection` exposes `groups`, flattened `audit_rows` and
 `selected_rows`, aggregate `coverage`, and `reason`. Each `CoverageGroup`

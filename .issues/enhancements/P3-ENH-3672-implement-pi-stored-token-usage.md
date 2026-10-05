@@ -14,6 +14,7 @@ labels:
 - usage-ingestion
 blocked_by:
 - ENH-3661
+- BUG-3736
 relates_to:
 - ENH-3723
 - ENH-3731

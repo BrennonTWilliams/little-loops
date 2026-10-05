@@ -380,14 +380,16 @@ def select_usage_coverage(
     host: str | None = None,
     session_id: str | None = None,
 ) -> CoverageSelection:
-    """Reconcile producer coverage before applying report-window filters.
+    """Reconcile producer coverage before applying host/session or report-window filters.
 
     `audit_rows` retains every observation; `selected_rows` contains only
     canonical-eligible rows. No live/rollout counterpart is suppressed because
     Codex 0.158.0 exposes no native live-to-rollout request key (ENH-3655).
     Unresolved groups therefore have empty `selected_rows`, their full audit
     rows, channel subtotals, and a stable reason code. Report filters cannot
-    turn a partial group into complete coverage.
+    turn a partial group into complete coverage. ``host``/``session_id`` narrow
+    the returned rows only; unverified possible counterparts outside the scope
+    still make the scoped coverage unresolved (BUG-3735).
     """
     if session_id is not None and host is None:
         raise ValueError("select_usage_coverage: session_id requires host")
@@ -402,29 +404,14 @@ def select_usage_coverage(
         "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
         f"{optional} FROM usage_events "  # noqa: S608 - column names are module constants
     )
-    clauses: list[str] = []
-    params: list[Any] = []
     if session_id is not None:
         if not {"host", "host_basis", "session_id", "channel", "identity_basis"}.issubset(present):
             return CoverageSelection((), (), (), "unknown", "no_verified_identity_columns")
-        clauses.extend(
-            (
-                "host = ?",
-                "session_id = ?",
-                "((channel = 'live' AND identity_basis = 'host_observed') "
-                "OR (channel IS NOT NULL AND channel != 'live' AND host_basis = 'handle'))",
-            )
-        )
-        params.extend((host, session_id))
-    elif host is not None:
-        if "host" not in present:
-            return CoverageSelection((), (), (), "unknown", "no_host_column")
-        clauses.append("host = ?")
-        params.append(host)
-    if clauses:
-        sql += "WHERE " + " AND ".join(clauses) + " "
-    sql += "ORDER BY id"
-    cursor = conn.execute(sql, params)
+    elif host is not None and "host" not in present:
+        return CoverageSelection((), (), (), "unknown", "no_host_column")
+    # Host/session select *output*, never the acquisition population: a possible
+    # counterpart lacking a verified host/session must still taint coverage (BUG-3735).
+    cursor = conn.execute(sql + "ORDER BY id")
     columns = [column[0] for column in cursor.description]
     rows = [dict(zip(columns, row, strict=True)) for row in cursor]
     grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
@@ -436,6 +423,16 @@ def select_usage_coverage(
         and any(channel != "live" for channel in channels)
         and any(not _verified_usage_identity(row) for row in rows)
     )
+
+    def in_scope(row: Mapping[str, Any]) -> bool:
+        if session_id is not None:
+            return (
+                row.get("host") == host
+                and row.get("session_id") == session_id
+                and _verified_usage_identity(row)
+            )
+        return host is None or row.get("host") == host
+
     groups: list[CoverageGroup] = []
     audit_rows: list[Mapping[str, Any]] = []
     selected_rows: list[Mapping[str, Any]] = []
@@ -446,7 +443,8 @@ def select_usage_coverage(
         visible = [
             {**row, "_coverage": coverage, "_coverage_reason": reason}
             for row in members
-            if (since is None or row["ts"] >= since)
+            if in_scope(row)
+            and (since is None or row["ts"] >= since)
             and (not require_run_id or row.get("run_id") is not None)
         ]
         if not visible:
@@ -471,7 +469,10 @@ def select_usage_coverage(
         if "unknown" in statuses or not statuses
         else "non_overlapping"
     )
-    reason = next((group.reason for group in groups if group.reason), None)
+    reasons = sorted(
+        {group.reason for group in groups if group.coverage == coverage and group.reason}
+    )
+    reason = reasons[0] if reasons else None
     return CoverageSelection(
         tuple(groups), tuple(audit_rows), tuple(selected_rows), coverage, reason
     )

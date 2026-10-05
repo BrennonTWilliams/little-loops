@@ -53,6 +53,7 @@ from little_loops.token_provenance import (
     footnotes,
     format_figure,
     json_pointer,
+    row_channel,
     same_metadata,
     suffix_for,
 )
@@ -534,7 +535,7 @@ def _compute_cache_rate_from_usage(
         "qualification_reason": qualification_reason,
         "counts": counts,
         "source": "stored_usage",
-        "channels": sorted({str(row["channel"] or "unknown") for row in selection.audit_rows}),
+        "channels": sorted({row_channel(row) for row in selection.audit_rows}),
         "coverage": coverage,
         "channel_subtotals": audit_group.channel_subtotals(),
         "coverage_reason": selection.reason,

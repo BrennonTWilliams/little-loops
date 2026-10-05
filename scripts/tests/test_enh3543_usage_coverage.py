@@ -209,3 +209,106 @@ def test_waste_rates_unavailable_when_run_row_has_rollout_counterpart(tmp_path: 
     assert rows[0]["tokens_total"] is None
     assert rows[0]["tokens_wasted"] is None
     assert rows[0]["waste_pct"] is None
+
+
+_INSERT = (
+    "INSERT INTO usage_events(ts, session_id, model, host, host_basis, channel, "
+    "identity_basis, provenance, input_tokens, output_tokens, "
+    "cache_read_input_tokens, cache_creation_input_tokens) "
+    "VALUES(?, ?, 'm', ?, ?, ?, ?, 'measured', 10, 2, 4, 0)"
+)
+
+
+def _overlap_db(tmp_path: Path, *, live_host: str | None = "claude-code") -> Path:
+    """Verified claude transcript for ``session-a`` plus a sessionless live row."""
+    db = tmp_path / "history.db"
+    ensure_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            _INSERT,
+            ("2026-10-05T09:00:00Z", "session-a", "claude-code", "handle", "transcript", None),
+        )
+        conn.execute(_INSERT, ("2026-10-05T09:00:01Z", None, live_host, None, "live", None))
+    return db
+
+
+def test_scoped_selection_cannot_hide_sessionless_live_counterpart(tmp_path: Path) -> None:
+    db = _overlap_db(tmp_path)
+    with connect(db) as conn:
+        full = select_usage_coverage(conn)
+        scoped = select_usage_coverage(conn, host="claude-code", session_id="session-a")
+    assert full.coverage == scoped.coverage == "overlap_unresolved"
+    assert scoped.reason == "unverified_cross_channel_identity"
+    assert scoped.selected_rows == ()
+    # The hidden wildcard influences coverage but never leaks into the scoped output.
+    assert [row["session_id"] for row in scoped.audit_rows] == ["session-a"]
+    assert len(scoped.groups) == 1 and set(scoped.groups[0].channel_subtotals) == {"transcript"}
+
+
+def test_host_filter_cannot_hide_unknown_host_wildcard(tmp_path: Path) -> None:
+    db = _overlap_db(tmp_path, live_host=None)
+    with connect(db) as conn:
+        scoped = select_usage_coverage(conn, host="claude-code")
+    assert scoped.coverage == "overlap_unresolved"
+    assert scoped.selected_rows == ()
+    assert len(scoped.audit_rows) == 1
+
+
+def test_verified_disjoint_sessions_stay_independent(tmp_path: Path) -> None:
+    db = tmp_path / "history.db"
+    ensure_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            _INSERT,
+            ("2026-10-05T09:00:00Z", "session-a", "claude-code", "handle", "transcript", None),
+        )
+        conn.execute(
+            _INSERT,
+            ("2026-10-05T09:00:01Z", "thread-b", "codex", None, "live", "host_observed"),
+        )
+    with connect(db) as conn:
+        scoped = select_usage_coverage(conn, host="claude-code", session_id="session-a")
+    assert scoped.coverage == "non_overlapping"
+    assert len(scoped.selected_rows) == 1
+
+
+def test_counterpart_outside_since_window_still_taints_scope(tmp_path: Path) -> None:
+    db = _overlap_db(tmp_path)
+    with connect(db) as conn:
+        scoped = select_usage_coverage(
+            conn, host="claude-code", session_id="session-a", since="2026-10-05T09:00:00Z"
+        )
+    assert scoped.coverage == "overlap_unresolved"
+
+
+def test_null_channel_handle_transcript_survives_pair_output(tmp_path: Path) -> None:
+    db = tmp_path / "history.db"
+    ensure_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            _INSERT, ("2026-10-05T09:00:00Z", "session-a", "claude-code", "handle", None, None)
+        )
+    with connect(db) as conn:
+        scoped = select_usage_coverage(conn, host="claude-code", session_id="session-a")
+    assert scoped.coverage == "non_overlapping"
+    assert set(scoped.groups[0].channel_subtotals) == {"transcript"}
+
+
+def test_rollout_without_host_observed_identity_is_not_admitted_to_pair(tmp_path: Path) -> None:
+    db = tmp_path / "history.db"
+    ensure_db(db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            _INSERT, ("2026-10-05T09:00:00Z", "thread-a", "codex", "handle", "rollout", None)
+        )
+    with connect(db) as conn:
+        scoped = select_usage_coverage(conn, host="codex", session_id="thread-a")
+    assert scoped.audit_rows == () and scoped.coverage == "unknown"
+
+
+def test_host_only_selection_keeps_unverified_audit_contributors(tmp_path: Path) -> None:
+    db = _overlap_db(tmp_path)
+    with connect(db) as conn:
+        scoped = select_usage_coverage(conn, host="claude-code")
+    assert scoped.coverage == "overlap_unresolved"
+    assert len(scoped.audit_rows) == 2 and scoped.selected_rows == ()
