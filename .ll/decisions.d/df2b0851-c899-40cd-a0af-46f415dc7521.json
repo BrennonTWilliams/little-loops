@@ -1,0 +1,11 @@
+{
+  "id": "b29a87ff-5767-429e-9862-1f99ddef556e",
+  "type": "decision",
+  "timestamp": "2026-10-05T20:40:04Z",
+  "category": "implementation",
+  "labels": [],
+  "rationale": "Data loss reproduced; prune-only guard cannot protect already partially pruned sources from rebuild/incremental deletes, so source-hold guards on derive paths are required.",
+  "rule": "GO",
+  "scope": "issue",
+  "issue": "BUG-3736"
+}

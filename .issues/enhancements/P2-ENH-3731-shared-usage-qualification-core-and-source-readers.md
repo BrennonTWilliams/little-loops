@@ -15,6 +15,7 @@ blocked_by:
 blocks:
 - ENH-3732
 - ENH-3733
+- ENH-3746
 relates_to:
 - ENH-3748
 - BUG-3696
@@ -147,7 +148,7 @@ End-user docs (`docs/reference/`, `docs/guides/`) describe behavior only — nev
 
 _Consolidated 2026-10-05 from `/ll:refine-issue`, `/ll:wire-issue` and pre-implementation reviews:_
 
-- **Anchors.** Use symbol names. Line numbers in `history_reader/usage.py` and `cli/ctx_stats.py` predate BUG-3735, which is in flight in the working tree; re-verify after it commits. `token_provenance.py` (unaffected): `row_channel:69`, `row_provenance:77`, `ObservationGroup:114`, `aggregate_provenance:210`, `total:222`, `subtotal:231`, `entry:242`, `group_rows:302`, `counted_entry:363`, `_META_KEYS:407`.
+- **Anchors.** Use symbol names. Line numbers in `history_reader/usage.py` and `cli/ctx_stats.py` predate BUG-3735, which landed in `bf4222b02`; re-verify them by symbol before editing. `token_provenance.py` (unaffected): `row_channel:69`, `row_provenance:77`, `ObservationGroup:114`, `aggregate_provenance:210`, `total:222`, `subtotal:231`, `entry:242`, `group_rows:302`, `counted_entry:363`, `_META_KEYS:407`.
 - `REQUIRED_KEYS` is a **test constant** (`scripts/tests/test_enh3528_token_provenance.py:37`), not a module symbol. `ObservationGroup.entry` emits `provenance`, `metric`, `scope_kind`, `observation_time_basis`, `availability`, `known_count`, `missing_count`, `composition`, `coverage`, plus conditional `hosts`/`channels`/`session_id`/`invocation_id`/`observed_from`/`observed_to`/`reason`; new metadata is additive.
 - `ObservationGroup.subtotal` call sites: sort keys in `aggregate_usage` (`cost_usd`) and `cost_attribution` (`input_tokens`), and published `totals`/`per_model` values in `ctx_stats._aggregate_usage_events`. No test or doc calls `.subtotal(`.
 - `_Component.add` registers a provenance slot before checking for NULL, so `aggregate_provenance` sees labels from rows whose value for that column is NULL; `entry()` filters zero-count slots from `composition`. `aggregate_provenance` is not an admission-filtered signal.

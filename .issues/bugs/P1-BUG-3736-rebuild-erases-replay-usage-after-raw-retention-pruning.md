@@ -221,6 +221,23 @@ _Added by `/ll:confidence-check` on 2026-10-05_
 - Wide blast radius: 11 issues are `blocks`-ed on this, `rebuild` has ~13 production call sites, and `prune` ~30 references; a held-source regression would silently stall every local-editable project. Run the full `python -m pytest scripts/tests/` plus the rebuild fingerprint gate after each guard.
 - Over-holding trades storage for safety; verify the dry-run/apply parity and "held rows counted once" controls early.
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-10-05_ — **GO**
+
+**Deciding Factor**: A prune-only guard cannot protect usage from rebuild or incremental deletes on sources that are already partially pruned, so the hold guards on the derive paths are required; the P1 data loss blocks the usage roadmap.
+
+### Key Arguments For
+- Loss is reproducible from routine steps (2 observations → 0 after rebuild or incremental catch-up; 481-token snapshot rolled back to 4). Destructive sites: `lifecycle.py` `_REBUILD_TABLE_PREDICATES` (~1038-1041), `_derive_usage_incremental_conn` deletes (~1297, ~1313-1316), `prune` (~2151-2156).
+- Follows the BUG-3530 / BUG-3715 pattern with existing infrastructure (`BEGIN IMMEDIATE` already in `backfill_usage_incremental`, `rebuild`, `refresh_raw_events`; v58 migration as template); conservative whole-source hold fails safe.
+
+### Key Arguments Against
+- Prune is manual-only and gated by default (365-day project age, 800 MB DB size; `config-schema.json` ~2155-2175, `config/features.py` ~1624-1626); the repro used `min_project_age_days=0` / `min_db_size_mb=0`, so default trigger likelihood is low. A one-clause "prune skips sources with linked non-live usage" guard is a simpler alternative, but only covers future prunes (not partially pruned sources, re-ingestion rollback, or header-only Codex downgrade).
+- Scope is heavy and provisional: marker shape undecided (outcome confidence 63/100), `SCHEMA_VERSION` 58 bump contended (ENH-3733, EPIC-3710), seeding migration over a multi-GB `history.db` is slow/risky, and ENH-3744 will rework the hold.
+
+### Rationale
+The data loss is real and both sides confirm the cited code facts; the Against case disputes scope and trigger likelihood, not existence. The proposed prune-only guard would not stop rebuild/incremental erasure for already partially pruned sources, so the source-hold guards in rebuild, incremental derive and `refresh_raw_events` are needed. Reuses an established pattern, needs no derive-version bump, and unblocks ~11 downstream issues.
+
 ## Session Log
 
 - `/ll:confidence-check` - 2026-10-05T20:36:15 - `7ae7d567-c248-415c-a7a3-57496874466d.jsonl`

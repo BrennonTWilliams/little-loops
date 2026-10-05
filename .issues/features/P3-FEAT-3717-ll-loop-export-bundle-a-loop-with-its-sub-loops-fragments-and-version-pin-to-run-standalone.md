@@ -62,7 +62,7 @@ Every copied runnable YAML gets `requires: {little-loops: "==<runtime-version>"}
 
 Supported recipient layout: `cd brainstorm-bundle`, then `LL_HOST_CLI=<host> ll-loop run brainstorm "brief"`; the runtime loop root is this directory's `.loops`.
 
-Merging the tree into an existing project's runtime loop directory is outside v1's support/closure guarantee. Recipient alias suffixes, cwd-literal files/directories, fragment libraries and `.ll/program.md` context can change resolution or adapter routing. Export does not perform or certify that merge.
+Merging the tree into an existing project's runtime loop directory is outside v1's support/closure guarantee. Recipient alias suffixes, cwd-literal files/directories, fragment libraries and program context injected by `scripts/little_loops/cli/loop/run.py:_parse_program_md` can change resolution or adapter routing. Export does not perform or certify that merge.
 
 Running a root by a path in an arbitrary subdirectory does **not** redirect its children's runtime loop root. Do not repeat the old collision advice to "copy into a subdir and run by path"; use an isolated bundle working directory instead.
 
@@ -208,7 +208,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 ### Documentation
 
-Update `docs/reference/{CLI,API,loops}.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/ARCHITECTURE.md`, `skills/create-loop/reference.md` and `scripts/little_loops/loops/README.md`. Describe exact-only `requires`, strict static closure, `--allow-requirement`, independent requirements, the supported bundle working directory and flat root alias and development-export limitations. Add existing CLI/docs wiring assertions; regenerate existing touched host mirrors if applicable. Mirror `README.md` to `scripts/README.md` if edited. Do not advertise `uvx` or all-host compatibility before evidence exists.
+Update `docs/reference/{CLI,API,loops}.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/ARCHITECTURE.md`, `skills/create-loop/reference.md` and `scripts/little_loops/loops/README.md`. Describe exact-only `requires`, strict static closure, `--allow-requirement`, independent requirements, the supported bundle working directory, flat root alias and development-export limitations. Add existing CLI/docs wiring assertions; regenerate existing touched host mirrors if applicable. Mirror `README.md` to `scripts/README.md` if edited. Do not advertise `uvx` or all-host compatibility before evidence exists.
 
 ### Codebase Research Findings
 
@@ -240,7 +240,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 `main_loop` → `cmd_export` → `resolve_loop_path` / `resolve_loop_graph` → `collect_export_closure` → source/pin checks → digest-checked stage copy and round-trip pin edits → `verify_export_closure` → staged-report allowances / README → promotion.
 
-Execution: `cmd_run` / `cmd_resume` → `load_and_validate` / `enforce_requires` → `PersistentExecutor`, with shared real-execution entry enforcement for direct callers. Child: `FSMExecutor._execute_sub_loop` → `load_and_validate(..., raise_on_error=False, loops_dir=shared_root)` → `enforce_requires` → child `FSMExecutor`. `cmd_test` checks the same requirement before a real single-state action; simulation/inspection remains nonexecuting.
+Execution: `cmd_run` / `cmd_resume` → `load_and_validate` / `enforce_requires` → `PersistentExecutor`, with shared real-execution entry enforcement for direct callers. Child: `FSMExecutor._execute_sub_loop` → `load_and_validate(..., raise_on_error=False, loops_dir=shared_root)` → `enforce_requires` → child `FSMExecutor`. `cmd_test` / `cmd_simulate` enforce before live action/evaluator dispatch; list/show/topology inspection stays usable for mismatching pins.
 
 ### Decision Rules
 

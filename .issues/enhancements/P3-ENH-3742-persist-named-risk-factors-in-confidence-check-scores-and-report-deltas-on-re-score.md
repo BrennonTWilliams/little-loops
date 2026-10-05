@@ -22,7 +22,7 @@ This is additive to scoring: no rubric change, no threshold change, no migration
 
 - Notes are conditional: `skills/confidence-check/SKILL.md`, Phase 4.5, appends `## Confidence Check Notes` only when `HAS_FINDINGS` is true. Outcome risk prose is currently threshold-gated; a clean re-score can append no notes at all. The notes template lives in `skills/confidence-check/rubric.md`.
 - `## Resolved Concerns`, written by `/ll:reconcile-issue`, tells the scorer not to re-raise a listed concern without new evidence. It does not diff factor sets.
-- `cmd_set_scores()` in `scripts/little_loops/cli/issues/set_scores.py` updates only explicitly supplied scalar fields and uses an unlocked `read_text()`/`write_text()` path. Its separate `clear_scores(path: Path) -> bool` helper already uses the shared issue mutation lock and `atomic_write()`.
+- `cmd_set_scores()` in `scripts/little_loops/cli/issues/set_scores.py` updates only explicitly supplied scalar fields using an unlocked read/overwrite of the issue file. Its separate `clear_scores(path: Path) -> bool` helper already uses the shared issue mutation lock and atomic writing.
 - Score clearing is a normal precondition of re-scoring: `scripts/little_loops/preparation_policy.py`, `_run_preconditions()`; `commands/reconcile-issue.md`; and `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` all use it. Clearing a factor baseline at those sites would prevent the intended comparison.
 - `scripts/little_loops/frontmatter.py`, `parse_frontmatter()` and `update_frontmatter()`, already support nested lists/maps in the canonical identity-bearing header. Factor records made of strings fit the reader's nested-scalar contract.
 - `scripts/little_loops/cli/issues/set_flags.py`, `apply_flags_from_notes()`, scans the entire latest Notes section selected by `issue_parser._section_body()`. A different subsection heading alone does not isolate removed-factor descriptions from phrase matching.
@@ -50,9 +50,9 @@ The split removed exactly the risk the rubric cannot see. The qualitative layer 
 
 ## Program Design
 
-### Data and Identity
+### Types
 
-Store one `risk_factors` list in canonical frontmatter. Each record has four required string fields:
+Store one `risk_factors` list in canonical frontmatter. Each record is a mapping with exactly four required string fields:
 
 ```yaml
 risk_factors:
@@ -87,13 +87,16 @@ The read of the previous baseline, comparison, frontmatter update and write use 
 
 The JSON result has `issue_id` and a `risk_factors` object. With recorded factors, that object contains `recorded: true`, `baseline: absent|present`, the assessed `factors` list, and `added`, `removed`, `retained`. For an absent baseline the three comparison fields are `null`; for a present baseline they are arrays, including empty arrays. Added entries contain new records, removed entries prior records, and retained entries contain the assessed record plus a `changed_fields` list drawn from `domain`, `criterion`, `description`. An empty `changed_fields` means fully unchanged. With no factor input, return only `recorded: false` and baseline presence under this object.
 
-### Signatures and Call Path
+### Signatures
 
 - Existing entry point: `cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int` in `scripts/little_loops/cli/issues/set_scores.py`.
 - Existing clearing helper: `clear_scores(path: Path) -> bool`; its six-key removal contract stays intact.
 - Proposed internal data types: `RiskFactor`, `RetainedRiskFactor`, `RiskFactorDelta` dataclasses in the score-writer module; records expose string fields and delta lists rather than embedding prose parsing.
 - Proposed pure helpers: `parse_risk_factors(raw: str) -> list[RiskFactor]` and `diff_risk_factors(previous: list[RiskFactor] | None, assessed: list[RiskFactor]) -> RiskFactorDelta`. These names describe new helpers, not existing APIs.
-- Call path after the change: confidence-check Phase 4 → `main_issues()` parser/dispatch → `cmd_set_scores()` → factor validation and locked baseline read/diff → `update_frontmatter()` → `atomic_write()` → JSON result → skill rendering. Generic frontmatter support already exists; no `IssueInfo`/`show --json` expansion is required.
+
+### Call Path
+
+Confidence-check Phase 4 → `main_issues()` parser/dispatch → `cmd_set_scores()` → factor validation and locked baseline read/diff → `frontmatter.update_frontmatter()` → `file_utils.atomic_write()` → JSON result → skill rendering. Generic frontmatter support already exists; no `IssueInfo`/`show --json` expansion is required.
 
 ### Skill, Notes and Flags
 
@@ -126,7 +129,8 @@ The JSON result has `issue_id` and a `risk_factors` object. With recorded factor
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/preparation_policy.py`, `_run_preconditions()`; `commands/reconcile-issue.md`; `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — clear-before-rescore consumers; retained baseline is required, with no new ordering dependency.
-- `scripts/little_loops/frontmatter.py`, `parse_frontmatter()` / `update_frontmatter()`; `scripts/little_loops/issue_parser.py`, `_section_body()` — nested metadata support and latest Notes selection. Preserve these reader/writer contracts.
+- `scripts/little_loops/frontmatter.py`, `parse_frontmatter()` / `update_frontmatter()` — nested metadata reader/writer support.
+- `scripts/little_loops/issue_parser.py`, `_section_body()` — latest Notes selection. Preserve this selection contract and existing numeric score parsing.
 - `scripts/little_loops/cli/issues/show.py`, `_parse_card_fields()`, and `IssueInfo` serialization — explicit numeric score projections; structured-factor display/model expansion is outside scope.
 
 ### Conventions in Force
@@ -149,7 +153,7 @@ Makes risk composition changes visible when aggregate scores stay fixed, includi
 
 ## Acceptance Criteria
 
-1. A successful factor-bearing write persists the complete last-assessed list alongside any supplied scores in canonical frontmatter. Explicit `[]`, omitted input and an absent legacy baseline have distinct behavior; unrelated frontmatter/body survive. An unrelated subsequent frontmatter update and issue-parser read preserve the structured records.
+1. A successful factor-bearing write persists the complete last-assessed list alongside any supplied scores in canonical frontmatter. Explicit `[]`, omitted input and an absent legacy baseline have distinct behavior; unrelated frontmatter/body survive. After an unrelated status/frontmatter update, `parse_frontmatter()` still returns the factor records and the issue parser still reads the existing numeric scores correctly.
 2. JSON comparison follows Program Design, is deterministic under input reordering, and distinguishes fully unchanged retained factors from metadata changes under the same ID. First assessments report an absent baseline with `null` comparison lists; a known-empty baseline produces ordinary array comparisons.
 3. Re-scoring with identical totals and changed membership reports a non-empty delta in skill output and a new Notes section. Removing the final factor works when `HAS_FINDINGS` is otherwise false. Threshold crossing alone does not add/remove a factor.
 4. Numeric score clearing, including the automated clear-before-rescore precondition, preserves the baseline; scalar-only partial updates and factor-only CLI writes follow the specified omitted-field behavior. Factors never supply score freshness or gating evidence.
@@ -172,10 +176,10 @@ The two scoring changes shift existing scores and need a one-time re-check of is
 
 Pre-implementation review on 2026-10-05 confirmed the additive approach and settled storage, identity, baseline lifecycle, validation/failure handling, notes triggers and flag isolation. `/ll:advise` with `claude-opus-5-5` recommended proceeding at P3 after tightening these contracts (confidence 0.78). Its principal dissent favored omitting notes for first/retained-only runs; the bounded notes policy above retains durable membership changes for automated runs. Its heading-only isolation suggestion was rejected against the verified whole-Notes flag scan; explicit subsection exclusion is required.
 
+## Session Log
+
+- `/ll:refine-issue` - 2026-10-05T20:38:16 - `e4d031f4-efb7-4acd-b532-6b7d02eab780.jsonl`
+
 ## Status
 
 Open — pre-implementation review complete; implementation has not started.
-
-
-## Session Log
-- `/ll:refine-issue` - 2026-10-05T20:38:16 - `e4d031f4-efb7-4acd-b532-6b7d02eab780.jsonl`
