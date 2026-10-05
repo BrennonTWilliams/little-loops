@@ -25,6 +25,12 @@ relates_to:
 - ENH-3731
 - ENH-3732
 - ENH-3733
+confidence_score: 100
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3735: Scoped usage selection hides unverified overlap candidates
@@ -170,6 +176,7 @@ Stored usage → `select_usage_coverage` acquisition candidates (logical channel
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T20:19:17 - `f6d5bda9-e0b6-40a7-a941-d62aa0ca7fa2.jsonl`
 - `/ll:capture-issue` - 2026-10-05T17:36:12 - `b20687c5-3662-40c9-ac0d-0a4ae5fef8fe.jsonl`
 - Pre-implementation epic review - 2026-10-05 - Captured the scoped overlap defect after Opus critique (confidence 0.74) and synthetic same-host/sessionless and no-host probe reproduction. Full selection is unresolved while host/session output narrowing falsely certifies it; ENH-3730 remains separate availability work.
 - Pre-implementation issue review - 2026-10-05 - Reproduced both scoped-certification defects in temporary databases; confirmed pair SQL admits an identity-unverified rollout to audit output and excludes verified logical transcripts with NULL channel. A mixed-failure control also paired overlap status with an unrelated unknown reason. Added shared-helper admission after the existing schema gate, scoped group/count and deterministic status/reason controls, and the six declared delivery-blocking edges. Opus consult (`/ll:advise`, `claude-opus-5-5`, confidence 0.78) clarified NULL-value versus absent-schema scope; older pair-schema support is deferred. Existing focused reader/selector/lifecycle/version tests passed (86 tests); the new cases remain implementation regression requirements.
