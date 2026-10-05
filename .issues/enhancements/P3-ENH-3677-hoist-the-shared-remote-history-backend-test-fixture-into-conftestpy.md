@@ -17,12 +17,6 @@ blocks:
 - ENH-3728
 parent: EPIC-3693
 epic: EPIC-3693
-confidence_score: 100
-outcome_confidence: 67
-score_complexity: 14
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 10
 ---
 
 # ENH-3677: Hoist the shared remote history-backend test fixture into conftest.py
@@ -54,16 +48,20 @@ One shared fixture in `conftest.py`; each remote test file requests it by pytest
 
 **Variant decisions (2026-10-04):** the shared fixture does not set `LL_MACHINE_ID` or clear `LL_NON_INTERACTIVE`. In ingestion tests, layer `LL_MACHINE_ID="machine-a"` through a distinctly named file-local variant fixture depending on `remote`; hooks and bug3652 tests that need interactive spawning similarly clear `LL_NON_INTERACTIVE` in a distinct variant. Request these variants only where needed so unrelated tests do not acquire a server/tmp-path cost. No variant is named `remote`, creates its own stub, or repeats config/migration/cache setup. Keep the ingestion helper's timeout override where tests change it; its baseline 1500ms equals the shared default. Retain the independent direct-backend `stub` and libsql `_token_env` fixture.
 
-Start the stub inside a cleanup scope covering **all** subsequent config/env setup and migration before `yield`, not just the test body. Use `finally` to stop it and clear verification/backend/telemetry caches even if setup fails; monkeypatch restores cwd/env at fixture teardown. Dedicated fixture tests cover one successful lifecycle and an injected setup/migration failure, using an isolated monkeypatch context and asserting restoration/no leftover server. Do not add lifecycle assertions to every consumer test.
+Immediately after the stub starts successfully, enter a cleanup scope covering **all** subsequent config/env setup and migration before `yield`, not just the test body. Use `finally` to stop it, with cache/telemetry resets in an inner `finally` so a stop error cannot skip them; monkeypatch restores cwd/env at fixture teardown. Preserve consumers' existing early `remote.stop()` calls and the normal repeated-stop teardown behavior. Constructor/start failure handling belongs to `HranaStub` and is outside this hoist: never unconditionally call `shutdown()` on a server whose `serve_forever` thread did not start.
+
+Dedicated fixture tests cover one successful lifecycle, config-write failure, migration failure and cache reset after a stop error (inject the error **after** actually stopping the server). Drive the undecorated generator inside `with monkeypatch.context() as fixture_patch`, close it in `finally` on successful setup, and assert cwd/env restoration after the context exits. This keeps the surrounding autouse fixture's `LL_HISTORY_DB` isolation intact. Assert no live server remains; do not add lifecycle assertions to every consumer test.
 
 ## Scope Boundaries
 
 - **In scope**: one shared `remote` fixture in `scripts/tests/conftest.py`; migrating the six existing copies to it.
-- **Out of scope**: writing new remote-stub tests (ENH-3657, ENH-3658), changing `HranaStub`, any non-test code.
+- **Out of scope**: new remote-reader behavior tests (ENH-3657, ENH-3658), changing `HranaStub` or its constructor/start failure contract, any non-test code. The shared-fixture lifecycle and registration tests specified here are in scope.
 
 ## Behavior Parity
 
 The six migrated test files keep the same remote configuration, temporary cwd, cache isolation, telemetry reset, and file-specific environment variants. The separate direct-backend `stub` fixture remains available. A test's result must not change merely because its `remote` setup moved to `conftest.py`.
+
+Keep the sentinel credential (`sentinel-token-DO-NOT-LEAK`) stable. Remote-fixture leak assertions and any client constructed against `remote.url` must use the actual `remote.token` (or an explicitly asserted equal credential), rather than silently relying on a separately copied constant. The lifecycle test asserts that the configured auth-token environment value equals the yielded stub's token. Direct-backend `stub` tests may retain their own `TOKEN`; no import from conftest is needed.
 
 ## Proposed Solution
 
@@ -113,8 +111,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_conftest_cap.py` — new `TestRemoteFixture`: no test covers the fixture itself. Follow the `TestNoLiveHostCLIGuard` / `TestGuardRealSocketTransport` pattern — drive `conftest.remote.__wrapped__(tmp_path, monkeypatch)` with `next(gen)`, assert `LL_HISTORY_DB` deleted, libsql `history.backend` block written, cwd is `tmp_path`, caches and remote telemetry cleared, then `pytest.raises(StopIteration)` on teardown with the stub stopped [Agent 3 finding]
-- `scripts/tests/` (new gate file, e.g. `test_no_shadowed_remote_fixture.py`) — the AC "no file-local `def remote(`" has no automated check. Reuse the `test_remote_callers_bug3652.py` gate shape (`ast.parse`/`ast.walk`, planted-source detector self-tests such as `test_detector_rejects_a_stray_pre_resolve`): flag any `ast.FunctionDef` named `remote` decorated `pytest.fixture` / `pytest.fixture(...)` outside `conftest.py`. A plain grep also matches non-fixture helpers [Agent 3 finding]
+- `scripts/tests/test_conftest_cap.py` — new `TestRemoteFixture`: no test covers the fixture itself. Follow the `TestNoLiveHostCLIGuard` / `TestGuardRealSocketTransport` pattern — drive `conftest.remote.__wrapped__(tmp_path, fixture_patch)` with `next(gen)` inside a separate `monkeypatch.context()`. Assert `LL_HISTORY_DB` deleted, libsql config written, cwd is `tmp_path`, caches/telemetry reset, and normal generator teardown stops the server. Inject config-write and migration errors before yield; also inject a stop error after real shutdown and verify the resets still run. Assert cwd/env restoration outside the nested context, without calling `undo()` on pytest's outer monkeypatch [Agent 3 finding; amended 2026-10-05]
+- `scripts/tests/` (new gate file, e.g. `test_no_shadowed_remote_fixture.py`) — check the **effective fixture name**, not only the function name: the literal `name=` argument wins when present, otherwise use the function name. Thus `def remote` with `@pytest.fixture` and any function with `@pytest.fixture(name="remote")` register `remote`. Walk class-method fixtures too. Require exactly one such registration, in the root `scripts/tests/conftest.py`; a nested conftest can also shadow it and is not an exemption. Permit distinctly named variant fixtures depending on `remote` and ordinary non-fixture `remote` helpers. Add small planted-source cases for the named alias and allowed variant; use the existing AST-gate pattern rather than importing test modules. The implementation may use a literal-name detector for these established pytest decorator forms; no general Python name resolver is required [amended 2026-10-05]
 - `scripts/tests/test_remote_hooks.py` — session-start tests need `LL_NON_INTERACTIVE` deleted in their file-local variant. Dead-endpoint consumers can still stop the shared stub early; fixture teardown remains idempotent, as today.
 - `scripts/tests/test_remote_ingestion_telemetry.py` — `TestRemoteIngestion.test_watermark_is_per_machine_and_the_global_key_is_untouched` and `test_another_machines_progress_does_not_skip_older_transcripts` need `LL_MACHINE_ID="machine-a"` layered file-locally; `test_a_warm_file_cache_skips_the_verification_round_trip` / `test_a_stale_file_cache_entry_is_ignored` rely on the fixture's cache clears + `migrate_remote` before `yield` [Agent 3 finding]
 - `scripts/tests/test_remote_doctor.py` — `_write(...)` helper is reused mid-test (~:99, ~:113); `TestNoTokenLeaks` and `TestHistoryDbProbe` call `remote.stop()` directly [Agent 3 finding]
@@ -141,7 +139,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `migrate_remote(client: HranaClient, project_id: str)` — `little_loops.session_store.remote_schema`; run against the stub after the caches are cleared.
 
 ### Call Path
-`remote` (conftest) -> `HranaStub` -> `migrate_remote` -> per-file tests via `remote.requests` / `remote.db` / `remote.stop()`; teardown `HranaStub.stop` -> `clear_verification_cache` -> `reset_for_tests` -> `clear_backend_config_cache`.
+`remote` (conftest) -> successful `HranaStub.start` -> protected env/config/cache setup -> `migrate_remote` -> per-file tests via `remote.requests` / `remote.db` / `remote.stop()`; teardown attempts `HranaStub.stop`, then an inner `finally` runs `clear_verification_cache` / `reset_for_tests` / `clear_backend_config_cache`, including when stopping raises. Pytest's monkeypatch teardown restores cwd/env separately.
 
 ### Decision Rules
 - Variant ownership is fixed by Expected Behavior: machine identity and interactive-spawn settings remain in distinct file-local variants; shared setup owns server/config/migration and cache/telemetry cleanup. No production decision logic changes.
@@ -153,8 +151,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 1. `scripts/tests/conftest.py` provides one `remote` fixture whose observable contract matches the union of the five self-contained copies (same env, config shape, chdir, cache clears, migration, yielded `HranaStub`), with caches and remote telemetry reset before and after use.
-2. Each of the six files resolves `remote` from conftest; `grep -rn "def remote(" scripts/tests` returns only the conftest definition. The libsql file's dependence on its pre-migrating `stub` is resolved without introducing a second stub per test.
-3. Apply the named variant ownership above; do not introduce another fixture named `remote`. Cover successful setup/teardown and setup failure with the dedicated fixture tests, preserving existing watermark/warn-once assertions.
+2. Each of the six files resolves `remote` from conftest; the AST registration gate requires its only effective definition at `scripts/tests/conftest.py`, including class-method and `name="remote"` registrations. The libsql file's dependence on its pre-migrating `stub` is resolved without introducing a second stub per test. Bind remote leak assertions/client credentials to the yielded stub's actual token, preserving direct-backend constants where still needed.
+3. Apply the named variant ownership above; do not introduce another fixture registered as `remote`. Add the effective-name registration gate and dedicated successful/setup-failure/stop-error lifecycle tests, preserving existing watermark/warn-once assertions and outer monkeypatch isolation.
 4. Verification: `python -m pytest scripts/tests/test_remote_operation_matrix.py scripts/tests/test_remote_hooks.py scripts/tests/test_libsql_backend.py scripts/tests/test_remote_doctor.py scripts/tests/test_remote_ingestion_telemetry.py scripts/tests/test_remote_callers_bug3652.py` passes, then the full `python -m pytest scripts/tests/`.
 5. `docs/development/TESTING.md` § Built-in Fixtures gains a one-line entry for the shared `remote` so ENH-3657/ENH-3658 authors find it.
 
@@ -178,8 +176,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - [ ] A single `remote` fixture lives in `scripts/tests/conftest.py`; the six copies are removed.
 - [ ] Reconciled differences (cache/telemetry reset before and after, file-local `LL_MACHINE_ID` / `LL_NON_INTERACTIVE` setup, separate direct-backend `stub` fixture) are covered; all six files still pass unchanged in behavior.
-- [ ] No test file retains a file-local `def remote(` that would shadow the conftest fixture.
-- [ ] Config/migration setup failure stops the started server and clears process caches/telemetry; successful use and failed setup both restore cwd/env at monkeypatch teardown. Material variant fixtures reuse exactly one stub and only requested tests incur its cost.
+- [ ] Exactly one effective `remote` fixture registration exists under `scripts/tests`, in the root conftest; no named alias or nested conftest shadows it. Distinct variants and non-fixture helpers are allowed by the AST gate.
+- [ ] Config-write/migration failure after successful start stops the server and clears process caches/telemetry; resets also run if stopping raises. Successful use and failed setup restore cwd/env through an isolated monkeypatch context without undoing the surrounding test's isolation. Existing early-stop consumers remain supported; constructor/start failure handling is unchanged. Material variant fixtures reuse exactly one stub and only requested tests incur its cost.
+- [ ] Remote leak assertions/client credentials match the actual yielded stub's token; lifecycle coverage asserts the token environment value equals `remote.token`, so hoisting cannot make leak checks pass against an unrelated credential.
 - [ ] `python -m pytest scripts/tests/` passes.
 
 ### Codebase Research Findings
@@ -202,7 +201,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 _Added by `/ll:confidence-check` on 2026-09-29_
 
-Prior 100/67 scores and `verify_verdict: VALID` were cleared on 2026-10-04 because the variant/setup-failure contract was amended. Re-run `/ll:confidence-check` before implementation; this review supplies a plan, not passing test evidence.
+Historical scores and `verify_verdict: VALID` were cleared on 2026-10-04. The fresh 2026-10-05 check restored 100/67; those scores are now cleared because this review tightens effective fixture registration and lifecycle cleanup/tests. Re-run `/ll:confidence-check` on the revised plan before implementation; this review supplies a plan, not passing test evidence.
 
 ### Outcome Risk Factors
 - Moderate per-site complexity: the shared `remote` body must reconcile five self-contained copies plus the non-self-contained libsql copy (depends on a sibling `stub`); a wrong split of variant setup (`LL_MACHINE_ID`, `LL_NON_INTERACTIVE`, telemetry reset ordering) silently changes warn-once and watermark test results.
@@ -210,6 +209,7 @@ Prior 100/67 scores and `verify_verdict: VALID` were cleared on 2026-10-04 becau
 - Keep the independent libsql `stub` for direct-backend tests; remote consumers and variants must not request a second server. Cleanup must cover migration/setup failures before yield.
 
 ## Session Log
+- Pre-implementation review + `/ll:advise --signal user_requested --host claude-code --model opus` - 2026-10-05 - effective fixture registration, post-start cleanup, outer monkeypatch isolation and actual-token assertions pinned; Opus confidence 0.85. Fresh 100/67 scores cleared because the plan changed; no implementation or passing-suite claim.
 - `/ll:confidence-check` - 2026-10-05T18:32:56 - `a7f624ef-fd4a-4f3c-baa9-6b359d58b554.jsonl`
 - EPIC-3693 review #3 - 2026-10-05 - six copies and variant/cleanup plan confirmed; backend-independent ENH-3729 removed from blocks, ENH-3728 remains a fixture consumer; no new fixture scope or implementation
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - variant ownership and setup-failure cleanup pinned; stale scores and cancelled/obsolete obligations removed; implementation not performed
