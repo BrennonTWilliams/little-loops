@@ -21,11 +21,11 @@ relates_to:
 - ENH-3674
 - ENH-3675
 - ENH-3676
-confidence_score: 90
-outcome_confidence: 55
+confidence_score: 95
+outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 10
 ---
 
@@ -235,19 +235,21 @@ Cost is the same except 2026-09 and 2026-10 `ll-auto` already withhold the verdi
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-04_
+_Added by `/ll:confidence-check` on 2026-10-05_
 
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 55/100 → LOW
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
 
 ### Concerns
-- Legacy-NULL and estimated/mixed provenance policy is still an open `decision_needed` gate; step 1 (impact measurement + recorded choice) must land before any published figure changes.
-- Criterion 4 held at 15: figure prerequisites hinge on the unresolved policy, so the admission rules for estimated rows are not yet final.
+- Decision 4 (scope-local `channel=` parameter on `select_usage_coverage`) is recorded under Decision but not carried into "Files to Modify", Implementation Steps, Program Design Signatures, or Acceptance Criteria; its required test ("a live counterpart cannot change quality figures") has no AC line.
+- Program Design still hedges on the now-settled policy ("after resolving the legacy/estimated policy", "legacy exception, if selected") — stale wording an implementer could read as still open.
+- Acceptance Criterion 1 (human review of the recorded policy) is unchecked; implementation should not begin changing published figures before that review.
+- Gates clean: Program Design, dependencies (no `blocked_by`), parity, claim/symbol refs, structure, learning tests (none required). All cited files, tests, and related issues resolve; `qualify_usage`/`UsageQualification` do not exist yet (no duplicate).
 
 ### Outcome Risk Factors
-- Deep per-site complexity: new shared `UsageQualification` contract threaded through source rollups, snapshot selection, ctx_stats, quality baselines and dashboard (contract changes, not mechanical edits).
+- Deep per-site complexity: a new shared qualification contract threaded through source rollups, snapshot selection, ctx_stats, quality baselines and the dashboard, plus a new coverage scope parameter (contract changes, not mechanical edits).
 - Broad enumeration across 7 modify sites plus workspace_quality and dashboard dependents (~6-10 consumers).
-- Unresolved legacy/estimated policy decision (decision_needed: true) leaves several design choices open.
+- Quality windows change published verdicts (7 non-stable verdicts and 5 phantom zero baselines become unavailable); accepted in the recorded policy, but a large visible behavior change to regress-test.
 
 ## Session Log
 
