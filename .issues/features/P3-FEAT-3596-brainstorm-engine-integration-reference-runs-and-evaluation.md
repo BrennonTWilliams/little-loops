@@ -77,11 +77,12 @@ old loop.
   (e.g. `mode=business materialize=render`) proving the knob wins over the profile
   default (FEAT-3583 precedence rule).
 - **Failure-path fixtures** (pytest, stubbed via `MockActionRunner` from
-  `scripts/tests/test_fsm_executor.py`, keyed by state name): only **cross-child**
-  interactions live here — e.g. ground and materialize both filtering the same run
-  below the finalist floor (caught by `check_floors --stage pre_tournament` before any judge
-  call), reserve promotion in `finalists.json` followed by materialize drops, and premortem
-  fail-open leaving `winners.md` and sink input byte-identical. Single-child fixtures (zero survivors, too few
+  `scripts/tests/test_fsm_executor.py`, keyed by state name): only fixtures over the
+  **built** states live here. Cross-capability fixtures for the optional children
+  (ground and materialize both filtering the same run below the finalist floor, reserve
+  promotion followed by materialize drops) are tracked under EPIC-3687, and premortem
+  fail-open (`winners.md` and sink input byte-identical) is owned by FEAT-3586.
+  Single-child fixtures (zero survivors, too few
   cells, per-probe failures, round bound) belong to their owning child. No sink
   fires before `validate_portfolio` passes.
 - **Sink compatibility**: `sink_file`, `sink_issue`, `sink_decision` consume the
@@ -155,8 +156,8 @@ fixtures, a pinned combined budget, and a before/after comparison table.
 - Failure-path fixtures pass in `python -m pytest scripts/tests/`; none requires
   Playwright or a live LLM.
 - No sink executes on a run that fails `validate_portfolio`.
-- `max_steps`/`timeout` pinned for the all-features worst case; `ll-loop validate
-  brainstorm` passes.
+- `max_steps`/`timeout` pinned for the combined total of the built states; the all-features
+  worst-case pin is tracked under EPIC-3687. `ll-loop validate brainstorm` passes.
 - Comparison table (duplicates, cells, LLM calls, tokens, runtime, `tie_rate`)
   recorded against the old loop on 2 briefs; default-run LLM calls ≤ 30 (aligned with EPIC-3581 and § Expected Behavior; it previously said 45).
 - Closes on the core engine (reference runs for the modes whose capabilities are built, comparison, budget for the built states). Optional-capability reference runs (FEAT-3584/3585/3586, EPIC-3687) are recorded by those issues and do not gate closure.
@@ -173,4 +174,5 @@ fixtures, a pinned combined budget, and a before/after comparison table.
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:25 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:28 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

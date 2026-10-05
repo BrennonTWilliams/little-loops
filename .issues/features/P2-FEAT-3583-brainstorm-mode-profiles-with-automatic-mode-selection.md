@@ -169,10 +169,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Define profile schema and the four presets.
+1. Tune and re-measure the profile presets (the schema, `Profile`/`Axis` and the four preset JSONs ship in FEAT-3667).
 2. Add `classify_mode` + `resolve_profile` states.
 3. Thread resolved values into reframe/diverge/tournament/output prompts.
-4. Tests for resolution precedence (mode selects base profile; explicit knob overrides it; empty string inherits) and the invalid/malformed/boundary cases.
+4. Tests for the invalid/malformed/boundary cases of classification and override wiring (resolution-precedence tests — mode selects base profile; explicit knob overrides it; empty string inherits — live in FEAT-3667).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -227,7 +227,7 @@ _Added 2026-09-30 (EPIC-3581 fourth review, `/ll:advise` with Opus; nothing meas
 
 ## Acceptance Criteria
 
-- Four profile files exist and are validated by a schema/test.
+- The four profile files shipped by FEAT-3667 exist, are validated by a schema/test, and are tuned here (override plumbing means the YAML `--set key=value` / `--decision-file` wiring, not the resolver, which FEAT-3667 owns).
 - One reference brief per mode is classified to the expected profile (test with a
   stubbed classifier output plus a documented manual reference run).
 - Explicit `mode=` bypasses `classify_mode`; per-knob override beats profile default
@@ -266,6 +266,7 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:28 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:26 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:09 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:00:47 - `c90c2478-f308-49d4-930c-8be0a9590776.jsonl`

@@ -90,7 +90,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 ### Signatures
 
 - `open_history_readonly(target=None, *, ensure: bool = False, best_effort: bool = False)` — keeps default standard read behavior.
-- `_connect_readonly(db_path, *, best_effort: bool = False)` — forwards the mode, preserves narrow local-target provenance added by ENH-3700, and catches open failures only.
+- `_connect_readonly(db_path, *, best_effort: bool = False)` — forwards the mode, preserves the existing `db_path` handling (ENH-3700 later widens it to `Path | LocalTarget`), and catches open failures only.
 - `remote_telemetry.mark_read_unreachable(endpoint: str) -> None` / `read_unreachable_active(endpoint: str) -> bool` — read-scoped marker (names indicative).
 
 ### Call Path
@@ -145,6 +145,7 @@ Prior scores were cleared (the plan changed: read-scoped marker, single same-cli
 Revised 2026-10-04 (twice). First pass consumed ENH-3720's shared deadline rather than duplicating transport work. Second pass (Opus): ENH-3720 landed so the `blocked_by` was removed and the proposed `connect_readonly_telemetry` replaced by existing `connect_readonly(deadline=)`; deadline expiry is isolated to a read-scoped marker so it cannot suppress telemetry writes; the "behind/ahead readable" and "either merge order" text was dropped because ENH-3700 no longer changes read-mode policy or re-raises; sanitization of `_connect_readonly` is owned here only.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:26 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - EPIC-3693 review #2 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.78) - 2026-10-04 - ENH-3720 dependency removed (landed); read-scoped marker, no-ensure_schema/single-verification and sanitization ownership pinned; implementation not performed
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - guard ownership, per-invocation deadline, marker recovery/scope and safe best-effort diagnostics clarified; deferred strict API removed as a required gate
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:04 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`

@@ -139,7 +139,7 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
 ## Impact
 
 - **Priority**: P2 - brainstorm is a shipped built-in loop whose core machinery is inert in every observed run
-- **Effort**: Large - seven children; full rewrite of a ~460-line loop plus profiles, grounding, rendering, and pre-mortem
+- **Effort**: Large - five children; full rewrite of a ~460-line loop plus profiles (grounding, rendering, and pre-mortem are EPIC-3687)
 - **Risk**: Medium - replaces a shipped loop's behavior; mitigated by `ll-loop validate`, deterministic script-side scoring, and FEAT-3596 fixtures
 - **Breaking Change**: Yes - removed context keys (`novelty_threshold`, `max_saturation`, `novelty_backend`) and portfolio output shape
 
@@ -169,14 +169,14 @@ In scope:
   An explicit `mode=<x>` skips classification; individual profile knobs
   (`materialize`, `ground`, `premortem`, …) are overridable per run so mixed
   briefs (e.g. a product concept that also needs a landing-page visual) work.
-- `ground` state: none | codebase, with non-LLM anchor-existence probes. **`ground=web`
+- `ground` state _(owned by EPIC-3687)_: none | codebase, with non-LLM anchor-existence probes. **`ground=web`
   (cited-URL fetch + quote match) is deferred to a follow-up** (2026-09-29 third review):
   v1 ships codebase grounding only; the `business` profile defaults to `ground: none`.
-- `materialize` state for visual mode: HTML/SVG mockups → Playwright screenshots →
+- `materialize` state for visual mode _(owned by EPIC-3687)_: HTML/SVG mockups → Playwright screenshots →
   image-capability canary → image-pairwise judging (no mid-tournament HTML restart in v1).
 - Integration and evaluation (FEAT-3596): reference runs, failure-path fixtures,
   combined step budget, comparison against the old loop.
-- Optional annotate-only `premortem` finisher (risks and kill criteria for winner and runner-up).
+- Optional annotate-only `premortem` finisher (risks and kill criteria for winner and runner-up) _(owned by EPIC-3687)_.
 
 Out of scope:
 
@@ -205,7 +205,7 @@ _FEAT-3584 / FEAT-3585 / FEAT-3586 (grounding, materialize, pre-mortem) moved to
 - Versus the old loop on 2 fixed briefs (FEAT-3596): fewer retained duplicates, more
   occupied cells, token/runtime cost recorded.
 - Each of the 4 modes has a profile and at least one reference run producing its
-  expected output shape (visual mode produces rendered mockups + screenshots).
+  expected output shape (v1 visual mode covers axes, lenses and rubric with text judging; rendered mockups + screenshots are owned by EPIC-3687).
 - `mode: auto` selects the expected profile for one reference brief per mode, and
   an explicit `mode=` override bypasses classification.
 - `ll-loop validate` passes (MR rules, per-run artifact isolation under
@@ -224,6 +224,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:24 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:27 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:32 - `f51f0560-5252-48a7-8a81-10d11331e067.jsonl`
 

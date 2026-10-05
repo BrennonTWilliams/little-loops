@@ -220,9 +220,11 @@ All symbols below live in `scripts/little_loops/brainstorm_engine.py` (importabl
 
 ### Signatures
 
+_Engine-module signatures are owned by FEAT-3667 — see its § Program Design; where they differ from the list below, FEAT-3667's win (e.g. `build_schedule` takes finalist IDs, `check_floors` takes `elapsed_ms`, `render_report` takes `failed`)._
+
 - `collapse_duplicates(ideas: list[IdeaRecord], groups: list[list[str]]) -> list[IdeaRecord]` — keeps the first-generated member of each duplicate group
 - `ingest_ideas(raw: str, ideas: list[IdeaRecord], profile: dict) -> list[IdeaRecord]` — assigns stable IDs, normalizes and validates cells, flags `off_grid`, appends to the run's ideas
-- `build_schedule(finalists: list[IdeaRecord]) -> list[list[tuple[str, str]]]` — deterministic circle-method round-robin as a list of rounds; each `(a, b)` fixes the presentation order (§ Tournament Specification → Schedule)
+- `build_schedule(finalist_ids: list[str]) -> list[list[tuple[str, str]]]` — deterministic circle-method round-robin as a list of rounds; each `(a, b)` fixes the presentation order (§ Tournament Specification → Schedule)
 - `rank(verdicts: list[PairVerdict], finalists: list[IdeaRecord]) -> list[str]` — idea IDs by Copeland score, then head-to-head, then generation order
 - `check_floors(ideas: list[IdeaRecord], finalists: FinalistsFile, profile: dict, stage: str) -> list[str]` — returns the list of violations (empty = pass); `stage` is `generation` | `pre_tournament` | `final`; the CLI exits 1 on any violation. The one function behind both `check_floors` states and `validate_portfolio`
 - `validate_portfolio(portfolio: dict, ideas: list[IdeaRecord], finalists: FinalistsFile, profile: dict) -> list[str]` — `check_floors(stage="final")` + reference integrity + non-null winner; exit 1 on violation
@@ -547,6 +549,7 @@ _Added by `/ll:confidence-check` on 2026-10-02 (re-scored after the FEAT-3667 sp
 **Note** (added by `/ll:audit-issue-conflicts`): Profile data vs FEAT-3667: the four preset JSONs (`artifact`, `visual`, `functional`, `business`) ship in FEAT-3667 with unbuilt knobs off; this issue owns only the state wiring that calls `resolve_profile`. "Ships with the built-in `artifact` profile only" is superseded; brief 2's `mode=functional` merge gate depends on the FEAT-3667 presets.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:27 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:confidence-check` - 2026-10-03T03:33:35 - `7cd57e8e-71e0-4299-a1a4-ccd6bda98ee6.jsonl`
 - `/ll:advise` (Opus, ENH-3678/FEAT-3667 review follow-up: PairVerdict.pair, classify-route test) - 2026-10-02
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:03 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`

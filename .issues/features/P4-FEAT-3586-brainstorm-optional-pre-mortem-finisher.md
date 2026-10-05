@@ -118,7 +118,7 @@ All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `pyth
 
 ### Configuration
 - Context key: `premortem` (resolved from profile; FEAT-3583 override, default `""`). No `premortem_rounds`.
-- Step budget: +3 parent steps when enabled (critic, defender, `annotate`); +0 when disabled. Owned by FEAT-3596's combined budget.
+- Step budget: +3 parent steps when enabled (critic, defender, `annotate`); +0 when disabled. This finisher bumps `max_steps` by its own cost in the change that lands it; EPIC-3687 verifies the all-features total.
 
 ### Codebase Research Findings
 
@@ -195,6 +195,7 @@ _Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate
 - `annotate` needs `portfolio.json`, `ideas.jsonl`, and the engine module, none of which exist yet. Signatures are pinned only against FEAT-3582's spec, so recheck them once FEAT-3582 lands.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:25 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:28 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:10 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
 - `/ll:confidence-check` - 2026-09-29T02:00:48 - `c90c2478-f308-49d4-930c-8be0a9590776.jsonl`

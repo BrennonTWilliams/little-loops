@@ -28,7 +28,7 @@ epic: EPIC-3693
 
 ## Summary
 
-Under `history.backend.provider: libsql` (FEAT-3535), user-invoked history reader commands raise an unhandled `HistoryBackendNotLocal` traceback. This issue gives those sites a clean, named refusal ("not supported with a remote backend", exit 1) through one boundary helper, and documents the support matrix. Remote read serving for `ll-history` subcommands and MCP `history_search` is **not planned**; docs must say "not supported with a remote backend" and promise no follow-up (ENH-3668/3684/3685 are deferred indefinitely). The central guard, degrade sites and `ll-harness` serve are ENH-3700.
+Under `history.backend.provider: libsql` (FEAT-3535), user-invoked history reader commands raise an unhandled `HistoryBackendNotLocal` traceback. This issue gives those sites a clean, named refusal ("not supported with a remote backend", exit 1) through one boundary helper, and documents the support matrix. Remote read serving for `ll-history` subcommands and MCP `history_search` is **not planned**; docs must say "not supported with a remote backend" and promise no follow-up (ENH-3668/3684/3685 are deferred indefinitely). The central guard and `ll-harness` serve are ENH-3700; the degrade sites are ENH-3728.
 
 ## Current Behavior
 
@@ -80,7 +80,7 @@ Remote-backend users hit an unhandled traceback from `ll-history`, `ll-logs` and
 
 ### Project-root and entry-point contract
 
-Every default read uses the root selected by the command: thread `root=project_root` through `main_history`'s pre-resolves (including the summary branch prepared for ENH-3700), and use the selected `--cwd` root for logs eval-export. A default-shaped absolute path alone does not supply resolver root context. Test remote owning root/local foreign cwd and local owning root/remote foreign cwd; preserve `history.db_path` and `LL_HISTORY_DB` local overrides. These changes do not alter `_resolve_once` or the reader opener contract.
+Every default read uses the root selected by the command: thread `root=project_root` through `main_history`'s pre-resolves (including the summary branch prepared for ENH-3728), and use the selected `--cwd` root for logs eval-export. A default-shaped absolute path alone does not supply resolver root context. Test remote owning root/local foreign cwd and local owning root/remote foreign cwd; preserve `history.db_path` and `LL_HISTORY_DB` local overrides. These changes do not alter `_resolve_once` or the reader opener contract.
 
 ## Integration Map
 
@@ -153,7 +153,7 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 
 - ENH-3700 (3657b, central guard + serve/degrade; `blocks`, lands after this), ENH-3677 (shared `remote` fixture; `blocked_by`, land first), BUG-3652 (startup/write-path audit; **done**, `62ac0fc89`), ENH-3658 (hand-built paths; `logs` sites deferred here), ENH-3682 (prepatch read budget; independent), FEAT-3535 (remote libSQL backend).
 - ENH-3668 / ENH-3684 / ENH-3685 (remote read serving) are deferred indefinitely; no follow-up is promised in docs.
-- Consequence to record: remote users lose `ll-history` reader subcommands and MCP `history_search` ("not supported with a remote backend"); `summary` and `ll-harness` are addressed in ENH-3700.
+- Consequence to record: remote users lose `ll-history` reader subcommands and MCP `history_search` ("not supported with a remote backend"); `summary` is addressed in ENH-3728 and `ll-harness` in ENH-3700.
 
 ## Status
 
@@ -170,6 +170,7 @@ _Cleared 2026-10-02 after the split into 3657a (this issue) and ENH-3700 (3657b)
 **Ownership:** epilog and CLI.md "Exit codes" edits here cover `ll-ctx-stats` and `ll-history` only. ENH-3700 owns `ll-harness` serving and its existing fail-closed retry/baseline validation behavior; this issue adds no remote-backend refusal there.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:26 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - root propagation, public-boundary tests and safe MCP refusal amended; implementation not performed
 - `/ll:audit-issue-conflicts` - 2026-10-02T19:46:04 - `f99945f8-c860-47a6-88f6-46140ee77213.jsonl`
 - `/ll:advise` (Opus, EPIC-3693 children review) + split into ENH-3657 / ENH-3700 - 2026-10-02

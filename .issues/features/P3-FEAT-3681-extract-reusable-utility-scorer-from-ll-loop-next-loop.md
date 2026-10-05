@@ -42,7 +42,7 @@ The arena needs auditable scoring, while existing loop recommendations must not 
 ## Scope Boundaries
 
 - **In scope:** pure legacy response curves and additive scorer, the small geometric helper with explicit no-utility semantics, next-loop adaptation, consumed keyed weight config/schema, consumer-boundary validation, documentation, and fixed-clock compatibility tests.
-- **Out of scope:** curve corrections or configurable curve families; project gate evaluation and gate configuration; per-verb arena settings, `ll-next`, and its four core generators (FEAT-3561); bucket pressure, `recommendation_events`, acceptance matching, and any `SCHEMA_VERSION` bump (FEAT-3711); backtesting (FEAT-3712); extra generators (FEAT-3713/3714). Decision-rule compliance remains deferred until rules have machine-evaluable scope.
+- **Out of scope:** curve corrections or configurable curve families; project gate evaluation and gate configuration; per-verb arena settings, `ll-next`, and its four core generators (FEAT-3561); `recommendation_events`, acceptance matching, and any `SCHEMA_VERSION` bump (FEAT-3711); bucket pressure and automatic attribution (FEAT-3722, deferred); backtesting (FEAT-3712, cancelled); extra generators (FEAT-3713/3714). Decision-rule compliance remains deferred until rules have machine-evaluable scope.
 
 ## Integration Map
 
@@ -144,8 +144,8 @@ The arena needs auditable scoring, while existing loop recommendations must not 
 ## Related
 
 - FEAT-3561 (stateless arena core; blocked by this issue) and EPIC-3710 (arena umbrella).
-- FEAT-3711 owns recommendation events, acceptance, pressure, and the history schema bump; ENH-3678 protects that bump and is not a prerequisite for this extraction.
-- FEAT-3712 owns backtesting; FEAT-3713/3714 own additional or deferred generators.
+- FEAT-3711 owns recommendation events, acceptance, and the history schema bump; FEAT-3722 (deferred) owns bucket pressure and automatic attribution; ENH-3678 protects that bump and is not a prerequisite for this extraction.
+- FEAT-3712 (backtesting) is cancelled; FEAT-3713/3714 own additional or deferred generators.
 
 ## Use Case
 
@@ -164,3 +164,7 @@ A user runs `ll-loop next-loop` with default configuration after the extraction 
 - 2026-10-04: Pre-implementation review with `/ll:advise --signal user_requested --host claude-code --model opus` (confidence 0.74 across the three issues). Added zero-weight validation, stable geometric weight normalization, controlled nondefault additive overflow, and the source-proven local-null merge gap. Retained byte-identical default behavior and the small scope. Opus suggested clamping future timestamps; rejected here because curve corrections belong outside this extraction and FEAT-3561 already owns bounded arena adapters. An extreme future timestamp currently raises `OverflowError` in the legacy recency curve; characterize that exception rather than silently clamping it.
 
 - Second Opus pass (2026-10-04, confidence 0.74): added the shared-merge consumer audit/parity check. Retained unconditional stable normalization in the new geometric helper; it never runs on the legacy additive path, so the concern about changing old score bits is inapplicable.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-05T03:38:27 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
