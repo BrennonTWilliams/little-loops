@@ -28,6 +28,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+size: Very Large
 ---
 
 # ENH-3723: Canonical usage qualification across source and snapshot consumers
@@ -272,26 +273,26 @@ Cost is the same except 2026-09 and 2026-10 `ll-auto` already withhold the verdi
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-05_
+_Added by `/ll:confidence-check` on 2026-10-04 (re-run on the revised scope; supersedes the earlier pass)_
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE
 
 ### Concerns
-- Decision 4 (scope-local `channel=` parameter on `select_usage_coverage`) is recorded under Decision but not carried into "Files to Modify", Implementation Steps, Program Design Signatures, or Acceptance Criteria; its required test ("a live counterpart cannot change quality figures") has no AC line.
-- Program Design still hedges on the now-settled policy ("after resolving the legacy/estimated policy", "legacy exception, if selected") — stale wording an implementer could read as still open.
-- Acceptance Criterion 1 (human review of the recorded policy) is unchecked; implementation should not begin changing published figures before that review.
-- Gates clean: Program Design, dependencies (no `blocked_by`), parity, claim/symbol refs, structure, learning tests (none required). All cited files, tests, and related issues resolve; `qualify_usage`/`UsageQualification` do not exist yet (no duplicate).
-
-**Follow-up 2026-10-04:** the review below carries Decision 4 into the API/owners/steps/criteria, removes settled-policy hedging and replaces AC1's redundant approval wording with conformance to the recorded `/ll:decide-issue` policy. Session completeness, workspace proof and observed-zero baselines are now explicit. These specification changes supersede those concerns but do not recompute the historical scores; rerun the configured confidence gate before implementation (prior outcome 63 is below 65).
+- Gates clean: Program Design (`check-design` exit 0), dependencies (no `blocked_by`), parity, claim/symbol refs, structure, decision gap, learning tests (none required, `unproven_mechanism` unset). `qualify_usage`/`UsageQualification`/`select_session_derive_status` do not exist yet (no duplicate); all cited files, tests and selectors resolve.
+- The earlier concerns (Decision 4 `channel=` scope missing from owners/steps/ACs, settled-policy hedging in Program Design, AC1 approval wording) are resolved in the current text: `channel` appears in the selector signatures, Implementation Step 2 and the transcript-scope AC.
+- `session_store/lifecycle.py:1702` already emits a `derive_pending` reason for source freshness. The proposed `SessionDeriveStatus` reuses that name for a different check (raw-to-usage, per session); keep the code namespaces distinct, or share the constant, so the two meanings cannot be conflated.
+- `ll-history-context` returned one prior review prompt for this ID, not a correction, so no outcome deduction applied.
 
 ### Outcome Risk Factors
-- Deep per-site complexity: a new shared qualification contract threaded through source rollups, snapshot selection, ctx_stats, quality baselines and the dashboard, plus a new coverage scope parameter (contract changes, not mechanical edits).
-- Broad enumeration across 7 modify sites plus workspace_quality and dashboard dependents (~6-10 consumers).
+- Outcome 63 is below `commands.confidence_gate.outcome_threshold` (65). Run `/ll:issue-size-review ENH-3723`, which would likely split it into staged children: (1) `qualify_usage` plus the `channel=` selector scope, (2) `select_session_derive_status` plus workspace injection, (3) quality per-metric baselines and regression eligibility, (4) snapshot/dashboard export.
+- Deep per-site complexity: a new shared qualification contract (3 new APIs, 1 new selector parameter) threaded through source rollups, snapshot selection, ctx_stats, quality baselines and the dashboard (contract changes, not mechanical edits).
+- Broad enumeration across 9 modify sites and ~6-10 consumers, with about 20 acceptance criteria to prove.
 - Quality windows change published verdicts (7 non-stable verdicts and 5 phantom zero baselines become unavailable); accepted in the recorded policy, but a large visible behavior change to regress-test.
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T03:02:22 - `8b143c38-25bb-46fe-827f-32c895e75d3c.jsonl`
 - Pre-implementation review - 2026-10-04 - `/ll:advise` with `claude-opus-5-5` (confidence 0.72) supported channel scoping and explicit per-metric eligibility, while recommending a narrower raw-to-usage completeness check. Inspected checkpoint/version, producer markers, workspace union and regression code; in-memory probes reproduced live-row coverage contamination and rejection of an observed-zero baseline. Adopted member-local status/map injection, source-loss controls and derived-no-usage versus positive-contract-gap semantics. Advisor dissent favored treating every raw-without-usage session as unavailable; not adopted because most raw events contain no usage, with no-observation/unknown-proof windows still fail-closed. The suggested raw-ID reuse risk does not apply to the inspected `AUTOINCREMENT` schema. Focused existing coverage/provenance/snapshot/quality/workspace suite: 101 passed. Updated this issue and epic handoff; no implementation or fresh confidence score is claimed.
 - `/ll:confidence-check` - 2026-10-05T02:38:51 - `2aefc2a8-3cc7-463c-8fe9-e07529945488.jsonl`
 - `/ll:decide-issue` - 2026-10-05T01:57:06 - `dd4da702-03cb-4aad-8b85-189a7f98afba.jsonl`
