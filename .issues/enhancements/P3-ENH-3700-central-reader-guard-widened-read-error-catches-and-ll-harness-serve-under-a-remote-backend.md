@@ -174,7 +174,7 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper, s
 ## Impact
 
 - **Priority**: P3 - opt-in remote-backend users only; startup breakage was BUG-3652.
-- **Effort**: Medium - guard, one mechanical catch replacement, harness serve, two gates.
+- **Effort**: Medium/Large - guard and local provenance, advisory catch/diagnostic changes across reader modules, required harness validation/result reuse across runner branches, two AST gates and public failure-path tests. Catch widening alone is mechanical; the required lookup and safe diagnostic changes are not.
 - **Risk**: Medium - advisory catch widening is gated; narrow required calls intentionally change failure disposition and must retain successful-empty/local-first-use behavior.
 - **Breaking Change**: Required harness history failures now refuse instead of being mistaken for absent data; healthy local use and advisory defaults are preserved.
 

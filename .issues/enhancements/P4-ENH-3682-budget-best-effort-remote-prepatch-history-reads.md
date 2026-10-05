@@ -67,6 +67,8 @@ Read-marker completion belongs to the entire advisory read: open/verification fa
 
 Validate timestamps at the reached shared decoding seam: malformed/missing/nonfinite/future/expired state is a cache miss or inactive marker. Use the existing TTLs; invalid state cannot authorize access, permanently suppress reads, or populate `_VERIFIED`. With an invalid verified-cache entry, perform normal deadline-bound verification on the same client. Treat expected cache/marker filesystem failures as bookkeeping failure rather than read failure: a successful query still returns its real result if clearing the read marker fails, and a failed query still returns `None` if writing its marker fails. Diagnostics stay fixed and safe. Do not add locking/replay or redesign writer suppression; existing well-formed state keeps its behavior.
 
+**Validate the complete verification-cache payload, not only its timestamp (review #5).** A temporary decoder probe returned `OverflowError` for `version=Infinity`, silently accepted `47.9` as version `47`, and accepted `true` as version `1`. The current `int(data["version"])` conversion both escapes the never-raises boundary and can turn malformed cache data into accepted access evidence. Require the written JSON schema-version shape (a non-boolean, non-negative integer); missing, fractional, nonfinite, string/container or boolean versions are cache misses, without coercion. Validate cached project/stamp field shapes against their written string-or-null contract before constructing `RemoteState`; normal access checks still decide whether a well-formed stamp/version is acceptable. Reject the malformed entry before process/connection verification completion, then perform the ordinary bounded verification. This is reached advisory-cache decoding only; remote schema/migration policy is unchanged.
+
 The local branch has a reached setup exception outside the current `HistoryError` taxonomy: a regular file used as the DB's parent makes `read_base_sha` escape `FileExistsError` from `ensure_db`. Preserve normal local setup, but in explicit best-effort mode normalize/catch expected `OSError` setup failures as well as `HistoryError`/SQLite failures and return `None` without setting a remote marker. Use narrow catches around the named operations, not blanket suppression of process-control exceptions or unrelated programming errors. A missing endpoint/configuration is unavailable configuration, not proof of an unreachable endpoint; marker handling must not call a failing `cfg.endpoint()` again from its exception path.
 
 ## Motivation
@@ -88,7 +90,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 
 - `scripts/little_loops/session_store/backend.py` — best-effort branch in `open_history_readonly`; preserve the local and ordinary-reader branches.
 - `scripts/little_loops/session_store/libsql.py` — connection-scoped best-effort verification completion and `_guard`'s narrow verified-connection branch; keep ordinary `connect_readonly` defaults, read-only denial, config and deadline enforcement.
-- `scripts/little_loops/session_store/remote_telemetry.py` — read-scoped marker kind/helpers and narrow timestamp validation in the reached existing `unreachable_active`/`load_verified` paths; expected bookkeeping I/O failures stay advisory.
+- `scripts/little_loops/session_store/remote_telemetry.py` — read-scoped marker kind/helpers, timestamp validation in the reached existing `unreachable_active`/`load_verified` paths, and strict written-payload shape validation for cached version/project/stamp fields; expected bookkeeping I/O failures stay advisory.
 - `scripts/little_loops/history_reader/_base.py` — narrow best-effort parameter, open-error fallback, sanitized remote warning.
 - `scripts/little_loops/history_reader/runs.py` — opt in only `read_base_sha`/`read_base_dirty`; query/fetch fallback separate from opening fallback; sanitize the remote branch of `_log_query_failure`.
 - `scripts/tests/test_remote_callers_bug3652.py` and `scripts/tests/test_remote_ingestion_telemetry.py` — focused prepatch deadline/marker/mode tests, using ENH-3677's shared fixture and ENH-3720's stub fault controls.
@@ -124,7 +126,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 ## Impact
 
 - **Priority:** P4 — an opt-in remote backend can delay an advisory FSM step.
-- **Effort:** Small/Medium — one best-effort seam, a marker pair and two callers.
+- **Effort:** Medium — best-effort opener and two callers, connection-scoped verification, read/write marker isolation, reached cache validation and transport failure tests.
 - **Risk:** Medium — timeout or marker behavior must not leak into normal reads or silence writes.
 - **Breaking Change:** No.
 
@@ -140,6 +142,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 - [ ] Separate open-error and query/fetch-error tests preserve each reader's never-raises/`None` fallback.
 - [ ] Verification/query timeout sets the read marker; second-reader/fresh-process suppression sends zero requests; TTL expiry (and a later success) permits recovery. Empty rows and policy/query errors do not mark the endpoint down, and ordinary explicit reads ignore the marker. Captured logs/stderr contain no raw exception/endpoint/token/SQL canaries (`_connect_readonly` and `runs._log_query_failure`).
 - [ ] Malformed/missing/nonfinite/future/expired timestamps in either unreachable-marker kind and the verified cache never raise or suppress permanently. Invalid verified state triggers normal bounded verification, without process-cache contamination. Inject marker write/clear failure and assert failed reads still return `None`, while healthy reads return their actual data; expected local setup `OSError` returns `None` without a remote marker. Missing endpoint configuration does not cause a second exception from attempted marker creation.
+- [ ] Malformed verified-cache versions (including Infinity, fractional values, bool, strings, null, missing and containers) and wrong-type project/stamp fields are cache misses, never truncated/coerced access evidence or escaped exceptions. A cold-process test with a current-looking fractional version performs normal verification, so a behind/foreign live store is still refused; a well-formed warm cache retains its one-data-POST behavior. Invalid entries cannot set connection completion or populate `_VERIFIED` by themselves.
 - [ ] `python -m pytest scripts/tests/` passes; the new API behavior is documented.
 
 ## Related
@@ -165,6 +168,7 @@ Prior scores were cleared (the plan changed: read-scoped marker, single same-cli
 Revised 2026-10-04 (twice). First pass consumed ENH-3720's shared deadline rather than duplicating transport work. Second pass (Opus): ENH-3720 landed so the `blocked_by` was removed and the proposed `connect_readonly_telemetry` replaced by existing `connect_readonly(deadline=)`; deadline expiry is isolated to a read-scoped marker so it cannot suppress telemetry writes; the "behind/ahead readable" and "either merge order" text was dropped because ENH-3700 no longer changes read-mode policy or re-raises; sanitization of `_connect_readonly` is owned here only.
 
 ## Session Log
+- EPIC-3693 review #5 - 2026-10-05 - complete verified-cache payload validation added after probes found OverflowError on Infinity and silent fractional/bool version coercion; normal access policy and warm-cache behavior retained. Opus consult skipped at the existing 3/3 session budget; implementation not performed.
 - EPIC-3693 review #4 - 2026-10-05 - malformed/nonfinite marker/cache timestamps and expected setup/bookkeeping failures added to the never-raises contract; selected-local forwarding integration synchronized with ENH-3657. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - real connection-scoped verification seam, cold-process/file-cache gate and query/fetch marker completion specified; write=True policy retained after confirming metadata-only SELECTs; implementation not performed
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:26 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`

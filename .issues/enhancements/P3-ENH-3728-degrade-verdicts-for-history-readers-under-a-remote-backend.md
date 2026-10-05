@@ -126,7 +126,7 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper an
 
 - **Priority**: P3 - opt-in remote-backend users only.
 - **Effort**: Medium - four library/CLI sites, one skill + mirrors, one loop YAML, docs.
-- **Risk**: Low - catches only the already-raised `HistoryUnsupported`; local behavior unchanged.
+- **Risk**: Medium - selected-local provenance crosses direct schema helpers, summary metrics must remain unavailable under remote, and SFT quality refusal must preserve the predecessor's failure route/atomic publication. These require actual data and packaged-state tests beyond catching `HistoryUnsupported`.
 - **Breaking Change**: No.
 
 ## Scope Boundaries

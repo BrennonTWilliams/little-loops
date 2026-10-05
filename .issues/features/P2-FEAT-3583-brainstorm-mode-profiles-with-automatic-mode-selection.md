@@ -22,7 +22,7 @@ reconcile_attempted: true
 
 ## Summary
 
-Add automatic mode selection, explicit context-override wiring, and preset tuning to the engine shipped by FEAT-3667 and wired by FEAT-3582. The four JSON presets, Profile/Axis schema, resolver and precedence tests already belong to FEAT-3667. This issue changes the default mode from artifact to auto; it does not enable optional capabilities.
+Add automatic mode selection, explicit context-override wiring, and preset tuning to the engine shipped by FEAT-3667 and wired by FEAT-3582. The four JSON presets, Profile/Axis schema, resolver and precedence tests already belong to FEAT-3667. This issue adds opt-in mode=auto while preserving the artifact default. FEAT-3596 owns the default switch after its existing four real auto-mode runs pass; no additional calibration corpus or optional capability is introduced.
 
 ## Current Behavior
 
@@ -31,7 +31,7 @@ The current shipped loop has one generic pipeline. After FEAT-3667/3582 land, fo
 ## Expected Behavior
 
 - Init runs `resolve-profile --validate-only` with the explicit mode/knobs before any classifier call; invalid mode, unknown key, bad numeric/bool, or unbuilt capability fails with no LLM dispatch. Reuse the engine validator, without a separate gate state or a second implementation.
-- Explicit `mode=artifact|visual|functional|business` skips classification. `mode=auto` runs one prompt state, capturing `MODE_JSON: {"mode": str, "confidence": number, "rationale": str}` for the resolver. `classify_mode` declares `next: resolve_profile` and `on_error: resolve_profile` (plus bounded timeout/rate-limit routing), and the resolver treats a failed classifier call as fallback, rather than accepting partial stdout.
+- Keep the shipped default `mode=artifact`; users can explicitly select `mode=auto`. Explicit `mode=artifact|visual|functional|business` skips classification. `mode=auto` runs one prompt state, capturing `MODE_JSON: {"mode": str, "confidence": number, "rationale": str}` for the resolver. `classify_mode` declares `next: resolve_profile` and `on_error: resolve_profile` (plus bounded timeout/rate-limit routing), and the resolver treats a failed classifier call as fallback, rather than accepting partial stdout.
 - Confidence must be finite and in [0,1], excluding booleans. A known mode with confidence >= 0.6 is accepted; malformed/unknown/invalid confidence, confidence < 0.6, or classifier host error/timeout falls back to artifact. `profile.json` records requested mode, decision, fallback reason, resolved mode, and overridden keys. The banner and report make the choice visible and explain `mode=` reruns.
 - Explicit nonempty context knobs override the selected preset. Empty string inherits; explicit false/none disables. Knobs are reframe, ground, materialize, premortem, min_ideas, min_cells, max_finalists, ideas_per_round. The resolver enforces BUILT_CAPABILITIES. In core v1, reframe=true, ground=codebase, materialize=render and premortem=true fail until their owning implementation enables them (reframe remains v2).
 - Prompts consume captured engine blocks with nonce fences; their schema/rubric/lenses are already parameterized by FEAT-3582. Do not rewrite that plumbing again.
@@ -47,7 +47,7 @@ Mode-specific lenses, bins, idea fields and rubric provide useful differentiatio
 
 ## Proposed Solution
 
-Add classify_mode between init and the existing resolve_profile state, selecting it from init only for auto. Capture classifier stdout and exit status, write a safe raw input file in resolve_profile, and pass --decision-file plus --set values to the engine. Preserve exit status if resolve_profile and prompt-block share an action: failure of either must prevent frame. Fence the brief and captured blocks. Every prompt state has next/on_error or an explicit evaluator.
+Add classify_mode between init and the existing resolve_profile state, selecting it from init only for auto. Capture classifier stdout and exit status, write the raw input with FEAT-3582's builtin printf/:shell transport in resolve_profile, and pass shell-quoted --decision-file plus --set arguments to the engine. Declare a finite classify_mode timeout, include all permitted retries/backoffs in the derived pre-tournament bound, and update the parent timeout/engine constants if required. Preserve exit status if resolve_profile and prompt-block share an action: failure of either must prevent frame. Fence the brief and captured blocks. Every prompt state has next/on_error or an explicit evaluator.
 
 ## Program Design
 
@@ -83,7 +83,7 @@ Optional target flips are owned by FEAT-3584 (functional ground=codebase), FEAT-
 
 ### Bounded tuning and comparable evaluation
 
-The completed FEAT-3686 spike found functional approach agreement 0.72 (<0.75); visual/business axes are unmeasured. For each of these modes, use a fixed corpus of at least 20 representative ideas and the same three independent blind-tag calls, recording exact-cell and per-axis agreement. Permit at most two tuning iterations (three measured versions including the initial one); acceptance is exact-cell >=0.6 and each axis >=0.75. If it still fails, preserve a provisional explicit-mode preset and leave auto default on artifact until the axis decision is resolved; report the blocker rather than tune indefinitely or silently weaken the threshold.
+The completed FEAT-3686 spike found functional approach agreement 0.72 (<0.75); visual/business axes are unmeasured. For each of these modes, use a fixed corpus of at least 20 representative ideas and the same three independent blind-tag calls, recording exact-cell and per-axis agreement. Permit at most two tuning iterations (three measured versions including the initial one); acceptance is exact-cell >=0.6 and each axis >=0.75. If it still fails, preserve a provisional explicit-mode preset, keep the shipped default artifact, and leave the tuning acceptance criterion pending until the axis decision is resolved; report the blocker rather than tune indefinitely or silently weaken the threshold.
 
 Freeze the final definitions and corpus/model/version in the run record. If functional bins/definitions change, re-tag **both old and new** pinned-brief ideas with those same final definitions; the historical six-cell figure is not a gate against a changed grid. FEAT-3582's earlier comparison uses FEAT-3667's provisional preset and is preserved as its own evidence.
 
@@ -93,12 +93,12 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 
 | Artifact | Behavior | Disposition |
 |---|---|---|
-| brainstorm.yaml | Explicit artifact default | Changed to auto only when classifier and preset tuning gates pass |
+| brainstorm.yaml | Explicit artifact default | Preserved here; FEAT-3596 flips to auto only after tuning and live classifier/integration evidence pass |
 | brainstorm.yaml | Explicit modes, engine data blocks, sink contract | Preserved |
 | brainstorm-profiles/*.json | Preset schema and unbuilt knobs off | Preserved; tune bins/definitions/lenses only |
 
 ### Files to Modify
-- scripts/little_loops/loops/brainstorm.yaml — init preflight/auto route, classifier, existing resolver's override plumbing, mode default.
+- scripts/little_loops/loops/brainstorm.yaml — init preflight/auto route, classifier, existing resolver's override plumbing; keep artifact as the default.
 - scripts/little_loops/brainstorm_engine.py — parse_mode_decision and decision/fallback provenance; reuse resolver validation.
 - scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json — tuning of existing files.
 - scripts/little_loops/fsm/fence.py — classify_mode brief registration.
@@ -117,7 +117,7 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 1. Tune and measure the existing presets within the bounded process; keep final axis definitions comparable across baselines.
 2. Wire explicit-input preflight, auto-only classify_mode, safe capture/file delivery and the existing resolver.
 3. Add malformed/finite-confidence/boundary/error/explicit-mode fixtures and capability-token wiring tests.
-4. Verify preset packaging, fence/capture rules, exact state count (classifier adds one successful-path state), both loop validation and the local suite.
+4. Verify preset packaging, fence/capture rules, exact state count (classifier adds one successful-path state), the derived classifier time/retry bound, both loop validation and the local suite. Document auto as opt-in; FEAT-3596 owns release of the new default.
 
 ## Impact
 
@@ -128,16 +128,19 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 
 ## Acceptance Criteria
 
-- Four existing presets satisfy FEAT-3667's schema; functional/visual/business tuning meets the bounded measurement gate before the default flips to auto.
-- One reference brief per mode is routed using stubbed classifier output plus documented real calibration runs; stubbed success alone is not evidence of classifier accuracy.
+- Four existing presets satisfy FEAT-3667's schema; functional/visual/business tuning meets the bounded measurement gate. The default remains artifact in this change; FEAT-3596 flips it only after live evidence passes.
+- One reference brief per mode is routed using stubbed classifier output. FEAT-3596 owns the four already-planned live auto runs and the default-switch gate; stubbed success alone is not evidence of classifier accuracy. No duplicate live calibration run is required here.
 - Explicit mode skips classification; invalid explicit inputs cause zero LLM dispatches even with mode=auto, including ideas_per_round outside FEAT-3667's 1–10 cap or min_ideas above nine-lens capacity. Reuse engine validation; do not add a second bound implementation.
 - Confidence 0.6 is accepted; lower, nonfinite/out-of-range, boolean, malformed, unknown mode and classifier host failure/timeout all fall back visibly to artifact.
 - A **built** numeric override (e.g. mode=business ideas_per_round=3) wins over the preset. Empty inherits; false/none disables. Unbuilt optional overrides fail preflight rather than requiring materialize to exist.
 - Every successful capability token reaches its explicitly mapped state; fail and _ routes remain failures. No route pre-wires an unbuilt state.
 - No reframe state, web grounding, or optional preset enablement is implemented here; no hidden evaluator call is added.
+- The classifier has a finite action timeout, disabled rate-limit waits and a derived retry/time increment mirrored in the parent and engine.
 - Changed definitions trigger comparable old/new re-tagging; reference records include import origin and actual resource usage.
 
 ## Review History
+
+_2026-10-05 implementation-boundary review; `/ll:advise` with claude-opus-5-5, confidence 0.78:_ Kept auto opt-in and moved the default switch to FEAT-3596 after its existing live evidence, avoiding a duplicate calibration corpus. Added explicit classifier timeout/retry-bound and shared safe argument transport requirements.
 
 Historical rationale only; the reconciled directive sections above define current scope (2026-10-05).
 
@@ -172,6 +175,7 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- Implementation-boundary review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue updates only) - 2026-10-05
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:28 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`

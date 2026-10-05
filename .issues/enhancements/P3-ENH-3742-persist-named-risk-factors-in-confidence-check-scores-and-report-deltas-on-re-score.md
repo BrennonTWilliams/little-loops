@@ -25,7 +25,8 @@ This is additive to scoring: no rubric change, no threshold change, no migration
 - `cmd_set_scores()` in `scripts/little_loops/cli/issues/set_scores.py` updates only explicitly supplied scalar fields using an unlocked read/overwrite of the issue file. Its separate `clear_scores(path: Path) -> bool` helper already uses the shared issue mutation lock and atomic writing.
 - Score clearing is a normal precondition of re-scoring: `scripts/little_loops/preparation_policy.py`, `_run_preconditions()`; `commands/reconcile-issue.md`; and `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` all use it. Clearing a factor baseline at those sites would prevent the intended comparison.
 - `scripts/little_loops/frontmatter.py`, `parse_frontmatter()` and `update_frontmatter()`, already support nested lists/maps in the canonical identity-bearing header. Factor records made of strings fit the reader's nested-scalar contract.
-- `scripts/little_loops/cli/issues/set_flags.py`, `apply_flags_from_notes()`, scans the entire latest Notes section selected by `issue_parser._section_body()`. A different subsection heading alone does not isolate removed-factor descriptions from phrase matching.
+- `scripts/little_loops/cli/issues/set_flags.py`, `apply_flags_from_notes()`, scans the entire latest Notes section selected by `issue_parser._section_body()`. It also passes the original notes to `_co_deliverable_suppressor()`: a historical filename matching `### Files to Create` can suppress a real active `missing_artifacts` finding and spuriously set `implementation_order_risk`, even when that filename's delta text contains no signal phrase. Filtering only the phrase-matching copy is insufficient.
+- `clear_scores(path)` currently derives its lock with the default `.issues` name, whereas configured mutators pass `config.issues.base_dir`. For a custom basename such as `tickets`, clearing locks the type directory while configured writes lock the issue tree.
 - Nothing compares one run's risk factors with the previous run's.
 
 ## Expected Behavior
@@ -63,14 +64,15 @@ risk_factors:
 ```
 
 - `id` is unique within the issue and is the sole matching key. It is a lowercase slug matching `^[a-z0-9][a-z0-9-]{0,47}$`, independent of description wording, file line numbers and numeric scores.
-- `domain` is `readiness` or `outcome`; hard-gate failures belong to readiness. `criterion` is a non-empty label for the existing criterion or gate, not a new rubric enum enforced by the CLI. Descriptions are non-empty, single-line text.
+- `domain` is `readiness` or `outcome`; hard-gate failures belong to readiness. `criterion` is a non-blank, single-line label for the existing criterion, cap or gate, not a new rubric enum enforced by the CLI. Descriptions are non-blank, single-line text. Reject whitespace-only labels/descriptions and embedded LF/CR rather than silently normalizing them.
+- Name concrete, independently removable concerns rather than one omnibus factor per low-scoring bucket. For example, `missing-page-tests` and `missing-submit-tests` are separate factors even when both contribute to the same test-coverage deduction. Repeated mentions or multiple scoring effects of the same concern share one ID; choose its primary domain/criterion and describe other effects without duplicate records. A changed score magnitude alone does not create a new identity. A broad/deep change can itself be a factor when it explains a complexity deduction.
 - The scorer assesses the issue, then reconciles identities with the prior list: reuse an ID for the same underlying risk, omit it when no longer supported, and mint a new ID only for a distinct risk. Honor existing Resolved Concerns suppression; do not mechanically carry prior factors forward.
 - Rewording or changing a factor's domain/criterion retains its ID and reports the changed metadata fields. Exact ID matching only; no similarity fallback. An ID removed on one run and later reintroduced is added relative to the immediately preceding recorded set.
 - Sort persisted records and delta entries by ID. Retain only the latest set; prior records needed for a removed entry come from the pre-write read, not a second permanent history field.
 
 ### Decision Rules
 
-Extend `set-scores`/`ss` with a **planned** `--risk-factors-file PATH` option accepting a JSON array; `-` reads stdin. Add optional JSON result output. The existing scalar-only invocation retains its quiet success, no-flags warning, omitted-field and exit-code behavior.
+Extend `set-scores`/`ss` with a **planned** `--risk-factors-file PATH` option accepting a JSON array; `-` reads stdin. Add `--json`/`-j` result output. Without JSON output, successful factor-bearing calls also remain quiet; the skill requests JSON to render the comparison. The existing scalar-only invocation retains its quiet success, no-flags warning, omitted-field and exit-code behavior.
 
 | Input/state | Behavior |
 | --- | --- |
@@ -78,19 +80,22 @@ Extend `set-scores`/`ss` with a **planned** `--risk-factors-file PATH` option ac
 | Valid array, including `[]` | Replace the complete list; `[]` remains an explicitly present, known-empty baseline. Factor-only CLI writes are allowed. |
 | Prior key absent | Record the new set; report `baseline: absent` and no comparable delta, not "everything added". |
 | Prior valid list present, including `[]` | Report `baseline: present` and compare exact IDs. |
-| Ordinary `--clear` / `clear_scores()` | Remove the existing six numeric fields only; preserve factors for the next re-score. `--clear` remains exclusive with score/factor updates. |
-| Malformed input or malformed stored baseline | Actionable stderr and nonzero exit; no scores or factors change. Scores-only calls need not validate the retained factor list. |
+| Ordinary `--clear` / `clear_scores()` | Remove the existing six numeric fields only; preserve factors for the next re-score, including an invalid baseline. `--clear` remains exclusive with score/factor updates; `--json` is allowed. |
+| Invalid caller factor input | Actionable factor-input diagnostic on stderr, exit 2 and empty stdout; no scores or factors change. Includes input-file/read/JSON and record-validation failures. |
+| Malformed stored baseline or issue/read/lock/write failure | Actionable diagnostic on stderr, exit 1 and no successful JSON; no scores or factors change. Scores-only/clear calls need not validate the retained factor list. |
 
-Validation covers file/read/JSON errors, a non-array root, record shape, required string fields, invalid IDs/domains, multiline or empty descriptions, and duplicate IDs. Do not add general score-range validation or new dependencies in this issue.
+Validation covers file/read/JSON errors, a non-array root, record shape, required string fields, invalid IDs/domains, blank or multiline criterion/description values, and duplicate IDs. Do not add general score-range validation or new dependencies in this issue.
 
-The read of the previous baseline, comparison, frontmatter update and write use one shared issue-tree mutation lock (`issue_lock_path(path, config.issues.base_dir)` / `acquire_lock()`) and `atomic_write()`. Use that same locked path for scalar-only updates. Return a successful comparison only after the write succeeds; preserve unrelated metadata and issue body text.
+The read of the previous baseline, comparison, frontmatter update and write use one shared issue-tree mutation lock (`issue_lock_path(path, config.issues.base_dir)` / `acquire_lock()`) and `atomic_write()`. Use that same locked path for scalar-only updates and configured clear calls, including the preparation-policy precondition. Keep direct `clear_scores(path)` calls backwards compatible through an optional keyword-only base-directory argument. Return a successful comparison only after the write succeeds; preserve unrelated metadata and issue body text. An identical valid assessment is successful, with fully unchanged retained entries and no membership changes.
 
-The JSON result has `issue_id` and a `risk_factors` object. With recorded factors, that object contains `recorded: true`, `baseline: absent|present`, the assessed `factors` list, and `added`, `removed`, `retained`. For an absent baseline the three comparison fields are `null`; for a present baseline they are arrays, including empty arrays. Added entries contain new records, removed entries prior records, and retained entries contain all four assessed record fields plus `changed_fields`, listed in stable `domain`, `criterion`, `description` order. An empty `changed_fields` means fully unchanged. With no factor input, return only `recorded: false` and baseline presence under this object.
+The JSON result has the resolved full `issue_id` (even when invoked with a numeric ID or `ss`) and a `risk_factors` object. With recorded factors, that object contains `recorded: true`, `baseline: absent|present`, the assessed `factors` list, and `added`, `removed`, `retained`. For an absent baseline the three comparison fields are `null`; for a present baseline they are arrays, including empty arrays. Added entries contain new records, removed entries prior records, and retained entries contain all four assessed record fields plus `changed_fields`, listed in stable `domain`, `criterion`, `description` order. An empty `changed_fields` means fully unchanged. With no factor input, including scalar-only, `--clear` and no-update calls, return only `recorded: false` and key-presence-based `baseline: absent|present` under this object; presence does not certify baseline validity. A no-update call still emits its existing warning on stderr, returns 0 and writes nothing. Read baseline presence under the same lock; `--json` never implicitly records factors.
+
+The lock serializes individual writer transactions; it does not make the model's assessment or later Notes edits one atomic transaction. Concurrent same-issue assessments compare against the latest set at their respective commit times. Identity continuity is best assessed with one scorer per issue; whole-skill serialization, stale-assessment rejection and transactional Notes writing are outside this issue.
 
 ### Signatures
 
 - `cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int` — existing entry point in `scripts/little_loops/cli/issues/set_scores.py`.
-- `clear_scores(path: Path) -> bool` — existing clearing helper; its six-key removal contract stays intact.
+- `clear_scores(path: Path, *, base_dir: str = ".issues") -> bool` — proposed backwards-compatible extension to the existing clearing helper; its six-key removal contract stays intact. CLI/preparation-policy callers pass the configured base directory.
 - Proposed internal data types: `RiskFactor`, `RetainedRiskFactor`, `RiskFactorDelta` dataclasses in the score-writer module; records expose string fields and delta lists rather than embedding prose parsing.
 - `parse_risk_factors(raw: str) -> list[RiskFactor]` — proposed pure input helper, not an existing API.
 - `diff_risk_factors(previous: list[RiskFactor] | None, assessed: list[RiskFactor]) -> RiskFactorDelta` — proposed pure comparison helper, not an existing API.
@@ -101,19 +106,20 @@ Confidence-check Phase 4 → `main_issues()` parser/dispatch → `cmd_set_scores
 
 ### Skill, Notes and Flags
 
-- Factor collection covers both readiness and outcome deductions/overrides, even above the configured display threshold. Membership must not disappear merely because a score crosses that threshold.
+- Factor collection covers readiness/outcome deductions, learning-test modifiers, criterion and aggregate caps, hard-gate overrides, and any correction-history adjustment applied by the existing assessment, even above the configured display threshold. An active unproven-mechanism cap contributes an outcome factor even when the raw sum already lies below the cap or all four dimensions otherwise score fully. Membership must not disappear merely because a score crosses a display threshold. This documents existing scoring inputs without changing their arithmetic.
+- Read the prior list during context gathering for identity reuse, then assess current evidence independently. Resolved Concerns suppression prevents unsupported repetition; if current evidence still justifies a deduction/override, name that evidence rather than omit its factor merely because similar historical prose was resolved.
 - In non-check mode, pass factors and all six scores together and consume the CLI's comparison; the model does not independently recompute the delta. Use stdin or a uniquely allocated issue-scoped temporary file so concurrent runs cannot share payloads.
-- On input-validation rejection, repair the payload and retry once. If still rejected, persist the valid numeric scores through the existing scores-only call, retain the baseline, and explicitly report `risk factors not recorded; delta unavailable`. Continue other issues in auto/batch/sprint mode. Other write/lock/issue-resolution failures remain reported failures, not successful comparisons.
+- On the factor-input rejection above (exit 2 plus its factor-input diagnostic), repair the payload and retry once. If still rejected, persist the valid numeric scores through a separate scores-only call, retain the baseline, and explicitly report `risk factors not recorded; delta unavailable`. Fallback succeeds only if that scores-only call succeeds. Do not retry or fall back after an invalid stored baseline, issue-resolution, read, lock or write failure (exit 1); report that issue's assessment could not be persisted. Continue other issues in auto/batch/sprint mode. A failed write never produces a claimed comparison or delta Notes.
 - `--check` performs no score/factor/notes/staging/log/flag writes and does not call the mutating writer. Preserve existing check-mode output and exit behavior; do not claim a persisted delta in that mode.
 - Append one Notes section when existing `HAS_FINDINGS` is true **or** a recorded comparison contains added/removed IDs. A clean all-removed result therefore still writes notes. Clean first-run and retained-only assessments report their baseline/comparison in normal output without adding otherwise empty notes to every legacy issue.
 - Place delta details under `### Risk Factor Delta`, separate from active concerns/gaps/outcome risk prose. Label removed factors as no longer reported, with no claim of verified resolution. Keep Session Log and Resolved Concerns intact; never translate delta removals into Resolved Concerns entries.
-- Exclude the entire exact `### Risk Factor Delta` subsection from `set-flags` phrase matching, both for default issue notes and supplied full notes via `--from-notes`. A heading choice alone is insufficient because the scanner reads the full latest Notes section. Preserve legacy note matching elsewhere, existing numeric preconditions and set-only flag behavior; do not derive flags from the structured list or auto-clear flags on removal.
+- Exclude every exact `### Risk Factor Delta` subsection before **both** `set-flags` phrase matching and co-deliverable suppression, for default issue notes and supplied full notes via `--from-notes`. Feed the same filtered notes to the matcher and suppressors. Each excluded span ends at the next real heading of level 1–3 or end of input; nested level-4 headings remain excluded. Use existing fence-span helpers so quoted headings inside code fences neither begin nor terminate exclusion. Preserve active prose after the subsection, latest-Notes selection, legacy matching elsewhere, numeric preconditions, direct frontmatter triggers and set-only behavior. Do not derive flags from structured factors or auto-clear flags on removal.
 
 ## Implementation Steps
 
-1. The score CLI accepts structured factors, distinguishes absent/empty/omitted data, and returns the specified deterministic comparison from the same locked atomic write that records it. Existing scalar-only and clear behavior remains covered in `scripts/tests/test_set_scores_cli.py`.
-2. Confidence-check collects deduction/override factors independently of prose thresholds, reuses prior IDs and renders the CLI result. `SKILL.md`, `rubric.md` and `reference.md` agree on single, batch, sprint, clean-delta and read-only check behavior; payload failures have the bounded retry/scores-only fallback above.
-3. Delta notes cannot activate flags from historical text. The default and supplied-note scans in `apply_flags_from_notes()` exclude that subsection while preserving matching of active findings and legacy notes.
+1. The score CLI accepts structured factors, distinguishes absent/empty/omitted data, and returns the specified deterministic comparison from the same locked atomic write that records it. Cover JSON/no-JSON, alias, no-update and clear contracts, failure classes and the configured clear lock in `scripts/tests/test_set_scores_cli.py`; pass that configuration through the preparation-policy precondition.
+2. Confidence-check collects concrete deduction/cap/override factors independently of prose thresholds, reuses prior IDs and renders the CLI result. `SKILL.md`, `rubric.md` and `reference.md` agree on single, batch, sprint, clean-delta and read-only check behavior; payload failures have the bounded retry/scores-only fallback above.
+3. Delta notes cannot activate or suppress flags through historical text. The default and supplied-note scans in `apply_flags_from_notes()` exclude that subsection from both matching and suppression while preserving active findings, legacy notes and fence-aware heading boundaries.
 4. CLI and issue-metadata documentation describe the last-recorded baseline, identity/metadata changes, JSON contract and clear semantics. Appropriate local tests pass under `python -m pytest scripts/tests/`; no workflow or paid CI is added.
 
 ## Integration Map
@@ -122,14 +128,15 @@ Confidence-check Phase 4 → `main_issues()` parser/dispatch → `cmd_set_scores
 
 - `scripts/little_loops/cli/issues/set_scores.py` — factor validation/diff/result, locked atomic persistence; preserve `SCORE_KEYS`/`clear_scores()` semantics.
 - `scripts/little_loops/cli/issues/__init__.py`, `main_issues()` — option registration/help and existing `ss` alias/dispatch.
-- `scripts/little_loops/cli/issues/set_flags.py`, `apply_flags_from_notes()` — explicit delta-subsection exclusion from phrase matching.
+- `scripts/little_loops/cli/issues/set_flags.py`, `apply_flags_from_notes()` — fence-aware delta-subsection exclusion from phrase matching and co-deliverable suppression.
+- `scripts/little_loops/preparation_policy.py`, `_run_preconditions()` — pass the configured base directory to score clearing so the clear/write lock agrees.
 - `skills/confidence-check/SKILL.md`, Phase 4/4.5/4.6 and mode behavior — factor generation, persistence/result handling, notes and flag isolation.
 - `skills/confidence-check/rubric.md`, notes/output templates, and `skills/confidence-check/reference.md`, single/batch output guidance — consistent delta presentation without rubric changes.
 - `docs/reference/CLI.md`, `ll-issues set-scores` section, and `docs/reference/ISSUE_TEMPLATE.md`, frontmatter documentation — new input/result and baseline semantics.
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/preparation_policy.py`, `_run_preconditions()`; `commands/reconcile-issue.md`; `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — clear-before-rescore consumers; retained baseline is required, with no new ordering dependency.
+- `commands/reconcile-issue.md`; `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — clear-before-rescore consumers; retained baseline is required, with no new ordering dependency.
 - `scripts/little_loops/frontmatter.py`, `parse_frontmatter()` / `update_frontmatter()` — nested metadata reader/writer support.
 - `scripts/little_loops/issue_parser.py`, `_section_body()` — latest Notes selection. Preserve this selection contract and existing numeric score parsing.
 - `scripts/little_loops/cli/issues/show.py`, `_parse_card_fields()`, and `IssueInfo` serialization — explicit numeric score projections; structured-factor display/model expansion is outside scope.
@@ -139,14 +146,16 @@ Confidence-check Phase 4 → `main_issues()` parser/dispatch → `cmd_set_scores
 - JSON file/`-` stdin input and validation before mutation already exist in `scripts/little_loops/cli/issues/create.py`, `cmd_create()` / `validate_metadata()`; factor-specific validation must not inherit creation-only reserved-key policy.
 - Nested updates target the canonical header and replace the supplied key's whole value: `frontmatter.update_frontmatter()`; do not add a second fenced store or hand-render YAML.
 - Shared locked atomic mutation exists in `scripts/little_loops/cli/issues/set_status.py`, `apply_status_transition()`, and `file_utils.py`; test the score transaction's use of those helpers rather than re-testing lock algorithms.
+- Fence-aware heading selection uses `scripts/little_loops/text_utils.py`, `fence_spans()` / `in_fence()`; reuse that convention for filtering delta subsections without changing the shared section parser.
 
 ### Tests
 
-- `scripts/tests/test_set_scores_cli.py` — input/result, diff, compatibility and transaction behavior.
+- `scripts/tests/test_set_scores_cli.py` — input/result, diff, alias/JSON/no-update compatibility, invalid-input versus stored-baseline/operational failure, and transaction behavior. Verify configured clear/update calls request the same tree lock.
 - `scripts/tests/test_confidence_check_skill.py` — skill wiring, all modes, threshold-independent collection, clean-delta notes and fallback instructions.
-- `scripts/tests/test_set_flags_cli.py` — removed signal phrases in delta notes are excluded, while active/legacy findings still match.
+- `scripts/tests/test_set_flags_cli.py` — removed signal phrases and historical co-deliverable filenames in delta notes neither activate nor suppress flags, through both note-input paths. Cover next active heading, nested headings, repeated delta subsections and fenced heading text; active/legacy findings and direct frontmatter triggers still work.
 - `scripts/tests/test_frontmatter.py` — existing nested/canonical-block coverage; add round-trip preservation coverage only where the new record shape is not already exercised.
-- `scripts/tests/test_preparation_policy_writers.py`, `TestRescorePrecondition` — factor baseline survives the real clear-before-rescore flow.
+- `scripts/tests/test_preparation_policy_writers.py`, `TestRescorePrecondition` — factor baseline survives the real clear-before-rescore flow, including configured lock propagation.
+- One manual skill smoke assessment and re-assessment: remove one of two independently named test risks while keeping totals fixed; confirm prior-ID reuse, one removed factor, delta Notes and valid writer JSON. Also assess an active aggregate cap with full dimension scores. Structural skill tests verify instructions; this smoke check supplies evidence of model behavior without a new evaluation framework.
 
 ## Impact
 
@@ -157,11 +166,11 @@ Makes risk composition changes visible when aggregate scores stay fixed, includi
 1. A successful factor-bearing write persists the complete last-assessed list alongside any supplied scores in canonical frontmatter. Explicit `[]`, omitted input and an absent legacy baseline have distinct behavior; unrelated frontmatter/body survive. After an unrelated status/frontmatter update, `parse_frontmatter()` still returns the factor records and the issue parser still reads the existing numeric scores correctly.
 2. JSON comparison follows Program Design, is deterministic under input reordering, and distinguishes fully unchanged retained factors from metadata changes under the same ID. First assessments report an absent baseline with `null` comparison lists; a known-empty baseline produces ordinary array comparisons.
 3. Re-scoring with identical totals and changed membership reports a non-empty delta in skill output and a new Notes section. Removing the final factor works when `HAS_FINDINGS` is otherwise false. Threshold crossing alone does not add/remove a factor.
-4. Numeric score clearing, including the automated clear-before-rescore precondition, preserves the baseline; scalar-only partial updates and factor-only CLI writes follow the specified omitted-field behavior. Factors never supply score freshness or gating evidence.
-5. Rejected factor-bearing CLI calls (malformed JSON, invalid record shape/fields or duplicate IDs) leave issue bytes unchanged and write no scores. The read/diff/write uses the shared lock and atomic writer; write failure emits no successful result. Skill validation failure has the bounded repair and explicitly reported separate scores-only fallback call, without stopping other batch issues.
-6. Removed/historical signal phrases inside `Risk Factor Delta` cannot set flags through either note-input path. Active findings elsewhere still match; existing true flags are not cleared by factor removals.
+4. Numeric score clearing, including the automated clear-before-rescore precondition, preserves the baseline and shares the configured issue-tree lock with score updates. Scalar-only partial updates, factor-only writes, no-update calls, aliases and JSON/clear combinations follow the specified contract. Factors never supply score freshness or gating evidence.
+5. Rejected factor-bearing CLI calls (malformed JSON, invalid record shape/fields or duplicate IDs) leave issue bytes unchanged and write no scores. Input failures and invalid-baseline/operational failures have the specified distinct diagnostics and exit codes. The read/diff/write uses the shared lock and atomic writer; write failure emits no successful result. Only input failure allows the bounded repair and explicitly reported scores-only fallback, without stopping other batch issues.
+6. Historical signal phrases and co-deliverable filenames inside `Risk Factor Delta` cannot activate or suppress flags through either note-input path. Filtering respects real/fenced heading boundaries and preserves later active findings and direct frontmatter triggers; existing true flags are not cleared by factor removals.
 7. Single/auto/batch/sprint modes use the same factor contract. `--check` retains its existing output/exit behavior and writes nothing. Notes preserve Session Log and Resolved Concerns structure, including the latest-notes behavior used by flags.
-8. The five readiness criteria, four outcome criteria, point allocations, caps, configured readiness/outcome thresholds and flag preconditions are unchanged. Existing scored issues need no migration and retain their numeric behavior. Documentation covers the new CLI/metadata contract, and the relevant tests above exercise these outcomes.
+8. Collection covers concrete risks from all existing deductions, modifiers, caps and hard gates, including an active aggregate cap with full dimension scores. Distinct removable risks in the same bucket have distinct IDs; the same underlying concern is not duplicated for multiple effects. The five readiness criteria, four outcome criteria, point allocations, caps, configured thresholds and flag preconditions are unchanged. Existing issues need no migration. Documentation, the relevant tests and the bounded manual smoke check above cover these outcomes.
 
 ## Scope Boundaries
 
@@ -170,12 +179,17 @@ Makes risk composition changes visible when aggregate scores stay fixed, includi
 - Fuzzy matching, full factor history/previous-set storage, a baseline-reset option, new thresholds/gates, automatic flag clearing and deriving flags from structured factors.
 - Factor display through `ll-issues show`/list or expansion of `IssueInfo`; the skill can read canonical frontmatter and the writer's JSON result.
 - Changing existing score-range validation or fixing unrelated default-threshold documentation inconsistencies.
+- Whole-assessment/Notes transactions, versioning or stale-assessment detection, and repairs to unrelated legacy flag-scanning behavior when no new Notes section was written.
 
 The two scoring changes shift existing scores and need a one-time re-check of issues near the configured outcome gate. They follow this change as separate work.
 
 ## Review Notes
 
 Pre-implementation review on 2026-10-05 confirmed the additive approach and settled storage, identity, baseline lifecycle, validation/failure handling, notes triggers and flag isolation. `/ll:advise` with `claude-opus-5-5` recommended proceeding at P3 after tightening these contracts (confidence 0.78). Its principal dissent favored omitting notes for first/retained-only runs; the bounded notes policy above retains durable membership changes for automated runs. Its heading-only isolation suggestion was rejected against the verified whole-Notes flag scan; explicit subsection exclusion is required.
+
+Follow-up review on 2026-10-05 reproduced historical delta filenames suppressing an active missing-artifact flag and the default/configured clear-lock mismatch for `tickets`. The specification now filters both matching and suppression, preserves fence-aware boundaries, propagates the configured clear lock, defines factor granularity and cap coverage, separates repairable input failures from invalid-baseline/operational failures, and completes JSON/no-update/clear behavior. The transaction guarantee is limited to score persistence; whole-skill concurrency remains outside scope. A new `/ll:advise --model opus` critique was attempted but refused because the current session had already spent its three-consult budget; no new advisor verdict was obtained.
+
+Review validation: 287 existing tests passed across `test_set_scores_cli.py`, `test_set_flags_cli.py`, `test_confidence_check_skill.py`, `test_frontmatter.py` and `test_preparation_policy_writers.py`. Temporary-project reproductions confirmed both integration gaps above. These checks validate the current code observations and baseline behavior; the new factor contract and regression cases remain implementation work.
 
 ## Session Log
 
