@@ -1120,6 +1120,10 @@ class PersistentExecutor:
                 ):
                     if count_key in event:
                         entry[count_key] = event[count_key]
+                # BUG-3724: additive per-(model, batch, date) pricing contributions;
+                # the flat fields above are then an audit summary, never re-priced.
+                if "usage_contributions" in event:
+                    entry["usage_contributions"] = event["usage_contributions"]
                 # FEAT-2478 — stamp OTel-canonical gen_ai.usage.* keys alongside the
                 # flat keys (additive; flat-key consumers cost_graph/_print_usage_summary
                 # ignore the extras). The four token gen_ai keys derive purely from the

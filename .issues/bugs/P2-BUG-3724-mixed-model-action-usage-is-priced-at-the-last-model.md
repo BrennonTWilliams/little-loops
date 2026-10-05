@@ -3,10 +3,11 @@ id: BUG-3724
 type: BUG
 title: Mixed-model action usage is priced at the last model
 priority: P2
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-10-03'
 captured_at: '2026-10-04T01:44:03Z'
+completed_at: '2026-10-05T01:05:04Z'
 parent: EPIC-3562
 testable: true
 relates_to:
@@ -151,14 +152,20 @@ The action's aggregate tokens carry the last event's model/batch identity; cost 
 
 ## Status
 
-**Open** | Created: 2026-10-03 | Priority: P2
+**Done** | Created: 2026-10-03 | Priority: P2
 
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-05T01:05:03 - `65247f55-641d-473c-afbc-a6f6b860e64e.jsonl`
+- `/ll:ready-issue` - 2026-10-05T00:56:15 - `d17347fb-775a-431b-815f-93d6101455f5.jsonl`
 - `/ll:confidence-check` - 2026-10-05T00:28:43 - `0363269d-8de9-4edf-9e14-113c4c1c113b.jsonl`
 - Pre-implementation follow-up review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.72) raised pricing-date bucket safety. Confirmed `TokenUsage.observed_at`/`observed_at_basis` exist and added durable time attribution, UTC boundary and explicit completion-date fallback tests. No new timestamp source or pricing rate is introduced.
 
 - Pre-implementation epic review - 2026-10-04 - Opus critique supported explicit final-attribution closeout, NULL/missing-count preservation, no double counting and contribution-aware footer coordination. Verified the existing ceiling policy continues with a once-per-state unknown-cost diagnostic; retained it explicitly. Added a new-format-versus-legacy discriminator so invalid attribution cannot restore the last-model bug. Fail-closed mitigation is a stage, not a done verdict.
 
 - `/ll:capture-issue` - 2026-10-04T01:51:01 - `7ac1ad38-c74f-402b-a14d-5845cde7ff55.jsonl`
+
+## Resolution
+
+Per-contribution accounting delivered: `action_complete`/`usage.jsonl` carry an additive `usage_contributions` list (model, `is_batch`, UTC pricing date with completion-date fallback, nullable tokens + missing counts) built by `cost_graph.build_usage_contributions`; `CostReport.from_usage_jsonl` prices each bucket individually, treats the flat aggregate as audit-only, keeps legacy rows on single-identity pricing, and marks empty/malformed new attribution unavailable. `cost_ceiling_unknown` now reports `unpriceable model` or `invalid usage attribution`. Tests: `scripts/tests/test_bug3724_mixed_model_pricing.py`. Docs: `docs/reference/CLI.md`, `loops.md`.

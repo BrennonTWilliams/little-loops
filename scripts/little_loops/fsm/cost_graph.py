@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +53,90 @@ _TOKEN_COMPONENTS = (
 
 def _missing_key(component: str) -> str:
     return f"{component}_missing"
+
+
+# BUG-3724: an action may report usage from several models / batch modes /
+# pricing dates. ``action_complete`` and ``usage.jsonl`` rows therefore carry
+# ``usage_contributions`` — one bucket per (model, is_batch, pricing date) — and
+# ``CostReport`` prices each bucket individually. The row's flat token fields
+# remain an audit/compatibility summary and are never priced a second time.
+# A row *without* the key is a legacy aggregate (priced at its single
+# model/flag, as before); a row *with* an empty or malformed value is invalid
+# and its cost stays unavailable rather than falling back to the last model.
+USAGE_CONTRIBUTIONS_KEY = "usage_contributions"
+INVALID_ATTRIBUTION_REASON = "invalid usage attribution"
+UNPRICEABLE_MODEL_REASON = "unpriceable model"
+
+
+def build_usage_contributions(events: Iterable[Any]) -> list[dict[str, Any]]:
+    """Bucket ``TokenUsage`` events by (model, is_batch, effective pricing date).
+
+    The pricing date is the UTC date of the event's ``observed_at``; it is
+    ``None`` (resolved to the action-completion date at read time) when the
+    event carries no parseable observation time. Components keep the ENH-3538
+    nullable contract: the sum of known values (``None`` if no event supplied
+    it) plus a ``<component>_missing`` count.
+    """
+    grouped: dict[tuple[str, bool, str | None], list[Any]] = {}
+    for event in events:
+        day = _event_date(getattr(event, "observed_at", None))
+        key = (event.model, bool(event.is_batch), day.isoformat() if day else None)
+        grouped.setdefault(key, []).append(event)
+    contributions: list[dict[str, Any]] = []
+    for (model, is_batch, pricing_date), members in grouped.items():
+        bucket: dict[str, Any] = {
+            "model": model,
+            "is_batch": is_batch,
+            "pricing_date": pricing_date,
+            "usage_event_count": len(members),
+        }
+        for component in _TOKEN_COMPONENTS:
+            known = [v for m in members if (v := getattr(m, component)) is not None]
+            bucket[component] = sum(known) if known else None
+            bucket[_missing_key(component)] = len(members) - len(known)
+        contributions.append(bucket)
+    return contributions
+
+
+def _is_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _contribution_cost(contribution: Any, fallback_date: date | None) -> float | None:
+    """Price one contribution; ``None`` when invalid, incomplete, or unpriced."""
+    if not isinstance(contribution, dict):
+        return None
+    model = contribution.get("model")
+    if not isinstance(model, str) or not model:
+        return None
+    is_batch = contribution.get("is_batch", False)
+    if not isinstance(is_batch, bool):
+        return None
+    pricing_date = contribution.get("pricing_date")
+    as_of = fallback_date
+    if pricing_date is not None:
+        if not isinstance(pricing_date, str):
+            return None
+        try:
+            as_of = date.fromisoformat(pricing_date)
+        except ValueError:
+            return None
+    values: dict[str, int] = {}
+    for component in _TOKEN_COMPONENTS:
+        value = contribution.get(component)
+        missing = contribution.get(_missing_key(component), 0)
+        if value is None or not _is_count(value) or not _is_count(missing) or missing:
+            return None  # unknown / partial / malformed component: unpriceable
+        values[component] = value
+    return estimate_cost_usd(
+        model,
+        values["input_tokens"],
+        values["output_tokens"],
+        values["cache_read_tokens"],
+        values["cache_creation_tokens"],
+        is_batch=is_batch,
+        as_of=as_of,
+    )
 
 
 def _fmt_tokens(value: int | None, missing: int) -> str:
@@ -101,6 +187,9 @@ class PerStateCost:
     output_tokens_missing: int = 0
     cache_read_tokens_missing: int = 0
     cache_creation_tokens_missing: int = 0
+    unavailable_reason: str | None = None
+    """Why ``cost_usd`` is unavailable (BUG-3724). Diagnostic only — never serialized,
+    so the stable report JSON is unchanged."""
 
     def to_dict(self) -> dict[str, Any]:
         """Return the locked stable-JSON shape for this state.
@@ -275,6 +364,7 @@ class CostReport:
                 "cost_usd": 0.0,
                 "wallclock_ms": 0,
                 "has_unknown_model": False,
+                "unavailable_reason": None,
                 # ENH-3538: contributors that reported each component, and
                 # how many observations lacked it.
                 **{f"{c}_known": 0 for c in _TOKEN_COMPONENTS},
@@ -315,21 +405,43 @@ class CostReport:
                 if row_missing:
                     bucket[_missing_key(component)] += row_missing
                     row_incomplete = True
-            cost = (
-                None
-                if row_incomplete
-                else estimate_cost_usd(
-                    model,
-                    values["input_tokens"],
-                    values["output_tokens"],
-                    values["cache_read_tokens"],
-                    values["cache_creation_tokens"],
-                    is_batch=is_batch,
-                    as_of=_event_date(str(row.get("timestamp") or "")),
+            row_date = _event_date(str(row.get("timestamp") or ""))
+            cost: float | None
+            reason = UNPRICEABLE_MODEL_REASON
+            if USAGE_CONTRIBUTIONS_KEY in row:
+                # BUG-3724: new-format row — contributions are the pricing
+                # source; the flat aggregate above is audit-only.
+                contributions = row[USAGE_CONTRIBUTIONS_KEY]
+                if not isinstance(contributions, list) or not contributions:
+                    cost = None
+                    reason = INVALID_ATTRIBUTION_REASON
+                else:
+                    parts = [_contribution_cost(c, row_date) for c in contributions]
+                    known_parts = [p for p in parts if p is not None]
+                    cost = sum(known_parts) if len(known_parts) == len(parts) else None
+                    if cost is None and not all(
+                        isinstance(c, dict) and isinstance(c.get("model"), str) and c["model"]
+                        for c in contributions
+                    ):
+                        reason = INVALID_ATTRIBUTION_REASON
+            else:
+                cost = (
+                    None
+                    if row_incomplete
+                    else estimate_cost_usd(
+                        model,
+                        values["input_tokens"],
+                        values["output_tokens"],
+                        values["cache_read_tokens"],
+                        values["cache_creation_tokens"],
+                        is_batch=is_batch,
+                        as_of=row_date,
+                    )
                 )
-            )
             if cost is None:
                 bucket["has_unknown_model"] = True
+                if bucket["unavailable_reason"] != INVALID_ATTRIBUTION_REASON:
+                    bucket["unavailable_reason"] = reason
             else:
                 bucket["cost_usd"] += cost
 
@@ -350,6 +462,7 @@ class CostReport:
                 output_tokens_missing=b["output_tokens_missing"],
                 cache_read_tokens_missing=b["cache_read_tokens_missing"],
                 cache_creation_tokens_missing=b["cache_creation_tokens_missing"],
+                unavailable_reason=b["unavailable_reason"],
             )
             for state_name, b in buckets.items()
         ]

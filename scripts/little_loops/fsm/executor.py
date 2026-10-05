@@ -37,7 +37,12 @@ from little_loops.fsm.communication_adapter import (
     TimeoutResponse,
 )
 from little_loops.fsm.continuity import summarize_completed_state
-from little_loops.fsm.cost_graph import CostReport
+from little_loops.fsm.cost_graph import (
+    UNPRICEABLE_MODEL_REASON,
+    USAGE_CONTRIBUTIONS_KEY,
+    CostReport,
+    build_usage_contributions,
+)
 from little_loops.fsm.evaluators import (
     EvaluationResult,
     evaluate,
@@ -2774,6 +2779,10 @@ class FSMExecutor:
             # event's is_batch flag the same way `model` is taken above.
             if result.usage_events[-1].is_batch:
                 payload["is_batch"] = True
+            # BUG-3724: the flat fields above are an audit summary tagged with the
+            # last event's identity; per-(model, batch, date) contributions are the
+            # pricing source so earlier events keep their own rate.
+            payload[USAGE_CONTRIBUTIONS_KEY] = build_usage_contributions(result.usage_events)
         # ENH-2724: collect for the live usage_events write at _finish().
         for usage in result.usage_events:
             self._usage_events_collected.append((self.current_state, usage))
@@ -4454,7 +4463,10 @@ class FSMExecutor:
                 self._cost_ceiling_unknown_logged_states.add(state_name)
                 self._emit(
                     "cost_ceiling_unknown",
-                    {"state": state_name, "reason": "unpriceable model"},
+                    {
+                        "state": state_name,
+                        "reason": bucket.unavailable_reason or UNPRICEABLE_MODEL_REASON,
+                    },
                 )
             return False
 
