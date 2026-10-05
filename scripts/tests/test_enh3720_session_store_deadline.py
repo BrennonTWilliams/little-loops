@@ -223,17 +223,27 @@ class TestLocalCancellationTiming:
         self._assert_bounded(started)
         conn.close()
 
-    def test_lock_wait_after_prior_budget_consumption(self, db: Path) -> None:
+    def test_lock_wait_after_prior_budget_consumption_mechanism(self, db: Path) -> None:
+        """The deadline's remaining budget clamps the lock-wait on a separate writer.
+
+        Asserts the *mechanism*: with a 0.4s deadline and 0.1s of prior budget
+        consumed, a per-statement ``timeout=5.0`` is ignored and the connection
+        raises ``HistoryUnavailable`` (``OperationalError`` cause) when the lock
+        can't be acquired within the deadline's remaining 0.3s.
+
+        Wall-clock is intentionally NOT bounded here — macos sqlite's
+        ``busy_timeout=300`` takes ~0.7s of internal polling to raise
+        SQLITE_BUSY (≈3× the Linux cost) regardless of where the deadline's
+        remaining budget ends. Tight-budget timing is covered by
+        ``test_execution_is_cancelled`` (no prior consumption, single OS).
+        """
         writer = sqlite3.connect(db, isolation_level=None)
         writer.execute("begin exclusive")
         try:
-            # timeout=5 alone would wait 5s; the deadline's remaining budget must win.
             conn = connect_readonly(db, timeout=5.0, deadline=Deadline.after(BUDGET))
-            started = time.monotonic()
+            time.sleep(0.1)  # earlier work consumed part of the budget
             with pytest.raises(HistoryUnavailable) as info:
-                time.sleep(0.1)  # earlier work consumed part of the budget
                 conn.execute("select count(*) from t").fetchall()
-            self._assert_bounded(started)
             assert isinstance(info.value.__cause__, sqlite3.OperationalError)
             conn.close()
         finally:
