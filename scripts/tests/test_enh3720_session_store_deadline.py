@@ -229,9 +229,9 @@ class TestLocalCancellationTiming:
         try:
             # timeout=5 alone would wait 5s; the deadline's remaining budget must win.
             conn = connect_readonly(db, timeout=5.0, deadline=Deadline.after(BUDGET))
-            time.sleep(0.1)  # earlier work consumed part of the budget
-            started = time.monotonic()  # measure from when the deadline check engages
+            started = time.monotonic()
             with pytest.raises(HistoryUnavailable) as info:
+                time.sleep(0.1)  # earlier work consumed part of the budget
                 conn.execute("select count(*) from t").fetchall()
             self._assert_bounded(started)
             assert isinstance(info.value.__cause__, sqlite3.OperationalError)
