@@ -43,7 +43,7 @@ Move `_append_child_to_epic_children()` into a shared helper and make it aware o
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
+- **Priority**: P3 - [Justification]
 - **Effort**: [Small/Medium/Large] - [Justification]
 - **Risk**: [Low/Medium/High] - [Justification]
 - **Breaking Change**: [Yes/No]
