@@ -42,7 +42,9 @@ Qualify each observation using the runtime provider and source/CLI version from 
 
 Persist the ingest-time contract reference, provider/version evidence and qualification disposition on `raw_events`, using existing metadata where sufficient, so incremental derive and rebuild make the same decision. A later CLI upgrade or provider configuration must not promote old unknowns; requalification requires new source evidence and an explicit tested operation.
 
-ENH-3723 is linked through `relates_to` and is required before reader cutover/closeout. There is no whole-issue scheduling edge to it, so native capture, parser and adapter development can proceed before that shared gate lands. Before cutover, add this host's qualified/partial/mismatch rows to its shared source/snapshot/session-reader matrix. The only hard evidence blocker remains this host's matching ENH-3660–3665 issue.
+ENH-3723 is linked through `relates_to` and is required before enabling production derivation of this host's newly recognized usage rows, as well as reader cutover/closeout. Existing source, snapshot and quality readers automatically discover `usage_events`; postponing only the session-reader switch would expose audit-only rows before shared qualification exists. Native capture, parser/adapter development, raw-event retention and isolated-fixture derivation may proceed first. Add this host's qualified/partial/mismatch rows to the shared source/snapshot/session-reader matrix before publication. There is no whole-issue scheduling edge to ENH-3723; the only hard evidence blocker remains this host's matching ENH-3660–3665 issue.
+
+**Ingress parity:** cover historical `lifecycle._backfill_raw_events`, current `refresh_usage_source` or the proved host equivalent, parser-upgrade `usage_refresh.refresh_raw_events`, and direct-source `writers._iter_usage_replay_records`. The first delivery lander owns the shared host-keyed contract-resolution seam under the epic's ownership rule. Each supported route uses the same native provider/version evidence and preserves its ingest-time marker through raw storage and derive. Unchanged previously unqualified rows cannot be promoted by a later parser/contract change; requalification remains an explicit operation outside this delivery. A legacy direct-source route that cannot handle this native shape must explicitly reject it rather than apply Claude's contract or silently certify different usage. Do not require every host to adopt the single-file interface.
 
 ## Program Design
 
@@ -66,6 +68,7 @@ ENH-3723 is linked through `relates_to` and is required before reader cutover/cl
 ## Integration Map
 
 - Session discovery/parser/normalizer and replay writer under scripts/little_loops/session_store/; coordinate extensions to `refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, and shared tests under EPIC-3562 § Shared Delivery Ownership; ENH-3723 owns shared canonical eligibility. Verify append, overwrite, rotation, or file-tree mutation behavior against the real native source before reusing a cursor.
+- Include `lifecycle._backfill_raw_events`, `usage_refresh._event_signature`/`refresh_raw_events`, and `writers._iter_usage_replay_records` in contract-routing changes; those seams currently calculate Claude-specific markers. Preserve stored evidence for unchanged rows and test explicit rejection of unsupported direct-source layouts.
 - Pi lifecycle adapter and scripts/little_loops/hooks/usage_stop.py or another proved after-usage trigger; scripts/little_loops/cli/backfill_worker.py and incremental derivation.
 - scripts/little_loops/cli/ctx_stats.py and scripts/little_loops/history_reader/usage.py shared selection; scripts/little_loops/host_runner.py typed telemetry entries.
 - Real versioned fixtures and contract notes under scripts/tests/fixtures/pi/; parser, replay, hook-worker, reader, and capability tests; update the CLI/host compatibility documentation.
@@ -74,7 +77,9 @@ ENH-3723 is linked through `relates_to` and is required before reader cutover/cl
 
 - [ ] Runtime matching, unmatched provider, absent provider/version, unproved version, and unproved identity fixtures enforce the evidence-backed qualification policy. Unsupported versions/providers cannot inherit a measured host-level verdict; diagnostics explain audit-only/unavailable results.
 - [ ] Ingest-time qualification evidence survives on `raw_events`; incremental derive, full rebuild, and later CLI/provider changes produce the same qualified or unknown disposition without promoting old rows.
-- [ ] Before reader cutover/closeout, ENH-3723's selected eligibility policy and this host's source/snapshot/session-reader parity cases pass, including partial/mismatch rows and any documented stricter measured-only rate rule.
+- [ ] Before enabling production derivation of new native usage observations and before reader cutover/closeout, ENH-3723's selected eligibility policy and this host's source/snapshot/session-reader parity cases pass, including partial/mismatch rows and any documented stricter measured-only rate rule. Capture/adapter/raw-retention work can proceed first without publishing unqualified canonical figures through existing readers.
+- [ ] Historical ingest, current refresh, parser-upgrade refresh and supported direct-source replay agree on the native fixture's contract evidence and derived qualification; unsupported direct-source shapes have an explicit tested rejection. Repeated parser refresh preserves unchanged ingest-time markers and does not qualify old unknowns. A failed derive/rebuild stays unavailable or freshness-unknown until an explicit successful retry, even if the next source read is unchanged; no fresh-zero result is certified.
+- [ ] Preserve ENH-3723's as-of compatibility contract: otherwise qualified retained historical values carry freshness/lag/as-of metadata and are never described as current when freshness is stale/unknown. Source loss retains historical observations; component-incomplete session rates remain unavailable rather than using a complete subset.
 - [ ] ENH-3661 records a versioned, sanitized producer contract for every implemented metric/channel: fields, inclusivity, omissions, request grain/reset behavior, reasoning/output relation, and stable source identity; unresolved items remain explicit unknowns.
 - [ ] A parser-replayable fixture in the real native source layout passes through discovery/parser, raw_events, usage_events, and the shared selector. It preserves the native usage fields needed for this host and does not change unrelated normalized content; a reduced JSONL excerpt alone cannot satisfy this gate.
 - [ ] Proven repeated, resumed, live/stored, and copied records are counted once per native request. Full rebuild, incremental derive, and repeated refresh of available originals agree; missing originals or unverified attribution never manufacture measured usage.
@@ -94,7 +99,7 @@ ENH-3723 is linked through `relates_to` and is required before reader cutover/cl
 1. Consume ENH-3661's provider/version-qualified native contract, real layout, identity and source-write timing evidence.
 2. Implement the native adapter and durable ingest-time qualification; coordinate shared seams under the epic ownership rule.
 3. Prove replay/update behavior, incremental/full parity, a real current-session trigger and freshness recovery.
-4. Add this host's ENH-3723 qualification matrix cases; cut over the reader only after its gate passes, or record the evidence-backed unavailable/partial disposition.
+4. Add this host's ENH-3723 qualification matrix cases; enable production usage derivation and cut over the reader only after its gate passes, or record the evidence-backed unavailable/partial disposition.
 
 ## Impact
 
@@ -115,4 +120,6 @@ ENH-3723 is linked through `relates_to` and is required before reader cutover/cl
 
 
 ## Session Log
+
+- Pre-implementation follow-up review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.72): added shared qualification before production usage publication, all supported ingestion-route contract parity and explicit unsupported-route rejection, failed-derive controls and retained as-of semantics. No status, dependency or implementation change.
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:30 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

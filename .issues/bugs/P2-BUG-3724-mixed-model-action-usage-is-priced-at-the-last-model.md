@@ -13,6 +13,12 @@ relates_to:
 - ENH-3719
 - BUG-3696
 - ENH-3538
+confidence_score: 90
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3724: Mixed-model action usage is priced at the last model
@@ -39,7 +45,9 @@ Silent model/batch misattribution distorts state/run estimates and can incorrect
 
 ## Proposed Solution
 
-Retain per-event contributions or aggregate buckets keyed by concrete model and batch mode in the action payload and durable usage artifact. Choose and document the artifact compatibility strategy before adding keys; `CostReport`'s existing stable JSON contract must be respected. One action remains one iteration even if it contains several pricing contributions. New-format contributions are the pricing source; the parent aggregate is an audit/compatibility summary and is never added a second time. Preserve nullable components and missing counts at the bucket boundary, including NULL when every contribution lacks a component. Reuse the collected live events rather than changing their observation grain. Legacy rows with only one aggregate identity retain their documented historical interpretation; do not reconstruct missing earlier identities. Distinguish legacy rows without an attribution field from new rows with empty/invalid attribution; the latter remain unavailable with a diagnostic instead of silently using the last-model aggregate. Preserve the existing timestamp/`as_of` pricing behavior for historical and homogeneous rows.
+Retain per-event contributions or aggregate buckets keyed by concrete model, batch mode and effective pricing date in the action payload and durable usage artifact. Choose and document the artifact compatibility strategy before adding keys; `CostReport`'s existing stable JSON contract must be respected. One action remains one iteration even if it contains several pricing contributions. New-format contributions are the pricing source; the parent aggregate is an audit/compatibility summary and is never added a second time. Preserve nullable components and missing counts at the bucket boundary, including NULL when every contribution lacks a component. Reuse the collected live events rather than changing their observation grain. Legacy rows with only one aggregate identity retain their documented historical interpretation; do not reconstruct missing earlier identities. Distinguish legacy rows without an attribution field from new rows with empty/invalid attribution; the latter remain unavailable with a diagnostic instead of silently using the last-model aggregate. Preserve historical aggregate timestamp/`as_of` behavior and numeric parity for homogeneous actions whose contributions share the existing aggregate's effective pricing date; new cross-date contributions use their observed dates as specified below.
+
+**Pricing-date attribution:** `TokenUsage` already carries `observed_at` and `observed_at_basis` (`subprocess_utils.py`), but the durable action aggregate currently carries only the completion timestamp. Preserve each contribution's available observed time/basis and resolve its pricing date with the existing UTC `_event_date` helper. Buckets must distinguish effective pricing date as well as model and batch mode; an action spanning a rate boundary cannot price all events at its final date. When an event time is absent/unparseable, explicitly use and document the existing action-completion-date fallback, without fabricating a native timestamp. Legacy aggregate-only rows keep their existing timestamp behavior. Use a patched `INTRO_PRICING` boundary in the test even though that table is currently empty.
 
 **ENH-3719 handoff:** once contributions exist, its footer inspects every contribution's concrete pricing ID and missing-ID sentinel. Whichever issue lands second owns adapting the shared reader and a regression with an earlier unpriced contribution followed by a known last model. Keep the `relates_to` coordination link; add no mutual blocking edge.
 
@@ -50,6 +58,7 @@ Retain per-event contributions or aggregate buckets keyed by concrete model and 
 - `scripts/little_loops/fsm/executor.py` — aggregation and ceiling diagnostics.
 - `scripts/little_loops/fsm/persistence.py` — durable contribution attribution.
 - `scripts/little_loops/fsm/cost_graph.py` — per-contribution pricing and compatibility.
+- `scripts/little_loops/subprocess_utils.py` — existing `TokenUsage.observed_at`/`observed_at_basis` contract to preserve through the above path; no new observation ID or timestamp source is needed.
 
 ### Dependent Files (Callers/Importers)
 
@@ -76,7 +85,7 @@ Retain per-event contributions or aggregate buckets keyed by concrete model and 
 ### Types
 
 - Existing `TokenUsage` preserves concrete model, `is_batch`, and nullable components.
-- Proposed `UsageCostContribution` or equivalent durable bucket: model, batch flag, four nullable token components and completeness counts; use original event identities where needed, without inventing request identities.
+- Proposed `UsageCostContribution` or equivalent durable bucket: model, batch flag, observed time/basis or effective pricing date with explicit fallback, four nullable token components and completeness counts; use original event identities where needed, without inventing request identities.
 
 ### Signatures
 
@@ -93,7 +102,7 @@ Runner `TokenUsage` events → action payload → durable `usage.jsonl` contribu
 1. Add an executor → persistence → report regression for mixed models, reversed order, and mixed batch flags.
 2. Choose the durable compatibility strategy; preserve attributed contributions or land an explicit fail-closed mitigation first.
 3. Update report pricing, reporter/JSON behavior, and cost-ceiling diagnostics without changing iteration counts or the live observation grain.
-4. Test homogeneous/legacy parity (including timestamp-based pricing), nullable/missing contributions, single counting, malformed new attribution, and footer handoff; document historical limitations. A fail-closed mitigation alone does not satisfy this issue's closeout contract.
+4. Test homogeneous/legacy parity, per-contribution pricing dates across a UTC rate boundary, timestamp fallback, nullable/missing contributions, single counting, malformed new attribution, and footer handoff; document historical limitations. A fail-closed mitigation alone does not satisfy this issue's closeout contract.
 
 ## Impact
 
@@ -124,7 +133,8 @@ The action's aggregate tokens carry the last event's model/batch identity; cost 
 - [ ] Same-model batch/live mixtures retain each contribution's rate; mixed known/unknown models and incomplete components make affected costs unavailable with a specific reason.
 - [ ] Executor, persistence, report, reporter, and ceiling tests cover the real call path. Known token subtotals survive. Unavailable cost emits `cost_ceiling_unknown` once per state and skips numeric ceiling comparison under the existing continue-with-diagnostic policy; it is never classified as zero or under budget. No automatic abort-on-unknown policy is introduced.
 - [ ] Contributions and the parent aggregate are never both summed: one action retains one iteration and one wallclock contribution. A component missing from all events/buckets stays NULL with missing counts; partially known bucket sums retain positive missing counts and cannot be priced. Empty/invalid new-format attribution cannot silently fall back to a legacy last-model price.
-- [ ] Homogeneous complete actions and historical timestamp/`as_of` pricing retain numeric parity, iteration/event counts remain correct, and the separate live `usage_events` writer retains per-event attribution.
+- [ ] Homogeneous complete actions with the same effective pricing date as their aggregate, and historical aggregate timestamp/`as_of` pricing, retain numeric parity. New cross-date actions use contribution dates; iteration/event counts remain correct, and the separate live `usage_events` writer retains per-event attribution.
+- [ ] Contributions with the same model/batch flag but different effective pricing dates are priced individually across a patched introductory-rate boundary, independent of event order and action-completion time. Valid offset timestamps use their UTC dates; absent/unparseable event times use the documented completion-date fallback. Legacy rows retain their prior timestamp interpretation.
 - [ ] Stable report JSON and legacy artifact compatibility are explicitly tested; no historical identity is fabricated and no stored history costs are backfilled by this change.
 - [ ] ENH-3719's missing-price footer remains scoped to concrete missing pricing IDs; this issue owns heterogeneous attribution and its diagnostic. Once both land, an earlier unpriced contribution followed by a known last model appears in the footer, including incomplete-token contributors. Whichever lands second adapts the shared reader/tests; coordinate docs for the landed behavior without a mutual dependency.
 - [ ] `python -m pytest scripts/tests/` exits 0.
@@ -145,6 +155,9 @@ The action's aggregate tokens carry the last event's model/batch identity; cost 
 
 
 ## Session Log
+
+- `/ll:confidence-check` - 2026-10-05T00:28:43 - `0363269d-8de9-4edf-9e14-113c4c1c113b.jsonl`
+- Pre-implementation follow-up review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.72) raised pricing-date bucket safety. Confirmed `TokenUsage.observed_at`/`observed_at_basis` exist and added durable time attribution, UTC boundary and explicit completion-date fallback tests. No new timestamp source or pricing rate is introduced.
 
 - Pre-implementation epic review - 2026-10-04 - Opus critique supported explicit final-attribution closeout, NULL/missing-count preservation, no double counting and contribution-aware footer coordination. Verified the existing ceiling policy continues with a once-per-state unknown-cost diagnostic; retained it explicitly. Added a new-format-versus-legacy discriminator so invalid attribution cannot restore the last-model bug. Fail-closed mitigation is a stage, not a done verdict.
 
