@@ -298,6 +298,9 @@ class CoverageGroup:
     channel_subtotals: dict[str, dict[str, Any]]
 
 
+_ACQUISITION_CHANNELS = frozenset({"live", "transcript", "rollout"})
+
+
 @dataclass(frozen=True)
 class CoverageSelection:
     """Canonical eligibility and raw audit evidence from one coverage policy."""
@@ -381,6 +384,7 @@ def select_usage_coverage(
     require_run_id: bool = False,
     host: str | None = None,
     session_id: str | None = None,
+    channel: str | None = None,
 ) -> CoverageSelection:
     """Reconcile producer coverage before applying host/session or report-window filters.
 
@@ -392,7 +396,18 @@ def select_usage_coverage(
     turn a partial group into complete coverage. ``host``/``session_id`` narrow
     the returned rows only; unverified possible counterparts outside the scope
     still make the scoped coverage unresolved (BUG-3735).
+
+    ``channel`` (``live``/``transcript``/``rollout``) is an *acquisition* scope,
+    unlike host/session: rows whose logical channel (``row_channel``) differs are
+    dropped before grouping and before ``ambiguous_cross_channel`` is computed, so
+    excluded counterparts cannot change values, coverage or qualification
+    (ENH-3748). ``None`` keeps the full population.
     """
+    if channel is not None and channel not in _ACQUISITION_CHANNELS:
+        raise ValueError(
+            f"select_usage_coverage: channel must be one of {sorted(_ACQUISITION_CHANNELS)}, "
+            f"got {channel!r}"
+        )
     if session_id is not None and host is None:
         raise ValueError("select_usage_coverage: session_id requires host")
     present = {row[1] for row in conn.execute("PRAGMA table_info(usage_events)")}
@@ -416,6 +431,9 @@ def select_usage_coverage(
     cursor = conn.execute(sql + "ORDER BY id")
     columns = [column[0] for column in cursor.description]
     rows = [dict(zip(columns, row, strict=True)) for row in cursor]
+    if channel is not None:
+        # row_channel has no SQL equivalent for legacy NULL rows, so scope in Python.
+        rows = [row for row in rows if row_channel(row) == channel]
     grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for row in rows:
         grouped.setdefault(_coverage_key(row), []).append(row)
@@ -487,10 +505,16 @@ def select_usage_observations(
     require_run_id: bool = False,
     host: str | None = None,
     session_id: str | None = None,
+    channel: str | None = None,
 ) -> Iterator[Mapping[str, Any]]:
     """Yield audit observations annotated by the shared coverage selector."""
     yield from select_usage_coverage(
-        conn, since=since, require_run_id=require_run_id, host=host, session_id=session_id
+        conn,
+        since=since,
+        require_run_id=require_run_id,
+        host=host,
+        session_id=session_id,
+        channel=channel,
     ).audit_rows
 
 

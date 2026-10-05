@@ -79,8 +79,9 @@ Public API:
     cost_attribution(group_by, ...) -> list[dict]
     waste_attribution(since, ...) -> list[dict] (ENH-2722)
     recent_usage_events(...) -> list[UsageEvent]
-    select_usage_coverage(conn, *, since, require_run_id, host, session_id) -> CoverageSelection
-    select_usage_observations(conn, *, since, require_run_id, host, session_id)
+    select_usage_coverage(conn, *, since, require_run_id, host, session_id, channel)
+        -> CoverageSelection
+    select_usage_observations(conn, *, since, require_run_id, host, session_id, channel)
         -> Iterator[Mapping] of annotated audit rows (ENH-3528/3543)
     aggregate_usage(group_by, ...) -> list[dict]
     qualify_usage(group, *, require_cost, measured_only) -> UsageQualification

@@ -3,9 +3,10 @@ id: ENH-3748
 type: ENH
 title: Logical channel acquisition scope on the usage coverage selectors
 priority: P2
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-10-05'
+completed_at: '2026-10-05T21:38:18Z'
 parent: EPIC-3562
 labels:
 - observability
@@ -129,8 +130,15 @@ Thread `channel` through both selectors in `history_reader/usage.py`. Filter Pyt
 
 - **Out of scope:** usage qualification (ENH-3731), migrating any caller to `channel=` (ENH-3732), ENH-3730's store-wide ambiguity redesign, BUG-3735's acquisition/output repair, the stored-cache `channels` metadata normalization (BUG-3735).
 
+## Resolution
+
+Implemented 2026-10-05. `select_usage_coverage`/`select_usage_observations` accept `channel` (`live`/`transcript`/`rollout`), validated first (`ValueError` before any schema early return); rows are filtered Python-side by `row_channel` before grouping and `ambiguous_cross_channel`. `channel=None` is unchanged. Tests: `scripts/tests/test_enh3748_usage_channel_scope.py`; docs: API.md, ARCHITECTURE.md, `history_reader/__init__.py` docstring. Full suite: only unrelated failures (issue-corpus evidence/prose-dep gates on other issues' files, live libsql endpoint).
+
 ## Session Log
 
+
+- `/ll:manage-issue` - 2026-10-05T21:38:18 - `00c36ff6-10c3-4ba5-9b72-45eaac795f67.jsonl`
+- `/ll:ready-issue` - 2026-10-05T21:27:11 - `747c79bd-5eb2-4930-a17d-72ecde1f4d4f.jsonl`
 - `/ll:confidence-check` - 2026-10-05T20:41:25 - `db871f03-686f-4948-9fc4-2cabe2027d34.jsonl`
 - Split from ENH-3731 - 2026-10-05 - Pre-implementation review (`/ll:advise` with `claude-fable-5-1`, confidence 0.85) moved the `channel=` selector scope out of ENH-3731 and ordered it after BUG-3735, which rewrites the same acquisition/output ordering.
 

@@ -9053,6 +9053,7 @@ def select_usage_coverage(
     require_run_id: bool = False,
     host: str | None = None,
     session_id: str | None = None,
+    channel: str | None = None,
 ) -> CoverageSelection
 
 def select_usage_observations(
@@ -9062,6 +9063,7 @@ def select_usage_observations(
     require_run_id: bool = False,
     host: str | None = None,
     session_id: str | None = None,
+    channel: str | None = None,
 ) -> Iterator[Mapping[str, Any]]
 ```
 
@@ -9076,6 +9078,14 @@ row with a NULL `channel` counts as `transcript`); host-only selection keeps
 unverified host-attributed rows in `audit_rows`. The aggregate `reason` comes
 from the groups with the winning status (lexically first on ties). Missing columns on
 older schemas read as `NULL`; an absent table raises `sqlite3.OperationalError`.
+`channel` (`live`, `transcript`, or `rollout`; default `None`) is an
+*acquisition* scope, unlike `host`/`session_id`: rows whose logical channel
+differs (a NULL channel with a session ID is `transcript`, without one `live`)
+are dropped before grouping and before cross-channel ambiguity is computed, so
+excluded counterparts cannot change values, coverage, or qualification and are
+absent from `audit_rows`, `selected_rows`, and subtotals. Any other value
+raises `ValueError` (for `select_usage_observations`, on iteration), even on an
+empty or legacy store. `since`/`require_run_id` still cannot certify coverage.
 `CoverageSelection` exposes `groups`, flattened `audit_rows` and
 `selected_rows`, aggregate `coverage`, and `reason`. Each `CoverageGroup`
 exposes those two row tuples, `coverage`, `reason`, and raw
