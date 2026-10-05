@@ -17,12 +17,6 @@ blocks:
 - FEAT-3596
 relates_to:
 - FEAT-3686
-confidence_score: 90
-outcome_confidence: 78
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 25
 ---
 
 # FEAT-3667: Brainstorm engine module: deterministic core, CLI contract, and artifact profile
@@ -40,8 +34,8 @@ _Split from FEAT-3582 on 2026-09-29 (EPIC-3581 pre-implementation review, `/ll:a
 ## Expected Behavior
 
 - `little_loops.brainstorm_engine` exposes every function in FEAT-3582 § Program Design and the CLI commands below, invoked as `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine <cmd> --run-dir DIR ...` (`LL_PYTHON` is exported as `sys.executable` by `fsm/runners.py`, so the idiom is robust in consuming projects).
-- Includes `render-report`, `prompt-block`, `resolve-profile` and all four built-in preset JSONs (`artifact`, `visual`, `functional`, `business`, each with a `lenses` catalog and per-bin axis definitions; unbuilt knobs off) under `scripts/little_loops/loops/brainstorm-profiles/`, so the loop rewrite and FEAT-3583 never re-touch these.
-- Everything is unit-tested by direct import, test-first; nothing here depends on the FSM executor.
+- Includes `render-report`, `prompt-block`, `resolve-profile` and all four built-in preset JSONs (`artifact`, `visual`, `functional`, `business`, each with a `lenses` catalog and per-bin axis definitions; unbuilt knobs off) under `scripts/little_loops/loops/brainstorm-profiles/`, so FEAT-3582 consumes them and FEAT-3583 tunes existing presets rather than introducing them.
+- Everything is unit-tested by direct import, test-first; the only executor dependency is the explicitly scoped smoke test below.
 - Landing this issue changes no user-visible behavior (the module is unused until FEAT-3582), so it is safe to merge to `main` on its own.
 
 ### CLI contract
@@ -52,25 +46,29 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 
 **Token ordering and atomicity** (2026-10-02 Opus review): an empty stdout is already caught by `_: finalize_failed`; the trailing `fail`'s real job is overriding a *happy token printed before a late crash* (e.g. `collapse` prints `shortlist`, then dies writing `dedup.log`; `classify` reads the last non-empty line). So every routed command prints its happy token as its **last statement, after all file writes**, and writes files as tmp + `os.replace`. The guarantee that every classify state calling the engine routes `_` to `finalize_failed` lives in FEAT-3582's YAML and cannot be enforced here (this issue changes no YAML); it is a FEAT-3582 follow-up (see Dependent Files).
 
-**Idempotency** (2026-09-29): child-loop and per-lens state is not resumed (`active_sub_loop` is observability-only), so a re-run must never double-count. `record-round` upserts by `(round, pair, probe)` and always writes **every scheduled pair of the round**, a missing or malformed verdict becoming an explicit abstention row, so a round is atomic (recorded = all pairs present) and `next-round` skipping and salvage's "complete rounds" agree; `next-round` skips rounds already recorded in `tournament.jsonl`; `ingest` replaces all ideas of the same lens index instead of appending (lens identity is the `lens_index` field of each `lenses.txt` line — `lens_index|framing|lens`, assigned once by `frame-apply` — not the lens text and not the line number, since `pop_lens` deletes lines as it pops; idea IDs are allocated from a persisted high-water mark (`next_id` in the sidecar `ideas.meta.json`, written atomically with `ideas.jsonl` via tmp + `os.replace`) and **never reused**; "highest existing id" alone cannot guarantee this, because replacing the lens that owned the top ids lowers the max and the next ingest would reuse them. A replaced lens's old ids are retired and generation order is numeric id order; a replace therefore sorts the new ideas after all existing ones, so it changes generation order versus a clean run and the cap tie-break depends on whether a retry happened. Accepted and documented); `collapse` and `shortlist-apply` are pure rewrites. **Phase guard:** `ingest` records the stage in `ideas.meta.json` and exits 1 once `collapse` has run (a later ingest would mix pre- and post-dedup ideas). Framings written to `lenses.txt` are sanitized (`|` and newlines replaced by a space).
+**Idempotency and crash recovery** (reconciled 2026-10-05): `frame-apply` writes immutable `lenses.json` records `{lens_index, framing, lens}` and the consumable `lenses.txt` queue (`lens_index|framing|lens`). `IdeaRecord` persists `lens_index`; `ingest --lens-index N` looks up the lens/framing in the ledger, never in the queue after it was popped. Frame output is `LENSES_JSON: {"lenses": [str, ...]}`; accept 1–9 nonempty unique lenses in emitted order, fail on an empty/oversized/invalid list, and sanitize `|`/newlines for the queue. Replaying `frame-apply` must not reset a partially consumed queue or change the ledger after generation begins.
+
+`ingest` replaces rows for one lens index. Reserve IDs by atomically increasing `ideas.meta.json.next_id` **before** atomically replacing `ideas.jsonl`. Separate `os.replace` calls are not a two-file transaction: crash gaps in IDs are allowed; reuse is not. If an existing ideas file has missing/corrupt metadata, fail rather than reconstructing a potentially lower watermark. An ingest retry retires the old rows and allocates new IDs; numeric ID order determines generation order, so retry ordering may differ from a clean run (accepted). Before `collapse` changes ideas, atomically mark the phase as `deduplicating`; that phase and `deduplicated` both reject ingest (exit 1). A collapse retry is a supported rewrite and must not reopen generation. Failure-injection tests cover every publication boundary. Derivative `diverge_state.md` is regenerated from the committed ideas on retry.
+
+`record-round` atomically rewrites the whole verdict file, upserting `(round, pair, probe)` and writing all scheduled pairs of a main round or the entire probe batch together. Missing/malformed/conflicting duplicate verdicts become abstentions; identical duplicate lines do not add rows. `next-round` skips only complete committed main rounds. `probe-plan` returns exit 1 when the probe batch is already committed (route directly to rank), so restarting the child does not pay for or count the probe twice. `build-schedule` reuses an identical existing schedule; if committed verdicts exist and the finalist set/order differs, exit 1 instead of overwriting the schedule. Salvage, rank and next-round use the same complete-round predicate. Every happy token is emitted after durable writes.
 
 **Prompt blocks** (2026-09-29): YAML prompts can only interpolate `${context.*}`/`${captured.*}`, so commands that feed an LLM state print the data block **to stdout** (the state captures it and interpolates it inside a `<<<…>>>` fence). The instructions stay in the YAML; the engine never writes a whole prompt file. Untrusted text (briefs, idea titles/bodies, framings) is only ever emitted inside the block.
 
 | Command | Args | Reads | Writes | Stdout token |
 |---|---|---|---|---|
-| `resolve-profile` | `--mode M` `--set key=value`… (empty = inherit; values are coerced **before** the `BUILT_CAPABILITIES` check: bool knobs accept only `true`/`false`, int knobs must parse, an unknown key exits 1) `--decision-file F` (optional classifier output) | `brainstorm-profiles/*.json` | `profile.json` (incl. `overridden`, clamped `max_finalists`) | the `Mode: <x> (…)` banner line (informational, not routed); **exit 1 before any LLM call** when a mode or knob value is invalid **or names a capability not yet built** (see § Capability allowlist) |
-| `frame-apply` | `--raw-file F` | `profile.json` | `lenses.txt` (`lens_index\|framing\|lens`; empty framing; sanitized), `diverge_state.md` | `pop_lens` (v1: `reframe` is pinned off; the `reframe` token branch is v2, see appendix); `fail` on violation |
-| `ingest` | `--raw-file F` `--lens-index N` | `profile.json`, `ideas.jsonl` | `ideas.jsonl` (replace-by-lens-index, idempotent), `ideas.meta.json` (`next_id`, stage), `diverge_state.md` | ideas added |
+| `resolve-profile` | `--mode M` `--set key=value`… (empty = inherit; values are coerced **before** the `BUILT_CAPABILITIES` check: bool knobs accept only `true`/`false`, int knobs must parse, an unknown key exits 1) `--decision-file F` (optional classifier output), `--validate-only` (preflight explicit mode/knobs; accepts `auto`, writes no profile) | `brainstorm-profiles/*.json` | `profile.json` (incl. `overridden`, clamped `max_finalists`) | the `Mode: <x> (…)` banner line (informational, not routed); **exit 1 before any LLM call** when a mode or knob value is invalid **or names a capability not yet built** (see § Capability allowlist) |
+| `frame-apply` | `--raw-file F` | `profile.json`, existing lens ledger/phase if replayed | `lenses.json` (immutable ledger), `lenses.txt` (`lens_index\|framing\|lens`; empty framing; sanitized), `diverge_state.md` | `pop_lens` (v1: `reframe` is pinned off; the `reframe` token branch is v2, see appendix); `fail` on violation |
+| `ingest` | `--raw-file F` `--lens-index N` | `profile.json`, `lenses.json`, `ideas.jsonl`, `ideas.meta.json` | `ideas.jsonl` (replace-by-lens-index, idempotent), `ideas.meta.json` (`next_id`, stage), `diverge_state.md` | ideas added |
 | `collapse` | `--groups-file F` | `ideas.jsonl`, `profile.json` | `ideas.jsonl`, `dedup.log` (fail-open; kept count, re-tag agreement rate, pre/post cell occupancy) | `ground_codebase` \| `shortlist` (from `profile.json` `ground`); `fail` on violation |
 | `shortlist-apply` | `--picks-file F` | `ideas.jsonl`, `profile.json` | `finalists.json`, `shortlist.json` | finalists count |
 | `check-floors` | `--stage generation\|pre_tournament\|final` `--elapsed-ms N` (pre_tournament; from `${loop.elapsed_ms}`) | ideas, finalists, profile | — (violations on stderr) | next-state token from the profile (`materialize` \| `tournament`; `ok` at `final`; `ground_web` is deferred, see EPIC-3581); `fail` on violation |
-| `build-schedule` | — | `finalists.json` | `schedule.json` (rounds → ordered pairs) | round count |
-| `next-round` | — | `schedule.json`, `tournament.jsonl`, `finalists.json`, `profile.json` | `round_current.json`; **stdout = the pair block + rubric** (captured by `judge_round`) | exit 1 = no rounds left (queue-pop semantics) |
+| `build-schedule` | — | `finalists.json`, existing schedule/verdicts | `schedule.json` (rounds → ordered pairs) | round count |
+| `next-round` | — | `schedule.json`, `tournament.jsonl`, `finalists.json`, `ideas.jsonl`, `profile.json` | `round_current.json`; **stdout = the pair block + rubric** (captured by `judge_round`) | exit 1 = no rounds left (queue-pop semantics) |
 | `record-round` | `--verdicts-file F` | `round_current.json`, `finalists.json` | `tournament.jsonl` (upsert by round+pair+probe) | `ok` \| `fail` |
-| `probe-plan` | — | `tournament.jsonl` | `round_current.json`; stdout = reversed top-3 head-to-head pair block | pair count |
-| `rank` | — | `tournament.jsonl` | `tournament.json` | — |
+| `probe-plan` | — | `schedule.json`, `tournament.jsonl`, `finalists.json`, `ideas.jsonl`, `profile.json` | `round_current.json`; stdout = reversed top-3 pair block + rubric | pair count; exit 1 = probe already committed |
+| `rank` | — | `tournament.jsonl`, `schedule.json`, `finalists.json`, `ideas.jsonl` | `tournament.json` | — |
 | `salvage` | — | `tournament.jsonl`, `schedule.json` | `tournament.json` (`partial`) | exit 1 = below salvage floor |
-| `portfolio` | `--synthesize` | `tournament.json`, `ideas.jsonl` | `portfolio.json`, `winners.md` | `premortem` \| `render` \| `fail` |
+| `portfolio` | `--synthesize` (reserved; true rejected in v1) | `tournament.json`, `ideas.jsonl`, `finalists.json`, `profile.json` | `portfolio.json`, `winners.md` | `premortem` \| `render` \| `fail` |
 | `validate` | — | portfolio, ideas, finalists, profile, `brainstorm.md` | — | `ok` \| `fail` |
 | `render-report` | `--failed` (optional: stub mode for `finalize_failed`) | `profile.json`, `ideas.jsonl`, `finalists.json`, `shortlist.json`, `tournament.json`, `portfolio.json`, `premortem.json`?, `materialize.json`?, `dedup.log`? | `brainstorm.md` (**the only writer**, incl. the `--failed` stub; `init` empties it) | `ok` \| `fail` |
 | `prompt-block` | `--kind frame\|diverge\|dedup\|shortlist` (`reframe` is v2) | `profile.json`, `ideas.jsonl`, `diverge_state.md` | — (block on stdout: lens catalog, axes/bins, extra fields, rubric, occupancy, idea list) | — |
@@ -79,18 +77,28 @@ All commands: `python3 -m little_loops.brainstorm_engine <cmd> --run-dir DIR [ar
 
 | File (`--*-file`) | Tag and line shape |
 |---|---|
+| `frame-apply --raw-file` | `LENSES_JSON: {"lenses": [str, ...]}` — one valid object, 1–9 unique nonempty lenses |
 | `ingest --raw-file` | `IDEAS_JSON: {"title": str, "body": str, "cell": [bin_a, bin_b], "extra": {…}?}` |
 | `collapse --groups-file` | `DUP_GROUPS_JSON: [["i003", "i007"], …]` and optional `RETAG_JSON: {"i001": [bin_a, bin_b], …}` |
 | `shortlist-apply --picks-file` | `PICKS_JSON: {"<bin_a>\|<bin_b>": "i012", …}` — one id per multi-idea cell |
 | `record-round --verdicts-file` | `VERDICT_JSON: {"pair": int, "winner": "a" \| "b" \| null, "rationale": str, "seen": [str, str]?}` — one per pair; `seen` only in image mode |
 
-**Evaluator per command** (2026-09-30 fourth review): classify-routed (stdout token, `_: finalize_failed`, print `fail` on exit 1 **and** 2): `frame-apply`, `collapse`, `check-floors`, `record-round`, `portfolio`, `validate`, `render-report`. Exit-code-routed (`next:` + `on_error:`, or `evaluate: exit_code`; exempt from the print-`fail` rule because the exit code *is* the route): `resolve-profile`, `ingest`, `shortlist-apply`, `build-schedule`, `next-round` (exit 1 = no rounds left), `probe-plan`, `rank`, `salvage` (exit 1 = below salvage floor), `prompt-block`. Each CLI-table row is tested against this list.
+**Evaluator per command** (2026-09-30 fourth review): classify-routed (stdout token, `_: finalize_failed`, print `fail` on exit 1 **and** 2): `frame-apply`, `collapse`, `check-floors`, `record-round`, `portfolio`, `validate`, `render-report`. Exit-code-routed (`next:` + `on_error:`, or `evaluate: exit_code`; exempt from the print-`fail` rule because the exit code *is* the route): `resolve-profile`, `ingest`, `shortlist-apply`, `build-schedule`, `next-round` (exit 1 = no rounds left), `probe-plan` (exit 1 = probe already committed), `rank`, `salvage` (exit 1 = below salvage floor), `prompt-block`. Each CLI-table row is tested against this list.
 
-**Capability allowlist** (2026-09-30 fourth review): `resolve-profile` holds a module constant `BUILT_CAPABILITIES` (v1 = `{"ground": {"none"}, "materialize": {"none"}, "premortem": {False}, "reframe": {False}}`; `reframe` narrowed to `{False}` by the 2026-09-30 fifth review — see Review Decisions), and rejects (exit 1, violation on stderr, before any LLM call) any profile or override value outside it — including explicit overrides like `materialize=render`. FEAT-3584/3585/3586 each widen it in the same change that lands their states, and flip their preset knob (FEAT-3583 § Pinned Preset Contents). This is what keeps shipped presets from emitting a routing token (`materialize`, `premortem`, `ground_codebase`) whose target state does not exist yet.
+**Capability allowlist** (2026-09-30 fourth review): `resolve-profile` holds a module constant `BUILT_CAPABILITIES` (v1 = `{"ground": {"none"}, "materialize": {"none"}, "premortem": {False}, "reframe": {False}, "synthesize": {False}}`; `reframe` narrowed to `{False}` by the 2026-09-30 fifth review — see Review Decisions), and rejects (exit 1, violation on stderr, before any LLM call) any profile or override value outside it — including explicit overrides like `materialize=render`. FEAT-3584/3585/3586 each widen it in the same change that lands their states, and flip their preset knob (FEAT-3583 § Pinned Preset Contents). This is what keeps shipped presets from emitting a routing token (`materialize`, `premortem`, `ground_codebase`) whose target state does not exist yet.
 
 **Prompt-block delivery** (2026-09-30 fourth review): a prompt state cannot run shell, so every LLM state that needs a data block is preceded by a shell state that captures `prompt-block --kind <k>` (or `next-round`/`probe-plan`) stdout. This issue pins only the command side (which `--kind`s exist); the state-by-state pairing table and the resulting parent step count are owned by FEAT-3582 § Program Design.
 
 Rows are **frozen once FEAT-3582 merges**; until then this review's amendments may still change them, and later children only add commands (`probe-anchor`, `materialize-check`, `annotate`). `render-report` is owned here: `brainstorm.md` has exactly one writer (including the `--failed` stub `finalize_failed` calls) and later children extend its sections (gallery, risks, grounding flags) by adding inputs, not by writing the file. Report contents: mode header (`Mode: <x> (auto, confidence <c>) — rerun with mode=<y> to override`), portfolio (`output_shape` picks the layout; `grid` adds the grid map), off-grid share, dropped cells, `tie_rate`/`abstention_rate`/`low_confidence`/`partial`/`probe_incomplete`/`wildcard_fallback`, `grounded: unknown` flags, re-tag agreement rate and pre/post cell occupancy from `dedup.log` (a blind re-tagger drifting to middle bins would otherwise silently shrink `min_cells`), and optional gallery/risks sections when their inputs exist. The zero-idea and failure paths still get a stub report from `finalize_failed`, which calls `render-report --failed`.
+
+### Additional validation contract (2026-10-05)
+
+- `RETRY_SLEEP_RESERVE_S` is the largest enabled executor transient-handler backoff (currently max(API30, infra5)=30) once YAML disables short/long rate-limit retries. The core pre_tournament guard includes this in addition to child1800 + judge300 + derived core tail (minimum600). Optional children must update TAIL_S/parent timeout together for their actual bounded post-tournament work; ENH-3734 verifies the final combined bound.
+- `resolve-profile --validate-only` reuses final resolution's explicit-input validation, including capability availability, before `mode=auto` makes a classifier call (FEAT-3583 wires it into init). Numeric knobs reject bools, zero/negative values and invalid integers; `min_cells` cannot exceed the declared grid capacity; resolved `max_finalists` is 2–8 (values above 8 clamp); each axis has unique nonempty bins with definitions and `duplicate_criterion` is nonempty. `synthesize=true` is rejected as an unbuilt v1 capability by preflight/final resolution; synthesis has no specified deterministic behavior or budgeted LLM state. A measured follow-up can add it without replacing the canonical ranked portfolio.
+- `check_floors` generation diversity counts eligible ideas before finalist filtering; pre_tournament/final additionally require at least two distinct eligible finalist IDs. A materialize drop does not retroactively erase a generated idea's contribution to the generation-diversity metric; report generated cells and surviving finalist cells separately.
+- `validate` requires ranking to be a permutation of tournament-entry eligible IDs; eligible equals the surviving `finalists` list; all slots are distinct members of ranking, obey the winner/runner-up/wildcard rules, resolve to on-grid ideas with `grounded != false`, and exclude reserve/dropped IDs. Existing idea references alone are insufficient.
+- `abstention_rate` is abstention rows / all unique committed main+probe rows; unplayed rounds in salvage are excluded, and each committed round includes explicit missing-verdict abstentions. Probe disagreement between two valid winners is a tie, not an abstention. `tie_rate` is disagreement-or-abstention comparisons / committed probe pairs. With no committed probe it is 0.0 and `probe_incomplete`/`low_confidence` are true. An uncommitted probe batch contributes no rescoring; a committed batch is applied in full, mapping reversed a/b to canonical idea IDs. Threshold boundaries 0.25/0.5 are inclusive passes (only greater-than triggers the flag/failure).
+- The next-round/probe-plan blocks contain idea bodies and rubric but never expected visual canary/stamp codes. FEAT-3585 adds only candidate asset paths. Report-renderer failures or corrupt canonical inputs fail the run; fail-open behavior is limited to explicitly named malformed LLM inputs.
 
 ## v2 appendix (not in the v1 contract)
 
@@ -116,20 +124,21 @@ All symbols live in `scripts/little_loops/brainstorm_engine.py` and are exposed 
 
 ### Types
 
-- `IdeaRecord`: `{id: str, title: str, body: str, framing: str, lens: str, cell: [str, str] | None, off_grid: bool, grounded: bool | "unknown" | None, extra: dict}` — one JSON line per idea in `ideas.jsonl`
+- `IdeaRecord`: `{id: str, title: str, body: str, framing: str, lens: str, lens_index: int, cell: [str, str] | None, off_grid: bool, grounded: bool | "unknown" | None, extra: dict}` — one JSON line per idea in `ideas.jsonl`
 - `FinalistsFile`: `{finalists: [str], reserve: {str: [str]}, dropped: {str: str}, judge_mode: str, assets: dict}`
 - `PairVerdict`: `{pair: int, a: str, b: str, winner: str | null, probe: bool, round: int, rationale: str}` (`pair` is the upsert key with `round`/`probe`; FEAT-3582 § Data Contract must add it too)
-- `Profile`: `{mode: str, lenses: [str] (per-profile lens catalog; `frame` reads it), reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis] (each `Axis` = `{name, bins: [str], definitions: {bin: one-line str}}`; definitions mandatory), duplicate_criterion: str (printed by `prompt-block --kind dedup`), extra_fields: [str] (profile-specific idea fields under `extra`; `prompt-block --kind diverge` prints them), ground: "none" | "codebase", materialize: str, rubric: str, premortem: bool, output_shape: str, overridden: [str]}` — knob values outside `BUILT_CAPABILITIES` fail `resolve-profile` (§ Capability allowlist)
+- `Profile`: `{mode: str, lenses: [str] (per-profile lens catalog; `frame` reads it), reframe: bool, synthesize: bool (false in v1), min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis] (each `Axis` = `{name, bins: [str], definitions: {bin: one-line str}}`; definitions mandatory), duplicate_criterion: str (printed by `prompt-block --kind dedup`), extra_fields: [str] (profile-specific idea fields under `extra`; `prompt-block --kind diverge` prints them), ground: "none" | "codebase", materialize: str, rubric: str, premortem: bool, output_shape: str, overridden: [str]}` — knob values outside `BUILT_CAPABILITIES` fail `resolve-profile` (§ Capability allowlist)
 
 ### Signatures
 
 - `main(argv: list[str] | None = None) -> int` — the `python -m` entry point; one `argparse` subparser per command in the CLI contract table; returns 0 / 1 / 2 per the exit-code contract
 - `check_floors(ideas: list[IdeaRecord], finalists: FinalistsFile, profile: Profile, stage: str, elapsed_ms: int | None = None) -> list[str]` — returns the violations (empty = pass); the single function behind `check-floors` and `validate`; `elapsed_ms` is required at `stage == "pre_tournament"` (drives the `insufficient_time` guard) and ignored otherwise
-- `ingest_ideas(raw: str, ideas: list[IdeaRecord], profile: Profile) -> list[IdeaRecord]` — assigns stable IDs, normalizes and validates cells, flags `off_grid`
+- `ingest_ideas(raw: str, ideas: list[IdeaRecord], profile: Profile, lens_record: dict, next_id: int) -> tuple[list[IdeaRecord], int]` — pure replacement/normalization, returns ideas and the advanced watermark; the CLI reserves the watermark before publishing rows
 - `build_schedule(finalist_ids: list[str]) -> list[list[tuple[str, str]]]` — deterministic circle-method round-robin over `FinalistsFile.finalists` (idea IDs) as a list of rounds
 - `render_report(run_dir: Path, failed: bool = False) -> str` — deterministic `brainstorm.md` renderer behind `render-report`; `failed=True` renders the `--failed` stub used by `finalize_failed`
 - `prompt_block(kind: str, run_dir: Path) -> str` — data block for an LLM state, behind `prompt-block` and the `next-round`/`probe-plan` stdout
 - `rank(verdicts: list[PairVerdict], finalists: list[IdeaRecord]) -> list[str]` — Copeland score, then head-to-head, then generation order
+- `validate_overrides(mode: str, overrides: dict[str, str]) -> list[str]` — shared coercion/capability validation for `resolve-profile --validate-only` and final resolution; no classifier or file writes
 - `resolve_profile(mode: str, overrides: dict[str, str], decision: dict | None) -> Profile` — base profile from `mode`, non-empty overrides win, empty string inherits
 
 ### Call Path
@@ -152,17 +161,18 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 - **Cell re-tag**: `collapse --groups-file` accepts an optional `RETAG_JSON` block (`{id: [axis1_bin, axis2_bin]}`) produced by a dedup call that never saw the original tags; a valid on-grid re-tag replaces `cell` (original kept in `extra.orig_cell`), an invalid one keeps the original.
 - **`reframe-select`** (_v2, deferred: not built in this issue; kept as the follow-up's spec_): the LLM returns framings in **ranked order** (best first, a forced ranking, not independent 1–5 scores that will tie); the script takes the first 3.
 - **`grounded`** is a top-level optional `IdeaRecord` field (`true` | `false` | `"unknown"`; absent = unverified, counted as not-false). `evidence`/`touchpoints`/`creates` live in `extra`.
-- **Time guard**: `check-floors --stage pre_tournament` also fails with the violation `insufficient_time` when `PARENT_TIMEOUT_S − elapsed < TOURNAMENT_TIMEOUT_S + JUDGE_CALL_TIMEOUT_S + TAIL_S` (`JUDGE_CALL_TIMEOUT_S = 300`: a judge call is not bounded by the child's remaining budget, so the child can overrun by one call) (`elapsed` from `--elapsed-ms ${loop.elapsed_ms}` — the executor's active-time clock incl. the resume offset, `fsm/executor.py` `elapsed_offset_ms`; **never** a wall-clock epoch, which overstates after a `spawn` handoff, pause/resume or sleep; `PARENT_TIMEOUT_S` mirrors `brainstorm.yaml` `timeout`, asserted equal by a test in FEAT-3582). See FEAT-3582 § Tournament Specification → Budgets.
+- **Time guard**: `check-floors --stage pre_tournament` also fails with the violation `insufficient_time` when `PARENT_TIMEOUT_S − elapsed < TOURNAMENT_TIMEOUT_S + JUDGE_CALL_TIMEOUT_S + RETRY_SLEEP_RESERVE_S + TAIL_S` (`JUDGE_CALL_TIMEOUT_S = 300`: a judge call is not bounded by the child's remaining budget, so the child can overrun by one call) (`elapsed` from `--elapsed-ms ${loop.elapsed_ms}` — the executor's active-time clock incl. the resume offset, `fsm/executor.py` `elapsed_offset_ms`; **never** a wall-clock epoch, which overstates after a `spawn` handoff, pause/resume or sleep; `PARENT_TIMEOUT_S` and `TAIL_S` use FEAT-3582's derived core bounds (starting minima 5400/600); parent timeout mirrors `brainstorm.yaml` `timeout`, asserted equal by a test in FEAT-3582). See FEAT-3582 § Tournament Specification → Budgets.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/brainstorm_engine.py` — new
-- `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json` — new (`.json` so unfiltered `rglob("*.yaml")` scanners never read it); all four ship here with unbuilt knobs (`ground`, `materialize`, `premortem`, `reframe`) off, per FEAT-3583 § Shipped vs target. Axes/bins are provisional until FEAT-3686 reports; FEAT-3583 adds only the classifier, overrides and tuning
+- `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json` — new (`.json` so unfiltered `rglob("*.yaml")` scanners never read it); all four ship here with unbuilt knobs (`ground`, `materialize`, `premortem`, `reframe`) off, per FEAT-3583 § Pinned Preset Contents. FEAT-3686 is done/GO; only the functional approach tuning and the unmeasured visual/business bins remain provisional for FEAT-3583
 - `docs/reference/API.md` — `little_loops.brainstorm_engine` section (docs audience: cite the module, not `scripts/` paths)
+- `scripts/little_loops/package_data.py` — register each of the four runtime-read profile JSONs in `PACKAGE_DATA_ASSETS` when first introduced here; FEAT-3583 only verifies the registrations
 
 ### Tests
-- `scripts/tests/test_brainstorm_engine.py` — new; the full list in FEAT-3582 § Integration Map → Tests, plus: CLI exit-code contract (0/1/2) per command, the `fail` token on a forced violation **and** a forced exception for every routed command, idempotency (re-running `ingest`/`record-round`/`next-round` never double-counts; salvage's round count is unchanged), framing sanitization (`|`, newline), `render-report` golden fixtures (grid/portfolio/winner_risks shapes, partial/low-confidence flags, missing optional inputs), prompt-block content and fencing, `insufficient_time` guard driven by `--elapsed-ms` (incl. the `JUDGE_CALL_TIMEOUT_S` term), salvage-floor arithmetic (N = 2..8), abstention thresholds, re-tag fallback, cap tie-break by generation order (no `reframe-select` tests: v2)
+- `scripts/tests/test_brainstorm_engine.py` — new; the full list in FEAT-3582 § Integration Map → Tests, plus: CLI exit-code contract (0/1/2) per command, the `fail` token on a forced violation **and** a forced exception for every routed command, idempotency (re-running `ingest`/`record-round`/`next-round` never double-counts; salvage's round count is unchanged), framing sanitization (`|`, newline), `render-report` golden fixtures (grid/portfolio/winner_risks shapes, partial/low-confidence flags, missing optional inputs), prompt-block content and fencing, `insufficient_time` guard driven by `--elapsed-ms` (incl. the `JUDGE_CALL_TIMEOUT_S` and `RETRY_SLEEP_RESERVE_S` terms), salvage-floor arithmetic (N = 2..8), abstention thresholds, re-tag fallback, cap tie-break by generation order (no `reframe-select` tests: v2)
 - **Executor smoke test** (2026-09-30 fourth review; a test, not a gate): a throwaway loop YAML defined inside the test (never a shipped loop) run through the real executor, whose shell states call `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine check-floors …` from a non-repo cwd. It proves the `$${}` escaping, that `LL_PYTHON` + `-m` resolves, and that the `fail` token and empty-stdout crash route through the real `classify` evaluator to `_`. This is the only in-scope way to de-risk the idiom before FEAT-3582, since this issue changes no YAML.
 - CLI-table conformance: every command's evaluator class matches § Evaluator per command; `resolve-profile` rejects `materialize=render`, `ground=codebase`, `premortem=true` while `BUILT_CAPABILITIES` excludes them; `frame-apply` always routes `pop_lens` and writes empty framings in v1 (`reframe` is pinned off by `BUILT_CAPABILITIES`; the `reframe` token branch exists only for v2); `collapse` emits `ground_codebase` \| `shortlist`; ids are never reused on re-ingest; `render-report --failed` writes the stub; `collapse` records re-tag agreement and occupancy in `dedup.log`
 - `ll-verify-package-data` must pass (module and `brainstorm-profiles/` ship with the package; `pyproject.toml` includes `little_loops/**`)
@@ -192,8 +202,10 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 
 ## Acceptance Criteria
 
+- Crash-injection fixtures prove durable ID reservation, immutable lens lookup after queue consumption, ingest phase guards, and schedule/main-round/probe replay behavior.
+- Explicit input preflight, profile schema constraints, eligible-only distinct slots, and rate/threshold definitions in Additional validation contract are covered by deterministic tests.
 - `render-report` is the only writer of `brainstorm.md`; routed commands print `fail` on any non-zero exit and print their happy token last, after atomic writes; the re-run tests listed under Tests pass (ingest/record-round/next-round never double-count, ids never reused, partial rounds recorded atomically).
-- Every command in the CLI contract table except `reframe-select` (deferred to v2) exists with the documented args, files, exit codes and stdout token, covered by direct-import and `python -m` subprocess tests.
+- Every command in the v1 CLI contract table exists with the documented args, files, exit codes and stdout token, covered by direct-import and `python -m` subprocess tests.
 - All floors, schedule, ranking, probe, salvage, abstention, wildcard and dedup fixtures listed in FEAT-3582 pass.
 - No YAML file is modified; `python -m pytest scripts/tests/` and `ll-verify-package-data` pass; `ruff` and `mypy` clean for the new module.
 - `docs/reference/API.md` documents the module.
@@ -205,6 +217,8 @@ Rules pinned by the review (also reflected in FEAT-3582's spec):
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Confidence Check Notes
+
+Historical score; not re-run after this review. Cached frontmatter scores were cleared on 2026-10-05 because contracts changed; re-run confidence-check against the revised issue and landed prerequisites before implementation.
 
 _Added by `/ll:confidence-check` on 2026-10-02_ (replaces the stale 2026-09-29 notes)
 
@@ -223,6 +237,8 @@ _Added by `/ll:confidence-check` on 2026-10-02_ (replaces the stale 2026-09-29 n
 - **Session-length risk**: Effort is Large and the issue was deliberately not split; if a session stops before checkpoint (b), reopen the split decision (see Review Decisions dissent).
 
 ## Review Decisions
+
+_2026-10-05 code/issue review:_ replaced the impossible two-file atomicity claim with monotonic reservation before publication, added the immutable lens ledger and missing CLI reads, pinned probe replay and ranking integrity, and assigned initial profile asset registration here. The spike gate is already resolved; no new design spike is required. Opus consult was unavailable because the existing task budget was exhausted; these amendments are this review's findings.
 
 _Added 2026-10-02 (second pre-implementation review, `/ll:advise` with Opus, confidence 0.85; nothing measured):_ Fixed the id-allocation contradiction (persisted high-water mark in `ideas.meta.json`), added `pair` to `PairVerdict`, made rounds atomic in `record-round`, clarified that the trailing `fail` token exists to override a happy token printed before a late crash (token last, tmp + `os.replace`), pinned `--set` coercion, moved the `reframe` leftovers to a v2 appendix, added an `ingest` phase guard, fixed the Call Path and exit-1 wording, and added resumable checkpoint boxes. Dissent: the (a)+(b) tournament half needs only a fixture `profile.json`, so the "every split point leaks through `profile.json`" argument against splitting is weaker than recorded; the no-split decision was not reopened.
 
@@ -246,6 +262,7 @@ _Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measu
 
 
 ## Session Log
+- Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:confidence-check` - 2026-10-03T03:33:35 - `7cd57e8e-71e0-4299-a1a4-ccd6bda98ee6.jsonl`
 - `/ll:advise` (Opus, ENH-3678/FEAT-3667 pre-implementation review; edits applied) - 2026-10-02
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:26 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

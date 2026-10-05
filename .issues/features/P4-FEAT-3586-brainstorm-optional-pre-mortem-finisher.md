@@ -17,12 +17,6 @@ blocked_by:
 - FEAT-3583
 - FEAT-3667
 reconcile_attempted: true
-confidence_score: 75
-outcome_confidence: 82
-score_complexity: 14
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 25
 ---
 
 # FEAT-3586: Brainstorm optional pre-mortem finisher
@@ -42,7 +36,7 @@ Brainstorm ships the tournament winner as-is: no step challenges it, and the rep
 
 ## Expected Behavior
 
-- Enabled per profile (`functional`, `business` default on) or via `premortem=true`; a false gate routes straight past the finisher with `brainstorm.md`/`winners.md`/`portfolio.json` byte-identical to the no-finisher output.
+- Enabled per profile (`functional`, `business` default on) or via `premortem=true`; a false gate routes straight to render_report with no extra visits and no finisher artifacts/flags. Rendered output, winners.md and portfolio data are byte-identical to the no-finisher path.
 - **One critic call** covers the winner and the runner-up (both ideas in one prompt): per idea, the top failure modes ("it's 12 months later and this failed because…"), each `{failure_mode, severity: fatal | major | minor, kill_criterion}`. **One defender call** then attaches a `mitigation` string per risk, or leaves it `null`. Mitigations are annotations only — the idea's `title`/`body` are immutable, so the shipped idea is the one that was grounded, rendered, and ranked.
 - A script (`annotate`) validates both outputs against the schema, writes `${context.run_dir}/premortem.json` (`{idea_id: [Risk]}`), and adds `unmitigated_fatal` to `portfolio.json` `flags[idea_id]` when any `fatal` risk has `mitigation: null`. That flag is a **report signal, not a gate**: the idea keeps its slot and still reaches sinks.
 - The report gains a `Risks & Kill Criteria` section for the winner and the runner-up, marks any `unmitigated_fatal` idea prominently, and states that the wildcard was not critiqued.
@@ -67,7 +61,7 @@ EPIC-3581 approach D adds an adversarial pre-mortem to reduce false confidence i
 Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.yaml`, after `portfolio` and before `validate_portfolio`:
 
 - No separate gate state (2026-09-29): the `portfolio` engine command prints `premortem` or `render` as its last stdout line from the resolved profile (or `fail`), and `portfolio` routes on it (`evaluate: classify` with both happy tokens listed explicitly and `_: finalize_failed` — a default that reached `validate_portfolio` would break classify safety; `render` routes to `render_report`). A disabled finisher costs **zero** parent steps.
-- `premortem_critic` (LLM, one call, winner + runner-up) → `premortem_defender` (LLM, one call) → `annotate` (script: engine command `annotate`). Total **3 parent steps** (critic, defender, `annotate`; the gate is folded into `portfolio`); no rounds, no counter, no `premortem_rounds`, no `retry_counter`, no per-run counter file.
+- `premortem_critic` (LLM, one call, winner + runner-up) → `premortem_defender` (LLM, one call) → `annotate` (script: engine command `annotate`). Total **3 successful-path parent visits** (critic, defender, `annotate`; the gate is folded into `portfolio`); no rounds, no counter, no `premortem_rounds`, no `retry_counter`, no per-run counter file.
 - `annotate` is a command of `little_loops.brainstorm_engine` (FEAT-3582 § Solution): it reads the two LLM outputs from files, validates the schema and idea-body immutability, writes `premortem.json`, updates `portfolio.json` `flags`, and never touches `winners.md`, `ideas.jsonl` idea rows, `ranking`, or slots.
 - Report rendering adds the `Risks & Kill Criteria` section from `premortem.json`.
 
@@ -82,7 +76,7 @@ Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.y
 
 ### Signatures
 
-All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `python3 -m little_loops.brainstorm_engine annotate --run-dir DIR`:
+All in the FEAT-3667 engine, invoked in YAML as `$${LL_PYTHON:-python3} -m little_loops.brainstorm_engine annotate --run-dir DIR --critic-file F --defender-file F [--skip-reason REASON]`:
 
 - `annotate(portfolio: dict, critic_out: str, defender_out: str, ideas: list[IdeaRecord]) -> tuple[dict, Premortem | None]` — validates and merges; returns the updated `flags` and the `Premortem`, or `None` on fail-open skip
 - `render_risks(premortem: Premortem, ideas: list[IdeaRecord]) -> str` — the `Risks & Kill Criteria` report section
@@ -97,7 +91,7 @@ All in `scripts/little_loops/brainstorm_engine.py` (FEAT-3582), invoked as `pyth
 
 ### Files to Modify
 - `scripts/little_loops/loops/brainstorm.yaml` — add `premortem_critic`, `premortem_defender`, and the `annotate` module call between `portfolio` and `render_report` (no gate state: `portfolio` prints the routing token); report sections come from `render-report` reading `premortem.json` (FEAT-3667 owns `brainstorm.md`)
-- `scripts/little_loops/brainstorm_engine.py` — `annotate`, `render_risks` (module created by FEAT-3582)
+- `scripts/little_loops/brainstorm_engine.py` — `annotate`, `render_risks` (module created by FEAT-3667)
 - `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entries for `premortem_critic`/`premortem_defender` (interpolate `${context.brief}`)
 - `scripts/tests/data/loop_interpolation_baseline.json` — new shell-state sites, if any
 
@@ -127,14 +121,22 @@ _Carried from `/ll:refine-issue` — 2026-09-25, edited 2026-09-29 for the annot
 - `tournament` and `portfolio` do not exist in `brainstorm.yaml` yet — FEAT-3582 dependency. Insertion point is between `portfolio` and `validate_portfolio`, so no sink runs before the finisher.
 - Winners live in `winners.md` (JSON lines with `text`/`rationale`); this finisher never rewrites it.
 - ~~Per-run round counter (`mechanize-skills.yaml` `diagnosis_retry`), `_validate_zero_retry_counter`, `retry_counter` scope constraint~~ — no longer relevant: there is no counter.
-- `scripts/tests/test_brainstorm.py::TestBrainstormYaml::test_max_steps_is_60` pins `max_steps == 60`; the combined budget with this finisher is FEAT-3596's.
+- `scripts/tests/test_brainstorm.py::TestBrainstormYaml::test_max_steps_is_60` pins `max_steps == 60`; ENH-3734 verifies the combined optional budget; this issue owns its increment.
+
+### Failure, data and time contract (2026-10-05)
+
+`premortem_critic` success -> premortem_defender; error/timeout/rate-limit exhaustion -> annotate with critic_failed. `premortem_defender` success or error -> annotate (error carries defender_failed). `annotate --skip-reason` writes a logged skip/flag without trusting partial output, then next -> render_report; an engine write/crash -> finalize_failed. Both prompt states set finite timeouts, max_rate_limit_retries:0 and rate_limit_max_wait_seconds:0; bound actual retry dispatches/backoffs using the executor's existing API/infra behavior. An exhausted/failed critic does not dispatch a defender. The prior claim of exactly two LLM calls means the successful no-retry path, not a failed or retried execution.
+
+Critic input format: `RISKS_JSON: {"<idea_id>": [{"failure_mode":str,"severity":"fatal|major|minor","kill_criterion":str}]}`. Defender format: `MITIGATIONS_JSON: {"<idea_id>": [{"failure_mode":str,"mitigation":str|null}]}`. IDs must equal the non-null winner/runner-up set; no wildcard/other IDs or revised title/body keys. Match by index and exact failure_mode after whitespace/case normalization; count/order/text mismatch skips the whole annotation. Annotate atomically replaces its own premortem record and **upserts only its own** flags; a repeated call cannot duplicate flags or leave a stale successful premortem.json after a skip. Preserve all unrelated portfolio flags.
+
+The tail600 core reserve cannot guarantee two post-tournament calls plus retries. In the enablement change, add the maximum critic+defender action time **including bounded retry dispatches and backoff**, plus annotate/render/validation/finalization overhead, to TAIL_S and the parent's timeout/engine guard. Assert the longest finisher/error/salvage path fits with a fake clock. Do not budget only +3 visits: elapsed time and invocations are separate. ENH-3734 later verifies the combined optional value, and earlier children may already have raised the timeout.
 
 ## Implementation Steps
 
-1. Add `premortem_critic`, `premortem_defender` between `portfolio` and `render_report` (blocked by FEAT-3582/FEAT-3583); a `render` token from `portfolio` routes straight past the finisher (`render_report` → `validate_portfolio`).
+1. Pin data delivery and finite per-call/retry bounds above, then add `premortem_critic`, `premortem_defender` between `portfolio` and `render_report` (blocked by FEAT-3582/FEAT-3583); a `render` token from `portfolio` routes straight past the finisher (`render_report` → `validate_portfolio`).
 2. Implement `annotate` and `render_risks` in `brainstorm_engine.py` with unit tests first (TDD): schema validation, immutability check, fail-open, `unmitigated_fatal` flag.
 3. Extend `render-report` (FEAT-3667) to add `Risks & Kill Criteria` for the winner and runner-up when `premortem.json` exists; output unchanged when it does not.
-4. Add `FENCE_ROLES` entries; run `ll-loop validate brainstorm`.
+4. Add `FENCE_ROLES` entries, safe raw-file capture, enablement/preset flips and the derived step/time bump; record the reference run and run loop validation plus the local suite.
 
 ## Impact
 
@@ -145,16 +147,21 @@ _Carried from `/ll:refine-issue` — 2026-09-25, edited 2026-09-29 for the annot
 
 ## Acceptance Criteria
 
-- Exactly two LLM calls (critic, defender) when enabled; no rounds, no counter.
+- Exactly two successful prompt calls on the enabled happy path (critic, defender); failed critic skips defender; retries/host failures are recorded honestly. No rounds/counter/hidden evaluator calls.
 - The shipped idea's `title`/`body`, `ranking`, portfolio slots, and `winners.md` are byte-identical with and without the finisher; only `portfolio.json` `flags`, `premortem.json`, and the report differ.
 - `Risks & Kill Criteria` appears for the winner and runner-up; the wildcard is stated as not critiqued.
 - A `fatal` risk with `mitigation: null` adds `unmitigated_fatal` to that idea's `flags` and is highlighted in the report; the idea still reaches sinks.
 - Malformed, unknown-id, mismatched, or revised-body critic/defender output fails open (`premortem_skipped`, `premortem.log`) and never fails the run.
 - Skipped cleanly when disabled; no change to output shape otherwise.
-- **Lands with its own enablement (2026-09-30):** in the same change, widen FEAT-3667's `BUILT_CAPABILITIES` to allow `premortem=true`, flip the `functional` and `business` preset knob to `true` (FEAT-3583 § Shipped vs target), extend the profile-token wiring test, and bump `max_steps` by this finisher's own cost (+3 when enabled) instead of leaving it to FEAT-3596.
-- The critic gets the winner/runner-up bodies by a pinned mechanism: either an engine block captured by one extra shell state (+1 step, then 4 parent steps) or `Read` access to `portfolio.json`/`ideas.jsonl` under the loop `scope:` (0 extra); the choice and the resulting step cost are recorded here when implemented (FEAT-3582 § Program Design → LLM-state pairing).
+- **Lands with its own enablement (2026-09-30):** in the same change, widen FEAT-3667's `BUILT_CAPABILITIES` to allow `premortem=true`, flip the `functional` and `business` preset knob to `true` (FEAT-3583 § Pinned Preset Contents), extend the profile-token wiring test, and bump `max_steps` by this finisher's own cost (+3 when enabled) instead of leaving it to FEAT-3596.
+- Critic uses Read-only access to portfolio.json/ideas.jsonl, not an additional block state. Defender receives the captured critic output within an untrusted-data nonce fence plus Read-only idea access. Both outputs are captured; annotate writes them to raw files through the safe heredoc-to-file pattern before invoking the engine. Missing captures on error use explicit defaults/error status, never stale output from another attempt. Exactly three additional visits on the successful path; at most two successful LLM responses, with actual retry dispatches recorded separately.
+- Timeout, host error, rate-limit exhaustion and missing/malformed critic/defender captures produce premortem_skipped and proceed to render_report. Deterministic annotate/I/O errors still fail the run. A disabled finisher adds zero visits.
+- This issue records its own functional/business reference run with annotations, import origin, actual call/token cost and an honest report; FEAT-3596 does not own it.
+
 
 ## Review Decisions
+
+_2026-10-05:_ pinned the three-state Read/capture data delivery and tagged risk formats; fail-open now includes host errors/timeouts, explicit skip routes and idempotent flag/file replacement. This issue must increase the post-tournament time reserve for its bounded actual calls, not merely add three steps. ENH-3734 owns cumulative optional verification. Historical confidence scores have not been rerun.
 
 _Added 2026-09-30 (EPIC-3581 fifth review, `/ll:advise` with Opus):_ this issue moved to **EPIC-3687** (optional capabilities) so it no longer gates EPIC-3581 or FEAT-3596. Re-run `/ll:reconcile-issue` and `/ll:confidence-check` after FEAT-3667 lands (scores are missing or stale). Its own enablement change (widen `BUILT_CAPABILITIES`, flip the preset knob, wiring test, `max_steps`) and its own reference run stay in scope.
 
@@ -181,6 +188,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
+Historical score; not re-run after this review. The renderer/match-rule concerns below were resolved by earlier decisions; the new failure/retry/time contracts require verification after prerequisites land.
+
 _Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate-only design)_
 
 **Readiness Score**: 75/100 → STOP — ADDRESS GAPS (dependency hard override)
@@ -195,6 +204,7 @@ _Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate
 - `annotate` needs `portfolio.json`, `ideas.jsonl`, and the engine module, none of which exist yet. Signatures are pinned only against FEAT-3582's spec, so recheck them once FEAT-3582 lands.
 
 ## Session Log
+- Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:25 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:28 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:10 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`

@@ -8,8 +8,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T01:33:28Z'
 parent: EPIC-3693
-blocked_by:
-- ENH-3677
+blocks:
+- ENH-3728
 relates_to:
 - ENH-3728
 - ENH-3700
@@ -19,7 +19,7 @@ relates_to:
 
 ## Summary
 
-Make the packaged `sft-corpus` loop fail closed: a failing `ll-messages` or enrich step must reach a terminal failure state, never be masked into an empty corpus that flows on to filter/publish/success. Split from ENH-3700 on 2026-10-04 (Opus review). This is general FSM failure routing that is testable with the local backend; it is independent of the remote guard and of the degrade verdicts.
+Make the packaged `sft-corpus` loop fail closed: a failing `ll-messages` or enrich step must reach a terminal failure state, never be masked into an empty corpus that flows on to filter/publish/success. Split from ENH-3700 on 2026-10-04 (Opus review). This is general FSM failure routing testable with the local backend; it has no fixture or remote-guard prerequisite. It must precede ENH-3728, whose remote quality refusal relies on these failure routes.
 
 ## Current Behavior
 
@@ -31,7 +31,10 @@ In `scripts/little_loops/loops/sft-corpus.yaml`, `stage` masks failure with `2>/
 - On success, emit exactly one pathname on stdout, with notices on stderr. A partial run-private raw file may remain on failure but is never consumed.
 - Add `on_error: corpus_failed` to `stage` and `enrich`, with a `corpus_failed` state `terminal: true, failure: true`. Unexpected staging/parsing/serialization errors terminate.
 - Publish `enriched.jsonl` through a unique temporary sibling and atomic replace only after success; clean failed temps and retain the previous final file.
+- Report expected file/JSON/serialization/publish failures at the enrich state boundary with a fixed safe stderr reason and non-zero exit, after temp cleanup; do not print raw records, SQL, tokens or an unhandled traceback. This handler must never turn failure into an echoed success pathname.
 - No failure reaches filter/publish or the harvest success sentinel.
+
+The optional absence of `sft-corpus.last_harvested` is normal; an existing sentinel that cannot be read is an error. Check `mkdir`, sentinel reads and the captured-path sidecar write as well as `ll-messages`/Python exits: a succeeding later command must not mask their status. Do not change the successful incremental-harvest semantics.
 
 ## Motivation
 
@@ -48,6 +51,7 @@ Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shel
 
 ### Tests
 - Execute the actual packaged YAML states and the FSM failure route (not copied shell snippets): a failing `ll-messages` status cannot be overwritten by its pathname echo; stage/enrich failures reach `terminal: true, failure: true` without filter/publish/success sentinel; failure after one record leaves the previous `enriched.jsonl` intact and no leaked temp file; success stdout contains only the captured pathname.
+- Cover absent vs unreadable harvest sentinel, failed run-directory/sidecar writes, malformed second JSONL record and replace failure. These are local deterministic failure injections; ENH-3677's remote fixture is not needed. Leave remote quality-refusal integration tests to ENH-3728 and preserve these routes/temp cleanup in that later edit.
 - `ll-loop validate` must stay clean (MR rules).
 
 ## Program Design
@@ -65,7 +69,7 @@ Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shel
 
 ## Implementation Steps
 
-1. Remove masking; add `|| exit $?` propagation; add `corpus_failed` and `on_error` routes.
+1. Remove masking; add status propagation for the named fallible shell steps; add `corpus_failed` and `on_error` routes. No ENH-3677 dependency is required.
 2. Atomic temp+replace publish for `enriched.jsonl`.
 3. Tests per above; `ll-loop validate`; run `python -m pytest scripts/tests/` and update the README loop count only if a loop file is added (none is).
 
@@ -79,23 +83,32 @@ Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shel
 ## Scope Boundaries
 
 - **In scope**: failure routing, status propagation, atomic enrichment publication in `sft-corpus.yaml`, and tests of the packaged YAML states.
-- **Out of scope**: the `--reader auto` flag and the remote `enrich` passthrough/notes (degrade-sites issue — same states, coordinate when integrating); the central guard (ENH-3700). ENH-3685 reuses this wiring if revived.
+- **Out of scope**: the `--reader auto` flag and remote enrich passthrough/quality refusal/notes (ENH-3728 — same states, lands after this); the central guard (ENH-3700). ENH-3685 reuses this wiring if revived.
 
 ## Acceptance Criteria
 
 - [ ] A failing `ll-messages` status in `stage` terminates the loop in `corpus_failed`; the pathname echo cannot overwrite it; success stdout contains only the captured pathname.
 - [ ] `stage` and `enrich` both route `on_error` to a `terminal: true, failure: true` state; no failure reaches filter/publish or the harvest success sentinel.
 - [ ] `enriched.jsonl` is published atomically only after success; a failure after one record retains the previous final file and cleans temps.
+- [ ] Absent harvest sentinel remains successful; unreadable sentinel, mkdir/sidecar failure, malformed later JSONL record and atomic-replace failure reach the failure terminal without downstream execution or replacement of the previous good output.
 - [ ] Tests execute the packaged YAML states and the FSM route; `ll-loop validate` is clean; `python -m pytest scripts/tests/` passes.
 
 ## Related
 
-- ENH-3700 (origin of this scope), the degrade-sites issue (edits the same `stage`/`enrich` states: `--reader auto`, enrich passthrough), ENH-3685 (deferred; reuses this wiring), ENH-3677 (shared fixture).
+- ENH-3700 (origin of this scope), ENH-3728 (blocked by this route/atomic publish; edits the same `stage`/`enrich` states), ENH-3685 (deferred; reuses this wiring). ENH-3677 has no functional edge to this backend-independent change.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/reference/loops.md` (SFT corpus behavior), `docs/guides/LOOPS_GUIDE.md` (FSM terminal failure semantics).
 
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
+
+## Confidence Check Notes
+
+Scope/dependencies amended 2026-10-05; run `/ll:confidence-check` before implementation. This issue can be prepared independently of the remote fixture. Its local FSM tests must pass before ENH-3728 adds the remote fallback/refusal branches.
+
+## Session Log
+
+- EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - artificial fixture dependency removed, ENH-3728 failure-route prerequisite wired, shell/atomic failure cases pinned; implementation not performed

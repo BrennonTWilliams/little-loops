@@ -268,7 +268,7 @@ Cost is the same except 2026-09 and 2026-10 `ll-auto` already withhold the verdi
 
 ## Status
 
-**Open** | Created: 2026-10-03 | Priority: P2
+**Done (decomposed; implementation remains in ENH-3731/3732/3733)** | Created: 2026-10-03 | Priority: P2
 
 
 ## Confidence Check Notes
@@ -292,6 +292,8 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-run on the revised scope; sup
 
 ## Session Log
 
+- Pre-implementation epic review - 2026-10-05 - Aligned body status with terminal frontmatter and made the decomposition disposition explicit. Unchecked implementation criteria belong to ENH-3731/3732/3733; all three still gate host publication.
+
 - `/ll:issue-size-review` - 2026-10-05T00:00:00 - `<session-dir>/session.jsonl`
 - `/ll:confidence-check` - 2026-10-05T03:02:22 - `8b143c38-25bb-46fe-827f-32c895e75d3c.jsonl`
 - Pre-implementation review - 2026-10-04 - `/ll:advise` with `claude-opus-5-5` (confidence 0.72) supported channel scoping and explicit per-metric eligibility, while recommending a narrower raw-to-usage completeness check. Inspected checkpoint/version, producer markers, workspace union and regression code; in-memory probes reproduced live-row coverage contamination and rejection of an observed-zero baseline. Adopted member-local status/map injection, source-loss controls and derived-no-usage versus positive-contract-gap semantics. Advisor dissent favored treating every raw-without-usage session as unavailable; not adopted because most raw events contain no usage, with no-observation/unknown-proof windows still fail-closed. The suggested raw-ID reuse risk does not apply to the inspected `AUTOINCREMENT` schema. Focused existing coverage/provenance/snapshot/quality/workspace suite: 101 passed. Updated this issue and epic handoff; no implementation or fresh confidence score is claimed.
@@ -312,7 +314,7 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-run on the revised scope; sup
 
 ## Resolution
 
-- **Status**: Decomposed
+- **Status**: done (closed by decomposition, not implementation)
 - **Completed**: 2026-10-05
 - **Reason**: Issue too large for single session (size score 8/11, outcome confidence 63 below the 65 gate)
 
@@ -321,4 +323,4 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-run on the revised scope; sup
 - ENH-3732: Quality usage qualification, session derive status, and per-metric baselines (blocked by ENH-3731)
 - ENH-3733: Snapshot export and dashboard usage qualification (blocked by ENH-3731)
 
-The production-publication gate for ENH-3671–3676 requires ENH-3731, ENH-3732 and ENH-3733 together.
+The production-publication gate for ENH-3671–3676 requires ENH-3731, ENH-3732 and ENH-3733 together, plus BUG-3735’s separately reproduced scoped-overlap repair. ENH-3730 is independent availability work, not a correctness prerequisite.

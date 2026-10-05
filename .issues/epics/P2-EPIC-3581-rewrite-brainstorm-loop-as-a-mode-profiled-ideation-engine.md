@@ -20,77 +20,86 @@ relates_to:
 
 ## Summary
 
-Rewrite the built-in `brainstorm` loop (`scripts/little_loops/loops/brainstorm.yaml`,
-originally FEAT-2248) as a **mode-profiled ideation engine**. The current loop is
-structurally sound (lenses → diverge → cluster → rank → converge, sinks as optional
-adapters) but behaves as a fixed pipeline: its novelty/saturation machinery never
-fires, and all judgment collapses into three single-shot LLM calls. It also assumes
-every idea is one sentence of text judged the same way, which fails for the distinct
-brainstorming modes the user actually needs: **artifacts** (names, copy, concepts),
-**visual designs**, **functional designs** (features, architecture, APIs), and
-**business/product opportunities**.
+Rewrite the built-in brainstorm loop as a mode-profiled ideation engine: occupancy-aware grid divergence, blind re-tag/duplicate-group dedup, per-cell shortlist, deterministic round-robin ranking and a portfolio of distinct options. Profiles differentiate artifact, visual, functional and business briefs; auto classification is added only after preset tuning. This epic closes on the **core engine**. Reframe and web grounding remain deferred; grounding, rendered mockups and annotate-only pre-mortem belong to EPIC-3687.
 
 ## Motivation
 
-Evidence from the 4 historical runs in `.loops/runs/brainstorm-*` (transient run
-state, 2026-06-27 … 2026-07-02, not committed):
+Historical runs showed ineffective character-level dedup, divergence blind to prior ideas, listwise judgment, forced hybrid output, and silent success on zero ideas. The preserved fresh baseline/spike adds nuance: difflib did remove three short-name ideas on one brief; grid steering and batched judging have measured support on two briefs, with functional-axis and same-model-label limitations. FEAT-3686 is done/GO, not an uncompleted prerequisite.
 
-- **Dedup/saturation inert** — across 45 ideas in the 07-02 run, max pairwise difflib
-  ratio was 0.44 (median 0.05) vs the `novelty_threshold: "0.55"` default;
-  `saturation.txt` stayed 0 in all 4 runs. Character-level similarity cannot catch
-  paraphrase duplicates (three "name the load-bearing assumption" variants survived).
-  In practice the loop is always 9 lenses × 5 ideas.
-- **Diverge rounds are blind to prior ideas** — each `diverge` sees only the brief,
-  so cross-lens anti-anchoring pressure is absent.
-- **Judgment is unstructured** — `cluster`, `rank`, `converge` are each one listwise
-  LLM pass; "pairwise narrative" is a prompt style, not a structure. `converge` read
-  ~319k input tokens in the 07-02 run.
-- **Forced hybrid** — the synthesized top idea is a Frankenstein of three asks;
-  brainstorm output should usually be a portfolio of distinct options.
-- **Not actually double-diamond** — `frame` selects lenses; it never reframes the
-  problem, so only the solution diamond exists.
-- **Silent success on zero ideas** — the 07-01 run produced 0 ideas (`lenses.txt`
-  still held all 9 lenses, no `diverge` calls); `converge` wrote an honest
-  "No synthesis produced" report that passes `verify_artifacts`, which only checks
-  `brainstorm.md` is non-empty.
-- **Mode mismatch** — visual designs need rendered candidates judged visually;
-  functional designs need codebase grounding; business opportunities need market
-  grounding and reframing; artifacts need breadth more than a single winner.
+## Goal
+
+A bounded engine with mode-specific lenses, bin definitions, duplicate criteria, extra fields and rubric, delivering a validated winner/runner-up/wildcard portfolio and compatibility with existing sinks. The v1 core has one solution diamond; the former default-on reframe/double-diamond goal is deferred to v2, not an implementation requirement.
+
+## Scope
+
+In scope: deterministic engine/CLI, four JSON presets with unbuilt knobs off, lens ledger/monotonic idea IDs, grid divergence/dedup/shortlist, generation and pre-tournament floors, round-robin child with salvage, deterministic report and validation before sinks, auto-mode/override wiring and comparable integration evidence.
+
+Out of scope: reframe, unjudged hybrid synthesis, web evidence/reserve promotion, browser rendering, anchor probes, pre-mortem, human steering states and embedding-based novelty. Optional capabilities are EPIC-3687; v1 visual mode here is text judged.
+
+## Cross-Child Contracts
+
+- FEAT-3667 owns engine types, CLI/evaluator contracts, the four preset files, resolver validation/preflight, crash-safe publication and deterministic report. FEAT-3582 owns YAML orchestration/tournament and its merge gate; FEAT-3583 owns classifier/override plumbing and bounded preset tuning; FEAT-3596 owns core integration/closeout.
+- Order: completed FEAT-3686 -> FEAT-3667 -> FEAT-3582 -> FEAT-3583 -> FEAT-3596. Optional children can proceed after FEAT-3583 independently of one another; they do not block this epic.
+- IDs are reserved before publication, never reused, and ideas persist lens_index from an immutable lenses.json ledger. Separate file replacements are not a transaction. Schedule/round/probe replay does not double-count or silently replace mismatched inputs.
+- Explicit inputs fail preflight before the classifier/generation. BUILT_CAPABILITIES prohibits missing-state tokens. Profiles choose base values; nonempty explicit knobs override; empty inherits; false/none disables. reframe and synthesize=true remain unavailable in v1.
+- Canonical portfolio slots are distinct eligible tournament finalists; reserve/dropped IDs cannot leak to sinks. Reports are deterministic; successful validation precedes every sink. Generation diversity and surviving finalist coverage are separate metrics; post-filter finalist floor is two.
+- Main tournament and reversed probe batches are atomic; the rate definitions and thresholds are pinned in FEAT-3667. Odd-finalist partial rounds do not guarantee equal games, so salvage is low-confidence. Child failures have explicit failure terminals and all failure routes reach salvage.
+- Budgets come from actual executor paths, including captured blocks, empty queue pop, classifier, sink/finalization, retries and backoffs. Disable six-hour rate-limit defaults; preserve the child/judge/core tail plus retry-sleep reserve. Optional children own their own step/time increments; ENH-3734 verifies their cumulative values.
+- FEAT-3582's real worktree runs and comparable core A/B gate occur before the live rewrite reaches main. FEAT-3596 repeats the final-core comparison with matched model/settings, actual usage and identical blind tagging of old/new ideas. Changed axes require re-tagging both sets; human A/B judgments must be actually recorded.
 
 ## Integration Map
 
 ### Behavior Parity
 
-Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level summary:
-
 | Artifact | Behavior | Disposition |
-|----------|----------|-------------|
-| `scripts/little_loops/loops/brainstorm.yaml` | lens queue (`frame`/`pop_lens`) feeding `diverge` | preserved |
-| `scripts/little_loops/loops/brainstorm.yaml` | difflib novelty dedup + saturation early exit | dropped — duplicate-group dedup |
-| `scripts/little_loops/loops/brainstorm.yaml` | listwise `cluster`/`rank`/`converge` hybrid | changed — round-robin tournament + portfolio |
-| `scripts/little_loops/loops/brainstorm.yaml` | sinks run before `verify_artifacts` | changed — `validate_portfolio` gates sinks |
-| `scripts/little_loops/loops/brainstorm.yaml` | sink contract (`none`/`file`/`issue`/`decision`, `winners.md` `text`/`rationale`) | preserved |
+|---|---|---|
+| brainstorm.yaml | Lens queue, optional sinks and handoff | Preserved; immutable lens ledger added |
+| brainstorm.yaml | difflib/saturation | Dropped; duplicate-group dedup and floors |
+| brainstorm.yaml | listwise cluster/rank/converge hybrid | Changed to round-robin and distinct portfolio |
+| brainstorm.yaml | Sinks before validation | Changed; canonical validation gates all sinks |
+| brainstorm.yaml | Removed keys and synthesize=true | Document migration and reject unavailable synthesis explicitly |
 
 ### Files to Modify
-- `scripts/little_loops/loops/brainstorm.yaml` — every child rewrites or adds states here
-- `scripts/little_loops/brainstorm_engine.py` — new (FEAT-3667); every later child adds commands here
-- Profile data files (FEAT-3583; `.json` preferred to avoid loop-discovery `rglob` scanners)
-- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` / `KNOWN_UNFENCED_PROMPT_SITES` for new and removed prompt states
-- `README.md` + `scripts/README.md`, `CHANGELOG.md` (breaking change, FEAT-3582)
-
-### Dependent Files (Callers/Importers)
-- Sinks inside the loop (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) — contract preserved, read `winners.md` with `text`/`rationale` keys
-- `scripts/little_loops/loops/lib/common.yaml` — `parse_tagged_json`, `queue_pop`
-- No loop, skill, command, or Python module outside `brainstorm.yaml` consumes its artifacts
+- scripts/little_loops/brainstorm_engine.py and scripts/little_loops/loops/brainstorm-profiles/*.json — FEAT-3667, then tuned by FEAT-3583.
+- scripts/little_loops/loops/brainstorm.yaml and brainstorm-tournament.yaml — FEAT-3582/3583.
+- scripts/little_loops/fsm/fence.py, scripts/little_loops/package_data.py, tests/baselines, README.md + scripts/README.md and CHANGELOG.md — owning child wiring.
 
 ### Tests
-- `scripts/tests/test_brainstorm.py` (rewritten per FEAT-3582, wiring only), `scripts/tests/test_brainstorm_engine.py` (new; engine logic by direct import), `scripts/tests/test_builtin_loops.py` (fence, MR-11 allowlist, warning budget), `scripts/tests/data/loop_interpolation_baseline.json`, `scripts/tests/test_builtin_loop_hardcode_gate.py`
-- Cross-child failure-path fixtures and the combined step budget: FEAT-3596
+- scripts/tests/test_brainstorm_engine.py — deterministic contracts; scripts/tests/test_brainstorm.py — real-executor/wiring/failure/sink fixtures.
+- Built-in validation/fence/interpolation/warning/packaging checks; full local pytest is authoritative.
 
 ### Documentation
-- `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`
+- docs/reference/API.md; scripts/little_loops/loops/README.md; docs/guides/LOOPS_GUIDE.md and LOOPS_REFERENCE.md.
 
-### Cross-Child Contracts (Astra review, 2026-09-25)
+## Children
+
+- **FEAT-3667** — Brainstorm engine module: deterministic core, CLI contract, and artifact profile (open).
+- **FEAT-3582** — Brainstorm engine core: grid diverge, pairwise tournament, portfolio (open; after FEAT-3667).
+- **FEAT-3583** — Brainstorm mode profiles with automatic mode selection (open; after FEAT-3582).
+- **FEAT-3596** — Brainstorm engine integration, reference runs, and evaluation (open; core closeout).
+- **FEAT-3686** — Brainstorm design spike: measure grid, dedup and batched-judge claims on baseline ideas (done, 2026-09-30; GO with amendments).
+
+## Success Metrics
+
+- Zero/insufficient ideas/cells/finalists fail before judging or sinks; no dropped/reserve candidate can win.
+- All four core modes produce their expected text-judged portfolio/report layouts; auto classification and explicit built-knob overrides are visibly recorded.
+- Full deterministic round-robin N<=8, counterbalanced order, independent reversed probe, observable tie/abstention/partial flags, and working failure salvage.
+- On the two pinned briefs with matched evaluation definitions/settings: cells >= old, duplicates <= old, actual calls <=30 (including classifier/finalization/retries), total context tokens <=1.5x the matching old baseline; human blind A/B win-or-tie on both. Two-brief evidence is a regression smoke check, not proof of improvement.
+- Both loops validate; all artifacts stay under run_dir; packaging and full local pytest pass; exact step/time/retry bounds fit shipped budgets.
+- All five child statuses resolve to done/cancelled; no optional P3/P4 capability or deferred v2 scope gates this epic.
+
+## Impact
+
+- **Priority**: P2 — replaces a shipped loop used by local-editable projects.
+- **Effort**: Large — engine, orchestration, presets/classifier and core evidence; spike already completed.
+- **Risk**: Medium — mitigated by isolated worktree real runs, regression gates and a coherent single-commit YAML rewrite/rollback.
+- **Breaking Change**: Yes — removed novelty/saturation/top_k context and portfolio report output; document migration.
+
+## Review History
+
+Historical design evolution; the reconciled scope/contracts above are authoritative. No new measurements were made in the 2026-10-05 review; the attempted Opus consult was blocked by the existing advisor task budget.
+
+### Earlier cross-child reviews
 - **Data contract** (stable IDs, common fields incl. top-level optional `grounded`, enumerated axis bins, canonical `portfolio.json`, generation vs. finalist floors) is specified in FEAT-3582 and implemented by FEAT-3667; other children extend it only.
 - **Validation before sinks**: `validate_portfolio` gates `route_sink`; no sink fires on an invalid run.
 - **Profile precedence**: mode selects the base profile, explicit knobs override it, `""` means inherit (FEAT-3583).
@@ -136,100 +145,13 @@ Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level 
   - **Blind A/B is a smoke check**: single rater on n = 2 briefs has little statistical power.
   - **Spike result (FEAT-3686, 2026-09-30, 160 calls): GO with amendments.** Steering lifts occupied cells +2 vs a control; generator self-tags overstate occupancy so the blind re-tag is load-bearing; dedup needs a per-profile `duplicate_criterion` (precision 0.63 → 1.0 on names); axis bins need definitions and the `functional` `approach` axis needs sharpening (agreement 0.72); batched round judging with 8 finalists matches per-pair judging (τ 0.71, swap-consistency 0.82). Grid-dependent FEAT-3667 commands are no longer held. Details: `postmortems/brainstorm-spike/RESULTS.md`.
 
-## Impact
-
-- **Priority**: P2 - brainstorm is a shipped built-in loop whose core machinery is inert in every observed run
-- **Effort**: Large - five children; full rewrite of a ~460-line loop plus profiles (grounding, rendering, and pre-mortem are EPIC-3687)
-- **Risk**: Medium - replaces a shipped loop's behavior; mitigated by `ll-loop validate`, deterministic script-side scoring, and FEAT-3596 fixtures
-- **Breaking Change**: Yes - removed context keys (`novelty_threshold`, `max_saturation`, `novelty_backend`) and portfolio output shape
-
-## Goal
-
-One engine whose core is **C + B + A** — reframe the problem (true double diamond; on by default for `functional`/`business`, off by default for `artifact`/`visual`, overridable with `reframe=`),
-diverge with structural quality-diversity (MAP-Elites-style grid), select via a
-script-driven pairwise tournament — with an optional **D** adversarial pre-mortem
-finisher. Mode-specific behavior lives in **profiles as data**, not in duplicated
-loops, and two gated states (`ground`, `materialize`) cover the gaps the core does
-not.
-
-## Scope
-
-In scope:
-
-- Core engine: reframe → grid-tagged diverge (enumerated axis bins) → duplicate-group
-  dedup → per-cell shortlist → floor gate → round-robin pairwise tournament → portfolio →
-  `validate_portfolio` before sinks; hard generation and finalist floors. Replaces
-  difflib novelty and the saturation counter.
-- Mode profiles (`artifact`, `visual`, `functional`, `business`, `auto`) as data:
-  reframe on/off, grid axes, idea schema, ground source, materialize, tournament
-  rubric, pre-mortem on/off, output shape.
-- **Auto mode selection** (default `mode: auto`): the first state after `init`
-  classifies the brief into a profile and records `{mode, confidence, rationale}`
-  in the run dir. Low confidence falls back to the generic `artifact` profile.
-  An explicit `mode=<x>` skips classification; individual profile knobs
-  (`materialize`, `ground`, `premortem`, …) are overridable per run so mixed
-  briefs (e.g. a product concept that also needs a landing-page visual) work.
-- `ground` state _(owned by EPIC-3687)_: none | codebase, with non-LLM anchor-existence probes. **`ground=web`
-  (cited-URL fetch + quote match) is deferred to a follow-up** (2026-09-29 third review):
-  v1 ships codebase grounding only; the `business` profile defaults to `ground: none`.
-- `materialize` state for visual mode _(owned by EPIC-3687)_: HTML/SVG mockups → Playwright screenshots →
-  image-capability canary → image-pairwise judging (no mid-tournament HTML restart in v1).
-- Integration and evaluation (FEAT-3596): reference runs, failure-path fixtures,
-  combined step budget, comparison against the old loop.
-- Optional annotate-only `premortem` finisher (risks and kill criteria for winner and runner-up) _(owned by EPIC-3687)_.
-
-Out of scope:
-
-- Changing the sink adapters' contract (`none|file|issue|decision`) beyond reading
-  the new portfolio shape. Core must stay decoupled from the Issue system.
-- Human-in-the-loop steering states.
-- Embedding-based novelty (the `novelty_backend` placeholder is removed, not built).
-
-## Children
-_FEAT-3584 / FEAT-3585 / FEAT-3586 (grounding, materialize, pre-mortem) moved to **EPIC-3687** on 2026-09-30 so this epic can close on the core engine._
-- **FEAT-3667** — Brainstorm engine module: deterministic core, CLI contract, and artifact profile (open)
-- **FEAT-3582** — Brainstorm engine core: reframe, grid diverge, pairwise tournament, portfolio (open; loop side, blocked by FEAT-3667)
-- **FEAT-3583** — Brainstorm mode profiles with automatic mode selection (open)
-- **FEAT-3596** — Brainstorm engine integration, reference runs, and evaluation (open)
-- **FEAT-3686** — Brainstorm design spike: measure grid, dedup and batched-judge claims on baseline ideas (open)
-
-
-## Success Metrics
-
-- A run with fewer than the configured minimum ideas routes to `failed`, never `done`,
-  and no sink executes on a failed run.
-- Diversity is measured non-LLM: occupied grid cells ≥ a configured floor.
-- Finalists are ranked by a full round-robin of pairwise matches, judged one round per call, with
-  counterbalanced presentation order (top-3 head-to-heads re-judged reversed in
-  an independent call); the schedule is built and scored by script.
-- Versus the old loop on 2 fixed briefs (FEAT-3596): fewer retained duplicates, more
-  occupied cells, token/runtime cost recorded.
-- Each of the 4 modes has a profile and at least one reference run producing its
-  expected output shape (v1 visual mode covers axes, lenses and rubric with text judging; rendered mockups + screenshots are owned by EPIC-3687).
-- `mode: auto` selects the expected profile for one reference brief per mode, and
-  an explicit `mode=` override bypasses classification.
-- `ll-loop validate` passes (MR rules, per-run artifact isolation under
-  `${context.run_dir}/`).
-- Cost ceiling: a default run (`mode: auto`, classifier included) makes ≤ 30 LLM calls (old loop 14 measured 2026-09-29, 13 without the finalize summary; expected ≈ 22 = 1 classify + 1 frame + 9 diverge + 1 dedup + 1 shortlist + ≈ 8 judge, +1 reframe when the profile enables it). Total input/output tokens are **recorded, not gated**, until the baseline exists — per-session overhead (≈ 94k tokens per call in the 2026-06-27 run) makes call count the wrong unit for cost.
-- Blind A/B (FEAT-3596): a person compares old-loop top idea vs new winner on both pinned briefs, blind; pass = win or tie on both.
-- Judge reliability is observable: tournament `tie_rate` and `abstention_rate` are recorded and the report
-  flags `low_confidence` rankings.
-
-## Related Key Documentation
-
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:24 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:27 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:32 - `f51f0560-5252-48a7-8a81-10d11331e067.jsonl`
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): `reframe` is deferred to v2 (`BUILT_CAPABILITIES` allows `reframe: {False}` in v1), so the Goal's default-on reframe for `functional`/`business` is a v2 target. Rendered mockups/screenshots, `ground`, `materialize`, and `premortem` are owned by EPIC-3687; v1 visual mode covers axes, lenses and rubric (text judging) only. FEAT-3667 owns the profile schema, presets, and `resolve_profile`.

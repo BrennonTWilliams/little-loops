@@ -42,7 +42,7 @@ For `RemoteTarget` plus `best_effort=True`, per reader invocation:
 
 1. Check both markers first (write marker `remote_telemetry.unreachable_active` and the new read marker); if either is active, return `None` with **zero requests**.
 2. Skip `ensure_schema` entirely. Build **one** `Deadline.after(telemetry_timeout_ms / 1000.0)` and use `LibsqlBackend.connect_readonly(target, deadline=deadline)` (read-only, deadline-bound; no automatic telemetry marking).
-3. Verify access once with `remote_schema.check_access(client, cfg, write=True, persist=True)` on that deadline-bound client — the same policy as the ordinary `ensure=True` path, so behind/ahead/unstamped/foreign stores are refused with `HistoryUnsupported` and a read-only token still works (metadata SELECTs only) — and run the data query on the **same client without a second lazy verification** (do not leave the connection's lazy `_guard` to re-verify; it would not see a file-cached state). Cold: verification POST + data POST; warm file cache: data POST only; marker active: zero.
+3. Verify access once with `remote_schema.check_access(client, cfg, write=True, persist=True)` on that deadline-bound client — the same policy as the ordinary `ensure=True` path, so behind/ahead/unstamped/foreign stores are refused with `HistoryUnsupported` and a read-only token still works (metadata SELECTs only) — and run the data query on the **same client without a second lazy verification**. Cold: verification POST + data POST; warm file cache: data POST only; marker active: zero. Retain `write=True`: it chooses the exact-version/stamp policy, not a mutating SQL operation; using `write=False` would wrongly admit behind/ahead/unstamped stores.
 4. The first failure of kind timeout/connect/unavailable at verification **or** data request writes the **read-scoped** marker (same TTL and file location scheme as the write marker, distinct kind) before returning `None`. A normal empty row, schema/query error or project-policy refusal (`HistoryUnsupported`) must not create a marker.
 
 **Why read-scoped (Opus 2026-10-04):** `LibsqlConnection._run` marks the shared write marker on any `HistoryUnavailable` when `telemetry=True`, and deadline expiry raises `HranaUnavailable`. A cumulative 1.5s budget (two POSTs cold) can expire on a slow-but-healthy endpoint where per-request writes succeed; marking the shared marker would then suppress all telemetry writes across processes for 60s. Best-effort reads therefore **read** both markers but **write only the read marker**. Writes consult only the write marker and are unaffected by a read timeout. (Alternative if the read marker proves awkward: introduce `HranaDeadlineExpired` and mark the shared marker only on zero-byte/connect failures.)
@@ -52,6 +52,14 @@ The deadline is per reader invocation/connection: verification and its data quer
 Explicit `best_effort=True` wins over any ambient reader mode: both open and mid-query `HistoryError`/`sqlite3.Error` return `None`. `strict_reads()` is planned only by deferred ENH-3668; do not introduce it. Add the nesting/restoration test only if that API exists when implementing, otherwise record this precedence for its future integration. Suppression applies only to best-effort consumers; ordinary explicit reads ignore both the read marker and this branch.
 
 **Sanitized diagnostics (owned here only):** `_connect_readonly`'s remote warning and the remote branch of `runs._log_query_failure` use fixed operation/category text — no `str(exc)`, endpoint, token, SQL or `exc_info=True`. Local diagnostics stay unchanged.
+
+### Connection-scoped verification completion
+
+The current `LibsqlConnection._guard` calls `check_access` for every statement, and `persist=True` file-cache hits deliberately do **not** populate process `_VERIFIED`. Eagerly checking and then using the unchanged connection therefore causes a second verification POST in a fresh process with a warm file cache. This issue includes a narrow seam in `session_store/libsql.py`: on the opened connection, a private best-effort verification method checks its deadline, calls `check_access` on **its own deadline-bound client**, and marks that connection verified only after success. `_guard` skips only the access check for that verified connection; read-only write denial and deadline checks still run for every statement.
+
+Default connections remain lazily verified. Do not set `config=None`, populate global `_VERIFIED` from file cache, set `telemetry=True`, or expose a caller-controlled preverified boolean that can bypass access checks before successful verification. The same connection retains its config and client. A file-cache hit followed by an ordinary explicit connection must still cause the explicit connection's uncached verification. No ambient strict/read mode is introduced.
+
+Read-marker completion belongs to the entire advisory read: open/verification failure is handled at the opener, query/fetch failure is handled by each prepatch reader. Mark read-unreachable only for transport/unavailable/deadline failures (not policy/schema/query failures), and clear the read marker after a successful query/fetch, including a legitimate empty result. Every path closes the opened connection; no retry or second connection is created. Active-marker suppression precedes any verification request. Use a fresh process or explicitly cleared process cache when proving the warm **file-cache** request count; a warm `_VERIFIED` alone does not test this hole.
 
 ## Motivation
 
@@ -63,7 +71,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 
 ## Scope Boundaries
 
-- **In scope:** `read_base_sha` and `read_base_dirty`, the best-effort readonly seam, the read-scoped marker, sanitized `_connect_readonly`/`_log_query_failure` remote text, timeout/marker tests and API docs.
+- **In scope:** `read_base_sha` and `read_base_dirty`, the best-effort readonly seam and connection-scoped verification completion, the read-scoped marker, sanitized `_connect_readonly`/`_log_query_failure` remote text, timeout/marker tests and API docs.
 - **Out of scope:** ENH-3720's deadline primitive, socket enforcement and stub controls (landed); typed-target propagation to user-facing reader CLIs/MCP (ENH-3668); all other reader timeouts, remote migrations, new retries, changes to prepatch fallback decisions; the central guard and catch widening (ENH-3700).
 
 ## Integration Map
@@ -71,6 +79,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 ### Files to Modify
 
 - `scripts/little_loops/session_store/backend.py` — best-effort branch in `open_history_readonly`; preserve the local and ordinary-reader branches.
+- `scripts/little_loops/session_store/libsql.py` — connection-scoped best-effort verification completion and `_guard`'s narrow verified-connection branch; keep ordinary `connect_readonly` defaults, read-only denial, config and deadline enforcement.
 - `scripts/little_loops/session_store/remote_telemetry.py` — read-scoped marker kind and helpers.
 - `scripts/little_loops/history_reader/_base.py` — narrow best-effort parameter, open-error fallback, sanitized remote warning.
 - `scripts/little_loops/history_reader/runs.py` — opt in only `read_base_sha`/`read_base_dirty`; query/fetch fallback separate from opening fallback; sanitize the remote branch of `_log_query_failure`.
@@ -91,6 +100,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 
 - `open_history_readonly(target=None, *, ensure: bool = False, best_effort: bool = False)` — keeps default standard read behavior.
 - `_connect_readonly(db_path, *, best_effort: bool = False)` — forwards the mode, preserves the existing `db_path` handling (ENH-3700 later widens it to `Path | LocalTarget`), and catches open failures only.
+- `LibsqlConnection._verify_best_effort_access() -> None` — planned private connection method: deadline check, exact-version/stamp `check_access(write=True, persist=True)` on its own client, then set connection-scoped verification completion; defaults never call it. Naming may follow local conventions, but completion cannot precede successful verification.
 - `remote_telemetry.mark_read_unreachable(endpoint: str) -> None` / `read_unreachable_active(endpoint: str) -> bool` — read-scoped marker (names indicative).
 
 ### Call Path
@@ -99,7 +109,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 
 ## Implementation Steps
 
-1. After ENH-3677, add the read-marker helpers and the best-effort branch (one `Deadline`, marker check, skip `ensure_schema`, single verification, same-client query).
+1. After ENH-3677, add the read-marker helpers and the best-effort branch (one `Deadline`, marker check, skip `ensure_schema`, single verification on the opened connection, connection-scoped completion, same-client query).
 2. Enable it at only the two prepatch reads; keep the `None` fallback on open and mid-query errors; sanitize the remote warnings.
 3. Test with a socket that accepts but never replies and ENH-3720's `delays` / `stall_body` / `trickle` controls, plus a local twin; update API docs and run the suite.
 
@@ -114,6 +124,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 
 - [ ] A black-holed-socket test shows each prepatch read returns `None` within the configured telemetry timeout budget, sets the **read** marker, and sends no new request while a marker is active.
 - [ ] Cold and warm verification tests consume one ENH-3720 `Deadline`: cold success makes two POSTs, warm (file-cached) one, a marker-suppressed read zero, and verification consuming the budget prevents the data POST. A slow verification followed by a stalled/trickling query cannot consume two budgets (use the prerequisite's named small scheduling tolerance and fault controls). No duplicate lazy verification on the data query.
+- [ ] A fresh process with a warm file cache performs zero verification POSTs and one data POST; that file-cache hit never populates `_VERIFIED`. A later ordinary explicit connection still verifies independently. Connection-scoped completion skips only access verification: writes on that read-only connection remain denied and deadline expiry still prevents a statement; unsuccessful verification never sets completion.
 - [ ] **Deadline expiry on a responding (slow-but-healthy) endpoint does not suppress telemetry writes:** after a best-effort read times out and sets the read marker, a telemetry write to the same endpoint still issues its request; a write-side failure still suppresses best-effort reads.
 - [ ] The best-effort branch never calls `ensure_schema` (no un-deadlined 10s client); it applies the same access policy as ordinary `ensure=True` (behind/ahead/unstamped/foreign refused via `HistoryUnsupported`, read-only token works) and `HistoryUnsupported` degrades to `None` without a marker.
 - [ ] Explicit best-effort returns `None` on open/mid-query/guard failure; standard readers retain their timeout/error policy. If deferred ENH-3668's ambient strict API exists, test nesting/restoration and best-effort precedence; otherwise no strict-reader implementation is required.
@@ -145,6 +156,7 @@ Prior scores were cleared (the plan changed: read-scoped marker, single same-cli
 Revised 2026-10-04 (twice). First pass consumed ENH-3720's shared deadline rather than duplicating transport work. Second pass (Opus): ENH-3720 landed so the `blocked_by` was removed and the proposed `connect_readonly_telemetry` replaced by existing `connect_readonly(deadline=)`; deadline expiry is isolated to a read-scoped marker so it cannot suppress telemetry writes; the "behind/ahead readable" and "either merge order" text was dropped because ENH-3700 no longer changes read-mode policy or re-raises; sanitization of `_connect_readonly` is owned here only.
 
 ## Session Log
+- EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - real connection-scoped verification seam, cold-process/file-cache gate and query/fetch marker completion specified; write=True policy retained after confirming metadata-only SELECTs; implementation not performed
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:26 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - EPIC-3693 review #2 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.78) - 2026-10-04 - ENH-3720 dependency removed (landed); read-scoped marker, no-ensure_schema/single-verification and sanitization ownership pinned; implementation not performed
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - guard ownership, per-invocation deadline, marker recovery/scope and safe best-effort diagnostics clarified; deferred strict API removed as a required gate

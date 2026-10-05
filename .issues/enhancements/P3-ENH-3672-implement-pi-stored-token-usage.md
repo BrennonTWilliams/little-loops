@@ -16,6 +16,10 @@ blocked_by:
 - ENH-3661
 relates_to:
 - ENH-3723
+- ENH-3731
+- ENH-3732
+- ENH-3733
+- BUG-3735
 ---
 
 # ENH-3672: Implement Pi stored token usage
@@ -42,7 +46,7 @@ Qualify each observation using the runtime provider and source/CLI version from 
 
 Persist the ingest-time contract reference, provider/version evidence and qualification disposition on `raw_events`, using existing metadata where sufficient, so incremental derive and rebuild make the same decision. A later CLI upgrade or provider configuration must not promote old unknowns; requalification requires new source evidence and an explicit tested operation.
 
-ENH-3723 is linked through `relates_to` and is required before enabling production derivation of this host's newly recognized usage rows, as well as reader cutover/closeout. Existing source, snapshot and quality readers automatically discover `usage_events`; postponing only the session-reader switch would expose audit-only rows before shared qualification exists. Native capture, parser/adapter development, raw-event retention and isolated-fixture derivation may proceed first. Add this host's qualified/partial/mismatch rows to the shared source/snapshot/session-reader matrix before publication. There is no whole-issue scheduling edge to ENH-3723; the only hard evidence blocker remains this host's matching ENH-3660–3665 issue.
+ENH-3723 was closed by decomposition, not implementation. Its recorded policy is implemented by ENH-3731 (core/source), ENH-3732 (quality/workspace), and ENH-3733 (snapshot/dashboard), all linked through `relates_to`. All three implementations, BUG-3735’s scoped-overlap repair, and their consumer tests are required before enabling production derivation of this host's newly recognized usage rows, as well as reader cutover/closeout; the parent's terminal status does not satisfy this gate. Existing source, snapshot and quality readers automatically discover `usage_events`; postponing only the session-reader switch would expose audit-only rows before shared qualification exists. Native capture, parser/adapter development, raw-event retention and isolated-fixture derivation may proceed first. Add this host's qualified/partial/mismatch rows to the shared source/snapshot/session-reader matrix before publication. There is no whole-issue scheduling edge to these delivery-stage correctness owners; the only hard evidence blocker remains this host's matching ENH-3660–3665 issue.
 
 **Ingress parity:** cover historical `lifecycle._backfill_raw_events`, current `refresh_usage_source` or the proved host equivalent, parser-upgrade `usage_refresh.refresh_raw_events`, and direct-source `writers._iter_usage_replay_records`. The first delivery lander owns the shared host-keyed contract-resolution seam under the epic's ownership rule. Each supported route uses the same native provider/version evidence and preserves its ingest-time marker through raw storage and derive. Unchanged previously unqualified rows cannot be promoted by a later parser/contract change; requalification remains an explicit operation outside this delivery. A legacy direct-source route that cannot handle this native shape must explicitly reject it rather than apply Claude's contract or silently certify different usage. Do not require every host to adopt the single-file interface.
 
@@ -67,7 +71,7 @@ ENH-3723 is linked through `relates_to` and is required before enabling producti
 
 ## Integration Map
 
-- Session discovery/parser/normalizer and replay writer under scripts/little_loops/session_store/; coordinate extensions to `refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, and shared tests under EPIC-3562 § Shared Delivery Ownership; ENH-3723 owns shared canonical eligibility. Verify append, overwrite, rotation, or file-tree mutation behavior against the real native source before reusing a cursor.
+- Session discovery/parser/normalizer and replay writer under scripts/little_loops/session_store/; coordinate extensions to `refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, and shared tests under EPIC-3562 § Shared Delivery Ownership; ENH-3731 owns shared canonical eligibility; ENH-3732/3733 own quality and snapshot integration. Verify append, overwrite, rotation, or file-tree mutation behavior against the real native source before reusing a cursor.
 - Include `lifecycle._backfill_raw_events`, `usage_refresh._event_signature`/`refresh_raw_events`, and `writers._iter_usage_replay_records` in contract-routing changes; those seams currently calculate Claude-specific markers. Preserve stored evidence for unchanged rows and test explicit rejection of unsupported direct-source layouts.
 - Pi lifecycle adapter and scripts/little_loops/hooks/usage_stop.py or another proved after-usage trigger; scripts/little_loops/cli/backfill_worker.py and incremental derivation.
 - scripts/little_loops/cli/ctx_stats.py and scripts/little_loops/history_reader/usage.py shared selection; scripts/little_loops/host_runner.py typed telemetry entries.
@@ -75,9 +79,11 @@ ENH-3723 is linked through `relates_to` and is required before enabling producti
 
 ## Acceptance Criteria
 
+- [ ] Production enablement happens only after ENH-3731/3732/3733 and BUG-3735 pass. Until then, native adapter/raw-retention work cannot register a production derive route that publishes these observations into existing unqualified readers; isolated-fixture derivation is allowed. After enablement, the real source/snapshot/quality/session-reader matrix keeps partial/mismatch/wildcard cases unavailable, without changing coverage-only selected-row counts to hide rejected contributors.
+
 - [ ] Runtime matching, unmatched provider, absent provider/version, unproved version, and unproved identity fixtures enforce the evidence-backed qualification policy. Unsupported versions/providers cannot inherit a measured host-level verdict; diagnostics explain audit-only/unavailable results.
 - [ ] Ingest-time qualification evidence survives on `raw_events`; incremental derive, full rebuild, and later CLI/provider changes produce the same qualified or unknown disposition without promoting old rows.
-- [ ] Before enabling production derivation of new native usage observations and before reader cutover/closeout, ENH-3723's selected eligibility policy and this host's source/snapshot/session-reader parity cases pass, including partial/mismatch rows and any documented stricter measured-only rate rule. Capture/adapter/raw-retention work can proceed first without publishing unqualified canonical figures through existing readers.
+- [ ] Before enabling production derivation of new native usage observations and before reader cutover/closeout, ENH-3731/3732/3733 implement the recorded policy, BUG-3735 preserves wildcard coverage through scoped selection, and this host's source/snapshot/quality/session-reader parity cases pass, including partial/mismatch rows and any documented stricter measured-only rate rule. Capture/adapter/raw-retention work can proceed first without publishing unqualified canonical figures through existing readers.
 - [ ] Historical ingest, current refresh, parser-upgrade refresh and supported direct-source replay agree on the native fixture's contract evidence and derived qualification; unsupported direct-source shapes have an explicit tested rejection. Repeated parser refresh preserves unchanged ingest-time markers and does not qualify old unknowns. A failed derive/rebuild stays unavailable or freshness-unknown until an explicit successful retry, even if the next source read is unchanged; no fresh-zero result is certified.
 - [ ] Preserve ENH-3723's as-of compatibility contract: otherwise qualified retained historical values carry freshness/lag/as-of metadata and are never described as current when freshness is stale/unknown. Source loss retains historical observations; component-incomplete session rates remain unavailable rather than using a complete subset.
 - [ ] ENH-3661 records a versioned, sanitized producer contract for every implemented metric/channel: fields, inclusivity, omissions, request grain/reset behavior, reasoning/output relation, and stable source identity; unresolved items remain explicit unknowns.
@@ -99,7 +105,7 @@ ENH-3723 is linked through `relates_to` and is required before enabling producti
 1. Consume ENH-3661's provider/version-qualified native contract, real layout, identity and source-write timing evidence.
 2. Implement the native adapter and durable ingest-time qualification; coordinate shared seams under the epic ownership rule.
 3. Prove replay/update behavior, incremental/full parity, a real current-session trigger and freshness recovery.
-4. Add this host's ENH-3723 qualification matrix cases; enable production usage derivation and cut over the reader only after its gate passes, or record the evidence-backed unavailable/partial disposition.
+4. Add this host's qualification matrix cases across ENH-3731/3732/3733; enable production usage derivation and cut over the reader only after its gate passes, or record the evidence-backed unavailable/partial disposition.
 
 ## Impact
 
@@ -116,10 +122,12 @@ ENH-3723 is linked through `relates_to` and is required before enabling producti
 
 ## Scope Boundary
 
-**Coordination rule (2026-10-03):** EPIC-3562 § Shared Delivery Ownership governs all six delivery issues (ENH-3671–3676). The first lander owns the shared refresh/derive/freshness/trigger extension; later hosts extend the host-keyed dispatch and rebase. ENH-3723 owns shared canonical eligibility. Host-specific adapter work stays here.
+**Coordination rule (2026-10-03):** EPIC-3562 § Shared Delivery Ownership governs all six delivery issues (ENH-3671–3676). The first lander owns the shared refresh/derive/freshness/trigger extension; later hosts extend the host-keyed dispatch and rebase. ENH-3731 owns shared canonical eligibility; ENH-3732/3733 own quality and snapshot integration. Host-specific adapter work stays here.
 
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Resolved the decomposed-parent publication gate to ENH-3731/3732/3733 together. Kept the matching native-evidence blocker and independent adapter/raw-retention work; a done ENH-3723 is not an implementation pass.
 
 - Pre-implementation follow-up review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.72): added shared qualification before production usage publication, all supported ingestion-route contract parity and explicit unsupported-route rejection, failed-derive controls and retained as-of semantics. No status, dependency or implementation change.
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:30 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

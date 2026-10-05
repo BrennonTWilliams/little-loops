@@ -14,6 +14,7 @@ blocked_by:
 relates_to:
 - ENH-3733
 - ENH-3730
+- BUG-3735
 - ENH-3543
 verify_verdict: VALID
 confidence_score: 70
@@ -29,7 +30,7 @@ size: Large
 
 ## Summary
 
-Make the agent-quality report obey the shared usage qualification policy. This child scopes quality acquisition to the transcript channel, adds a member-local read-only per-session derive-status helper (with workspace map injection), carries optional token/cost numerators with per-metric qualification, and replaces the zero-as-unmeasured baseline proxy in `quality_regressions` with explicit all-measured trend eligibility. Blocked by ENH-3731 (`qualify_usage` and the `channel=` selector scope).
+Make the agent-quality report obey the shared usage qualification policy. This child scopes quality acquisition to the transcript channel, adds a member-local read-only per-session derive-status helper (with workspace map injection), carries nullable token/cost numerators with per-metric qualification, and replaces the zero-as-unmeasured baseline proxy in `quality_regressions` with explicit all-measured trend eligibility. Blocked by ENH-3731 (`qualify_usage` and the `channel=` selector scope).
 
 ## Parent Issue
 
@@ -79,7 +80,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   > ⚠ Superseded — `QualityAnalysis.regressions` is always emitted; see Codebase Research Findings
 - `scripts/little_loops/issue_history/agent_quality.py` — `_quality_text_body` iterates `_METRIC_LABELS` into `_format_metric_line` and renders `_STANDARD_NOTES`/`_REGRESSION_NOTES` verbatim; the text and markdown regression lines print `skipped_zero_baseline=` literally, in `_quality_text_body` [Agent 2 finding]
 - `scripts/little_loops/issue_history/quality_regressions.py` — `_metric_eligible` (`not insufficient_history and verdict is not None`) gates **targets** as well as baselines; the all-measured eligibility must cover the target side too, in `_metric_eligible` [Agent 2 finding]
-- `scripts/little_loops/issue_history/quality_regressions.py` — `load_window_compositions` host dimension (`SELECT session_id, host, COUNT(*) FROM raw_events ... GROUP BY session_id, host`) has no channel/transcript filter, unlike the model dimension just above it; decide whether "model-composition inputs on the transcript/legacy population" extends to the host dimension, in `load_window_compositions` [Agent 2 finding]
+- `scripts/little_loops/issue_history/quality_regressions.py` — `load_window_compositions` host dimension (`SELECT session_id, host, COUNT(*) FROM raw_events ... GROUP BY session_id, host`) has no channel/transcript filter, unlike the model dimension just above it; retain and label the broader all-raw host diagnostic, keeping it outside usage qualification, in `load_window_compositions` [Agent 2 finding]
 - `scripts/little_loops/issue_history/quality_regressions.py` — `detect_quality_regressions` retry-inflation branch (`RetryWindow`) shares the `skipped_zero_baseline` counter with the usage branch; keep the retry branch's zero-baseline behavior unchanged while replacing the usage exclusion, in `detect_quality_regressions` [Agent 2 finding]
 - `scripts/little_loops/issue_history/quality_regressions.py` — module docstring and the comment above `_ZERO_INELIGIBLE_BASELINE_METRICS` ("not 'free', just unmeasured") describe the proxy being replaced; update in the module docstring [Agent 2 finding]
 - `scripts/little_loops/history_reader/usage.py` — resolve `_USAGE_DERIVE_VERSION` through the `lifecycle` module attribute at call time (not `from ... import` at import time) so `monkeypatch.setattr(lifecycle, "_USAGE_DERIVE_VERSION", ...)` in tests is seen, and import it lazily inside `select_session_derive_status`: `session_store/queries.py` already imports `history_reader.usage` lazily in the opposite direction, so a module-level edge would be new [Agent 2 finding]
@@ -197,6 +198,13 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 - **Existing read-only test idioms assert bytes, not connection mode:** `_sha256`/`read_bytes()` before/after (`test_feat3410_workspace_quality.py`, `test_feat3418_workspace_quality.py::TestSourceUntouchedDuringTotals`, `test_enh3678_rebuild_derive_gate.py::TestRebuildNeeded::test_read_leaves_store_byte_identical`) plus source-text checks; no Python test asserts `PRAGMA query_only` or a rejected write. `rebuild_needed` opens from a path, so its open/lock-timeout cases do not transfer to a helper taking an open connection. The only quality-side `raw_events` fixture is `_raw_event(db, session_id, host, *, line_no)` in `test_issue_history_agent_quality.py`.
 - **No precedent for an authoritative injected `Mapping | None`** (searched `scripts/little_loops/`): the closest, `artifact_templates.py` `contexts: Mapping[DataPath, RegionContext] | None`, defaults absent keys to `text` (non-authoritative). The fail-closed-on-missing-key contract is new and needs its own test.
 
+## Resolved review handoffs (2026-10-05)
+
+- **Logical derive gaps:** recognize positive retained contracts at the same canonical observation grain used by `writers.normalize_host_usage`: for the existing qualified Claude producer, host + session + message ID. Several raw snapshots can coalesce into one observation; a missing `source_raw_event_id` join is not a gap. A represented logical observation satisfies those snapshots even when its raw pointer moves. A proved positive logical candidate with no derived observation is `derive_gap`; a missing/unproved key or inadequate retained evidence is `derive_status_unavailable`. Reuse/factor only the pure existing key construction as needed; do not call the normalizer or change derivation. Test two snapshots → one observation, genuine missing candidate, and unprovable identity.
+- **Host composition:** keep `load_window_compositions`' existing all-raw-event host diagnostic and label that broader population in text/JSON/definitions. It must not supply the transcript token/cost numerator, denominator, qualification or trend eligibility. The model dimension remains transcript scoped. This resolves the repeated “decide whether” wiring note below without a new query or metric.
+- **Workspace population:** preserve the documented member-additive `UNION ALL` quality population, including the accepted counting of a session present in multiple stores. A workspace total is not a distinct-session or counted-once host-consumption total. State that scope with the output; do not silently deduplicate or blanket-quarantine shared sessions. Member-local unavailable derive proof still taints every attributed window, so a good member cannot hide an underived one.
+- **Coverage isolation:** in the transcript-only workspace acquisition, numeric IDs from different members cannot merge otherwise unrelated audit groups or use one member's checkpoint. Add a two-member case with colliding IDs and different session/provenance/derive states plus an excluded live counterpart. Keep `_UNION_RELATIONS`, issue discriminators and accepted attribution unchanged. BUG-3735 handles cross-channel wildcard correctness; this is not ENH-3730's availability redesign.
+
 ## Program Design
 
 ### Types
@@ -235,7 +243,14 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 - [ ] Baselines/verdicts require qualified sample-sufficient all-measured values independently for tokens and cost; estimated/mixed windows show labels/reasons but cannot be targets or baselines; measured `[10, 0, 10]` with two prior baselines yields mean `5` and relative increase `1.0`; no-observation windows stay unavailable; an all-zero mean keeps the division guard; text/JSON render sample-sufficient unavailable metrics without exceptions or false insufficiency labels.
 - [ ] Attributed sessions with in-scope raw evidence and absent/invalid/version-mismatched proof or session-local lag make each touched window unavailable with bounded reasons; recognized positive contract without a derived observation is `derive_gap`; fully derived non-usage raw needs no usage row; no evidence or zero in-scope observations never becomes zero; proved rollout/live-only sessions stay excluded; source deletion and unrelated later raw appends cannot invalidate qualified stored sessions; helpers run on `query_only` connections with no writes, re-derivation or source reads.
 - [ ] Workspace analysis uses member-local proof and a conservatively merged injected map; colliding raw IDs with different checkpoints on a shared window cannot publish a complete subset total; bare first-attached `meta` cannot certify another member; shared-session merging and absent/out-of-scope members tested; attribution/discriminators and union relations preserved.
+- [ ] Coalesced raw snapshots do not create false derive gaps; missing logical candidates and unprovable keys fail closed with distinct reasons. Workspace ID-collision and shared-session tests preserve member-additive counting while unavailable member proof blocks affected windows. The broader raw-host diagnostic is labeled and never certifies transcript usage.
 - [ ] `python -m pytest scripts/tests/` exits 0.
+
+## Impact
+
+- **Priority**: P2 — prevents audit-only/underived data from becoming quality numbers or baselines.
+- **Effort**: Large — read-only session proof, metric semantics and member-local integration.
+- **Risk**: Medium — published trends become unavailable when evidence is incomplete; preserve the documented member-additive population.
 
 ## Scope Boundaries
 
@@ -262,7 +277,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update `scripts/little_loops/issue_history/agent_quality.py` — `_STANDARD_NOTES`, `_definitions` (`cost_per_issue`/`tokens_per_issue` caveats and `verdict_band`) and the module docstring item 3; keep the `"correlational"` note and the 4-definition count (`test_cli_history.py` and `TestEmptyAndMissingDb` assert it)
 - Update `scripts/little_loops/issue_history/agent_quality.py` — `QualityMetric.to_dict()` adds the new keys conditionally so JSON/YAML (`format_agent_quality_json`/`format_agent_quality_yaml`, workspace `per_repo`/`totals`) keep the existing 7 keys byte-for-byte for non-usage metrics
-- Update `scripts/little_loops/issue_history/quality_regressions.py` — apply all-measured eligibility to `_metric_eligible` (targets) as well as `_metric_eligible_as_baseline`; leave the `RetryWindow` zero-baseline branch of `detect_quality_regressions` unchanged; decide and test whether `load_window_compositions`' unfiltered host dimension follows the transcript population
+- Update `scripts/little_loops/issue_history/quality_regressions.py` — apply all-measured eligibility to `_metric_eligible` (targets) as well as `_metric_eligible_as_baseline`; leave the `RetryWindow` zero-baseline branch of `detect_quality_regressions` unchanged; test that the all-raw host diagnostic is labeled and cannot gate the transcript usage metrics
 - Update `scripts/little_loops/history_reader/usage.py` — look up `_USAGE_DERIVE_VERSION` through the `lifecycle` module at call time via a lazy import inside `select_session_derive_status` (monkeypatch-visible; avoids a new module-level `history_reader` → `session_store.lifecycle` edge); read only `raw_events`/`meta` (or `usage_events` without token/cost columns) so the chokepoint AST gate stays green; no raw `sqlite3.connect(`
 - Update `scripts/little_loops/history_reader/__init__.py` — docstring, re-export block and `__all__`; add a `history_reader` export test
 - Update `scripts/little_loops/issue_history/workspace_quality.py` — keep new code after `_open_member_readonly` free of `ensure_db(`/`_connect_readonly(`/`immutable=1`; build the per-member map inside the open-connection loop (connections close in a `finally`; `gated` keeps only paths/issues) and merge before the union call; do not add `meta` to `_UNION_RELATIONS`
@@ -282,7 +297,7 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-verified 2026-10-04: ENH-3731
 ### Concerns
 - Architecture: `derive_status: Mapping[...] | None` as an authoritative, fail-closed injected map has no precedent in `history_reader/`, `issue_history/` or `session_store/`; `SessionDeriveStatus` straddles the frozen/mutable result-type conventions.
 - Host dimension of `load_window_compositions` is unfiltered by channel; the issue says to "decide" whether it follows the transcript population — resolve before coding.
-- `format-check` flags `soft_dep_hard_edge` for ENH-3731 in `blocked_by` — confirm whether the edge is truly hard (it is, for `qualify_usage`/`channel=`; the flag may merit a rationale).
+- ENH-3731 is a required implementation prerequisite for `qualify_usage`/`channel=`. Keep the hard edge; the earlier wording about nullable numerators has been clarified so it cannot be mistaken for a scheduling exception.
 
 ### Gaps to Address
 - `blocked_by` ENH-3731 is `open`: `qualify_usage`, `UsageQualification` and the `channel=` selector scope do not exist in source (verified by grep of `history_reader/usage.py` and `issue_history/`). Implement/complete ENH-3731 first, or remove the dependency only if the surfaces land elsewhere.
@@ -294,6 +309,8 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-verified 2026-10-04: ENH-3731
 
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Resolved logical-observation derive gaps, raw-host diagnostic scope and workspace coverage/proof controls. Kept the explicitly documented member-additive totals instead of adopting Opus’s proposed cross-member quarantine (confidence 0.74); that would change the existing accepted population. Added Impact and required regression cases; no new score or implementation pass is claimed.
 
 - `/ll:confidence-check` - 2026-10-05T04:09:15 - `ddd0ba49-7247-411f-a7ef-57bd1c042115.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-05T04:06:20 - `097f9bb1-c676-46ac-b043-c8b9570fd790.jsonl`

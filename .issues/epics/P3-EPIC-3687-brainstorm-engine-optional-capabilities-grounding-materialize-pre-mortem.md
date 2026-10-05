@@ -18,41 +18,65 @@ relates_to:
 
 ## Summary
 
-Optional, profile-gated capabilities for the EPIC-3581 brainstorm engine, split out of EPIC-3581 on 2026-09-30 (fifth pre-implementation review, `/ll:advise` with Opus) so the core engine epic can close without waiting on P3/P4 optional work: **codebase grounding** (FEAT-3584), **visual materialize** (FEAT-3585) and the **annotate-only pre-mortem finisher** (FEAT-3586).
+Deliver three optional, profile-gated capabilities for the EPIC-3581 core engine: codebase anchor validation (FEAT-3584), visual materialize/image-or-HTML judging (FEAT-3585), and annotate-only pre-mortem (FEAT-3586). ENH-3734 owns their combined verification and cumulative budget. This epic is independent of core closure after its implementation prerequisites land.
 
-Each child lands with its own enablement in one change: widen `BUILT_CAPABILITIES` in `little_loops.brainstorm_engine`, flip its preset knob in the target profile(s) (FEAT-3583 § Shipped vs target), extend the profile-token wiring test, bump `max_steps`/`timeout` by its own cost, and record its own reference run. The `ground=web` follow-up (deferred out of v1) also belongs here.
+## Goal
 
-## Impact
+Each optional capability works independently, degrades visibly where appropriate, preserves ranked portfolio integrity, and composes within an executable cumulative budget. Every promised closing check has a child owner.
 
-- **Priority**: P3 - optional capabilities; the core engine works without them
-- **Effort**: Large - three gated capabilities (ground, materialize, pre-mortem) plus the deferred `ground=web`
-- **Risk**: Low - each is gated behind a profile knob and lands with its own enablement
-- **Breaking Change**: No
+## Scope
+
+In scope: the three capabilities, each one's safe enablement/preset flip/routing/tests/reference run, and combined optional integration. Web evidence/reserve promotion and reframe are deferred follow-ups and **do not gate v1 closure**. Existence-only anchor checks do not certify semantic support; image codes are capability sanity signals; pre-mortem flags do not demote winners.
+
+## Ordering and Ownership
+
+FEAT-3584/3585/3586 depend on FEAT-3667 -> FEAT-3582 -> FEAT-3583 and remain independent of one another. Each change widens BUILT_CAPABILITIES, flips only its own target preset knobs, adds explicit routes, updates exact step/time/guard values for its cost, and records its own reference run. The first optional child replaces a literal max_steps==60 assertion with one derived from the built paths; later children extend it. Engine/YAML constants must change together, including the post-tournament tail when pre-mortem is enabled.
+
+ENH-3734 runs after all three capabilities plus FEAT-3596's core evidence. It owns the eight-combination matrix, targeted filtering/fallback/skip failures, one mixed reference run and final cumulative budget. It has no reverse dependency on the core epic. No v1 reserve-promotion fixture is required while web grounding remains unbuilt.
 
 ## Children
-- **FEAT-3584** — Brainstorm ground state with codebase and web evidence probes (open; v1 = codebase only)
-- **FEAT-3585** — Brainstorm materialize state: rendered mockups judged visually (open)
-- **FEAT-3586** — Brainstorm optional pre-mortem finisher (open)
 
-## Ordering
-
-All children sequence after EPIC-3581's core (FEAT-3667 → FEAT-3582 → FEAT-3583). The children are independent of each other.
+- **FEAT-3584** — Brainstorm ground state with codebase and web evidence probes (open; current implementation is codebase only; web deferred).
+- **FEAT-3585** — Brainstorm materialize state: rendered mockups judged visually (open; source-valid fallback, no schedule restart).
+- **FEAT-3586** — Brainstorm optional pre-mortem finisher (open; annotate-only, host failure skips annotations).
+- **ENH-3734** — Brainstorm optional capability integration and cumulative budget verification (open; closes the coverage/budget ownership gap).
 
 ## Success Metrics
 
-- Each child's reference run (one per capability) is recorded in its own Session Log or `postmortems/`.
-- No shipped profile enables a capability outside `BUILT_CAPABILITIES`.
+- Each feature enables its capability/preset/routes in the same change; no shipped profile names an unbuilt feature.
+- Codebase false anchors are excluded before shortlist; unknown stays visible and eligible. Valid new paths are not penalized for being new.
+- Visual runs never judge unauthored candidates; degraded judging uses valid sources, records image/html mode separately from its cause, and checks finalist floors before judging.
+- Pre-mortem data/host failure/timeout preserves bodies, ranking, slots and sink content, flags a skip and continues. Successful annotations remain risks/kill criteria, with fatal flags visible but non-gating.
+- Three individual reference runs plus ENH-3734's mixed run/actual usage/import origin are recorded; deterministic combination fixtures require no live browser/LLM.
+- Cumulative step/time guards include bounded retry behavior, browser deadlines, salvage, two post-tournament calls, every sink and finalization. Both loops validate and the local suite passes.
+- Four children resolve to done/cancelled; deferred web/reframe work does not hold this epic open.
+
+## Integration Map
+
+### Files to Modify
+- scripts/little_loops/brainstorm_engine.py — each optional command/report extension and capability allowlist.
+- scripts/little_loops/loops/brainstorm.yaml / brainstorm-tournament.yaml — optional routing/prompt/budget changes owned by the feature adding them.
+- Existing profile JSONs — only corresponding capability flips.
+- scripts/tests/test_brainstorm_engine.py / test_brainstorm.py — individual and ENH-3734 combination coverage.
+
+### Behavior Parity
+
+| Artifact | Behavior | Disposition |
+|---|---|---|
+| brainstorm.yaml | Disabled capability/core paths | Preserved with zero extra visits |
+| brainstorm_engine.py | Ranked portfolio/sink data | Preserved; only eligibility filtering and annotation flags are extended |
+| brainstorm.yaml / engine guards | Core budget | Extended per capability and verified cumulatively by ENH-3734 |
+
+## Impact
+
+- **Priority**: P3 — optional value beyond the working core.
+- **Effort**: Large — three capabilities and combined verification.
+- **Risk**: Medium — browser and timeout/fallback interactions need measured evidence.
+- **Breaking Change**: No.
 
 ## Status
 
 **Open** | Created: 2026-09-30 | Priority: P3
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): Owns cross-capability integration for the optional children: cross-child fixtures (ground+materialize below the finalist floor, reserve promotion then materialize drops) and all-features worst-case `max_steps`/`timeout` verification, deferred from FEAT-3596 (non-gating there). Each child records its own reference run and bumps its own budget cost.
-
-
 ## Session Log
+- Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:29 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

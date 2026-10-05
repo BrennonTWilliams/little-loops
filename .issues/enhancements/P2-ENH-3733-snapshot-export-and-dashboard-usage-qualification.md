@@ -15,6 +15,7 @@ relates_to:
 - ENH-3732
 - ENH-3543
 - ENH-3730
+- BUG-3735
 verify_verdict: VALID
 confidence_score: 70
 outcome_confidence: 71
@@ -87,7 +88,25 @@ Evidence on A (page stamp): exact `allowlist_version` stamp precedent (`dashboar
 
 Evidence on B (in-snapshot table): only the four-table-set assertion (`test_feat3304_artifact_dashboard.py:302-307`) must change if the DDL is plain and `usage_event`-guarded (`queries.py:553`), so the "breaks three tests" claim in the option text is overstated; still no meta-table precedent in any snapshot.
 
-Evidence on C (audit-table column): no precedent for a constant-per-row column, and zero-audit-row snapshots carry no version; the policy-version constant has no home until ENH-3731 lands (likely beside `qualify_usage`). Sanitise-and-truncate idiom at `queries.py:424-432` applies to the literal.
+Evidence on C (audit-table column): no precedent for a constant-per-row column, and zero-audit-row snapshots carry no version; ENH-3731 owns the policy version beside `qualify_usage` and exposes it on the result. Sanitise-and-truncate idiom at `queries.py:424-432` applies to the literal.
+
+### Resolved consumer contract (2026-10-05)
+
+These choices resolve the research questions below; retain the recorded Option C policy-version home.
+
+1. Build one `ObservationGroup` per logical model from **all in-filter annotated audit contributors**, retaining unresolved siblings. This preserves model-wide coverage taint and provenance/admission completeness. Run `qualify_usage` separately for tokens and cost (`require_cost=True`). Emit each channel's canonical component sums only if the full model passes that figure's qualification; never qualify only `selected_rows` or a complete channel subset. Audit and coverage-selected counts remain unchanged.
+
+2. Use `row_channel` for logical channels. Group missing models using `UNKNOWN_MODEL_BUCKET` from `token_provenance.py`, matching `ll-ctx-stats`; preserve raw model/channel values on the observation export. The model-grouping API that historically returns NULL may keep its public key; parity tests compare the explicit NULL-to-bucket mapping. Document the changed audit-table bucket values rather than silently relabel raw observations.
+
+3. Export model-scoped qualification provenance (`measured`/`estimated`/`mixed`/`unknown`), token `qualification_reason`, separate `cost_qualification_reason`, and `qualification_policy_version` from the shared result. Derived `mixed` is valid metadata in a computed artifact; the ban on storing `mixed` applies to producer observations. Preserve raw stored provenance on `selected_usage_events` and explain why its value is distinct from the aggregate qualification label. A missing/invalid price can leave tokens available while cost is unavailable.
+
+4. Follow ENH-3731's common numeric validity rule; neither snapshot nor source may certify a sum that skipped an invalid contributor. Export only allowlisted bounded reason codes; syntactically valid arbitrary source text becomes `unclassified`. Add reason/ID-leak and invalid-value parity controls.
+
+5. The snapshot has no rate column: do not add one. Empty/zero and token/cost qualification criteria bind its existing figures; rate/zero-denominator and measured-only checks are parity controls on the stored session reader. Remove any implication that this issue creates snapshot rates, JSON provenance-pointer surfaces or a new dashboard payload.
+
+6. Old snapshots without the qualification columns/version remain audit artifacts; consumers must not infer certification under the new policy from old numeric columns. No legacy-snapshot migration is required. Empty new snapshots carry no audit rows/figures, so Option C carries no version there; test that case explicitly. The qualification policy version is separate from the export allowlist version and coverage policy.
+
+7. Unscoped dashboards may remain unavailable under the global coverage policy, unknown historical provenance or missing stored prices even after this issue lands. That is expected, explained behavior; ENH-3730 is optional availability work, not permission to relabel a selected subset as complete.
 
 ## Integration Map
 
@@ -241,12 +260,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Source and snapshot canonical fields agree under the shared policy; audit-only partial rows keep raw values and audit subtotals with unavailable canonical totals/rates and a visible reason.
-- [ ] Source and snapshot preserve coverage reconciliation before report filters; an excluded overlapping counterpart cannot make the remaining group canonical; empty selection is unavailable/empty while a qualified all-zero returns zero; zero denominator leaves its rate unavailable.
-- [ ] Snapshot export carries safe qualification metadata and a policy version, passes allowlist/privacy tests, and introduces no native IDs, source paths or credentials; coverage-selected rows/counts remain intact with qualification evaluated separately; provenance pointers, availability, text suffixes and reason codes agree with JSON.
+- [ ] Source and snapshot canonical fields agree under the shared policy; audit-only partial rows keep raw values and audit subtotals with unavailable canonical token/cost figures and a visible reason.
+- [ ] Source and snapshot preserve coverage reconciliation before report filters; an excluded overlapping counterpart cannot make the remaining group canonical; empty selection is unavailable/empty while a qualified all-zero returns zero. Stored-session rate/zero-denominator parity is tested without adding a snapshot rate column.
+- [ ] Snapshot export carries safe model-scoped qualification label, token/cost reasons and the shared result’s policy version, passes allowlist/privacy tests, and introduces no native IDs, source paths or credentials; coverage-selected rows/counts remain intact with qualification evaluated separately; dashboard unavailable/zero display and bounded reason codes agree with the snapshot values; no new JSON payload/provenance-pointer surface is required.
 - [ ] Built-in snapshot/dashboard aggregates preserve the requested population, show qualification/reasons and distinguish empty/unavailable from observed zero; model/channel aggregates cannot recertify an incomplete model; custom-SQL guidance documents that arbitrary subset sums don't certify totals, with no SQL rewriting or new query engine.
 - [ ] Source readers, built-in snapshots/dashboard and the stored session reader agree, allowing only documented stricter measured-only rates; derived sums preserve missingness.
+- [ ] NULL model/channel parity uses the documented logical mapping; derived mixed labels are permitted, raw row provenance remains intact, invalid values cannot create a canonical subset, tokens can qualify independently of cost, and legacy/empty snapshot policy-version behavior is explicit.
 - [ ] `python -m pytest scripts/tests/` exits 0.
+
+## Impact
+
+- **Priority**: P2 — required before remaining-host observations reach snapshots/dashboard.
+- **Effort**: Medium to large — generated-table metadata, shared qualification and dashboard/documentation changes.
+- **Risk**: Medium — bucket labels and allowlist version change; retain raw evidence and explain expected unavailable figures.
 
 ## Scope Boundaries
 
@@ -278,6 +304,8 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-scored 2026-10-04)_
 - Moderate per-site complexity: qualification is evaluated on in-filter contributors after full-identity-group overlap reconciliation, with model/channel scope rules that cannot recertify an incomplete model.
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Resolved model-wide audit contributor scope, logical bucketing, derived labels, independent token/cost reasons, numeric validity and shared policy version. Kept Option C and scoped rate criteria to session-reader parity, without new snapshot rates or payload fields. Opus confidence 0.74; its empty-snapshot stamping dissent was not adopted because the recorded decision needs no new table/payload and an empty snapshot carries no figures. Added Impact; fresh confidence required after ENH-3731.
 
 - `/ll:confidence-check` - 2026-10-05T04:41:52 - `a3a2850e-1859-4131-baf9-41bae51155b8.jsonl`
 - `/ll:verify-issues` - 2026-10-05T04:40:12 - `faddfe34-ee99-446f-9e12-f81bfea56f96.jsonl`

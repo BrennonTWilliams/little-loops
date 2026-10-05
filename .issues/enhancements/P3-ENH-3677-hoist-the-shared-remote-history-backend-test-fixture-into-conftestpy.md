@@ -15,7 +15,6 @@ blocks:
 - ENH-3682
 - ENH-3668
 - ENH-3728
-- ENH-3729
 parent: EPIC-3693
 epic: EPIC-3693
 ---
@@ -81,7 +80,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 - **Files to modify (test-only)**: `scripts/tests/conftest.py` (gains the shared `remote`; no `remote`/`stub` exists there today, so no name collision) and the six copies — `test_remote_operation_matrix.py:30`, `test_remote_hooks.py:29`, `test_libsql_backend.py:67`, `test_remote_doctor.py:35`, `test_remote_ingestion_telemetry.py:58`, `test_remote_callers_bug3652.py:67`.
 - **Dependents inside the six files**: `test_remote_hooks.py::TestDeadEndpointDegrades.dead` (class-level fixture at :158) requests `remote`, rewrites the config, calls `remote.stop()` and returns it; it must keep working against the shared fixture. `test_libsql_backend.py::TestConnection.conn` and several `TestReadOnly`/`TestConnection` tests use the local `stub` directly (without `remote`) and stay on it.
-- **Consumers waiting on this**: ENH-3657, ENH-3700, ENH-3658 and ENH-3682 (frontmatter `blocks`); deferred ENH-3668 also cites it. ENH-3680 is cancelled and requires no fixture or spool work. BUG-3659 is closed; repointing its historical fixture note is optional.
+- **Consumers waiting on this**: ENH-3657, ENH-3700, ENH-3658, ENH-3682 and ENH-3728 (frontmatter `blocks`); deferred ENH-3668 also cites it. ENH-3729's general SFT failure-routing tests are backend-independent and need no fixture edge. ENH-3680 is cancelled and requires no fixture or spool work. BUG-3659 is closed; repointing its historical fixture note is optional.
 - **Stub location**: `HranaStub` lives in `scripts/tests/hrana_stub.py` (`class HranaStub(http.server.ThreadingHTTPServer)`; `.start()`, `.stop()`, `.url`, `.requests`, `.fail_next`, `.delay`, `.db`). All eight consumers import it as `from tests.hrana_stub import HranaStub`.
 - **Cache/reset entry points** (public, already called by every copy): `little_loops.session_store.db.clear_backend_config_cache`, `little_loops.session_store.remote_schema.clear_verification_cache`, `little_loops.session_store.remote_telemetry.reset_for_tests`.
 - **Same-shape setups that are NOT `remote` copies** (out of scope): `stub` fixtures in `test_remote_schema.py:38`, `test_hrana_client.py:39`, `test_libsql_backend.py:40`; autouse `_fresh` in `test_libsql_integration.py:74` and `_reset` in `test_remote_schema.py`. Unrelated `stub` fixtures (`_Stub`) in `test_autodev_proof_reentry.py:78`, `test_advise_ready_gate.py:81`.
@@ -205,6 +204,7 @@ Prior 100/67 scores and `verify_verdict: VALID` were cleared on 2026-10-04 becau
 - Keep the independent libsql `stub` for direct-backend tests; remote consumers and variants must not request a second server. Cleanup must cover migration/setup failures before yield.
 
 ## Session Log
+- EPIC-3693 review #3 - 2026-10-05 - six copies and variant/cleanup plan confirmed; backend-independent ENH-3729 removed from blocks, ENH-3728 remains a fixture consumer; no new fixture scope or implementation
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - variant ownership and setup-failure cleanup pinned; stale scores and cancelled/obsolete obligations removed; implementation not performed
 - `/ll:confidence-check` - 2026-09-30T01:48:11 - `6908c6b4-43de-49c6-9aef-d5ca638f2e23.jsonl`
 - `/ll:verify-issues` - 2026-09-30T01:46:55 - `a8f35c73-fb24-46d4-8418-8a00777bdfc0.jsonl`

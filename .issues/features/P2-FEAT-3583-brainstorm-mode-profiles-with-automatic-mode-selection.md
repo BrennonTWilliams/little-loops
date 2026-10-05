@@ -16,199 +16,130 @@ blocked_by:
 - FEAT-3582
 - FEAT-3667
 reconcile_attempted: true
-confidence_score: 75
-outcome_confidence: 75
-score_complexity: 14
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
 ---
 
 # FEAT-3583: Brainstorm mode profiles with automatic mode selection
 
 ## Summary
 
-Add **mode profiles as data** to the brainstorm engine plus **automatic mode
-selection**: profiles `artifact`, `visual`, `functional`, `business`, selected by
-`mode: auto` (default) in the first state after `init`.
+Add automatic mode selection, explicit context-override wiring, and preset tuning to the engine shipped by FEAT-3667 and wired by FEAT-3582. The four JSON presets, Profile/Axis schema, resolver and precedence tests already belong to FEAT-3667. This issue changes the default mode from artifact to auto; it does not enable optional capabilities.
 
 ## Current Behavior
 
-Brainstorm has a single fixed pipeline with no notion of mode: every brief runs the same lenses, the same ranking prompt, and the same output shape, regardless of whether it is a name, a visual design, a functional design, or a business opportunity.
+The current shipped loop has one generic pipeline. After FEAT-3667/3582 land, four explicit modes exist, but the default is artifact and no classifier chooses between them.
 
 ## Expected Behavior
 
-- Each profile (a small **JSON** preset under `scripts/little_loops/loops/brainstorm-profiles/`, so unfiltered `rglob("*.yaml")` scanners never read it) sets: `reframe` on/off,
-  default grid axes, idea schema, `ground` (none|codebase; `web` deferred), `materialize`
-  (none|render), tournament rubric, `premortem` on/off, output shape
-  (grid | portfolio | winner + risks).
-- `classify_mode` state runs right after `init` when `mode=auto`: LLM emits
-  `{mode, confidence, rationale}` to the run dir; confidence **below `0.6`** falls
-  back to `artifact` (exactly `0.6` is accepted, i.e. `>=`).
-- `mode=<x>` skips classification. Individual profile knobs can be overridden via
-  context for mixed briefs.
-- **Precedence**: the mode (explicit `mode=`, else classifier result, else the
-  `artifact` fallback) selects the **base profile**; explicit per-knob context
-  values then override that profile's defaults. `mode=business materialize=render`
-  therefore renders.
-- **Unset vs. explicit**: knob context keys default to `""` (inherit from profile).
-  An explicit `none`/`false` is an override that disables the profile's behavior.
-- **Overridable knobs** (2026-09-29): `reframe`, `ground`, `materialize`, `premortem`
-  **plus** the numeric knobs `min_ideas`, `min_cells`, `max_finalists` (clamped ≤ 8 after
-  resolution) and `ideas_per_round`. FEAT-3582 ships these numeric context keys defaulting
-  to `""` with their pinned values (`12`/`4`/`8`) in the `artifact` profile; every preset
-  here states its own values, and a profile may lower them (never raise `max_finalists`
-  above 8). Without this, non-empty context defaults would beat every profile.
-- **Per-profile lens catalog** (2026-09-29): each profile carries a `lenses` list (the pinned catalog rows below are starting points, changing one is fine if the schema test stays consistent); `frame` reads `profile.json` `lenses` instead of its hardcoded universal catalog, so mode changes what `diverge` is asked to explore, not only the axes and rubric. Closes the previously open schema gap.
-- Each profile axis declares enumerated bins (`axes: [{name, bins}, {name, bins}]`)
-  per the FEAT-3582 Data Contract, so cells cannot be invented.
-- Every profile produces the canonical `portfolio.json`; `output_shape` changes only
-  how `brainstorm.md` is rendered.
-- Downstream states read resolved profile values rather than hardcoded behavior;
-  gated states route via `classify`-style routing like the current `route_sink`.
+- Init runs `resolve-profile --validate-only` with the explicit mode/knobs before any classifier call; invalid mode, unknown key, bad numeric/bool, or unbuilt capability fails with no LLM dispatch. Reuse the engine validator, without a separate gate state or a second implementation.
+- Explicit `mode=artifact|visual|functional|business` skips classification. `mode=auto` runs one prompt state, capturing `MODE_JSON: {"mode": str, "confidence": number, "rationale": str}` for the resolver. `classify_mode` declares `next: resolve_profile` and `on_error: resolve_profile` (plus bounded timeout/rate-limit routing), and the resolver treats a failed classifier call as fallback, rather than accepting partial stdout.
+- Confidence must be finite and in [0,1], excluding booleans. A known mode with confidence >= 0.6 is accepted; malformed/unknown/invalid confidence, confidence < 0.6, or classifier host error/timeout falls back to artifact. `profile.json` records requested mode, decision, fallback reason, resolved mode, and overridden keys. The banner and report make the choice visible and explain `mode=` reruns.
+- Explicit nonempty context knobs override the selected preset. Empty string inherits; explicit false/none disables. Knobs are reframe, ground, materialize, premortem, min_ideas, min_cells, max_finalists, ideas_per_round. The resolver enforces BUILT_CAPABILITIES. In core v1, reframe=true, ground=codebase, materialize=render and premortem=true fail until their owning implementation enables them (reframe remains v2).
+- Prompts consume captured engine blocks with nonce fences; their schema/rubric/lenses are already parameterized by FEAT-3582. Do not rewrite that plumbing again.
+- All modes produce canonical portfolio.json; output_shape only changes the report layout. Visual mode uses text judging until FEAT-3585, functional mode has no anchor validation until FEAT-3584, and business mode has no web grounding in v1.
 
 ## Use Case
 
-**Who**: A little-loops user running `ll-loop run brainstorm "<brief>"` with briefs of very different kinds — a product name, a landing-page look, an API design, a market opportunity.
-
-**Context**: The engine should not treat every brief the same way; visual briefs need rendering, functional briefs need codebase grounding, business briefs need reframing and market evidence.
-
-**Goal**: Have the loop pick the right behavior automatically, while still allowing an explicit `mode=` or per-knob override for mixed briefs.
-
-**Outcome**: The run writes `${context.run_dir}/profile.json` recording the resolved profile, and downstream states behave per that profile.
+A user supplies a naming, visual, functional, or business brief. The loop visibly chooses a suitable preset; an explicit mode and built-knob override remain available for mixed briefs.
 
 ## Motivation
 
-EPIC-3581 identifies a mode mismatch: visual designs need rendered candidates judged visually, functional designs need codebase grounding, business opportunities need market grounding and reframing, and artifacts need breadth more than a single winner. Encoding this as data profiles avoids forking the loop into four copies and lets FEAT-3584/3585/3586 stay gated behind profile knobs.
+Mode-specific lenses, bins, idea fields and rubric provide useful differentiation even before grounding/rendering/pre-mortem land. Resolving explicit inputs before classification prevents spending a call on an impossible run.
 
 ## Proposed Solution
 
-FEAT-3667 already ships `resolve-profile`, the `profile.json` schema, and the `artifact` profile (FEAT-3582 wires the state). This issue **extends** them (it does not introduce them): three more presets, `classify_mode`, per-knob overrides in `resolve_profile`, and flipping the `mode` default to `auto`. Profiles live as `.json` data under `scripts/little_loops/loops/brainstorm-profiles/`:
-
-- Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes with enumerated bins, profile-specific idea fields (under the core `extra` object), `ground` (none|codebase; `web` deferred), `materialize` (none|render), tournament rubric, `premortem`, and output shape (rendering only). **Presets ship every not-yet-built knob at its off value** (§ Pinned Preset Contents → Shipped vs target): `resolve-profile` rejects values outside FEAT-3667's `BUILT_CAPABILITIES`, so a preset can never route into a state that does not exist yet.
-- `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below `0.6` falls back to `artifact`. Malformed or unknown-mode output also falls back to `artifact` and is recorded as such. LLM self-reported confidence is poorly calibrated, so the run **makes the choice visible**: the loop prints `Mode: <x> (auto, confidence <c>) — rerun with mode=<y> to override` at start, and the report header repeats it. The four reference briefs in FEAT-3596 are the calibration data for the `0.6` threshold.
-- `resolve_profile` (engine-module command `resolve-profile`, extended from FEAT-3667; `little_loops.brainstorm_engine`): (1) base profile = explicit `mode=` if set, else classifier mode, else `artifact`; (2) each knob whose context value is non-empty overrides the base profile's value; (3) writes `${context.run_dir}/profile.json` including which knobs were overridden. An invalid explicit `mode=` or knob value fails the run (exit 1 → `finalize_failed`) rather than silently falling back.
-
-Downstream states read resolved values from `profile.json`, and gated states route the way `route_sink` does today.
+Add classify_mode between init and the existing resolve_profile state, selecting it from init only for auto. Capture classifier stdout and exit status, write a safe raw input file in resolve_profile, and pass --decision-file plus --set values to the engine. Preserve exit status if resolve_profile and prompt-block share an action: failure of either must prevent frame. Fence the brief and captured blocks. Every prompt state has next/on_error or an explicit evaluator.
 
 ## Program Design
 
 ### Types
 
-- `Axis`: `{name: str, bins: [str]}` — cell values must be members of `bins`
-- `Profile` (`extra` idea fields per mode are listed in § Pinned Preset Contents and stored as `extra_fields: [str]` — FEAT-3667's `Profile` type; the schema test asserts them): `{mode: str, lenses: [str], extra_fields: [str], reframe: bool, min_ideas: int, min_cells: int, max_finalists: int, ideas_per_round: int, reserve: int, axes: [Axis, Axis], ground: "none" | "codebase" (`web` deferred), materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
-- `ModeDecision`: `{mode: str, confidence: float, rationale: str}`
+- Profile and Axis: import the FEAT-3667 types, including per-bin definitions, duplicate_criterion, lenses, extra_fields, overridden keys and provenance; do not define a second reduced schema.
+- ModeDecision: {mode: str, confidence: float, rationale: str}; validate numeric confidence as above.
 
 ### Signatures
 
-- `classify_mode(brief: str) -> ModeDecision` — LLM state; result written to the run dir
-- `resolve_profile(mode: str, overrides: dict[str, str], decision: ModeDecision | None) -> Profile` — deterministic engine function behind `resolve-profile` (FEAT-3667 CLI contract); empty-string override = inherit
+- parse_mode_decision(raw: str, exit_code: int) -> dict — deterministic classifier-result validation/fallback record in brainstorm_engine; final profile resolution is FEAT-3667's resolve_profile.
 
 ### Call Path
 
-`init` -> `classify_mode` -> `resolve_profile` -> `frame` -> `reframe` -> `pop_lens` -> `diverge` -> `dedup` -> `shortlist` -> `tournament` -> `portfolio` -> `validate_portfolio` -> `route_sink`
-
-## Integration Map
-
-### Files to Modify
-- `scripts/little_loops/loops/brainstorm.yaml` — add `classify_mode`; extend the FEAT-3582 `resolve_profile` state with overrides (engine side: FEAT-3667); thread resolved values into `frame`/`diverge`/`tournament`/output prompts; add `mode` context key
-- New profile files (`.json`, decided 2026-09-28, e.g. `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json`, so unfiltered `rglob("*.yaml")` loop scanners never read them — Wiring Phase finding) — no `scripts/pyproject.toml` edit needed (`little_loops/**` is included wholesale, `pyproject.toml:203`); confirm with `ll-verify-package-data`
-
-### Dependent Files (Callers/Importers)
-- `ll-loop run brainstorm` callers and the sink adapters (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) inside the loop
-- `scripts/little_loops/loops/lib/common.yaml` — imported fragments (`parse_tagged_json`, `queue_pop`, `retry_counter`)
-- FEAT-3584, FEAT-3585, FEAT-3586 — read `ground`, `materialize`, and `premortem` from the resolved profile
-
-### Similar Patterns
-- `route_sink` in `scripts/little_loops/loops/brainstorm.yaml` — existing gated-routing pattern for the profile-gated states
-
-### Tests
-- `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
-- `scripts/tests/test_builtin_loops.py` — built-in loop validation (`ll-loop validate`)
-- New tests: profile schema validation (incl. axis bins), resolution precedence (mode selects base profile, explicit knob overrides it), stubbed-classifier routing for one reference brief per mode, invalid explicit mode, malformed classifier output, confidence exactly at the threshold, explicit `false`/`none` override vs. empty-string inherit
-
-### Documentation
-- `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
-
-### Configuration
-- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`, and — 2026-09-29 — `min_ideas`, `min_cells`, `max_finalists`, `ideas_per_round`), each defaulting to `""` (inherit). This supersedes any child issue's standalone `none`/`false` default for these keys. The `Profile` type also gains `reserve` (shortlist reserve size, read by FEAT-3582 `shortlist`; `2` when `ground=web`, else `0`). `lenses` is added to the `Profile` type (2026-09-29 third review). Remaining schema gaps — `output_shape` fallbacks, `judge_mode` — stay open.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
-
-- Package data: `scripts/pyproject.toml:203` includes `little_loops/**` wholesale, so a new profile directory under `scripts/little_loops/loops/` ships without a pyproject edit; `ll-verify-package-data` is the check.
-- Constraint: `scripts/little_loops/loops/` subdirectories are scanned for loops (`loops/oracles/` is runnable, only `loops/lib/` is fragments). Profile YAMLs placed in a new sibling dir may be picked up by loop discovery and `test_builtin_loops.py` validation as if they were loops (no `initial`/`states`) — placement must be verified against discovery, or profiles stored as non-loop data (e.g. `.json`, or under `loops/lib/`).
-- Current shape: `brainstorm.yaml` states are `init -> frame -> pop_lens -> diverge -> dedup_novelty -> (loop) -> cluster -> rank -> converge -> route_sink`; the `context:` block (`brainstorm.yaml:23-32`) holds string-valued knobs, so profile knobs must be string-encoded (`"true"`/`"false"`) there. `init` (`:36-52`) captures `run_dir` and `next: frame`, so `classify_mode`/`resolve_profile` insert between `init` and `frame`.
-- Hardcoded behavior the profile must replace: universal lens catalog in `frame` (`:77-83`), `diverge` idea schema `{text, rationale}` (`:132-137`), `rank`/`converge` output shape and rubric (`:280-328`). `dedup_novelty` parses IDEAS_JSON with `text`/`rationale` keys, so any per-profile idea schema must keep `text` (dedup key) intact.
-- Call-path correction: `pop_lens` sits between `frame` and `diverge` (Call Path updated).
-- Downstream ordering: `blocked_by: FEAT-3582` — the engine core rewrite changes these states; line anchors above describe the pre-3582 file and will shift.
-- Sink routing precedent for gated states: `route_sink` (`:332-344`) uses `evaluate: type: classify` over an echoed token with `_:` default route; a `mode=auto` gate reads the same way. Interpolated `${context.*:shell}` form is used for the shell echo.
-- Test conventions: `scripts/tests/test_brainstorm.py` loads `LOOP_FILE` via `load_and_validate`/`validate_fsm` and exercises shell states by extracting `action` and running `bash -c` in `tmp_path` (`_bash` helper) — a deterministic `resolve_profile` shell/python state is testable the same way, and stubbed-classifier routing can be tested by pre-writing the classifier output file.
-- Bash-brace rule: any `${...}` shell expansion inside FSM actions must be escaped `$${...}` (interpolated before bash).
-
-### Wiring Additions
-
-_Wiring pass added by `/ll:wire-issue`:_
-
-**Files to Modify**
-- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entry for `classify_mode` (interpolates `${context.brief}`) [Agent 3]
-- `scripts/little_loops/package_data.py` `PACKAGE_DATA_ASSETS` — add explicit tuples per profile file if profiles are read at runtime via `importlib.resources` (manifest is tuple-by-tuple; omissions are false-green); check with `ll-verify-package-data` [Agent 1, Agent 3]
-
-**Dependent Files (Callers/Importers)**
-- Profile-directory discovery hazard: `is_runnable_loop` (`fsm/validation/structural_rules.py`) skips YAML lacking `name`/`initial`/`states`, so `doc_counts.py`, `cli/loop/info.py`, `cli/doctor.py`, `test_builtin_loops.py:66` ignore it — but unfiltered `rglob("*.yaml")` scanners will still read it: `fsm/interp_sweep.py:~250`, `fsm/validation/reachability.py:~131`, `cli/loop/rename.py:~83`, and `scripts/tests/test_builtin_loop_hardcode_gate.py::_all_loop_files` (`**/*.yaml`, skips only dot-dirs). Storing profiles as `.json` avoids all of these [Agent 1, Agent 3]
-
-**Tests**
-- Profile schema validation: model on `scripts/tests/test_enh1768_profile_system.py` (required-layer-file assertions) and `test_package_data_manifest.py` [Agent 3]
-- `scripts/tests/test_builtin_loop_hardcode_gate.py` and `test_builtin_loop_interpolation.py` (rglob) — run against any YAML profile files [Agent 3]
-- `resolve_profile` precedence tests are **direct-import tests of `little_loops.brainstorm_engine`** (`test_brainstorm_engine.py`, superseding the earlier `_bash` note); stubbed-classifier routing is a wiring test that pre-writes the classifier output file [Agent 3]
-
-**Configuration**
-- Validator: `classify_mode`/gated routes using `evaluate: classify` need `default:`/`_:` (`_validate_classify_route_default`); an `llm_structured` classifier needs `on_error`/`cannot_judge` (`_validate_abstention_route`) [Agent 2]
-- Adds 1 fixed step (`classify_mode`; `resolve_profile` is already in FEAT-3582's count) to the `max_steps: 60` budget tracked in FEAT-3582 [Agent 2]
-
-## Implementation Steps
-
-1. Tune and re-measure the profile presets (the schema, `Profile`/`Axis` and the four preset JSONs ship in FEAT-3667).
-2. Add `classify_mode` + `resolve_profile` states.
-3. Thread resolved values into reframe/diverge/tournament/output prompts.
-4. Tests for the invalid/malformed/boundary cases of classification and override wiring (resolution-precedence tests — mode selects base profile; explicit knob overrides it; empty string inherits — live in FEAT-3667).
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Choose profile storage (prefer `.json`, or a YAML dir verified against the unfiltered rglob scanners and `test_builtin_loop_hardcode_gate.py`)
-- Register profile files in `package_data.py` `PACKAGE_DATA_ASSETS` if read via `importlib.resources`; run `ll-verify-package-data`
-- Add `classify_mode` to `fence.py` `FENCE_ROLES`
-- Add profile schema test modeled on `test_enh1768_profile_system.py`; add `resolve_profile` precedence tests by direct import of `little_loops.brainstorm_engine` (not `_bash`; matches the Tests section)
-- Add the capability wiring test: for every shipped profile, every routing token the engine can emit (`check-floors`, `collapse`, `portfolio`, `frame-apply`) routes to a state other than `finalize_failed`, and `resolve-profile` exits 1 for any knob value outside `BUILT_CAPABILITIES` (including explicit overrides such as `materialize=render`)
+init (explicit-input preflight) -> [classify_mode, only for auto] -> resolve_profile -> frame -> frame_apply -> pop_lens -> diverge -> ingest -> dedup -> shortlist -> tournament -> portfolio -> render_report -> validate_portfolio -> route_sink
 
 ## Pinned Preset Contents
 
-_Added 2026-09-28 (EPIC-3581 sub-issue review); the schema test must assert these shapes. Bins are a starting point; changing one is fine if the test and profile stay consistent._
+All four files are created in FEAT-3667; this issue tunes them. Every axis has definitions for its bins and every profile a nonempty duplicate_criterion. Lens catalogs plus task-specific additions must fit frame-apply's maximum nine lenses.
 
-| Field | `artifact` (FEAT-3582) | `visual` | `functional` | `business` |
-|-------|-----------|----------|--------------|------------|
-| axes | register `[literal, evocative, abstract]` × tone `[playful, neutral, serious]` | density `[sparse, balanced, dense]` × temperament `[warm, neutral, cool]` | scope `[local, module, cross-cutting]` × approach `[extend, refactor, new-component]` | customer `[existing, adjacent, new]` × model `[product, service, platform]` |
-| `reframe` | false | false | true | true |
-| `ground` | none | none | codebase | none (was `web`; deferred, EPIC-3581 third review) |
-| `materialize` | none | render | none | none |
-| `premortem` | false | false | true | true |
-| `output_shape` | grid | portfolio | winner_risks | winner_risks |
-| `min_ideas` / `min_cells` / `max_finalists` / `ideas_per_round` | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 | 12 / 4 / 8 / 5 |
-| `reserve` (shortlist) | 0 | 0 | 0 | 0 (`ground=web` is deferred out of v1; the field stays in the schema for the follow-up) |
-| `extra` idea fields | — | `palette`, `layout_summary` | `touchpoints`, `creates` (FEAT-3584) | `assumptions`, `target_customer` |
-| `lenses` | universal catalog (today's `frame` list) | visual-craft lenses (e.g. typography, color, layout density, motion, metaphor, constraint) | system lenses (e.g. data flow, failure modes, extensibility, migration, testability, operability) | market lenses (e.g. customer job, pricing, distribution, incumbents, regulation, unit economics) |
-| rubric focus | breadth, distinctness, memorability | visual clarity, hierarchy, fit to brief | feasibility in this codebase, leverage, blast radius | demand evidence, differentiation, cost to test |
+| Field | artifact | visual | functional | business |
+|---|---|---|---|---|
+| Axes | register [literal, evocative, abstract] × tone [playful, neutral, serious] | density [sparse, balanced, dense] × temperament [warm, neutral, cool] | scope [local, module, cross-cutting] × approach [extend, refactor, new-component] (provisional) | customer [existing, adjacent, new] × model [product, service, platform] |
+| Core v1 reframe / ground / materialize / premortem | false / none / none / false | false / none / none / false | false / none / none / false | false / none / none / false |
+| output_shape | grid (portfolio plus grid map) | portfolio | winner_risks (portfolio; risk section only when annotations exist) | winner_risks (same rule) |
+| min_ideas / min_cells / max_finalists / ideas_per_round / reserve | 12 / 4 / 8 / 5 / 0 | 12 / 4 / 8 / 5 / 0 | 12 / 4 / 8 / 5 / 0 | 12 / 4 / 8 / 5 / 0 |
+| extra_fields | none | palette, layout_summary | touchpoints, creates | assumptions, target_customer |
+| Lenses | universal + task-specific | typography, color, hierarchy, layout, metaphor, constraint | data flow, failure modes, extensibility, migration, testability, operability | customer job, pricing, distribution, incumbents, regulation, unit economics |
+| Rubric | breadth, distinctness, memorability | clarity, hierarchy, brief fit | feasibility, implementation cost, blast radius | demand assumptions, differentiation, cost to test |
+| Duplicate criterion | same name/coined word | same layout and palette direction | same core mechanism such that implementing one makes the other redundant | same customer and value proposition |
 
-**Shipped vs target (2026-09-30 fourth review).** The table above is the **target** end state. What ships in this issue is the same table with `ground`, `materialize` and `premortem` at their off values (`none` / `none` / `false`) for every mode, because the states arrive in FEAT-3584/3585/3586 and a token routed to a missing state fails the run (a `visual` run after ~13 calls; `functional`/`business` after the full tournament). Each optional child, **in the change that lands its states**: (1) widens `BUILT_CAPABILITIES` in the engine, (2) flips its knob in the target profile(s) (`ground=codebase` for `functional`; `materialize=render` for `visual`; `premortem=true` for `functional`/`business`), (3) adds that flip to its acceptance criteria and the wiring test. Until then `mode=visual` still selects the visual axes, lenses and rubric, and an explicit `materialize=render` fails fast at `resolve-profile` instead of mid-run.
+Optional target flips are owned by FEAT-3584 (functional ground=codebase), FEAT-3585 (visual materialize=render), and FEAT-3586 (functional/business premortem=true), in the same change as their states. reframe and ground=web remain deferred; they are not preset targets for this issue.
 
-- `output_shape: grid` renders the **grid map in addition to** the portfolio section (FEAT-3582 Acceptance Criteria: `brainstorm.md` presents a portfolio + the grid map); `portfolio` and `winner_risks` render the portfolio without the full grid map. `portfolio.json` is identical for all shapes.
-- Classifier confidence threshold: `0.6` (`>=` accepts). The classifier prompt lists the four modes with the one-line profile description; malformed/unknown output → `artifact`, recorded in `profile.json`.
-- `visual` keeps `premortem` off and `business` keeps `materialize` off; mixed briefs use per-knob overrides.
+### Bounded tuning and comparable evaluation
 
-## Review Decisions
+The completed FEAT-3686 spike found functional approach agreement 0.72 (<0.75); visual/business axes are unmeasured. For each of these modes, use a fixed corpus of at least 20 representative ideas and the same three independent blind-tag calls, recording exact-cell and per-axis agreement. Permit at most two tuning iterations (three measured versions including the initial one); acceptance is exact-cell >=0.6 and each axis >=0.75. If it still fails, preserve a provisional explicit-mode preset and leave auto default on artifact until the axis decision is resolved; report the blocker rather than tune indefinitely or silently weaken the threshold.
+
+Freeze the final definitions and corpus/model/version in the run record. If functional bins/definitions change, re-tag **both old and new** pinned-brief ideas with those same final definitions; the historical six-cell figure is not a gate against a changed grid. FEAT-3582's earlier comparison uses FEAT-3667's provisional preset and is preserved as its own evidence.
+
+## Integration Map
+
+### Behavior Parity
+
+| Artifact | Behavior | Disposition |
+|---|---|---|
+| brainstorm.yaml | Explicit artifact default | Changed to auto only when classifier and preset tuning gates pass |
+| brainstorm.yaml | Explicit modes, engine data blocks, sink contract | Preserved |
+| brainstorm-profiles/*.json | Preset schema and unbuilt knobs off | Preserved; tune bins/definitions/lenses only |
+
+### Files to Modify
+- scripts/little_loops/loops/brainstorm.yaml — init preflight/auto route, classifier, existing resolver's override plumbing, mode default.
+- scripts/little_loops/brainstorm_engine.py — parse_mode_decision and decision/fallback provenance; reuse resolver validation.
+- scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json — tuning of existing files.
+- scripts/little_loops/fsm/fence.py — classify_mode brief registration.
+- scripts/tests/test_brainstorm.py and scripts/tests/test_brainstorm_engine.py — routing and direct-import decision fixtures; existing precedence tests remain owned by FEAT-3667.
+- scripts/tests/test_builtin_loops.py and scripts/tests/data/loop_interpolation_baseline.json — relevant fence/capture/warning checks.
+
+### Dependent Files
+- FEAT-3584/3585/3586 read resolved knobs; FEAT-3596 reads final preset definitions for comparison.
+- package_data.py registrations are made in FEAT-3667 and verified here by ll-verify-package-data.
+
+### Documentation
+- scripts/little_loops/loops/README.md, docs/guides/LOOPS_GUIDE.md, docs/guides/LOOPS_REFERENCE.md — automatic choice, overrides, fallback, and capability availability.
+
+## Implementation Steps
+
+1. Tune and measure the existing presets within the bounded process; keep final axis definitions comparable across baselines.
+2. Wire explicit-input preflight, auto-only classify_mode, safe capture/file delivery and the existing resolver.
+3. Add malformed/finite-confidence/boundary/error/explicit-mode fixtures and capability-token wiring tests.
+4. Verify preset packaging, fence/capture rules, exact state count (classifier adds one successful-path state), both loop validation and the local suite.
+
+## Impact
+
+- **Priority**: P2 — makes the four core modes automatically usable.
+- **Effort**: Medium — one classifier, existing resolver plumbing, bounded preset measurement.
+- **Risk**: Low — explicit modes and visible artifact fallback remain available.
+- **Breaking Change**: No.
+
+## Acceptance Criteria
+
+- Four existing presets satisfy FEAT-3667's schema; functional/visual/business tuning meets the bounded measurement gate before the default flips to auto.
+- One reference brief per mode is routed using stubbed classifier output plus documented real calibration runs; stubbed success alone is not evidence of classifier accuracy.
+- Explicit mode skips classification; invalid explicit inputs cause zero LLM dispatches even with mode=auto.
+- Confidence 0.6 is accepted; lower, nonfinite/out-of-range, boolean, malformed, unknown mode and classifier host failure/timeout all fall back visibly to artifact.
+- A **built** numeric override (e.g. mode=business ideas_per_round=3) wins over the preset. Empty inherits; false/none disables. Unbuilt optional overrides fail preflight rather than requiring materialize to exist.
+- Every successful capability token reaches its explicitly mapped state; fail and _ routes remain failures. No route pre-wires an unbuilt state.
+- No reframe state, web grounding, or optional preset enablement is implemented here; no hidden evaluator call is added.
+- Changed definitions trigger comparable old/new re-tagging; reference records include import origin and actual resource usage.
+
+## Review History
+
+Historical rationale only; the reconciled directive sections above define current scope (2026-10-05).
 
 _Added 2026-09-30 (FEAT-3686 spike results):_ every preset axis needs a one-line **definition per bin** (agreement 0.51–0.67 without, 0.62–0.83 with) and a `duplicate_criterion` (artifact: same name or coined word; functional: same core mechanism such that implementing one makes the other redundant; visual: same layout and palette direction; business: same target customer and value proposition). The `functional` `approach` axis (`extend`/`refactor`/`new-component`) scored 0.72 per-axis agreement (< 0.75): sharpen its bins/definitions and re-run the spike's 3-call blind tagger check (`postmortems/brainstorm-spike/spike.py tag`) until ≥ 0.75 before pinning the preset; `visual` and `business` axes have not been measured and get the same check. Add the definitions and criteria to the schema test.
 
@@ -218,38 +149,9 @@ _Added 2026-09-29 (EPIC-3581 third review, `/ll:advise` with Opus; nothing measu
 
 _Added 2026-09-30 (EPIC-3581 fourth review, `/ll:advise` with Opus; nothing measured):_ presets ship unbuilt knobs off and each optional child flips its own (§ Pinned Preset Contents → Shipped vs target); `resolve-profile` enforces `BUILT_CAPABILITIES` (FEAT-3667); `ground` type text reconciled to `none|codebase`; tests are direct-import, not `_bash`.
 
-## Impact
-
-- **Priority**: P2 - unblocks the gated states in FEAT-3584/3585/3586 but adds no value until FEAT-3582 lands
-- **Effort**: Medium - new profile schema and two states; mostly data plus one deterministic resolver script
-- **Risk**: Low - additive and gated behind `mode`; `mode=artifact` preserves generic behavior
-- **Breaking Change**: No
-
-## Acceptance Criteria
-
-- The four profile files shipped by FEAT-3667 exist, are validated by a schema/test, and are tuned here (override plumbing means the YAML `--set key=value` / `--decision-file` wiring, not the resolver, which FEAT-3667 owns).
-- One reference brief per mode is classified to the expected profile (test with a
-  stubbed classifier output plus a documented manual reference run).
-- Explicit `mode=` bypasses `classify_mode`; per-knob override beats profile default
-  (e.g. `mode=business materialize=render` resolves `materialize: render`).
-- Empty-string knob values inherit the profile default; explicit `none`/`false`
-  disables it.
-- Invalid explicit `mode=` fails the run; malformed classifier output falls back to
-  `artifact` and is recorded in `profile.json`.
-- Every profile axis has enumerated bins, validated by the schema test.
-- Profile resolution is deterministic (script), and the resolved profile is written
-  to `${context.run_dir}/profile.json`.
-- No shipped profile turns on a capability outside `BUILT_CAPABILITIES`; an explicit override naming one exits 1 at `resolve-profile` before any LLM call; a wiring test proves every token the engine can emit for every shipped profile routes somewhere other than `finalize_failed`.
-
-## Related Key Documentation
-
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
-
-## Status
-
-**Open** | Created: 2026-09-25 | Priority: P2
-
 ## Confidence Check Notes
+
+Historical score; not re-run after this review. Re-score after the revised contracts and prerequisites are implemented.
 
 _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29 (FEAT-3582 still open, `Profile` type still lacks `extra`)_
 
@@ -265,7 +167,12 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 - Line anchors in the Codebase Research Findings describe the pre-FEAT-3582 file and will shift once it lands.
 
 
+## Status
+
+**Open** | Created: 2026-09-25 | Priority: P2
+
 ## Session Log
+- Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:28 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:26 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`
 - `/ll:confidence-check` - 2026-09-29T06:02:09 - `1e4b6b11-acbb-4e78-b169-131d9cd93116.jsonl`
@@ -276,9 +183,3 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 - `/ll:refine-issue` - 2026-09-25T01:46:34 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:40 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): FEAT-3667 owns `Profile`/`Axis`, the four preset JSONs, and the override-aware `resolve_profile`. This issue adds only `classify_mode`, per-knob override plumbing, the `mode` default flip to `auto`, and preset tuning. Body text claiming presets/schema ownership is superseded by this note and Review Decisions.

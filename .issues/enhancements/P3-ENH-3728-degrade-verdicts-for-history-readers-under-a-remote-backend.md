@@ -11,6 +11,7 @@ parent: EPIC-3693
 blocked_by:
 - ENH-3677
 - ENH-3657
+- ENH-3729
 relates_to:
 - ENH-3729
 - ENH-3700
@@ -21,7 +22,7 @@ relates_to:
 
 ## Summary
 
-Give the reader sites that have a safe local fallback an explicit **degrade** verdict under `history.backend.provider: libsql` (FEAT-3535): `history summary`, `decisions generate`, `ll-messages` / `extract_conversation_turns` with `reader=auto`, the `improve-claude-md` CT-0 snippet, and the packaged `sft-corpus` `--reader auto` / `enrich` passthrough. Split from ENH-3700 on 2026-10-04 (Opus review): these sites only need to catch the `HistoryUnsupported` that the **existing** pre-resolve already raises, so they do not depend on the central guard, the `_connect_readonly` contract, or the importer audit, and should not be held behind that higher-risk seam.
+Give the reader sites that have a safe local fallback an explicit **degrade** verdict under `history.backend.provider: libsql` (FEAT-3535): `history summary`, `decisions generate`, `ll-messages` / `extract_conversation_turns` with `reader=auto`, the `improve-claude-md` CT-0 snippet, and the packaged `sft-corpus` `--reader auto` / `enrich` passthrough. Remote SFT passthrough is allowed only with all DB-dependent quality flags disabled; otherwise enrichment refuses through ENH-3729's failure route. These sites do not depend on the central guard or importer audit. ENH-3729 must land first so the intentional quality refusal actually terminates the loop.
 
 ## Current Behavior
 
@@ -33,16 +34,30 @@ Give the reader sites that have a safe local fallback an explicit **degrade** ve
 
 | Site | Under remote | Notes |
 |---|---|---|
-| `history summary` | **degrade** to the file scan, exit 0 | one `note:` line on stderr; thread `root=project_root` (ENH-3657 prepared the branch) |
+| `history summary` | **degrade** to the file scan, exit 0 | one `note:` line; `source=files`, date filters retained, loop metrics unavailable (`None`), all DB probes bypassed |
 | `decisions.generate_from_completed` | **degrade** to the issues-directory scan | local path stays DB-first; CLI caller owns the note |
 | `ll-messages --sft-format` / `extract_conversation_turns` | `reader=auto` -> **degrade** to JSONL | catch `HistoryUnsupported` before the JSONL fallback; explicit `--reader db` refusal is ENH-3657 |
 | CT-0 in `skills/improve-claude-md` | **degrade**: explicit skipped verdict with a one-line note | switch to `resolve_history_store`, branch on `RemoteTarget`, remove the snippet's `2>/dev/null`, check the skipped verdict before the empty-feedback branch |
 | `sft-corpus.yaml` `stage` | `--reader auto` (degrade to JSONL) | the failure-routing and `|| touch` removal belong to the SFT-routing issue; this issue only changes the reader flag |
-| `sft-corpus.yaml` `enrich` | **degrade**: explicit note, pass records through un-enriched | |
+| `sft-corpus.yaml` `enrich` | **degrade**: one note and un-enriched passthrough with all DB-quality flags disabled; otherwise **refuse** | classify once before lookup; preserve records/metadata; no invented zero/false quality evidence |
 
 ### Notice channel
 
-Degrade notice = one fixed `note:` line on stderr at the human CLI/skill/state boundary, before bypassing the DB, only under a remote target. Libraries (`generate_from_completed`, `extract_conversation_turns`) select their fallback without printing; their CLI callers own the note. Automatic/library callers keep their existing output contract. CT-0 additionally returns parseable JSON with `verdict: skipped` and a fixed reason, then branches before "no candidates"; remove its `2>/dev/null` so the note survives. For packaged stage/enrich each state owns its designated note; a library warning must not duplicate a deliberate fallback notice. No endpoint/token/SQL or exception text in either channel.
+Degrade notice = one fixed `note:` line on stderr at the human CLI/skill/state boundary, before bypassing the DB, only under a remote target. Libraries (`generate_from_completed`, `extract_conversation_turns`) select their fallback without printing; their CLI callers own the note. Emit it directly on stderr rather than through a verbosity-gated logger. Automatic/library callers keep their existing output contract. CT-0 additionally returns parseable JSON with `verdict: skipped` and a fixed reason, then branches before "no candidates"; remove its `2>/dev/null` so the note survives. Stage delegates its one note to the `ll-messages` CLI and does not add a second one; enrich owns its note or refusal. No endpoint/token/SQL or exception text in either channel.
+
+### Complete summary fallback and selected messages root
+
+After selecting a remote target, do not retain a usable local `db_path`: bypass `issue_events_ever_recorded`, `scan_completed_issues_from_db` and the unconditional `count_loop_runs_in_window` call. Set loop metrics to `(None, None)` (unavailable, never zero), retain the existing file-scan date filtering and `source=files`, and preserve the text/JSON renderer's unavailable representation. A stale local shadow file must not influence any metric. The local branch still queries loop metrics even when issue history itself falls back to files.
+
+Messages auto mode uses the owning `root` parameter (default `None`) introduced by ENH-3657, threaded from `args.cwd or Path.cwd()`. The fallback is only the **existing Claude-shaped JSONL parser**: Codex/Kimi handles do not gain conversation windows in this slice. Document this limitation and exercise a supported JSONL handle with actual windows; do not claim that successful empty output proves multi-host SFT support. Direct library callers that omit `root` retain existing resolution.
+
+### Remote SFT enrichment and quality contract
+
+In the packaged enrich action, resolve the target once before any filesystem probe or `lookup_session_metadata` call. Under remote, with `require_issue_outcome=false`, `exclude_user_corrections=false`, `min_tool_invocations=0` and `require_file_modifications=false`, copy parsed records through without adding/replacing metadata, preserving any existing metadata, emit one fixed stderr note, and publish through ENH-3729's atomic path. Local/environ-override enrichment keeps its current metadata shape.
+
+If **any** of those four flags is enabled, remote enrichment exits non-zero with a fixed reason that quality metadata is unavailable and suggests `LL_HISTORY_DB` for a local override. Detect this before opening the output/temp or looking up a record, even for an empty corpus. Existing input metadata does not waive this backend refusal: per-record provenance/filter redesign is outside scope. In particular, absent `has_corrections` must not masquerade as verified `False` and admit unchecked examples with `exclude_user_corrections=true`. ENH-3729 supplies the terminal failure route and atomic publication; no filter/publish/success sentinel is reached. Do not change the existing first-record-only filter implementation here.
+
+Pass the four context flags into the Python action through the existing quoted `:shell` environment pattern and parse booleans/numeric thresholds explicitly, matching the filter states. A string `false` must not become truthy through `bool(string)`. Preserve existing FSM interpolation/escaping conventions.
 
 ### Docs wording
 
@@ -54,9 +69,9 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 
 ## Proposed Solution
 
-1. Catch `HistoryUnsupported` (never bare `HistoryError`) in the library fallback paths and CLI callers; emit the single `note:` at the CLI/skill/state boundary under a remote target only.
+1. Catch `HistoryUnsupported` (never bare `HistoryError`) in the library fallback paths and CLI callers; emit the single `note:` at the CLI/skill/state boundary under a remote target only. In `extract_conversation_turns`, only `reader=auto` catches and falls through with empty DB windows; explicit `reader=db` still propagates to ENH-3657's refusal boundary.
 2. CT-0: `skills/improve-claude-md/SKILL.md` (344 lines, cap 500; keep `[ -f .ll/decisions.yaml ]` and `decisions list --type rule 2>/dev/null | grep`, pinned by `test_wiring_skills_and_commands.py`), then `ll-adapt --host <gemini|kimi-code|qwen> --apply` and `test_improve_claude_md_skill.py`.
-3. `sft-corpus.yaml`: `--reader auto` on `stage`, passthrough note on `enrich` (coordinate with the SFT-routing issue, which edits the same states).
+3. `sft-corpus.yaml`: `--reader auto` on `stage`, one-time remote classification and the exact passthrough/quality-refusal contract on `enrich`, preserving ENH-3729's failure routes and atomic output path.
 4. Docs, support-table rows, `docs/reference/CLI.md`, `docs/reference/API.md` (`extract_conversation_turns` relationship paragraph), `docs/guides/HISTORY_SESSION_GUIDE.md`; keep `test_wiring_reference_docs.py` and `test_docs_audience_gate.py` green; cite `little_loops.<module>` in prose, no `scripts/tests/` paths.
 
 ## Integration Map
@@ -68,6 +83,9 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 ### Tests
 - Degrade tests keep stdout unchanged with exactly one `note:` line and no token; default-`auto` JSONL fallback; `ll-messages` default-`auto` regression (`extract_conversation_turns` currently reaches the remote pre-resolve); `"No history.db found"` invariant (`test_bug_3216_telemetry_digest_invocations.py`); `sft-corpus` `stage` reader flag (`test_loops_sft_corpus.py`).
 - Use the hoisted `remote` fixture (ENH-3677; `delenv("LL_HISTORY_DB")` to override the autouse `conftest._isolate_history_db`).
+- Summary tests execute `main_history` with text/JSON, date filters, a populated stale shadow DB and a foreign cwd; all three DB helpers are asserted uncalled, loop metrics are unavailable, and only file issues contribute. Preserve local DB-first, legitimate empty-window and file-fallback loop metrics.
+- Execute the packaged stage/enrich actions through the real FSM after ENH-3729: remote/no-quality-flags preserves records and pre-existing metadata with one note and zero metadata lookups; each of the four enabled flags fails before output publication (also with empty input), retaining the previous good output and never reaching filters/sentinel. A local `LL_HISTORY_DB` override enriches actual session data. No copied enrich script alone is sufficient evidence.
+- Exercise public messages `--cwd` in both foreign-cwd directions and direct auto-library fallback without a notice; supported Claude-shaped JSONL produces actual windows and Codex/Kimi remain at their documented limitation.
 - Keep green: `test_cli_decisions.py`/`test_decisions.py` DB-first local branch, `test_cli_messages.py`, `test_adapt_skills_for_codex.py`, `test_verify_skill_prose.py`, `test_enh494_skill_companions.py`.
 
 ## Program Design
@@ -89,7 +107,7 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 
 ## Implementation Steps
 
-Prerequisites: ENH-3677 (hoisted `remote` fixture) and ENH-3657 (boundary helper and summary root threading) landed.
+Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper and selected-root threading) and ENH-3729 (SFT failure routes and atomic publish) landed. The ENH-3729 edge is functional: this issue introduces an intentional remote quality refusal that must terminate rather than continue through `next`.
 
 1. Library fallbacks + CLI notes for `history summary`, `decisions generate`, `reader=auto`.
 2. CT-0 skill change, mirrors.
@@ -107,25 +125,36 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture) and ENH-3657 (boundary helper
 ## Scope Boundaries
 
 - **In scope**: the six sites above, the CLI-boundary notes, CT-0 skill change + `ll-adapt` mirrors, support-table rows, removing the CT-0 entry from ENH-3658's hazard-gate allowlist if present.
-- **Out of scope**: the boundary helper and refuse sites (ENH-3657); the central guard, catch widening and `ll-harness` serve (ENH-3700); SFT failure routing / atomic enrichment publish (SFT-routing issue); hand-built paths (ENH-3658); `context-monitor.sh` (ENH-3680, cancelled); remote read serving (ENH-3668/3684/3685, deferred).
+- **Out of scope**: the boundary helper and refuse sites (ENH-3657); the central guard, catch widening and `ll-harness` serve (ENH-3700); SFT failure routing / atomic enrichment publish (ENH-3729); SFT filter redesign or new host transcript parsers; hand-built paths (ENH-3658); `context-monitor.sh` (ENH-3680, cancelled); remote read serving (ENH-3668/3684/3685, deferred).
 
 ## Acceptance Criteria
 
-- [ ] `history summary`, `decisions generate`, `--reader auto` and `sft-corpus` `enrich` preserve data stdout, exit 0 for intentional fallbacks and emit their single safe stderr note only under remote config; direct/automatic library fallbacks add no notice.
+- [ ] `history summary`, `decisions generate`, `--reader auto` and permitted `sft-corpus` enrich passthrough preserve data stdout, exit 0 for intentional fallbacks and emit their single safe stderr note only under remote config; direct/automatic library fallbacks add no notice.
+- [ ] Remote summary bypasses every DB probe/count helper even with a stale shadow DB, preserves date filtering and `source=files`, and exposes unavailable loop metrics in text/JSON. Local summary's DB-first/empty-window/loop-count behavior is retained.
 - [ ] CT-0 emits parseable `verdict: skipped` plus its note and never reports "no candidates" for a remote skip; it uses `resolve_history_store` and branches on `RemoteTarget`; no bare `resolve_history_db()` remains in `skills/`; mirrors regenerated.
-- [ ] `sft-corpus` `stage` uses `--reader auto`; remote JSONL fallback succeeds with its note; `enrich` passes records through un-enriched under remote with a note.
+- [ ] Packaged stage uses `--reader auto` and preserves the CLI's single note. Remote enrich with all DB-quality flags disabled preserves input records/metadata, makes no metadata lookup and adds no fabricated zero/false fields; its output is published atomically.
+- [ ] Each enabled DB-quality flag makes remote enrich fail through `corpus_failed` before output publication, including empty input and pre-existing metadata; previous output survives and filter/publish/sentinel do not run. The actual packaged YAML/FSM tests also prove a local env override still enriches.
+- [ ] Messages auto fallback honors selected `--cwd` through the owning root, produces actual supported JSONL windows, and documentation states the existing Claude-shaped-only fallback limitation.
 - [ ] No endpoint/token/SQL/exception text in any note; no duplicate library warning; the catch class is `HistoryUnsupported`, never bare `HistoryError`.
 - [ ] `"No history.db found"` is unchanged (invariant test); if ENH-3658's temporary CT-0 allowlist entry exists, it is removed here.
 - [ ] With the default local store `python -m pytest scripts/tests/` passes unchanged.
 
 ## Related
 
-- ENH-3700 (central guard + harness serve; split sibling), ENH-3657 (refuse boundary; `blocked_by`), ENH-3677 (shared fixture; `blocked_by`), the SFT-routing issue (edits the same `sft-corpus.yaml` states), ENH-3658 (hazard-gate allowlist), FEAT-3535.
+- ENH-3700 (central guard + harness serve; split sibling), ENH-3657 (refuse boundary; `blocked_by`), ENH-3677 (shared fixture; `blocked_by`), ENH-3729 (SFT failure route/atomic publish; `blocked_by`), ENH-3658 (hazard-gate allowlist), FEAT-3535.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/reference/CONFIGURATION.md` (reader support and remote SFT quality refusal), `docs/reference/CLI.md` (messages fallback), `docs/reference/API.md` (library fallback contract), `docs/guides/HISTORY_SESSION_GUIDE.md`.
 
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
+
+## Confidence Check Notes
+
+Scope amended 2026-10-05; no readiness or passing-test claim is made. Re-run `/ll:confidence-check` after ENH-3677, ENH-3657 and ENH-3729 land. The summary's secondary query and remote SFT quality refusal need executable entry-point/FSM evidence.
+
+## Session Log
+
+- EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - complete summary fallback, selected messages root, exact SFT passthrough/quality-refusal semantics and ENH-3729 dependency added; implementation not performed

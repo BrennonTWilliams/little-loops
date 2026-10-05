@@ -27,152 +27,117 @@ relates_to:
 
 ## Summary
 
-Own the end-to-end integration and evaluation of the rewritten brainstorm engine
-(EPIC-3581): the four per-mode reference runs, mixed-profile override runs,
-failure-path fixtures, sink compatibility, the combined step/time budget with every
-feature enabled, and a lightweight before/after comparison against the old loop.
-
-## Dependency Note
-
-_2026-09-28:_ Hard-blocked only by FEAT-3582 and FEAT-3583. FEAT-3584/3585/3586 are `relates_to` so a P4 child (FEAT-3586) does not gate this P3 issue. Each optional child owns its own failure-path fixtures; this issue owns the **cross-child** interactions, the combined budget, and reference runs. Per-mode reference runs for `ground`, `materialize`, and `premortem` are recorded as each child lands, and — changed 2026-09-30 (fifth review) — **this issue closes on the core engine only**: FEAT-3584/3585/3586 moved to EPIC-3687, record their own reference runs and budget bumps, and no longer gate this issue or EPIC-3581.
-
-## Baseline (captured 2026-09-29)
-
-The old loop is replaced in place by FEAT-3582, so its baseline is preserved outside the tree: `postmortems/brainstorm-baseline/` (gitignored, local-only) holds verbatim copies of the four historical `.loops/runs/brainstorm-*` dirs plus `BASELINE.md` (per-run ideas, LLM calls, tokens, wall-clock, pairwise difflib). **Do this before FEAT-3667/FEAT-3582 merge.** _(2026-09-30: the common tagging pass, its shared tags file and the FEAT-3582 merge-gate comparison inputs are now owned by FEAT-3686, so FEAT-3582's gate no longer depends on this issue; this issue only reads `postmortems/brainstorm-spike/tags.jsonl`.)_ Pin the pre-rewrite commit SHA here (tree HEAD at snapshot: `2fe16824a`, verified to exist 2026-09-29). Because every little-loops project is `local-editable` against this checkout, `ll-loop run brainstorm` from an old-SHA worktree still resolves the **new** loop once FEAT-3582 is on `main`, which would silently spoil the baseline. So run the old loop from an extracted copy: `git show 2fe16824a:scripts/little_loops/loops/brainstorm.yaml > <scratch>/brainstorm-baseline.yaml` (rename `name:` to `brainstorm-baseline`; copy `loops/lib/common.yaml` alongside if `import:` does not resolve). The old loop is pure YAML plus stdlib `python3`, so it has no package dependency on the new module.
-
-**The 2 fixed briefs (pinned 2026-09-29)** — verbatim, reused for old and new:
-1. _(artifact-shaped)_ "Suggest names and one-line taglines for an open-source CLI that watches a repository's issue backlog and drafts implementation plans."
-2. _(functional-shaped, grounded in this repo)_ "Design how little-loops should let a user pause a running FSM loop, edit its context, and resume it without losing state." The historical runs do not record their briefs, and two used different models (`claude-sonnet-4-6` vs `MiniMax-M3`), so token totals are not comparable without the cache columns. "Duplicates retained" and "occupied cells" must use one identical tagging pass over both loops' ideas, not the new loop's own dedup.
-
-### Old-loop baseline results (recorded 2026-09-29, before FEAT-3667/3582)
-
-Ran the old loop on both pinned briefs from an extracted copy (SHA `2fe16824a`, model `claude-sonnet-5-5`); full table and run dirs are in `postmortems/brainstorm-baseline/BASELINE.md` (§ Fresh old-loop baseline) and `fresh-20260929/`.
-
-| brief | ideas kept | LLM calls | output tok | total context tok (incl. cache) | wall-clock | max / median difflib |
-|---|---|---|---|---|---|---|
-| 1 artifact | 42 / 45 | 14 | 23,502 | ≈ 879k | 336 s | 0.56 / 0.31 |
-| 2 functional | 45 / 45 | 14 | 26,829 | ≈ 889k | 354 s | 0.54 / 0.07 |
-
-Consequences for this issue: (a) the old loop's call count is **14** (13 excluding the `finalize_done` summary), not ≈ 12 — compare new vs old on the same definition; (b) difflib dedup fired once on the short-text brief (3 dropped) — the "never fires" claim is true for prose ideas but not for short names, so report both briefs separately; (c) still to do here: the common tagging pass for "duplicates retained" and "occupied cells" over `fresh-20260929/*/ideas.jsonl`.
-
-## Spike Findings (FEAT-3686, 2026-09-30)
-
-Measured on the two pinned briefs with lean `claude -p` calls (`postmortems/brainstorm-spike/RESULTS.md`): median API time per call — diverge ≈ 7 s, tag ≈ 7 s, dedup+re-tag (45 ideas) ≈ 10 s, batched judge round ≈ 4.6–6.0 s, per-pair judge ≈ 3.1–4.1 s; ≈ 20k context tokens per lean call (full loop sessions measured 63–94k, so token cost is dominated by session overhead). Use these as the **lower bound** for `PRE_TOURNAMENT_WORST_S` and re-measure in a real loop run. Merge-gate baselines: old loop occupies 6 of 9 cells on both briefs and retains 5 (brief 1) / ≈ 19 (brief 2) redundant ideas. Consensus tags for both baselines: `postmortems/brainstorm-spike/tags.jsonl` (this issue only reads it).
+Verify and close EPIC-3581's **core engine**: all four text-judged modes, automatic classification, built-knob override wiring, failure routing, sink compatibility, core step/time budgets and comparable old/new evidence. Optional-capability combinations, rendered galleries and all-features budget verification belong to ENH-3734 under EPIC-3687; they do not gate this issue.
 
 ## Current Behavior
 
-Each EPIC-3581 child owns only its own slice. Nobody owns the epic's success metrics
-(one reference run per mode, `mode: auto` selecting the expected profile), the
-combined `max_steps`/`timeout` budget once `ground`, `materialize`, and `premortem`
-all add steps on top of the FEAT-3582 core, or evidence that the rewrite beats the
-old loop.
+The core implementation issues own their own contracts and merge checks. This issue supplies the final mode/classifier calibration and integration evidence, without waiting for grounding, materialize or pre-mortem.
+
+## Baseline and Evidence
+
+The existing local-only postmortems/brainstorm-baseline/BASELINE.md and fresh-20260929/ preserve old-loop runs from commit 2fe16824a with claude-sonnet-5-5. FEAT-3686 is done/GO and owns postmortems/brainstorm-spike/tags.jsonl and RESULTS.md. Do not recapture or relabel the old baseline as new evidence. If recovery is needed, extract the old YAML plus lib/common.yaml from that commit, and force the checkout/package import origin explicitly; a worktree alone does not override a local-editable install.
+
+The fixed briefs (same text for old/new):
+1. "Suggest names and one-line taglines for an open-source CLI that watches a repository's issue backlog and drafts implementation plans."
+2. "Design how little-loops should let a user pause a running FSM loop, edit its context, and resume it without losing state."
+
+| Old-loop brief | Kept/generated ideas | LLM calls (including finalize summary) | Output tokens | Total context tokens (including cache) | Runtime |
+|---|---|---|---|---|---|
+| Artifact | 42/45 | 14 | 23,502 | approximately 879k | 336 s |
+| Functional | 45/45 | 14 | 26,829 | approximately 889k | 354 s |
+
+Spike evidence under the original grids: six occupied cells on each brief, five / approximately nineteen retained redundant ideas. Functional approach agreement was 0.72, below 0.75; dedup labels were produced by Claude rather than humans. These are provisional reference values with limitations, not universal quality thresholds. The lean-call spike latency (judge approximately 4.6–6.0 s) is a lower bound; measure real executor sessions for budgets.
 
 ## Expected Behavior
 
-- **Reference runs**: one documented run per mode (`artifact`, `visual`,
-  `functional`, `business`) via `mode: auto`, each producing its expected output
-  shape (visual: ≥ 3 rendered finalists + ranked gallery). Run records live under
-  `postmortems/` or the issue's Session Log, not committed run dirs.
-- **Mixed-profile overrides**: at least one run with `mode=<x>` plus a knob override
-  (e.g. `mode=business materialize=render`) proving the knob wins over the profile
-  default (FEAT-3583 precedence rule).
-- **Failure-path fixtures** (pytest, stubbed via `MockActionRunner` from
-  `scripts/tests/test_fsm_executor.py`, keyed by state name): only fixtures over the
-  **built** states live here. Cross-capability fixtures for the optional children
-  (ground and materialize both filtering the same run below the finalist floor, reserve
-  promotion followed by materialize drops) are tracked under EPIC-3687, and premortem
-  fail-open (`winners.md` and sink input byte-identical) is owned by FEAT-3586.
-  Single-child fixtures (zero survivors, too few
-  cells, per-probe failures, round bound) belong to their owning child. No sink
-  fires before `validate_portfolio` passes.
-- **Sink compatibility**: `sink_file`, `sink_issue`, `sink_decision` consume the
-  new `winners.md` (still `text`/`rationale` keys) unchanged, with or without the
-  annotate-only premortem.
-- **Combined budget**: pin `max_steps` and `timeout` for the worst case (all
-  features on, L lenses, `classify_mode`, `ground_codebase`, `render_report`, materialize's 4 fixed states, the tournament sub-loop, and the
-  fixed premortem cost of 3 parent steps / 2 LLM calls; profile gates cost 0 steps). FEAT-3582's rough worst case is ≈ 55 steps against 60 with no slack on the salvage path, so expect `max_steps` ≈ 75 and update `test_max_steps_is_60` deliberately. _(2026-09-30: each optional child now bumps `max_steps` for its own cost in the change that lands it; this issue verifies and pins the combined total, and owns the final value, rather than being the first to raise it.)_ **Timeout** is derived, not guessed: `parent timeout ≥ PRE_TOURNAMENT_WORST_S + TOURNAMENT_TIMEOUT_S (1800) + JUDGE_CALL_TIMEOUT_S (300) + TAIL_S (600)`, where `PRE_TOURNAMENT_WORST_S` = per-call latency measured in the baseline/reference runs (44–97 s in the 2026-06 runs) × the pre-tournament call count with everything on (9 diverge + classify + frame + reframe + dedup + shortlist + materialize author/canary; `ground_web` is deferred), plus screenshot time. Keep the engine constants (`PARENT_TIMEOUT_S` etc.) and a test asserting they equal `brainstorm.yaml`.
-- **Blind A/B (added 2026-09-29, third review)**: the mechanism-driven metrics below (cells, duplicates, call count) can all pass while idea quality gets worse, so a person compares — blind, order randomized — the old loop's top idea against the new winner on both pinned briefs. Pass = the new winner wins or ties on **both** briefs; record the verdicts in the Session Log or `postmortems/`. No LLM-judged usefulness metric replaces this. _2026-09-30 (fourth review): the core A/B is now a **FEAT-3582 merge gate** (a regression would already be on `main` by the time this issue starts), so the baseline and the shared tagging pass are prerequisites of FEAT-3582, not of this issue. Here the A/B is re-run for the four-mode and all-features configurations, rendering old/new ideas in the same neutral title + body format so it stays blind; note that n = 2 briefs with a single rater who designed the loop has little statistical power — record the verdicts as evidence, not proof._
-- **Merge-gate evidence for FEAT-3582**: the old-vs-new **core** comparison and the worktree real runs (`PYTHONPATH=<worktree>/scripts`) run *before* FEAT-3582 merges to `main` (every project is `local-editable`); the four-mode and all-features runs stay here. FEAT-3596's baseline (`postmortems/brainstorm-baseline/`) is the input.
-- **Comparison vs old loop** on 2 fixed briefs: duplicates retained, occupied grid
-  cells, LLM call count, total input/output tokens, wall-clock runtime, and the
-  tournament `tie_rate` (judge position sensitivity on the top-3 head-to-heads; FEAT-3582 — measure it here before revisiting the round-robin format). No LLM-judged "usefulness"
-  metric. The blind A/B (one rater, n = 2) is a smoke check for regressions, not a significance test.
-- **Cost ceiling**: a default run (`mode: auto`, classifier included) makes ≤ 30 LLM calls (old loop
-  14 measured 2026-09-29; estimate for the new core ≈ 1 classify + 1 frame + (1 reframe when enabled) + 9 diverge + 1 dedup + 1
-  shortlist + ≈ 8 judge (≤ 7 batched round calls + 1 probe call) ≈ 21–22, leaving real slack; `max_finalists` must still not rise above 8). A run exceeding it fails the comparison and needs
-  a documented reason. Total context tokens per brief are **gated at ≤ 1.5× the old loop's ≈ 880k** (fifth review; a rewrite that inflates tokens contradicts its own motivation), while input/output split and cache columns are **recorded, not gated** (per-session overhead was ≈ 94k tokens per call in the 06-27 run, so call count alone is the wrong cost unit); also record `tie_rate`, `abstention_rate`, and the per-brief wall-clock so the batched-judging trade-off (possible in-round anchoring, FEAT-3582 Review Decision 28) can be evaluated.
+- Four mode:auto reference runs, one per mode, record the chosen mode/confidence/fallback, expected layout, idea/finalist counts, tie/abstention rates, actual calls/tokens/runtime and import origin. Explicitly set ground=none, materialize=none and premortem=false for these core-only runs if optional children have already landed and changed preset defaults. Visual mode is text judged here; functional has no codebase filter; winner_risks layout omits unavailable annotations visibly.
+- One explicit-mode run with a **built numeric override**, e.g. mode=business ideas_per_round=3, proves override precedence; malformed/unbuilt explicit options fail before any LLM dispatch. Classification host errors/timeouts fall back visibly to artifact.
+- Deterministic MockActionRunner fixtures exercise only built states, including invalid preflight, zero ideas, insufficient cells/finalists, child timeout/error salvage, probe replay/abstention thresholds, and all sink branches. No live LLM/browser is required in pytest.
+- Sinks see only a validated eligible portfolio and legacy winners.md text/rationale/role keys. sink_file receives a nonempty report; issue/decision sinks are stubbed or isolated to temporary stores for verification (reference runs use sink=none).
+- Enumerate actual core success/failure/salvage paths with at most nine lenses. Assert exact visits against shipped max_steps and time-guard constants, including classifier, report, sinks/finalization, judge timeouts and bounded rate-limit handling. Do not raise budget for unbuilt capabilities.
+- Comparable evaluation tags **both old and new idea sets** blindly with the same final grid definitions, duplicate criterion, model/version and scoring procedure. Historical tags can be reused only when definitions/procedure match. Changed FEAT-3583 axes require re-tagging both sets; preserve original results separately. The new generator's own tags are not an evaluation baseline. Preserve evaluator inputs/outputs and distinguish estimated duplicate labels from human judgments.
+- Re-run the two-brief blind human A/B for the final four-mode core configuration, randomized order and neutral title/body formatting. A human records win/tie/loss; the implementing agent cannot fill in the verdict or replace it with LLM judgment. Pass = new winner wins or ties on both. If no human result exists, preserve concrete comparison artifacts and leave this criterion pending.
+- Core gates: occupied cells >= old and retained duplicates <= old under the comparable evaluation; actual LLM calls <=30 per successful default run, including classifier/finalize and retries; total context tokens <=1.5 times the corresponding old brief. Use the same model/host/settings and usage-column accounting (uncached input + cache read + cache creation + output, without double-counting adapter totals). Missing usage is unverified, not zero. A changed model/settings makes cost evidence incomparable until a matching baseline exists.
+- Record blind A/B as a two-brief smoke check for regressions, not proof of improvement or significance. Cost/metric failure blocks closure until resolved; a documented explanation alone does not turn a failed gate into a pass.
+
+## Motivation
+
+This closes the core with evidence from real runs and meaningful failure fixtures. It preserves the optional/core split and avoids grading new ideas using their own generated grid labels or silently changed axes.
+
+## Proposed Solution
+
+Reuse FEAT-3582's pre-merge core evidence and FEAT-3686 baseline artifacts; add the final classifier/mode/override runs and a single consistent comparison record under postmortems/. Engine/YAML mismatches demonstrated by fixtures are corrected here. Optional features get their own runs and ENH-3734 gets their interactions.
 
 ## Program Design
 
 ### Types
 
-- `FailureFixture`: `{name: str, stub_outputs: dict[str, str], expected_terminal: "done" | "failed", sinks_fired: bool}` — stubbed per-state LLM output keyed by state name
-- `ComparisonRow`: `{brief: str, loop: "old" | "new", duplicates_retained: int, occupied_cells: int, input_tokens: int, output_tokens: int, runtime_s: float}`
+- FailureFixture: {name: str, stub_outputs: dict[str,str], expected_terminal: str, sinks_fired: bool}.
+- ComparisonRow: {brief: str, loop: str, preset_version: str, duplicates_retained: int, occupied_cells: int, llm_calls: int, input_tokens: int, cache_read_tokens: int, cache_creation_tokens: int, output_tokens: int, runtime_s: float, tie_rate: float | null, abstention_rate: float | null}.
 
 ### Signatures
 
-- `run_failure_fixture(fixture: FailureFixture, tmp_path: Path) -> str` — drives the loop with stubbed outputs, returns the terminal state
-- `worst_case_steps(lenses: int, finalists: int) -> int` — step arithmetic backing the pinned `max_steps` (premortem is a fixed +3, materialize a fixed ≈ 5, gates +0)
+- run_failure_fixture(fixture: FailureFixture, tmp_path: Path) -> str — test helper using FSMExecutor/MockActionRunner.
+- worst_case_steps(state_visits: list[str]) -> int — count actual executed paths; no unbuilt optional increments.
 
 ### Call Path
 
-`init` -> `diverge` -> `route_sink` -> `verify_artifacts` -> `finalize_done` (exercised end-to-end; the new states between them come from FEAT-3582..3586)
+FSMExecutor.run -> init -> classify_mode -> resolve_profile -> frame -> diverge/ingest -> dedup -> shortlist -> check_floors_pre_tournament -> tournament/salvage_tournament -> portfolio -> render_report -> validate_portfolio -> route_sink -> finalize_done
 
 ## Integration Map
 
-### Files to Modify
-- `scripts/tests/test_brainstorm.py` — cross-child failure-path fixtures, combined budget assertion
-- `scripts/little_loops/loops/brainstorm.yaml` — `max_steps` / `timeout` final values
+### Behavior Parity
 
-### Tests
-- `scripts/tests/test_brainstorm.py` — `test_max_steps_is_60` replaced by the pinned worst-case value
+| Artifact | Behavior | Disposition |
+|---|---|---|
+| brainstorm.yaml / brainstorm_engine.py | Core routing, portfolio, sinks | Preserved; correct demonstrated wiring/budget defects only |
+| brainstorm.yaml | Core max_steps/timeout | Verify derived bounds; no speculative all-features increase |
+
+### Files to Modify
+- scripts/tests/test_brainstorm.py — core executor fixtures, sinks and derived budgets.
+- scripts/tests/test_brainstorm_engine.py — any missing combined artifact/rate invariant fixtures.
+- scripts/little_loops/loops/brainstorm.yaml / scripts/little_loops/brainstorm_engine.py — demonstrated core budget/guard corrections only.
+
+### Dependent Files
+- Final preset definitions and classifier from FEAT-3583; FEAT-3667 module; completed FEAT-3686 baseline.
+- ENH-3734 reads these core records for later optional integration, but does not block this issue.
+
+### Documentation
+- scripts/little_loops/loops/README.md — core modes, available capabilities and measured cost notes if needed.
+
+## Implementation Steps
+
+1. Verify baseline availability, package import origin and final preset definitions; preserve baseline provenance.
+2. Add deterministic core/classifier/failure/sink fixtures and enumerate executed core budgets.
+3. Record four auto-mode runs plus explicit built-knob override; compare both pinned briefs with matched model/settings and blind tagging.
+4. Prepare neutral randomized A/B artifacts and record actual human results; keep missing judgments pending.
+5. Resolve failed gates, verify both loops validate and run the full local suite.
 
 ## Impact
 
-- **Priority**: P3 - closes the epic; no user-visible feature of its own
-- **Effort**: Medium - mostly runs, fixtures, and budget arithmetic
-- **Risk**: Low - test and documentation work
-- **Breaking Change**: No
+- **Priority**: P3 — closes the core epic with evidence.
+- **Effort**: Medium — fixtures, bounded runs, comparison and budget arithmetic.
+- **Risk**: Low — verification plus demonstrated corrections.
+- **Breaking Change**: No.
 
 ## Use Case
 
-**Who**: A little-loops maintainer closing EPIC-3581.
-
-**Context**: Five children each land a piece of the engine; their interactions
-(budget, filtering order, sink contract) are only exercised together.
-
-**Goal**: Prove the combined engine meets the epic's success metrics and is not a
-regression in cost or duplicate retention.
-
-**Outcome**: Reference-run records for all four modes, passing failure-path
-fixtures, a pinned combined budget, and a before/after comparison table.
+The maintainer closes EPIC-3581 with four core mode runs, compatible sinks, bounded execution and credible regression checks, independently of optional capability delivery.
 
 ## Acceptance Criteria
 
-- One reference run per mode recorded; `mode: auto` picks the expected profile for
-  each.
-- A mixed-profile override run shows the explicit knob overriding the profile
-  default.
-- Failure-path fixtures pass in `python -m pytest scripts/tests/`; none requires
-  Playwright or a live LLM.
-- No sink executes on a run that fails `validate_portfolio`.
-- `max_steps`/`timeout` pinned for the combined total of the built states; the all-features
-  worst-case pin is tracked under EPIC-3687. `ll-loop validate brainstorm` passes.
-- Comparison table (duplicates, cells, LLM calls, tokens, runtime, `tie_rate`)
-  recorded against the old loop on 2 briefs; default-run LLM calls ≤ 30 (aligned with EPIC-3581 and § Expected Behavior; it previously said 45).
-- Closes on the core engine (reference runs for the modes whose capabilities are built, comparison, budget for the built states). Optional-capability reference runs (FEAT-3584/3585/3586, EPIC-3687) are recorded by those issues and do not gate closure.
+- Four documented mode:auto core runs select expected profiles/layouts; visual is text judged until FEAT-3585, and optional capability runs do not gate closure.
+- Explicit built-knob override and preflight/classifier failure fixtures pass.
+- No sink executes before validation; all sink compatibility tests use temporary/stubbed destinations.
+- Exact longest core/salvage visits fit max_steps, timeout/guard values agree, and rate-limit behavior cannot inherit a six-hour wait.
+- Comparable old/new tags/duplicate groups, token accounting, per-brief calls/runtime/tie/abstention and import origin are recorded. Cells >= old, duplicates <= old, <=30 actual calls and <=1.5x matching baseline context tokens pass.
+- Blind human A/B wins or ties on both pinned briefs, with actual recorded verdicts and the n=2 limitation stated.
+- python -m pytest scripts/tests/ exits 0 and both brainstorm loops validate. Cross-capability/all-features requirements belong exclusively to ENH-3734 under EPIC-3687.
 
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P3
-
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): Closes on the core engine only. Reference runs cover modes whose capabilities are in `BUILT_CAPABILITIES`; optional-capability runs (FEAT-3584/3585/3586) are recorded by those issues. Cross-capability fixtures and the all-features worst-case budget pin are non-gating here and tracked as a closing item under EPIC-3687. Each child bumps its own `max_steps` cost; this issue only verifies the combined total.
-
-
 ## Session Log
+- Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:25 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:28 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
