@@ -15,6 +15,12 @@ decision_needed: false
 verify_verdict: VALID
 relates_to:
 - BUG-3739
+confidence_score: 90
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # BUG-3738: link-epics --apply writes a placeholder child bullet, misplaces it in irregular ## Children sections, and churns orphan frontmatter
@@ -184,6 +190,19 @@ Used `/ll:advise --signal user_requested --host claude-code --model opus` for cr
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-05_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Outcome Risk Factors
+- Deep per-site complexity: the byte-preserving frontmatter upsert (LF parsing view with raw-offset map), the local writer fence scanner, and the lazy-continuation placement grammar are each non-trivial new logic with shared state across functions.
+- Wide blast radius: the shared `_append_child_to_epic_children()` helper feeds `create_issue` (CLI + MCP), `scaffold_epic`, and `link-epics`; a placement or newline regression there affects all of them. Mitigation: land the helper + create preflight first, behind the existing 269-test baseline, before wiring apply.
+- Broad change footprint (~10 sites): three source files plus CLI.md, API.md, COMMANDS.md, `link-epics` and `capture-issue` skills and their host mirrors. Mitigation: run `ll-adapt` mirror gates after skill edits.
+- Same-command coordination with BUG-3739 (candidate filtering and payload keys in `cmd_link_epics`); test the combined output to avoid merge-order surprises.
 
 ## Session Log
 - `/ll:ready-issue` - 2026-10-05T20:18:56 - `3e2de759-3a68-4bde-a95a-631efbd7d020.jsonl`

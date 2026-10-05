@@ -15,6 +15,12 @@ labels:
 relates_to:
 - BUG-3738
 verify_verdict: VALID
+confidence_score: 90
+outcome_confidence: 70
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3739: Frontmatter keys placed after the closing fence are silently ignored, and link-epics re-proposes Children-listed and intentionally-parentless issues as orphans
@@ -258,6 +264,7 @@ Used `/ll:advise --signal user_requested --host claude-code --model opus` for cr
 **Open** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-05T21:03:07 - `275ebb58-903a-4210-9cb0-e88316d19a35.jsonl`
 - `/ll:ready-issue` - 2026-10-05T20:18:56 - `c6ed73f5-2103-48a0-bfaa-97a8901cbedc.jsonl`
 - `/ll:verify-issues` - 2026-10-05T19:59:00 - `82de079c-5cd6-4104-ba4d-1ae5be5a2a7d.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-05T19:56:33 - `028b082b-4804-4e7c-9920-43f4adff3a93.jsonl`
