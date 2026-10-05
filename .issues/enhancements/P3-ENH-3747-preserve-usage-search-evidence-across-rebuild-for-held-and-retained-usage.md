@@ -18,6 +18,8 @@ relates_to:
 - BUG-3735
 - ENH-3731
 - ENH-3732
+- ENH-3744
+testable: true
 ---
 
 # ENH-3747: Preserve usage search evidence across rebuild for held and retained usage
@@ -33,6 +35,10 @@ Preserve usage search evidence across rebuild and catch-up for held or retained 
 ## Expected Behavior
 
 Reindex or preserve existing retained and live usage search evidence without duplicates, dangling entries or stale replaced entries. Do not expand search to acquisition channels that were never indexed. Repeated replay is idempotent for search rows.
+
+Restore evidence against surviving committed observations using the existing search key/anchor/preview conventions; a pruned raw pointer is not a valid new anchor. After ENH-3744 releases a hold or replaces a represented observation, old entries must be removed/rebuilt consistently. Keep reindexing in the replay transaction so failed replay cannot publish a half-restored index; retain existing preview sanitization rather than introducing raw source text.
+
+The actual `_write_host_usage_observation` search row uses `ref=model` and `anchor=source_label`, not a usage-row ID. Preserve/reconcile that source/model/time identity, or reconstruct using the existing writer convention; do not join `search_index.ref` to `usage_events.id`. Inspect the separate live and Codex paths to retain the indexed-channel set. A released-hold fixture can exercise replacement without making ENH-3744 a scheduling prerequisite.
 
 ## Impact
 
@@ -59,11 +65,35 @@ Reuse `search_index` rows of kind `usage` and the BUG-3736 hold marker.
 
 - Reindex or preserve without duplicates, dangling entries or stale replaced entries; never index channels that were not indexed before.
 
+## Integration Map
+
+### Files to Modify
+
+- `scripts/little_loops/session_store/lifecycle.py` — `rebuild` and `_derive_usage_incremental_conn` usage-search deletion/reindex order.
+- `scripts/little_loops/session_store/writers.py` — reuse/factor the actual usage search insertion and anchor conventions for retained observations; handle replacements without duplicating search entries.
+
+### Dependent Files
+
+- Existing search reader and schema stay unchanged unless an actual missing reconstruction field requires an append-only migration. Inspect the existing usage-search writer before choosing preservation or reconstruction; preserve the existing indexed-channel set.
+- ENH-3744 owns hold release/replacement. Its future transitions are regression controls here, not a hard blocker on restoring Stage 1 search evidence. This issue is independent of canonical numeric publication but remains required for epic closure.
+
+### Tests
+
+- Extend `scripts/tests/test_bug3736_usage_replay_holds.py` and existing session-store search/rebuild tests with retained-only, live, unheld replay, replacement and forced-rollback cases. Exercise the real search reader after replay, not just index row counts.
+
 ## Acceptance Criteria
 
 - [ ] After rebuild and incremental reset, retained and live usage search rows for held sources still resolve and have no duplicates.
 - [ ] No dangling entries remain for replaced observations; channels never indexed stay unindexed.
 - [ ] Repeated replay leaves the search index unchanged.
+- [ ] Search previews/anchors retain existing sanitization and resolve after raw pruning/source loss; hold release/replacement removes stale entries and preserves unrelated live searches. A forced replay failure rolls back index and observation changes together.
+- [ ] `python -m pytest scripts/tests/` exits 0.
+
+## Implementation Steps
+
+1. Inspect the existing usage search keys/anchors and indexed channels; preserve surviving evidence or reconstruct it from committed observations.
+2. Apply the same transaction-safe restoration in rebuild and incremental reset, then test prune/source loss, idempotence, live preservation and rollback through the reader.
+3. Coordinate replacement controls with ENH-3744, without blocking the Stage 1 repair; run the local suite.
 
 ## Scope Boundaries
 
@@ -72,3 +102,7 @@ Out of scope: prune/replay preservation, freshness, reader admission.
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
+
+## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Temporary-store rebuild retained two usage observations but reduced usage search entries from two to zero. Added concrete index/reader ownership, sanitization, replacement and rollback controls; kept search independent of numeric publication and required for epic closure. No implementation or new score is claimed.

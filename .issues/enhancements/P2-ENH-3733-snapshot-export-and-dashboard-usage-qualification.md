@@ -17,13 +17,6 @@ relates_to:
 - ENH-3730
 - BUG-3735
 - ENH-3748
-verify_verdict: VALID
-confidence_score: 70
-outcome_confidence: 71
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
 size: Very Large
 ---
 
@@ -31,7 +24,7 @@ size: Very Large
 
 ## Summary
 
-Make shareable snapshots and the built-in dashboard honor the shared usage qualification policy. This child routes `_snapshot_usage_selection` and `usage_coverage_audit` through `qualify_usage`, preserves qualification label/reason and a policy version in the export under the privacy allowlist, and updates the built-in dashboard query, visible reasons and custom-SQL guidance. Blocked by ENH-3731.
+Make shareable snapshots and the built-in dashboard honor the shared usage qualification policy. This child routes `_snapshot_usage_selection` and `usage_coverage_audit` through the implemented `qualify_usage`, preserves qualification label/reason and a policy version in the export under the privacy allowlist, and updates the built-in dashboard query, visible reasons and custom-SQL guidance. ENH-3731 is done; this child can proceed independently of ENH-3732/3744/3745/3746 because the snapshot adds neither derive-status nor cache-rate figures.
 
 ## Parent Issue
 
@@ -109,6 +102,8 @@ These choices resolve the research questions below; retain the recorded Option C
 
 7. Unscoped dashboards may remain unavailable under the global coverage policy, unknown historical provenance or missing stored prices even after this issue lands. That is expected, explained behavior; ENH-3730 is optional availability work, not permission to relabel a selected subset as complete.
 
+8. Consume the landed `UsageQualification` fields `eligible`, `provenance`, `reason`, `contributors`, `rejected_contributors`, `component_counts`, `policy_version` and `counts(column)`. Reuse `USAGE_QUALIFICATION_REASONS` for accounting-code admission. Apply the same numeric validation to generated raw/known audit subtotals, not merely canonical values: invalid values cannot make generated audit aggregates fail, become non-finite, or silently include a contributor the source rejects. Keep raw observations intact in the allowlisted observation surface and explain valid-value audit sums separately.
+
 ## Integration Map
 
 ### Files to Modify
@@ -184,7 +179,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/session_store/schema_manifest.json` / `SCHEMA_VERSION` (58) — no change: the generated tables are computed snapshot columns, not source-DB tables, and `session_store/schema.py` does not reference them [Agent 2 finding]
+- `scripts/little_loops/session_store/schema_manifest.json` / `SCHEMA_VERSION` (59) — no change: the generated tables are computed snapshot columns, not source-DB tables, and `session_store/schema.py` does not reference them [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -202,7 +197,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 - Scope mismatch the implementer must resolve knowingly: `usage_coverage_audit.coverage` is the model-wide worst coverage (`model_coverage` in `_snapshot_usage_selection`), while `selected_usage_events.coverage` is the row's own identity-group coverage (`_coverage` annotation from `select_usage_coverage`, `history_reader/usage.py:375`). Any exported qualification label/reason on either table must state which scope it carries; the two scopes already differ today.
 - `_snapshot_usage_selection` keys rows with its own `_key()` (NULL channel → `"unknown"`, NULL model stays `None`), whereas source readers use `row_channel` (NULL channel → `transcript` when a session id exists, else `live`) and `UNKNOWN_MODEL_BUCKET` (`cli/ctx_stats.py`). The "source and snapshot agree" criterion is only checkable if the key mapping is aligned or the divergence is documented.
-- Known-value definitions differ: `_SnapshotTotals.add` treats a token as known only when it is a non-bool `int` ≥ 0 (cost: any non-bool number, negatives allowed); `ObservationGroup`/`_Component.add` (`token_provenance.py`) treats any non-None as known. Parity tests need a fixture row where the two disagree (negative or non-int token) or an explicit statement that it is out of scope.
+- Known-value definitions differ: `_SnapshotTotals.add` treats a token as known only when it is a non-bool `int` ≥ 0 (cost: any non-bool number, negatives allowed); `ObservationGroup`/`_Component.add` now applies ENH-3731's non-negative integer token and finite non-negative cost validation. Update `_SnapshotTotals` raw/known audit accumulation to the same rule and test invalid values; this is in scope, not a remaining decision.
 - `session_store/queries.py` never reads `CoverageGroup.channel_subtotals` or `ObservationGroup.channel_subtotals()`; ENH-3731's "must not gain `cost_usd` — it feeds the ENH-3733 snapshot schema" constraint therefore guards a coupling with no consumer in the snapshot builder today. The snapshot's per-channel figures come solely from its own `_SnapshotTotals`.
 - `selected_usage_events` exports `provenance` as the raw stored string (not via `row_provenance`), so NULL/unrecognized provenance is exported un-normalized beside any new normalized qualification label; the two must not contradict in the same row.
 - Test-fixture constraint: only `test_enh3543_snapshot_usage.py::_source_db` (real `ensure_db()` migrations, native-id sentinels) can exercise the leak and `identity_basis` cases; `test_feat3304_artifact_dashboard.py::_build_history_db` uses hand-written DDL and tolerates absent provenance columns via `select_usage_coverage`'s `NULL AS col` substitution (`history_reader/usage.py:397`), whereas `_snapshot_select` intersects the allowlist with `PRAGMA table_info` — the generated-table builders do not use that intersection.
@@ -211,7 +206,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 ### Types
 
-- `UsageQualification` — frozen dataclass planned in `little_loops.token_provenance` by ENH-3731 (eligibility, provenance label, bounded reason code, audit known/missing counts); not yet in source, so field names are consumed as ENH-3731 lands them.
+- `UsageQualification` — implemented frozen dataclass in `little_loops.token_provenance` with `eligible`, `provenance`, `reason`, `contributors`, `rejected_contributors`, `component_counts`, `policy_version` and `counts(column)`; consume this interface without renaming or inventing fields.
 - `_SnapshotTotals` — existing dataclass in `little_loops.session_store.queries` (`count: int`, `sums: dict[str, int | float]`, `missing: dict[str, int]`); today's only eligibility input for `canonical_*` columns.
 - `_SHAREABLE_COLUMNS: dict[str, list[str]]` — gains qualification label/reason column names on `usage_coverage_audit` (and `selected_usage_events` only if row-level qualification is exported).
 - `_SHAREABLE_ALLOWLIST_VERSION: int` — currently `3`; any `_SHAREABLE_COLUMNS` edit bumps it in the same commit.
@@ -220,7 +215,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 - `_snapshot_usage_selection(conn: sqlite3.Connection, since: str | None) -> None` — only caller is `build_snapshot_db`; keeps its call to `select_usage_coverage(conn, since=since)` store-wide (no `channel=`).
 - `build_snapshot_db(db: Path, dest: Path, *, tables: list[str], since: str | None = None, local_mode: bool = False) -> str | None` — return value stays the source schema version string.
-- `select_usage_coverage(conn: sqlite3.Connection, *, since: str | None = None, require_run_id: bool = False, host: str | None = None, session_id: str | None = None) -> CoverageSelection` — supplies `CoverageGroup.audit_rows` / `selected_rows` that qualification is evaluated over.
+- `select_usage_coverage(conn: sqlite3.Connection, *, since: str | None = None, require_run_id: bool = False, host: str | None = None, session_id: str | None = None, channel: str | None = None) -> CoverageSelection` — implemented selector; supplies annotated `CoverageGroup.audit_rows` / `selected_rows`; keep this snapshot's default all-channel acquisition.
 - `qualify_usage(group: ObservationGroup, *, require_cost: bool = False, measured_only: bool = False) -> UsageQualification` — ENH-3731 API; the snapshot builds an `ObservationGroup` per in-filter contributor set and consumes its result.
 - `ObservationGroup.channel_subtotals() -> dict[str, dict[str, Any]]` — must not gain `cost_usd`; it also feeds `CoverageGroup.channel_subtotals`.
 
@@ -238,7 +233,7 @@ N/A — no new decision logic; the qualification policy (eligibility, reason pre
 
 _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
-- Contract mismatches between this issue and ENH-3731's planned `qualify_usage` (reconcile before coding; field names stay provisional until ENH-3731 lands):
+- Historical contract comparisons with ENH-3731; the implemented API and **Resolved consumer contract** above supersede provisional-field and unresolved-choice wording:
   - **Admission granularity**: ENH-3731 admission is row-level (all four `TOKEN_COLUMNS` non-NULL) and cost is a separate `require_cost` call; the snapshot gates each `canonical_*` column independently today (`canonical and not model_known.missing.get(col)`), so input can be non-NULL while cache_creation is NULL. Under the shared policy the four token `canonical_*` columns become NULL together — an intended behavior change that existing expectations (`canonical_input_tokens` 7/8 in `test_shareable_snapshot_keeps_known_rows_and_audit_without_claiming_overlap`) must be re-derived against.
   - **Input group**: `qualify_usage` takes coverage from `group.coverage()`, i.e. from the `_coverage` labels on rows added. A group built from `selected_rows` is always `non_overlapping` and loses the unresolved sibling groups that taint a model today; a group built from `audit_rows` keeps them but also folds non-selected rows into admission/provenance. The group the snapshot builds per model must preserve model-wide coverage taint while qualifying only in-filter contributors.
   - **Rates**: `usage_coverage_audit` has no rate or cache-rate column, so the "zero denominator → unavailable" and "stricter measured-only rates" criteria have no snapshot figure to attach to unless one is added (which is an allowlist change) — decide whether those criteria bind the snapshot or only the source readers.
@@ -283,28 +278,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
-- ENH-3731 is open and `qualify_usage` / `UsageQualification` are absent from `scripts/`. It leaves `queries.py` edits to this issue; ENH-3748's default `channel=None` preserves the immediate baseline's coverage policy/population, allowing BUG-3735's intentional scoped-filter correction. The shared `ObservationGroup.channel_subtotals()` shape gains no `cost_usd`; snapshot costs use their own totals and qualification, so there is no shared-subtotal schema dependency to invent. This issue intentionally adds the chosen qualification columns and audit-table policy version. `test_usage_selection_chokepoint_gate.py` constrains SQL string constants naming token/cost columns beside `FROM usage_events`.
-- Conventions in force (evidence, not templates): reason codes are plain lowercase snake_case literals with no shared enum or prefix (`history_reader/usage.py:_classify_coverage`, `token_provenance.py`); a retained export carries versions only as page stamps, never as an in-DB `meta` row (`cli/artifact/dashboard.py:schema_version_warning`); source-DB schema changes are append-only `_MIGRATIONS` entries paired with `SCHEMA_VERSION` (currently 58) and `schema_manifest.json`, guarded by `TestSchemaManifest` — computed snapshot columns need none of this. Two fixtures disagree: `test_enh3543_snapshot_usage.py::_source_db` uses real `ensure_db()` migrations and seeds native-ID sentinels; `test_feat3304_artifact_dashboard.py::_build_history_db` uses hand-written DDL without `source_path`/`identity_basis` — only the former can exercise the leak case.
+- ENH-3731 is done and `qualify_usage` / `UsageQualification` exist in `token_provenance.py`. It leaves `queries.py` edits to this issue; Implemented ENH-3748's default `channel=None` preserves the baseline's coverage policy/population, allowing BUG-3735's intentional scoped-filter correction. The shared `ObservationGroup.channel_subtotals()` shape gains no `cost_usd`; snapshot costs use their own totals and qualification, so there is no shared-subtotal schema dependency to invent. This issue intentionally adds the chosen qualification columns and audit-table policy version. `test_usage_selection_chokepoint_gate.py` constrains SQL string constants naming token/cost columns beside `FROM usage_events`.
+- Conventions in force (evidence, not templates): coverage reasons are plain lowercase snake_case literals (`history_reader/usage.py:_classify_coverage`); shared accounting reasons are bounded by implemented `token_provenance.USAGE_QUALIFICATION_REASONS`; a retained export carries versions only as page stamps, never as an in-DB `meta` row (`cli/artifact/dashboard.py:schema_version_warning`); source-DB schema changes are append-only `_MIGRATIONS` entries paired with `SCHEMA_VERSION` (currently 59) and `schema_manifest.json`, guarded by `TestSchemaManifest` — computed snapshot columns need none of this. Two fixtures disagree: `test_enh3543_snapshot_usage.py::_source_db` uses real `ensure_db()` migrations and seeds native-ID sentinels; `test_feat3304_artifact_dashboard.py::_build_history_db` uses hand-written DDL without `source_path`/`identity_basis` — only the former can exercise the leak case.
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-04 (re-scored 2026-10-04)_
+_Historical `/ll:confidence-check` on 2026-10-04. The missing-core assessment is superseded by landed ENH-3731 and this 2026-10-05 API reconciliation; stale frontmatter scores were cleared. Rerun the configured gate before implementation._
 
 **Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies hard override)
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Concerns
-- Criterion 4 (15/20): consumed API (`qualify_usage` / `UsageQualification`) does not exist in `scripts/little_loops` yet, so the Program Design field names are provisional.
+- The prior missing-API concern is resolved: `qualify_usage` / `UsageQualification` exist with the field names listed above. The snapshot integration and export allowlist changes remain unimplemented.
 - Resolved by **Resolved consumer contract**: derived `mixed` labels are allowed, rate checks apply only to session-reader parity, and computed buckets use `row_channel`/`UNKNOWN_MODEL_BUCKET`. Earlier research questions are historical findings, not choices left to the implementer. No new readiness score is claimed.
 
 ### Gaps to Address
-- **Unresolved dependency (hard override):** `blocked_by: ENH-3731` is `open` — `qualify_usage` / `UsageQualification` are still absent from source. Land ENH-3731 first (or remove the dependency if it no longer applies), then re-run.
+- The retained `blocked_by: ENH-3731` prerequisite is satisfied (`done`). Reverify snapshot/source API, audit numeric validity, deterministic export and allowlist/hash lockstep against the revised contract, then rerun confidence. No new score is claimed.
 
 ### Outcome Risk Factors
 - Broad enumeration across ~6 source/template/doc sites plus a coordinated test sweep (hash/version lockstep, pinned dashboard substrings, `PRAGMA table_info` order).
 - Moderate per-site complexity: qualification is evaluated on in-filter contributors after full-identity-group overlap reconciliation, with model/channel scope rules that cannot recertify an incomplete model.
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Reconciled the implemented core/result/channel API and cleared historical scores; snapshot work can proceed without quality or retention-followup scheduling edges. Added valid-value raw/known audit sum parity, while preserving recorded Option C, model-wide qualification and the existing payload. Opus confidence 0.70; no new readiness or implementation pass is claimed.
 
 - Pre-implementation epic review - 2026-10-05 - Removed active page-stamp/manifest directives that contradicted recorded Option C, aligned tests/docs with the audit-table policy version, and marked the already resolved vocabulary/rate/bucket concerns as resolved. Source numeric audit safety remains ENH-3731's handoff; no new readiness pass is claimed.
 

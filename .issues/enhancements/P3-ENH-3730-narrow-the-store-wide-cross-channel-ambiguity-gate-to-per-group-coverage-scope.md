@@ -62,7 +62,7 @@ The only admissible narrowing policy is conservative potential-overlap domains:
 
 ### Signatures
 
-- `select_usage_coverage(conn, *, since=None, require_run_id=False, host=None, session_id=None, channel=None) -> CoverageSelection` — the `channel` argument is ENH-3748's planned acquisition scope; keep its semantics in either landing order. Refine only ambiguity classification after the decision.
+- `select_usage_coverage(conn, *, since=None, require_run_id=False, host=None, session_id=None, channel=None) -> CoverageSelection` — the `channel` argument is ENH-3748's implemented acquisition scope; keep its semantics in either landing order. Refine only ambiguity classification after the decision.
 - `_verified_usage_identity`, `_coverage_key`, `_classify_coverage` in `history_reader/usage.py` — reuse existing verification and unknown/unresolved prerequisites; do not treat key separation as proof against wildcard rows.
 
 ### Call Path

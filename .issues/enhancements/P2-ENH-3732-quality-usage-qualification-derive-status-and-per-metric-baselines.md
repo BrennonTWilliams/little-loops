@@ -20,13 +20,6 @@ relates_to:
 - ENH-3730
 - BUG-3735
 - ENH-3543
-verify_verdict: VALID
-confidence_score: 70
-outcome_confidence: 71
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
 size: Large
 ---
 
@@ -34,7 +27,7 @@ size: Large
 
 ## Summary
 
-Make the agent-quality report obey the shared usage qualification policy. This child scopes quality acquisition to the transcript channel, adds a member-local read-only per-session derive-status helper (with workspace map injection), carries nullable token/cost numerators with per-metric qualification, and replaces the zero-as-unmeasured baseline proxy in `quality_regressions` with explicit all-measured trend eligibility. Blocked by ENH-3731 (`qualify_usage` and the `channel=` selector scope) and BUG-3736 (preserve retained usage and prevent pruning underived candidates).
+Make the agent-quality report obey the shared usage qualification policy. This child scopes quality acquisition to the transcript channel, adds a member-local read-only per-session derive-status helper (with workspace map injection), carries nullable token/cost numerators with per-metric qualification, and replaces the zero-as-unmeasured baseline proxy in `quality_regressions` with explicit all-measured trend eligibility. ENH-3731's `qualify_usage`, ENH-3748's `channel=` acquisition scope and BUG-3736's retention safety floor are done. Remaining integration prerequisites are ENH-3744's semantic candidate proof and ENH-3745's validated processing/per-source held-state handoff; a high-water checkpoint alone cannot prove all candidates were represented.
 
 ## Parent Issue
 
@@ -204,21 +197,23 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 ## Resolved review handoffs (2026-10-05)
 
-- **Logical derive gaps:** recognize positive retained contracts at the same canonical observation grain used by `writers.normalize_host_usage`: for the existing qualified Claude producer, host + session + message ID. Several raw snapshots can coalesce into one observation; a missing `source_raw_event_id` join is not a gap. A represented logical observation satisfies those snapshots even when its raw pointer moves. A proved positive logical candidate with no derived observation is `derive_gap`; a missing/unproved key or inadequate retained evidence is `derive_status_unavailable`. Reuse/factor only the pure existing key construction as needed; do not call the normalizer or change derivation. Test two snapshots → one observation, genuine missing candidate, and unprovable identity.
+- **Logical derive gaps:** consume ENH-3744's shared pure retained-evidence recognition/key/coalescing/correspondence interface at the same grain as production replay: for the existing qualified Claude producer, host + session + message ID. Several raw snapshots can coalesce into one observation; a missing `source_raw_event_id` join is not a gap. A represented logical observation satisfies those snapshots even when its raw pointer moves. A proved positive candidate with no observation is `derive_gap`; a missing/unproved key or inadequate retained context is `derive_status_unavailable`. Never invoke the deriver, native-file parser, pricing or write normalizer, and never copy a separate recognition algorithm into quality. Test two snapshots → one observation, genuine missing candidate, and unprovable identity.
 - **Complete candidate population:** check every proved logical key before the usage-present branch. A session with two candidates and only one stored observation is `derive_gap`; malformed later snapshots do not create another candidate or invalidate the producer's last-valid-snapshot contract. Only a recognized contract can prove that a raw kind is non-usage or excluded. Unregistered/mismatched contracts and unproved source/channel rules stay unavailable, never `derived_no_usage`. The six evidence/delivery pairs declare and extend this pure retained-raw rule before their publication gate; do not encode today's missing Kimi producer as permanent proof that Kimi raw is excluded.
 - **Consistent read proof:** read raw population, checkpoint/version and corresponding observations in one committed read snapshot. Reuse a caller-owned transaction; if none is active, manage only the helper/analysis's own read transaction without committing a caller's transaction. No writer/checkpoint redesign is required: the production deriver already holds `BEGIN IMMEDIATE` across usage and checkpoint writes. Test an append/derive between reads cannot make an uncovered candidate appear complete. Workspace injected status and union contributors must describe the same member revisions; detect intervening member commits and fail affected figures closed, or obtain both from a shared read snapshot. A per-member map followed by an unchecked later union read is insufficient.
-- **Retention boundary:** BUG-3736 owns replay preservation and guarding underived candidates against pruning. A store-wide `MAX(raw_events.id) < checkpoint` alone does not invalidate a qualified as-of observation whose raw evidence was legitimately pruned; it is not proof of fresh source completeness either. Preserve that historical verdict while applying the recognized-candidate checks to surviving raw evidence. Test safe prune, underived-candidate retention, and new append after prune; do not treat a checkpoint above current MAX as permission to skip those checks.
+- **Retention boundary:** BUG-3736's completed Stage 1 preserves usage conservatively; ENH-3744 owns semantic candidate representation and hold release, and ENH-3745 owns valid processing floors and source-local pending/held state. A store-wide `MAX(raw_events.id) < checkpoint` alone does not invalidate a qualified as-of observation whose raw evidence was legitimately pruned; it is not proof of fresh source completeness either. Preserve that historical verdict while checking all surviving candidates, including held work below a global checkpoint. A conservation hold is not itself a missing candidate or proof of completeness: do not blanket-reject otherwise qualified retained historical observations merely because Stage 1 protected them. Source-attributed raw/audit observations map actual held pending work to affected sessions; unprovable in-scope attribution fails closed. A wildcard hold cannot manufacture an observation or certify a session. Test safe prune, underived-candidate retention, missing context and recovery after prune.
 - **Host composition:** keep `load_window_compositions`' existing all-raw-event host diagnostic and label that broader population in text/JSON/definitions. It must not supply the transcript token/cost numerator, denominator, qualification or trend eligibility. The model dimension remains transcript scoped. This resolves the repeated “decide whether” wiring note below without a new query or metric.
 - **Workspace population:** preserve the documented member-additive `UNION ALL` quality population, including the accepted counting of a session present in multiple stores. A workspace total is not a distinct-session or counted-once host-consumption total. State that scope with the output; do not silently deduplicate or blanket-quarantine shared sessions. Member-local unavailable derive proof still taints every attributed window, so a good member cannot hide an underived one.
 - **Coverage isolation:** in the transcript-only workspace acquisition, numeric IDs from different members cannot merge otherwise unrelated audit groups or use one member's checkpoint. Add a two-member case with colliding IDs and different session/provenance/derive states plus an excluded live counterpart. Keep `_UNION_RELATIONS`, issue discriminators and accepted attribution unchanged. BUG-3735 handles cross-channel wildcard correctness; this is not ENH-3730's availability redesign.
 - **Workspace identity and reason selection:** keep any local row/raw-link identity used by coverage or candidate correspondence member-qualified in scratch views/mappings. Never join bare raw IDs across members or deduplicate a shared `observation_key`; the existing member-additive rows and shared session attribution remain intact. Prefer a query-local member tag or collision-free key; no source schema migration or arbitrary billion-row assumption is required. Merge unavailable statuses in fixed order `derive_status_unavailable` > `no_evidence` > `derive_pending` > `derive_lagging` > `derive_gap`, retaining the bounded contributing reasons in stable order. This is diagnostic precedence only; every unavailable status blocks the figure. Test member-order permutations as well as collisions.
+- **Workspace connection lifetime:** the present member loop closes connections before `_open_union` attaches paths. Change that lifetime so proof and union contributors cannot silently come from different revisions: either read attached-member proof and contributors in one pinned union read transaction, or keep the same member connections alive through the union read and compare each member's `PRAGMA data_version` before proof and after contributor acquisition. Detect a change and mark affected usage figures `derive_status_unavailable`; a newly opened connection's counter is not comparable to the old one. Preserve the existing attach-limit/totals-skipped behavior and close all owned connections on every exit. Do not commit a caller's transaction.
+- **Landed qualification interface:** consume the actual frozen `UsageQualification` fields `eligible`, `provenance`, `reason`, `contributors`, `rejected_contributors`, `component_counts`, `policy_version`; use `counts(column)` for bounded component counts. ENH-3731 is implemented, not a provisional API. Quality session-status reasons are a separate bounded vocabulary from snapshot accounting reasons; adding one does not itself change the snapshot allowlist or qualification policy.
 
 ## Program Design
 
 ### Types
 
 - `SessionDeriveStatus` (new, frozen dataclass in `history_reader/usage.py`) — bounded `status` and `reason` strings plus an in-population disposition; serializes no raw IDs or paths.
-- `QualityMetric` (`agent_quality.py`) — gains trailing defaulted fields for qualification, provenance label, reason and trend eligibility; the existing 7 positional fields and `to_dict()` keys are unchanged.
+- `QualityMetric` (`agent_quality.py`) — gains trailing defaulted fields for qualification, provenance label, reason and trend eligibility; existing seven positional fields stay compatible and the seven non-usage `to_dict()` keys stay unchanged. Usage-only keys are additive when set.
 - `derive_status: Mapping[str, SessionDeriveStatus] | None` — session-ID keyed; `None` computes locally, a supplied map is authoritative and a missing key fails closed.
 
 ### Signatures
@@ -236,7 +231,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 ### Decision Rules
 
-- **Inputs per session:** in-scope raw evidence (host/`host_basis`/`usage_contract`/`source_path`-derived, since `raw_events` has no `channel` column), the session-local `MAX(raw_events.id)`, the member's `meta.usage_derive_version` and `meta.usage_derive_raw_id`, and in-scope `usage_events` observations.
+- **Inputs per session:** in-scope raw evidence (host/`host_basis`/`usage_contract`/`source_path`-derived, since `raw_events` has no `channel` column), session-local raw positions, validated member checkpoint/version, in-scope observation identities, and ENH-3744/3745's pure semantic/source-local proof. No source-file freshness read. A global checkpoint does not certify skipped held candidates; unavailable attribution/context cannot disappear behind an existing observation.
 - **Precedence:** the disposition table in Expected Behavior is evaluated top-down; positively proved excluded-only evidence precedes pending/lagging checks, then unproved candidate evidence and per-logical-key gaps precede qualification. Existing observations do not bypass a gap. Workspace reason precedence is specified in **Resolved review handoffs** and is independent of per-session disposition order.
 - **Version comparison:** reuses the deriver's `_USAGE_DERIVE_VERSION` (`lifecycle.py`); never a literal copy.
 - **Merge across members:** any unavailable member status wins and its reason is retained; excluded-channel-only members contribute nothing; a member with no association contributes no key.
@@ -252,7 +247,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 - [ ] Attributed sessions with in-scope raw evidence and absent/invalid/version-mismatched proof or session-local lag make each touched window unavailable with bounded reasons; recognized positive contract without a derived observation is `derive_gap`; fully derived non-usage raw needs no usage row; no evidence or zero in-scope observations never becomes zero; proved rollout/live-only sessions stay excluded; source deletion and unrelated later raw appends cannot invalidate qualified stored sessions; helpers run on `query_only` connections with no writes, re-derivation or source reads.
 - [ ] Workspace analysis uses member-local proof and a conservatively merged injected map; colliding raw IDs with different checkpoints on a shared window cannot publish a complete subset total; bare first-attached `meta` cannot certify another member; shared-session merging and absent/out-of-scope members tested; attribution/discriminators and union relations preserved.
 - [ ] Coalesced raw snapshots do not create false derive gaps; missing logical candidates and unprovable keys fail closed with distinct reasons. Workspace ID-collision and shared-session tests preserve member-additive counting while unavailable member proof blocks affected windows. The broader raw-host diagnostic is labeled and never certifies transcript usage.
-- [ ] Two logical candidates with one observed request remain `derive_gap`; unregistered/mismatched raw contracts cannot become proved non-usage/excluded evidence. Safe pruning retains qualified as-of observations, underived candidates cannot be pruned under BUG-3736, and later appends still require proof. Status/usage reads are snapshot-consistent, including injected workspace maps versus union rows; member-order permutations preserve figures and bounded reasons.
+- [ ] Two logical candidates with one observed request remain `derive_gap`; unregistered/mismatched raw contracts cannot become proved non-usage/excluded evidence. ENH-3744's proof protects missing candidates during pruning; retained as-of observations remain qualified, and held appends below an advanced checkpoint still require source-local proof. Missing native context is unavailable. Status/usage reads are snapshot-consistent, including injected workspace maps versus union rows; a commit between map creation and union read is detected or read in the same snapshot, and member-order permutations preserve figures and bounded reasons.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Impact
@@ -263,21 +258,19 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 ## Scope Boundaries
 
-- **Out of scope:** qualification core (ENH-3731), selector `channel=` scope (ENH-3748), snapshot/dashboard (ENH-3733), source-to-raw freshness, derive-algorithm changes and pruning/replay preservation (BUG-3736), re-deriving unknown transcript rows (promotion is forbidden), ENH-3730's gate redesign.
+- **Out of scope:** completed qualification core (ENH-3731) and selector `channel=` scope (ENH-3748), snapshot/dashboard (ENH-3733), source-file freshness, derive-algorithm changes and pruning/replay preservation (BUG-3736/ENH-3744/3745), re-deriving unknown transcript rows (promotion is forbidden), ENH-3730's gate redesign. Consume the pure proof/validation handoffs rather than implementing these siblings' writer behavior.
 
 ## Implementation Steps
 
-### Codebase Research Findings
+### Implementation sequence
 
-_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
-
-1. Quality's usage numerators come from the transcript channel only and obey the shared qualification (the shared qualification surfaces are a prerequisite recorded in `blocked_by`). Verified by driving `analyze_agent_quality` end to end with a partial/unknown row carrying stored cost, and by `test_enh3532_codex_rollout_usage.py` still passing.
-2. `select_session_derive_status` exists in `history_reader/usage.py`, is re-exported from `history_reader/__init__.py`, and returns a status for every requested session on a `query_only` connection with no writes or source reads. Verified with the missing-checkpoint, version-mismatch, session-local-lag, recognized-contract-without-observation, fully-derived non-usage, no-evidence and source-loss cases, plus a DB-hash-unchanged assertion in the style of `test_feat3410_workspace_quality.py`.
-3. `QualityMetric` carries qualification/provenance/reason/trend-eligibility without altering its existing 7 keys, and `_format_metric_line` plus the markdown `cell()` render a sample-sufficient unavailable metric without the current `assert metric.value is not None`. Verified with text, markdown and JSON output for an unavailable-but-sample-sufficient window.
-4. Usage-metric baselines/verdicts are chosen per metric from qualified, sample-sufficient, all-measured windows; `_ZERO_INELIGIBLE_BASELINE_METRICS` no longer governs usage metrics while the zero-mean guard remains. Verified by `[10, 0, 10]` → mean 5 / relative increase 1.0, an all-zero mean still skipped, and an older eligible result naming its actual period.
-5. Workspace analysis computes status on each member's open connection and injects a conservatively merged map; the union call never reads bare `meta`. Verified with overlapping raw IDs and differing member checkpoints on a shared window.
-6. `_definitions`, `_STANDARD_NOTES`, the module docstring, `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/HISTORY_SESSION_GUIDE.md` and `docs/ARCHITECTURE.md` no longer claim tokens are always computable or that coverage withholds only the verdict. Inspect `docs/ARCHITECTURE.md` only for applicable lifecycle wording; it has no such claim to remove.
-7. `python -m pytest scripts/tests/` exits 0, including the old-contract tests listed under Integration Map, which are updated deliberately.
+1. Request `channel="transcript"` and build complete per-window populations before applying the landed `qualify_usage` result to token/cost numerators. Preserve audit contributors, attribution and non-usage metric behavior.
+2. Add and re-export `SessionDeriveStatus`/`select_session_derive_status`; consume ENH-3744's pure recognition/correspondence and ENH-3745's validated progress/held-state handoffs. Test all requested session keys, current/version-mismatched proof, session-local lag, gaps, terminal omissions, no evidence and retained-as-of behavior on query-only connections.
+3. Add usage-only qualification/provenance/reason/trend fields to `QualityMetric`. Preserve the existing seven non-usage keys; update text/markdown/JSON to render sample-sufficient unavailable figures without asserting a numeric value.
+4. Select usage baselines/targets independently per metric from qualified, sample-sufficient, all-measured windows; include measured zero values, retain the zero-mean guard, and name any older eligible result's actual period.
+5. Build member-local proof and union contributors under the coherent read/revision contract, inject the conservative map, and test raw-ID collisions, shared sessions, member permutations and a concurrent commit. Preserve member-additive population and attach-limit behavior.
+6. Update definitions, notes and the listed documentation to describe transcript scope, unchanged denominator and unavailable values. Preserve the correlational note and non-usage definitions.
+7. Run the actual quality/CLI/workspace consumers, read-only proof and chokepoint controls, then `python -m pytest scripts/tests/`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -286,9 +279,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/little_loops/issue_history/agent_quality.py` — `_STANDARD_NOTES`, `_definitions` (`cost_per_issue`/`tokens_per_issue` caveats and `verdict_band`) and the module docstring item 3; keep the `"correlational"` note and the 4-definition count (`test_cli_history.py` and `TestEmptyAndMissingDb` assert it)
 - Update `scripts/little_loops/issue_history/agent_quality.py` — `QualityMetric.to_dict()` adds the new keys conditionally so JSON/YAML (`format_agent_quality_json`/`format_agent_quality_yaml`, workspace `per_repo`/`totals`) keep the existing 7 keys byte-for-byte for non-usage metrics
 - Update `scripts/little_loops/issue_history/quality_regressions.py` — apply all-measured eligibility to `_metric_eligible` (targets) as well as `_metric_eligible_as_baseline`; leave the `RetryWindow` zero-baseline branch of `detect_quality_regressions` unchanged; test that the all-raw host diagnostic is labeled and cannot gate the transcript usage metrics
-- Update `scripts/little_loops/history_reader/usage.py` — look up `_USAGE_DERIVE_VERSION` through the `lifecycle` module at call time via a lazy import inside `select_session_derive_status` (monkeypatch-visible; keeps the private version lookup local without copying it); read only `raw_events`/`meta` (or `usage_events` without token/cost columns) so the chokepoint AST gate stays green; no raw `sqlite3.connect(`
+- Update `scripts/little_loops/history_reader/usage.py` — look up `_USAGE_DERIVE_VERSION` through the `lifecycle` module at call time via a lazy import inside `select_session_derive_status` (monkeypatch-visible; keeps the private version lookup local without copying it); read retained raw/progress/hold state and observation identities through the shared read-only seams (no ad hoc token/cost SQL) so the chokepoint AST gate stays green; no raw `sqlite3.connect(`
 - Update `scripts/little_loops/history_reader/__init__.py` — docstring, re-export block and `__all__`; add a `history_reader` export test
-- Update `scripts/little_loops/issue_history/workspace_quality.py` — keep new code after `_open_member_readonly` free of `ensure_db(`/`_connect_readonly(`/`immutable=1`; build the per-member map inside the open-connection loop (connections close in a `finally`; `gated` keeps only paths/issues) and merge before the union call; do not add `meta` to `_UNION_RELATIONS`
+- Update `scripts/little_loops/issue_history/workspace_quality.py` — keep new code after `_open_member_readonly` free of `ensure_db(`/`_connect_readonly(`/`immutable=1`; obtain member proof and union contributors under the coherent lifetime/revision rule above, then inject the merged map. The current close-before-attach loop must change or be revision-guarded; do not add `meta` to `_UNION_RELATIONS`
 - Treat `ll-history quality` single-repo path (`main_history` in `scripts/little_loops/cli/history.py`) as a verified-unchanged caller: `derive_status=None` → local compute on its migrated read-only connection; add a CLI test with usage data
 - Update `scripts/tests/test_issue_history_agent_quality.py` — `_usage_event` provenance parameter; adjust `TestCostAndTokensPerIssue` (three tests), `TestRegressionZeroBaseline`, `TestCostCoverageGate`; add the new quality classes
 - Update `scripts/tests/test_cli_history.py` — `len(payload["definitions"]) == 4` and a usage-data `quality` output test
@@ -297,7 +290,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-04 (re-verified 2026-10-04: ENH-3731 still `open`; `qualify_usage`/`UsageQualification` still absent from source)_
+_Historical `/ll:confidence-check` on 2026-10-04. Its missing-API/dependency assessment is superseded by the landed ENH-3731/3748 and BUG-3736 plus the 2026-10-05 review below. Stale frontmatter scores were cleared; rerun the configured gate for this revised contract._
 
 **Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
 **Outcome Confidence**: 71/100 → MODERATE
@@ -308,7 +301,7 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-verified 2026-10-04: ENH-3731
 - ENH-3731 is a required implementation prerequisite for `qualify_usage`, and ENH-3748 for `channel=`. Keep the hard edge; the earlier wording about nullable numerators has been clarified so it cannot be mistaken for a scheduling exception.
 
 ### Gaps to Address
-- `blocked_by` ENH-3731 is `open`: `qualify_usage`, `UsageQualification` and the `channel=` selector scope do not exist in source (verified by grep of `history_reader/usage.py` and `issue_history/`). BUG-3736 additionally owns the reproduced prune/replay loss and pending-candidate retention. Complete both prerequisites before this reader's retained-history/derive-status integration; no new score is claimed.
+- ENH-3731, ENH-3748 and BUG-3736 are done. ENH-3744/3745 remain open prerequisites for semantic completeness, held work and processing proof; `select_session_derive_status` is still absent. Implement against the actual qualification result and rerun verification/confidence after these handoffs land. No new score is claimed.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: rewires `_usage_totals`/`_rate_metrics`/baseline eligibility plus a new derive-status read path with a conservative cross-member merge.
@@ -317,6 +310,8 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-verified 2026-10-04: ENH-3731
 
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Reconciled landed core/channel/Stage 1 dependencies and cleared historical scores. Assigned pure candidate proof to ENH-3744, processing validation to ENH-3745, and made the workspace connection/revision contract actionable. Opus confidence 0.70; blanket rejection of legacy conservation holds was not adopted because it changes the recorded retained-as-of policy. Actual pending/unprovable candidates still block. No implementation or fresh readiness pass is claimed.
 
 - Pre-implementation epic review - 2026-10-05 - Opus critique (confidence 0.72) confirmed gap-before-usage ordering and unregistered-contract failure. Added coherent read-snapshot, stable workspace-reason and member-qualified local-identity controls, while retaining the accepted member-additive population. BUG-3736 owns the independently reproduced pruning/usage-loss repair and is a hard integration prerequisite. Reconciled superseded wiring concerns; no new confidence pass is claimed.
 
