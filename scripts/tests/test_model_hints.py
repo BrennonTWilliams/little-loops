@@ -69,6 +69,16 @@ class TestResolver:
     def test_anthropic_api_derives_from_aliases(self, hint: str, alias: str) -> None:
         assert resolve_model_hint(hint, backend="anthropic-api") == MODEL_ALIASES[alias]
 
+    def test_anthropic_api_coding_is_literal_sonnet_5_5(self) -> None:
+        """BUG-3701: literal pin; the table-derived test above cannot catch a stale target."""
+        assert resolve_model_hint("coding", backend="anthropic-api") == "claude-sonnet-5-5"
+        assert resolve_model_hint("coding", backend="claude-code") == "sonnet"
+
+    def test_anthropic_api_coding_override_stays_pinned(self) -> None:
+        ov: dict[str, Any] = {"anthropic-api": {"coding": "claude-sonnet-5"}}
+        got = resolve_model_hint("coding", backend="anthropic-api", overrides=ov)
+        assert got == "claude-sonnet-5"
+
     @pytest.mark.parametrize("backend", sorted(TEST_ONLY_HOSTS))
     @pytest.mark.parametrize("hint", MODEL_HINTS)
     def test_fake_hosts_distinct_sentinels(self, backend: str, hint: str) -> None:

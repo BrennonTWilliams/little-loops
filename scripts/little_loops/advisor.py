@@ -55,6 +55,7 @@ MODEL_RANKS: dict[str, dict[str, int]] = {
     "claude-code": {
         "claude-haiku-4-5": 1,
         "claude-sonnet-5": 2,
+        "claude-sonnet-5-5": 2,
         "claude-opus-5": 3,
         "claude-opus-5-5": 3,
         "claude-fable-5": 4,

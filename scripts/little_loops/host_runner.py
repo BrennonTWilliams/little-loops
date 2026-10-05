@@ -104,12 +104,13 @@ logger = logging.getLogger(__name__)
 # ``404 not_found_error: model: sonnet``. Any prompt state running under
 # ``orchestration.request_path: sdk``/``batch`` therefore failed instantly until
 # the alias was mapped here. Keep this table in sync with the current model
-# lineup; unknown values (already-concrete IDs, dated snapshots, provider-prefixed
+# lineup (first-party built-in CLI defaults, not provider-specific or
+# ``ANTHROPIC_DEFAULT_*_MODEL`` overrides); unknown values (already-concrete IDs, dated snapshots, provider-prefixed
 # Bedrock IDs) pass through untouched.
 MODEL_ALIASES: dict[str, str] = {
     "fable": "claude-fable-5-1",
     "opus": "claude-opus-5-5",
-    "sonnet": "claude-sonnet-5",
+    "sonnet": "claude-sonnet-5-5",
     "haiku": "claude-haiku-4-5",
 }
 

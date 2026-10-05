@@ -66,6 +66,7 @@ class TestModelRanks:
         assert set(ranks) == {
             "claude-haiku-4-5",
             "claude-sonnet-5",
+            "claude-sonnet-5-5",
             "claude-opus-5",
             "claude-opus-5-5",
             "claude-fable-5",
@@ -76,6 +77,11 @@ class TestModelRanks:
         ranks = MODEL_RANKS["claude-code"]
         assert ranks["claude-haiku-4-5"] < ranks["claude-opus-5"]
         assert ranks["claude-haiku-4-5"] < ranks["claude-opus-5-5"]
+
+    def test_sonnet_5_5_ranks_with_sonnet_5_between_haiku_and_opus(self):
+        ranks = MODEL_RANKS["claude-code"]
+        assert ranks["claude-sonnet-5-5"] == ranks["claude-sonnet-5"] == 2
+        assert ranks["claude-haiku-4-5"] < ranks["claude-sonnet-5-5"] < ranks["claude-opus-5-5"]
 
     def test_covers_canonical_host_name_set(self):
         assert set(MODEL_RANKS) == {
@@ -92,6 +98,11 @@ class TestModelRanks:
 class TestRankModel:
     def test_alias_and_concrete_id_return_same_rank(self):
         assert rank_model("claude-code", "opus") == rank_model("claude-code", "claude-opus-5-5")
+
+    def test_sonnet_alias_and_literal_5_5_return_same_rank(self):
+        assert rank_model("claude-code", "sonnet") == 2
+        assert rank_model("claude-code", "claude-sonnet-5-5") == 2
+        assert rank_model("claude-code", "claude-sonnet-5") == 2
 
     def test_haiku_ranks_below_opus(self):
         assert rank_model("claude-code", "haiku") < rank_model("claude-code", "opus")
@@ -133,6 +144,19 @@ class TestCheckFloor:
     def test_advisor_ranked_above_main_same_host_is_ok(self):
         result = check_floor("claude-code", "opus", "claude-code", "haiku")
         assert result.status == "ok"
+
+    @pytest.mark.parametrize(
+        ("advisor", "main", "expected"),
+        [
+            ("opus", "claude-sonnet-5-5", "ok"),
+            ("opus", "sonnet", "ok"),
+            ("haiku", "claude-sonnet-5-5", "violation"),
+            ("claude-sonnet-5", "claude-sonnet-5-5", "ok"),
+            ("claude-sonnet-5-5", "claude-sonnet-5", "ok"),
+        ],
+    )
+    def test_sonnet_5_5_floor(self, advisor, main, expected):
+        assert check_floor("claude-code", advisor, "claude-code", main).status == expected
 
 
 class _FakeConfig:

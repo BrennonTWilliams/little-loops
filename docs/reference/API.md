@@ -3008,7 +3008,7 @@ Preview and invoke a Claude CLI command with output streaming. This is the `issu
 - `stream_output` - Whether to stream output to console
 - `on_model_detected` - Optional callback invoked with the model name from the stream-json system/init event. This is the **requested alias** (e.g. `"sonnet"`), not the resolved model the CLI actually ran.
 - `on_usage` - Optional callback invoked with `(input_tokens, output_tokens)` from the stream-json result event
-- `on_usage_detailed` - Optional callback invoked with a `TokenUsage` dataclass from the stream-json result event. `TokenUsage.model` carries the **resolved** model ID (e.g. `"claude-sonnet-5"`), unlike `on_model_detected` (BUG-2757).
+- `on_usage_detailed` - Optional callback invoked with a `TokenUsage` dataclass from the stream-json result event. `TokenUsage.model` carries the **resolved** model ID (e.g. `"claude-sonnet-5-5"`), unlike `on_model_detected` (BUG-2757).
 - `preview_full` - If `True`, display the full command without truncation (for `--verbose`)
 - `resume_session` - If `True`, passes `--continue` to the Claude CLI to continue the most recent conversation
 - `automation` (ENH-3097) - Collapsed automation signal (`profile`, `disable_background_tasks`, `idle_timeout`), forwarded as-is to `subprocess_utils.run_claude_command`. `None` disables automation entirely.
@@ -9901,7 +9901,7 @@ def decide_cache_marking(
 ) -> CacheMarkingDecision: ...
 ```
 
-`fragment_store` is consulted read-only via `.get()` — it does not record an observation; callers own the `put()` lifecycle. Token estimation uses the project-wide `len(text) // 4` convention (no BPE tokenizer in the codebase). The floors are documented vendor constants with no runtime verification (Anthropic [Sonnet 5.5 overview](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) and [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), reverified 2026-10-04); they are distinct from the approximate estimator. The `sonnet` alias currently resolves to `claude-sonnet-5`, so the 512-token floor applies only to requests that name `claude-sonnet-5-5` explicitly. Never raises.
+`fragment_store` is consulted read-only via `.get()` — it does not record an observation; callers own the `put()` lifecycle. Token estimation uses the project-wide `len(text) // 4` convention (no BPE tokenizer in the codebase). The floors are documented vendor constants with no runtime verification (Anthropic [Sonnet 5.5 overview](https://platform.claude.com/docs/en/models/sonnet-5-5/overview) and [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), reverified 2026-10-04); they are distinct from the approximate estimator. The `sonnet` alias resolves to `claude-sonnet-5-5` on the `sdk`/`batch` request path, so requests built through `build_anthropic_request` get the 512-token floor via alias resolution; a direct `decide_cache_marking(model="sonnet")` call is not alias-resolved and keeps the 1024-token family floor. Never raises.
 
 ---
 
@@ -12539,7 +12539,7 @@ Outcome of comparing an advisor model's rank against the main model's. `"ok"` �
 MODEL_RANKS: dict[str, dict[str, int]]
 ```
 
-Per-host capability rank, keyed on the concrete model ID that `resolve_model_alias()` normalizes aliases to. Only `claude-code` is populated today (`claude-haiku-4-5` < `claude-sonnet-5` < `claude-opus-5` = `claude-opus-5-5` < `claude-fable-5` = `claude-fable-5-1`); every other canonical host (`codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`) carries an empty table until a follow-up issue supplies real capability data.
+Per-host capability rank, keyed on the concrete model ID that `resolve_model_alias()` normalizes aliases to. Only `claude-code` is populated today (`claude-haiku-4-5` < `claude-sonnet-5` = `claude-sonnet-5-5` < `claude-opus-5` = `claude-opus-5-5` < `claude-fable-5` = `claude-fable-5-1`); every other canonical host (`codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`) carries an empty table until a follow-up issue supplies real capability data.
 
 ### rank_model
 

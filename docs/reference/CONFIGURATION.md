@@ -1969,8 +1969,8 @@ config.
 marked only once its FEAT-2671 fragment key has already been observed as a
 repeat, avoiding the unamortized 1.25x write premium on a block that's never
 reused. Setting it to `false` disables this reuse gate, marking any block
-that clears the per-model cacheable-prefix minimum (1024 tokens for Sonnet,
-4096 for Opus) on first sight — appropriate only for callers with a
+that clears the per-model cacheable-prefix minimum (1024 tokens for the Sonnet family, 512 for
+Sonnet 5.5, 4096 for Opus) on first sight — appropriate only for callers with a
 stronger external stability signal than fragment-repeat observation.
 
 | Key | Type | Default | Description |

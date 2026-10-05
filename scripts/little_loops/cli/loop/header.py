@@ -120,7 +120,7 @@ def format_model_selection(
 
     A selection is a hint iff ``requested`` is in ``MODEL_HINTS`` (never inferred
     from ``requested != resolved``: the SDK path resolves a literal ``sonnet`` to
-    ``claude-sonnet-5``). A hint renders ``<requested> → <resolved> (<backend>)``
+    ``claude-sonnet-5-5``). A hint renders ``<requested> → <resolved> (<backend>)``
     (no suffix when ``backend`` is ``None``); a literal renders the bare
     resolved value, falling back to ``requested``. ``None`` when both are ``None``.
     """

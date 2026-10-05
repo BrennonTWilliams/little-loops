@@ -883,6 +883,30 @@ class TestAdvisor:
         assert host_row["status"] == "unsupported"
         assert host_row["severity"] == "informational"
 
+    @pytest.mark.parametrize(
+        ("advisor_model", "expected"), [("opus", "ok"), ("claude-haiku-4-5", "violation")]
+    )
+    def test_real_floor_ranks_default_sonnet_main_model(
+        self, tmp_path: Path, monkeypatch, advisor_model: str, expected: str
+    ) -> None:
+        """BUG-3701: real ``check_floor`` against ``DEFAULT_LLM_MODEL`` (an unranked alias target
+        would report ``unknown``)."""
+        import little_loops.cli.doctor as doctor_mod
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+        fake_cfg = _FakeBRConfig(
+            _FakeAdvisorConfig(enabled=True, host="claude-code", model=advisor_model),
+            _FakeOrchestrationConfig(host_cli="claude-code"),
+        )
+        monkeypatch.setattr("little_loops.config.BRConfig", lambda *a, **k: fake_cfg)
+        monkeypatch.setattr(doctor_mod, "_probe_advisor_version", lambda host: "1.0.0")
+
+        rows = doctor_mod._advisor_data()
+        floor_row = next(r for r in rows if r["name"] == "advisor_floor")
+
+        assert floor_row["floor_status"] == expected
+
     def _main_host_seen(self, tmp_path: Path, monkeypatch, config_host: str | None) -> str:
         """Run ``_advisor_data`` with real ``resolve_host`` and return the main host it saw."""
         import little_loops.advisor as advisor_mod

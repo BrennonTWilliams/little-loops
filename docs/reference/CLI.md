@@ -980,11 +980,11 @@ failure-shaped terminal must declare `failure: true` to exit nonzero.
 
 If an `llm.model_hint` has no mapping on the host (disabled, or an unsupported backend such as opencode), the header shows `<hint> (unresolved on <backend>)`; with no host CLI it shows `<hint> (unresolved: no host CLI)`. The header never fails the run.
 
-**After each action**, the header switches to what that action actually ran on: the observed model, prefixed with the hint (`coding → claude-sonnet-5 (claude-code)`) when the action's model was selected by a `model_hint`. In a loop where only some states declare a hint, the header follows the most recent action.
+**After each action**, the header switches to what that action actually ran on: the observed model, prefixed with the hint (`coding → claude-sonnet-5-5 (claude-code)`) when the action's model was selected by a `model_hint`. In a loop where only some states declare a hint, the header follows the most recent action.
 
 ```
 ll-loop run general-task "fix the lint warnings"
-  model: claude-sonnet-5
+  model: claude-sonnet-5-5
   [state transitions follow]
 
 ll-loop run hinted-loop
@@ -995,7 +995,7 @@ ll-loop run hinted-loop
 When an effort level is set (state override, `--effort` run override, or loop-level `llm.effort` default), its code is appended after the whole `model:` value — one space, no separate label, abbreviated to `L`/`M`/`H`/`XH`/`MX` for low/medium/high/xhigh/max (ENH-2869):
 
 ```
-  model: claude-sonnet-5 L
+  model: claude-sonnet-5-5 L
   model: coding → sonnet (claude-code) H
 ```
 

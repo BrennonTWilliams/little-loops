@@ -12821,6 +12821,8 @@ class TestRequestPathDispatchWiring:
         # never send an empty string (ENH-3547: alias-resolved before dispatch).
         assert mock_dispatch.call_args.kwargs["model"] == resolve_model_alias(fsm.llm.model)
         assert mock_dispatch.call_args.kwargs["model"]
+        # BUG-3701: literal pin — the table-derived assertion cannot detect a stale target.
+        assert mock_dispatch.call_args.kwargs["model"] == "claude-sonnet-5-5"
 
     def test_state_level_request_path_overrides_orchestration_default(
         self, monkeypatch: pytest.MonkeyPatch

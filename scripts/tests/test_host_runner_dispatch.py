@@ -379,11 +379,11 @@ class TestModelAliasResolution:
     @pytest.mark.parametrize(
         ("alias", "expected"),
         [
-            ("sonnet", "claude-sonnet-5"),
+            ("sonnet", "claude-sonnet-5-5"),
             ("opus", "claude-opus-5-5"),
             ("haiku", "claude-haiku-4-5"),
             ("fable", "claude-fable-5-1"),
-            ("Sonnet", "claude-sonnet-5"),
+            ("Sonnet", "claude-sonnet-5-5"),
             (" opus ", "claude-opus-5-5"),
         ],
     )
@@ -407,7 +407,11 @@ class TestModelAliasResolution:
 
     @pytest.mark.parametrize(
         ("alias", "expected"),
-        [("sonnet", "claude-sonnet-5"), ("opus", "claude-opus-5-5"), ("fable", "claude-fable-5-1")],
+        [
+            ("sonnet", "claude-sonnet-5-5"),
+            ("opus", "claude-opus-5-5"),
+            ("fable", "claude-fable-5-1"),
+        ],
     )
     def test_dispatch_sends_resolved_model_to_sdk(self, alias: str, expected: str) -> None:
         fake_client = MagicMock()
@@ -424,7 +428,11 @@ class TestModelAliasResolution:
 
     @pytest.mark.parametrize(
         ("alias", "expected"),
-        [("sonnet", "claude-sonnet-5"), ("opus", "claude-opus-5-5"), ("fable", "claude-fable-5-1")],
+        [
+            ("sonnet", "claude-sonnet-5-5"),
+            ("opus", "claude-opus-5-5"),
+            ("fable", "claude-fable-5-1"),
+        ],
     )
     def test_batch_submission_sends_resolved_model_to_sdk(self, alias: str, expected: str) -> None:
         fake_client = MagicMock()

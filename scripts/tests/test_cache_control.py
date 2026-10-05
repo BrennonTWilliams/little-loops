@@ -409,6 +409,15 @@ class TestSonnet55RequestShape:
         assert repeat["model"] == SONNET_5_5
         assert repeat["system"][0]["cache_control"] == {"type": "ephemeral"}
 
+    def test_sdk_sonnet_alias_resolves_and_uses_512_floor(self) -> None:
+        """BUG-3701: the ``sonnet`` alias resolves to 5.5 before the cache-floor lookup."""
+        store = FragmentStore()
+        first = build_anthropic_request(**self._kwargs("sonnet", store))
+        repeat = build_anthropic_request(**self._kwargs("sonnet", store))
+        assert first["model"] == repeat["model"] == SONNET_5_5
+        assert "cache_control" not in first["system"][0]
+        assert repeat["system"][0]["cache_control"] == {"type": "ephemeral"}
+
     def test_sdk_older_sonnet_twin_stays_unmarked(self) -> None:
         store = FragmentStore()
         build_anthropic_request(**self._kwargs("claude-sonnet-4-5", store))

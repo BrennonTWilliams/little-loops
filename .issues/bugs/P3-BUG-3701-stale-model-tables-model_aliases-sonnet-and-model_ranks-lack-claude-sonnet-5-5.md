@@ -3,10 +3,11 @@ id: BUG-3701
 type: BUG
 title: 'Stale model tables: MODEL_ALIASES sonnet and MODEL_RANKS lack claude-sonnet-5-5'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T19:59:15Z'
+completed_at: '2026-10-05T03:16:37Z'
 parent: EPIC-3562
 verify_verdict: VALID
 confidence_score: 100
@@ -224,7 +225,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Status
 
-**Open** | Created: 2026-10-02 | Priority: P3
+**Done** | Created: 2026-10-02 | Completed: 2026-10-05 | Priority: P3
+
+## Resolution
+
+- `MODEL_ALIASES['sonnet']` -> `claude-sonnet-5-5`; `MODEL_RANKS['claude-code']['claude-sonnet-5-5'] = 2` (landed together).
+- Tests: alias/dispatch literals, advisor rank/floor, hint literal + pin, cache-floor via alias, real-`check_floor` doctor row, undeclared-SDK-state literal.
+- Docs: API.md, CLI.md, EVENT-SCHEMA.md, CONFIGURATION.md, ARCHITECTURE.md, `header.py` docstring.
+- Release note owed at release prep: `sonnet`, `coding` and undeclared SDK/batch states now select Sonnet 5.5 (512-token cache floor); pin `claude-sonnet-5` to retain the old model.
+- Pre-existing unrelated failures on a clean tree: `test_prose_dep_sweep_gate` (ENH-3719 -> BUG-3696) and `test_libsql_integration::TestLive` (no live endpoint).
 
 ## Confidence Check Notes
 
@@ -239,6 +248,7 @@ _Added by `/ll:confidence-check` on 2026-10-04_
 - Minor open per-site judgment calls: alias default vs. pin for the extra `claude-sonnet-5` doc literals, and the `DEFAULT_LLM_MODEL` consumer check deferred to implementation time
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-05T03:16:36 - `afb01bf7-c744-4751-853d-4d0af5480b3c.jsonl`
 - `/ll:ready-issue` - 2026-10-05T03:06:26 - `d7abaaeb-389d-4c78-b166-075e919d4a87.jsonl`
 - `/ll:confidence-check` - 2026-10-05T03:00:49 - `2c448ab4-cf8f-4ac4-a172-efb98c1f6296.jsonl`
 - `/ll:confidence-check` - 2026-10-05T02:50:20 - `3e4f6f99-a73d-41bc-a00b-29febd7074d9.jsonl`
