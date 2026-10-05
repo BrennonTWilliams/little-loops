@@ -15,7 +15,7 @@ labels:
 relates_to:
 - BUG-3738
 verify_verdict: VALID
-confidence_score: 90
+confidence_score: 95
 outcome_confidence: 70
 score_complexity: 10
 score_test_coverage: 25
@@ -205,7 +205,7 @@ Exclusions/drift alone exit 0 and do not write. Text mode names primary counts a
 - `scripts/little_loops/loops/rn-remediate.yaml` and `skills/format-issue/SKILL.md` consume the format-check exit result; the new kind remains blocking.
 - `skills/confidence-check/SKILL.md` documents which structure gaps have automatic remedies; synchronize that statement and its pinned test if updated.
 - `skills/link-epics/SKILL.md` parses both payloads. Show exclusion/drift reports before its early return on empty proposals/clusters, otherwise a run consisting entirely of exclusions hides the result.
-- BUG-3738 updates the same command's writes/result bookkeeping (one-winner apply, an additive `rejected` list, a per-pair lock, exit code 1 on rejection). Keep this issue's additive exclusion keys compatible with those; the fixes have no semantic prerequisite on each other but share the Children recognizer (see Children Recognition and Status Rules) and should land serially. Note the interaction: an orphan whose apply wrote the EPIC bullet but whose frontmatter write failed would be reported here as Children-listed drift rather than re-proposed.
+- BUG-3738 updates the same command's writes/result bookkeeping (one-winner apply, an additive `rejected` list, a per-pair lock, exit code 1 on rejection). Keep this issue's additive exclusion keys compatible with those; the fixes have no semantic prerequisite on each other but share the Children recognizer (see Children Recognition and Status Rules) and should land serially. Note the interaction: BUG-3738 writes the orphan first, so its partial write (orphan parented, EPIC bullet missing) removes the issue from the orphan set and never reaches this classifier; it is repaired by `epic-consistency --fix`. Children-listed drift here arises only from manual or pre-existing listings without a back-reference.
 
 ### Tests
 
@@ -236,7 +236,7 @@ No setting, third-party dependency, model call, or broad issue-schema migration.
 
 ## Acceptance Criteria
 
-- [ ] The six bounded parenting keys in the immediate prefix after the last recognized block produce blocking file/key/line findings, even with an unresolved template/type; valid consumed frontmatter blocks, normal prose, body horizontal rules, other sections, and fenced YAML stay unflagged. Corpus hits are inspected before rollout.
+- [ ] The four bounded parenting keys in the immediate prefix after the last recognized block produce blocking file/key/line findings, even with an unresolved template/type; valid consumed frontmatter blocks, normal prose, body horizontal rules, other sections, and fenced YAML stay unflagged. Corpus hits are inspected before rollout.
 - [ ] Safe single-line, absent-key runs move inside one valid block without unrelated byte/newline/mode changes; preview and sweep mode do not write, successful apply is idempotent, and duplicate/colliding/multiline/malformed/multi-block runs stay reported without partial movement.
 - [ ] Misplaced parenting metadata excludes candidates before any new assignment, including unsafe repair shapes; a correctly placed non-empty `parentless_reason` opts out, and null/empty/whitespace/non-scalar values still qualify as orphans.
 - [ ] Real child entries in non-terminal EPICs exclude candidates before scoring/deep calls; claims from `done`/`cancelled` EPICs are reported (`blocks_proposal: false`) without excluding; fenced/prose/partial-ID entries do not count. Several claimants and overlapping opt-out/membership reasons remain visible without any automatic reparenting.
@@ -259,13 +259,14 @@ No setting, third-party dependency, model call, or broad issue-schema migration.
 
 Used `/ll:advise --signal user_requested --host claude-code --model opus` for critique (confidence **0.76**). Adopted its last-block boundary, malformed-candidate exclusion, explicit-false marker precedence, all-status claimant reporting, and disjoint always-present counters. Kept the requested repair with a stricter all-or-nothing/absent-key contract. Advisor dissent concerned splitting the repair, introducing a dependency on BUG-3738, and output compatibility: retain this bounded repair and use existing parser/block utilities so either issue can land independently. Do not adopt numeric-ID equivalence or automatic deletion of colliding keys.
 
-2026-10-05 (second pre-implementation review, with `/ll:advise --signal user_requested --host claude-code --model fable`, confidence **0.82**): the corpus scan found zero post-fence runs and zero existing markers, which drove these changes. **Adopted:** one marker convention (`parentless_reason`) with no precedence table; terminal-EPIC (`done`/`cancelled`) claims are informational and no longer exclude, with a per-claim `blocks_proposal` flag; one shared Children recognizer landed by whichever of this issue/BUG-3738 goes first, with serial landing; the interaction with BUG-3738's partial-write case is documented. **Decision (owner): the post-fence mover is kept** in this issue. The advisor's alternative was to defer the mover (and its CLI policy and docs) while keeping the detector and `FormatGaps` field, since blocking gaps without a fixer already exist (`multi_frontmatter`, `malformed_id`, `deprecated_key`) and the corpus has no hits; the dissent in favor of keeping it is that the contract is already all-or-nothing and single-issue, and a blocking gap with no fixer forces a hand edit in consuming projects. If implementation pressure appears, the mover is the first piece to cut, and the detector, exclusion, and report stay valuable on their own. Open point: `deferred` EPIC claims still exclude (deferred is non-terminal per the repository's dependency convention); the advisor questioned that. Follow-up not in scope: a parent-assignment option for `ll-issues link`, which would give children-listed drift a real remedy. Confidence/outcome scores predate these edits; re-run `/ll:confidence-check` before implementation.
+2026-10-05 (second pre-implementation review, with `/ll:advise --signal user_requested --host claude-code --model fable`, confidence **0.82**): the corpus scan found zero post-fence runs and zero existing markers, which drove these changes. **Adopted:** one marker convention (`parentless_reason`) with no precedence table; terminal-EPIC (`done`/`cancelled`) claims are informational and no longer exclude, with a per-claim `blocks_proposal` flag; one shared Children recognizer landed by whichever of this issue/BUG-3738 goes first, with serial landing; the interaction with BUG-3738's partial-write case is documented. **Decision (owner): the post-fence mover is kept** in this issue. The advisor's alternative was to defer the mover (and its CLI policy and docs) while keeping the detector and `FormatGaps` field, since blocking gaps without a fixer already exist (`multi_frontmatter`, `malformed_id`, `deprecated_key`) and the corpus has no hits; the dissent in favor of keeping it is that the contract is already all-or-nothing and single-issue, and a blocking gap with no fixer forces a hand edit in consuming projects. If implementation pressure appears, the mover is the first piece to cut, and the detector, exclusion, and report stay valuable on their own. Decided (owner, 2026-10-05): `deferred` EPIC claims still exclude, because deferred is non-terminal per the repository's dependency convention. The advisor questioned this. Flipping it to informational later is a one-line status-set change, so revisit only if orphans are reported stuck behind deferred EPICs. Follow-up not in scope: a parent-assignment option for `ll-issues link`, which would give children-listed drift a real remedy. Confidence/outcome scores predate these edits; re-run `/ll:confidence-check` before implementation.
 
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-05T23:26:54 - `dfedb32a-de04-4382-86b8-3c6cab5d9da5.jsonl`
 - `/ll:confidence-check` - 2026-10-05T21:03:07 - `275ebb58-903a-4210-9cb0-e88316d19a35.jsonl`
 - `/ll:ready-issue` - 2026-10-05T20:18:56 - `c6ed73f5-2103-48a0-bfaa-97a8901cbedc.jsonl`
 - `/ll:verify-issues` - 2026-10-05T19:59:00 - `82de079c-5cd6-4104-ba4d-1ae5be5a2a7d.jsonl`
