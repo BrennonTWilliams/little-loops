@@ -16,7 +16,7 @@ from little_loops.pricing import BATCH_DISCOUNT, MODEL_PRICING, _event_date, est
 
 SYNTHETIC_MODEL = "claude-synthetic-intro"
 
-# Live rates (USD/Mtok): input, output, cache_read, cache_creation. Checked 2026-09-24.
+# Live rates (USD/Mtok): input, output, cache_read, cache_creation. Checked 2026-10-04.
 LIVE_RATES: dict[str, tuple[float, float, float, float]] = {
     "claude-fable-5-1": (10.0, 50.0, 0.25, 12.50),
     "claude-fable-5": (10.0, 50.0, 1.0, 12.50),
@@ -26,6 +26,7 @@ LIVE_RATES: dict[str, tuple[float, float, float, float]] = {
     "claude-opus-4-7": (5.0, 25.0, 0.50, 6.25),
     "claude-opus-4-6": (5.0, 25.0, 0.50, 6.25),
     "claude-opus-4-5": (5.0, 25.0, 0.50, 6.25),
+    "claude-sonnet-5-5": (2.0, 10.0, 0.20, 2.50),
     "claude-sonnet-5": (2.0, 10.0, 0.20, 2.50),
     "claude-sonnet-4-6": (3.0, 15.0, 0.30, 3.75),
     "claude-sonnet-3-7": (3.0, 15.0, 0.30, 3.75),
@@ -106,12 +107,42 @@ class TestLiveRates:
     def test_every_model_pinned(self) -> None:
         assert set(MODEL_PRICING) == set(LIVE_RATES)
 
-    def test_sonnet_5_standard_rate_any_date(self) -> None:
-        assert estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000) == 12.0
+    @pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-sonnet-5-5"])
+    def test_sonnet_5_standard_rate_any_date(self, model: str) -> None:
+        assert estimate_cost_usd(model, 1_000_000, 1_000_000) == 12.0
+        assert estimate_cost_usd(model, 1_000_000, 1_000_000, as_of=date(2026, 10, 2)) == 12.0
         with patch("little_loops.pricing.date") as mock_date:
             mock_date.today.return_value = date(2026, 8, 15)
             mock_date.fromisoformat = date.fromisoformat
-            assert estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000) == 12.0
+            assert estimate_cost_usd(model, 1_000_000, 1_000_000) == 12.0
+
+    @pytest.mark.parametrize("model", ["claude-sonnet-5", "claude-sonnet-5-5"])
+    def test_sonnet_5_per_million_of_each_component(self, model: str) -> None:
+        full = (1_000_000,) * 4
+        assert estimate_cost_usd(model, *full) == pytest.approx(14.70)
+        assert estimate_cost_usd(model, *full, is_batch=True) == pytest.approx(7.35)
+
+    def test_sonnet_5_5_has_no_intro_pricing(self) -> None:
+        assert "claude-sonnet-5-5" not in pricing.INTRO_PRICING
+
+    def test_sonnet_5_5_observed_run_row(self) -> None:
+        # First usage.jsonl row of refine-to-ready-issue-20261002T111524.
+        expected = (14 * 2 + 5748 * 10 + 433686 * 0.20 + 70335 * 2.50) / 1_000_000
+        assert estimate_cost_usd("claude-sonnet-5-5", 14, 5748, 433686, 70335) == pytest.approx(
+            expected
+        )
+        assert expected == pytest.approx(0.3200827)
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-sonnet-5-5-20261001",
+            "anthropic.claude-sonnet-5-5",
+            "claude-sonnet-5-5[1m]",
+        ],
+    )
+    def test_sonnet_5_5_decorated_ids_stay_unpriced(self, model: str) -> None:
+        assert estimate_cost_usd(model, 1000, 1000) is None
 
     @pytest.mark.parametrize("model", sorted(LIVE_RATES))
     def test_batch_halves_each_rate(self, model: str) -> None:

@@ -1,7 +1,9 @@
 """Model pricing constants for token cost estimation.
 
 Prices are in USD per million tokens ($/Mtok).
-Source: Anthropic pricing page (as of 2026-09-24; BUG-3564 corrected stale
+Source: Anthropic pricing page and Sonnet 5.5 model overview (as of 2026-10-04;
+BUG-3696 added claude-sonnet-5-5 at the same standard rates as Sonnet 5;
+earlier: 2026-09-24, BUG-3564 corrected stale
 Sonnet 5, Opus 4.5-4.7 and Haiku 4.5 rates; ENH-2745 added
 claude-sonnet-5/claude-opus-4-8/claude-fable-5). Sonnet 5's introductory
 $2/$10 rate became its standard price, so it lives in `MODEL_PRICING`.
@@ -11,6 +13,9 @@ rates that override `MODEL_PRICING` while active. claude-opus-5 added
 `usage_events` (37,269 rows on this repo's own history.db at time of fix).
 This closes the gap going forward only — already-written null rows are not
 recomputed, so `ll-history quality`'s cost-coverage gate remains required.
+
+Known gap: lookup is exact-match on the model ID, so dated, `anthropic.`-prefixed
+or `[1m]`-suffixed IDs (e.g. `claude-sonnet-5-5-20261001`) stay unpriced.
 """
 
 from __future__ import annotations
@@ -24,6 +29,14 @@ _HAIKU_4_5: dict[str, float] = {
     "output": 5.0,
     "cache_read": 0.10,
     "cache_creation": 1.25,
+}
+
+# Shared by the exact Sonnet 5 and Sonnet 5.5 IDs (identical standard rates).
+_SONNET_5: dict[str, float] = {
+    "input": 2.0,
+    "output": 10.0,
+    "cache_read": 0.20,
+    "cache_creation": 2.50,
 }
 
 # Per-model pricing: {model_id: {token_type: usd_per_million}}
@@ -59,12 +72,8 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "cache_read": 0.50,
         "cache_creation": 6.25,
     },
-    "claude-sonnet-5": {
-        "input": 2.0,
-        "output": 10.0,
-        "cache_read": 0.20,
-        "cache_creation": 2.50,
-    },
+    "claude-sonnet-5-5": _SONNET_5,
+    "claude-sonnet-5": _SONNET_5,
     # Claude 4.x
     "claude-opus-4-7": {
         "input": 5.0,

@@ -442,13 +442,19 @@ class TestModelAliasResolution:
         assert requests[0]["params"]["model"] == expected
 
     def test_every_alias_target_is_ranked_and_priced(self) -> None:
-        from little_loops.advisor import rank_model
+        """Every alias target and ranked claude-code ID must be priced.
+
+        This alone would not have caught BUG-3696: Sonnet 5.5 was absent from both
+        selection tables, and the test cannot see host-emitted model IDs.
+        """
+        from little_loops.advisor import MODEL_RANKS, rank_model
         from little_loops.host_runner import MODEL_ALIASES
         from little_loops.pricing import MODEL_PRICING
 
         for alias, target in MODEL_ALIASES.items():
             assert rank_model("claude-code", target) is not None, alias
             assert target in MODEL_PRICING, alias
+        assert set(MODEL_ALIASES.values()) | set(MODEL_RANKS["claude-code"]) <= set(MODEL_PRICING)
 
     def test_default_fsm_model_is_a_resolvable_alias(self) -> None:
         """Guards the exact BUG-2828 failure: the FSM default must not 404."""

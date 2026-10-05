@@ -3,10 +3,11 @@ id: BUG-3696
 type: BUG
 title: 'Sonnet 5.5 cost unavailable: claude-sonnet-5-5 absent from MODEL_PRICING'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-02'
 captured_at: '2026-10-02T17:46:30Z'
+completed_at: '2026-10-05T02:02:24Z'
 parent: EPIC-3562
 blocks:
 - BUG-3701
@@ -118,14 +119,14 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 
 ## Acceptance Criteria
 
-- [ ] Sonnet 5.5 is priced at the four source-confirmed standard rates; both Sonnet IDs have literal-rate/date and batch tests ($14.70 sync / $7.35 batch per 1M of each component); no Sonnet 5.5 introductory rate is added
-- [ ] The observed run's first-row token projection prices to ≈ $0.3200827 via `estimate_cost_usd`
-- [ ] Existing generic missing-token/observed-zero controls remain passing; the Sonnet date parameterization includes the new ID and observed event's explicit UTC pricing date; reuse existing rate/batch parameterizations
-- [ ] Dated, `anthropic.`-prefixed and `[1m]` Sonnet 5.5 IDs remain unpriced (exact-match gap documented in the `pricing.py` header)
-- [ ] `test_every_alias_target_is_ranked_and_priced` also asserts all `MODEL_RANKS['claude-code']` keys are priced, states the host-emitted-ID limitation, and excludes context-window coverage; no duplicate test is added
-- [ ] `pricing.py` header "as of" date and source note are updated; no `claude-sonnet-4-5` rate is invented
-- [ ] API pricing coverage names Sonnet 5.5 and preserves the existing live/replay rebuild caveat; adding a rate schedules no history backfill or rebuild and does not promote token provenance
-- [ ] `python -m pytest scripts/tests/` exits 0
+- [x] Sonnet 5.5 is priced at the four source-confirmed standard rates; both Sonnet IDs have literal-rate/date and batch tests ($14.70 sync / $7.35 batch per 1M of each component); no Sonnet 5.5 introductory rate is added
+- [x] The observed run's first-row token projection prices to ≈ $0.3200827 via `estimate_cost_usd`
+- [x] Existing generic missing-token/observed-zero controls remain passing; the Sonnet date parameterization includes the new ID and observed event's explicit UTC pricing date; reuse existing rate/batch parameterizations
+- [x] Dated, `anthropic.`-prefixed and `[1m]` Sonnet 5.5 IDs remain unpriced (exact-match gap documented in the `pricing.py` header)
+- [x] `test_every_alias_target_is_ranked_and_priced` also asserts all `MODEL_RANKS['claude-code']` keys are priced, states the host-emitted-ID limitation, and excludes context-window coverage; no duplicate test is added
+- [x] `pricing.py` header "as of" date and source note are updated; no `claude-sonnet-4-5` rate is invented
+- [x] API pricing coverage names Sonnet 5.5 and preserves the existing live/replay rebuild caveat; adding a rate schedules no history backfill or rebuild and does not promote token provenance
+- [x] `python -m pytest scripts/tests/` exits 0
 
 ## Related
 
@@ -148,6 +149,8 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-05T02:02:23 - `cf766a9e-d640-49dc-886a-1ef8358823e8.jsonl`
+- `/ll:ready-issue` - 2026-10-05T01:51:10 - `6079acdc-3e91-44e0-a5ca-372135098fdd.jsonl`
 - `/ll:confidence-check` - 2026-10-05T01:33:55 - `7a9a026a-d6fe-420c-9603-eb94be2e4fc8.jsonl`
 - Targeted pre-implementation review - 2026-10-04 - Reproduced on `main` and rechecked both official pricing/specification pages. `/ll:advise` with `claude-opus-5-5` (confidence 0.74) supported the small independent price fix and reuse of existing rate/batch tests. Added the explicit event-date control and literal-rate observed-row expectation; clarified existing live-versus-replayed rebuild behavior, API ownership, fixed test anchors and the independent ENH-3723 handoff. No implementation or historical repricing is claimed; the fresh confidence gate still precedes implementation.
 

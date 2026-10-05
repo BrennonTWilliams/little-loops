@@ -124,7 +124,7 @@ class TestMixedModel:
         assert row["usage_contributions"][0]["usage_event_count"] == 2
 
     def test_unknown_model_makes_cost_unavailable_keeps_tokens(self, tmp_path: Path) -> None:
-        usage, _ = _run(tmp_path, [_usage("claude-sonnet-5-5"), _usage("claude-haiku-4-5")])
+        usage, _ = _run(tmp_path, [_usage("claude-sonnet-4-5"), _usage("claude-haiku-4-5")])
         report = CostReport.from_usage_jsonl(usage)
         (state,) = report.states
         assert state.cost_usd is None
@@ -156,7 +156,7 @@ class TestCeiling:
 
     def test_unknown_contribution_emits_unknown_once_no_abort(self, tmp_path: Path) -> None:
         _, events = _run(
-            tmp_path, [_usage("claude-sonnet-5-5"), _usage("claude-haiku-4-5")], ceiling=0.01
+            tmp_path, [_usage("claude-sonnet-4-5"), _usage("claude-haiku-4-5")], ceiling=0.01
         )
         unknown = [e for e in events if e["event"] == "cost_ceiling_unknown"]
         assert len(unknown) == 1
