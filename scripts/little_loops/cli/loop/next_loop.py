@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from little_loops.config.features import NextConfigError
 from little_loops.logger import Logger
+from little_loops.utility import frequency_score, recency_score, weighted_sum
+
+if TYPE_CHECKING:
+    from little_loops.config import BRConfig
 
 
 @dataclass
@@ -80,26 +87,25 @@ def _scan_history(loops_dir: Path) -> dict[str, list[dict[str, Any]]]:
 # ---------------------------------------------------------------------------
 
 _SUCCESS_STATUSES = {"completed"}
-_DECAY_HALF_LIFE_DAYS = 7.0  # recency decay: halves every 7 days
 
 
-def _recency_score(started_at: str | None) -> float:
-    """Exponential decay score in [0, 1] based on days since last run."""
-    if not started_at:
-        return 0.0
-    try:
-        ts = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-        now = datetime.now(UTC)
-        days = (now - ts).total_seconds() / 86400.0
-        import math
-
-        return math.exp(-days * math.log(2) / _DECAY_HALF_LIFE_DAYS)
-    except (ValueError, TypeError):
-        return 0.0
+class _AggregationError(Exception):
+    """The additive aggregate rejected the resolved weights/scores (e.g. overflow)."""
 
 
-def _score_loop(runs: list[dict[str, Any]]) -> tuple[float, float, str | None]:
-    """Return (score, success_rate, last_started_at)."""
+def _score_loop(
+    runs: list[dict[str, Any]],
+    *,
+    as_of: datetime,
+    weights: Mapping[str, float],
+) -> tuple[float, float, str | None]:
+    """Return (score, success_rate, last_started_at).
+
+    *weights* must iterate in canonical ``frequency, recency, success`` order (as
+    ``NextConfig.resolve_loop_history_weights`` returns) so the additive sum keeps
+    its legacy association. Only the aggregate is translated to
+    :class:`_AggregationError`; curve exceptions propagate unchanged.
+    """
     if not runs:
         return 0.0, 1.0, None
 
@@ -112,12 +118,15 @@ def _score_loop(runs: list[dict[str, Any]]) -> tuple[float, float, str | None]:
     dated.sort(key=lambda r: r["started_at"], reverse=True)
     last_started_at = dated[0]["started_at"] if dated else None
 
-    recency = _recency_score(last_started_at)
-    # Weighted: 50% frequency (log-scale), 30% recency, 20% success rate
-    import math
-
-    freq_score = math.log1p(count) / math.log1p(50)  # cap normalisation at 50 runs
-    score = 0.50 * freq_score + 0.30 * recency + 0.20 * success_rate
+    scores = {
+        "frequency": frequency_score(count),
+        "recency": recency_score(last_started_at, as_of=as_of),
+        "success": success_rate,
+    }
+    try:
+        score = weighted_sum(scores, weights)
+    except ValueError as exc:
+        raise _AggregationError(str(exc)) from exc
     return score, success_rate, last_started_at
 
 
@@ -186,12 +195,14 @@ def _build_rationale(
     success_rate: float,
     last_started_at: str | None,
     param_note: str,
+    *,
+    as_of: datetime,
 ) -> str:
     parts = [f"{run_count} run{'s' if run_count != 1 else ''}"]
     if last_started_at:
         try:
             ts = datetime.fromisoformat(last_started_at.replace("Z", "+00:00"))
-            ago = datetime.now(UTC) - ts
+            ago = as_of - ts
             days = int(ago.total_seconds() / 86400)
             if days == 0:
                 parts.append("last run today")
@@ -216,14 +227,27 @@ def cmd_next_loop(
     args: argparse.Namespace,
     loops_dir: Path,
     logger: Logger,
+    config: BRConfig,
 ) -> int:
-    """Suggest the next loop(s) to run based on execution history."""
+    """Suggest the next loop(s) to run based on execution history.
+
+    Returns 2 (one stderr diagnostic, empty stdout) for invalid ``next`` settings.
+    """
     from little_loops.cli.output import colorize, print_json
 
     count = getattr(args, "count", 1)
     as_json = getattr(args, "json", False)
     execute = getattr(args, "execute", False)
     exclude = set(getattr(args, "exclude", None) or [])
+
+    # Validate before any archive scan so bad config wins even with no history.
+    try:
+        weights = config.next.resolve_loop_history_weights()
+    except NextConfigError as exc:
+        print(f"error: invalid next-loop configuration: {exc}", file=sys.stderr)
+        return 2
+
+    as_of = datetime.now(UTC)  # one instant shared by scoring and rationale
 
     history = _scan_history(loops_dir)
     if not history:
@@ -238,7 +262,15 @@ def cmd_next_loop(
     for loop_name, runs in history.items():
         if loop_name in exclude:
             continue
-        score, success_rate, last_started_at = _score_loop(runs)
+        try:
+            score, success_rate, last_started_at = _score_loop(runs, as_of=as_of, weights=weights)
+        except _AggregationError as exc:
+            print(
+                f"error: invalid next-loop configuration: next.loop_history.weights "
+                f"cannot score loop {loop_name!r}: {exc}",
+                file=sys.stderr,
+            )
+            return 2
         scored.append((score, loop_name, success_rate, last_started_at, len(runs)))
 
     if not scored:
@@ -264,7 +296,9 @@ def cmd_next_loop(
         elif loop_name in _PARAM_RESOLVERS:
             param_note = "input resolver found no active items"
 
-        rationale = _build_rationale(run_count, success_rate, last_started_at, param_note)
+        rationale = _build_rationale(
+            run_count, success_rate, last_started_at, param_note, as_of=as_of
+        )
         command = _build_command(loop_name, params)
 
         candidate = LoopCandidate(

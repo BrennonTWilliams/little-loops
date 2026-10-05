@@ -115,6 +115,19 @@ class TestConfigResolution:
         db_mod.clear_backend_config_cache()
         assert isinstance(_resolve_once(None), LocalTarget)
 
+    @pytest.mark.parametrize("base", [{}, {"history": "scalar"}])
+    def test_local_null_under_absent_backend_ancestor_is_dropped(
+        self, tmp_path: Path, base: dict
+    ) -> None:
+        """FEAT-3681: the raw block no longer carries a null under a new mapping."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps(base))
+        (tmp_path / ".ll" / "ll.local.md").write_text(
+            "---\nhistory:\n  backend:\n    provider: libsql\n    url: null\n---\n"
+        )
+        assert db_mod._read_backend_block(tmp_path) == {"provider": "libsql"}
+
+
     def test_libsql_default_shaped_selects_the_remote_target(self, remote: HranaStub) -> None:
         target = _resolve_once(None)
         assert isinstance(target, RemoteTarget)

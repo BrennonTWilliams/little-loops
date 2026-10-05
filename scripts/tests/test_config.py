@@ -3882,6 +3882,111 @@ class TestDeepMerge:
         }
 
 
+class TestDeepMergeLocalNullReset:
+    """FEAT-3681: a local null resets a leaf even when its ancestor is new/non-mapping."""
+
+    def test_null_leaf_under_missing_ancestor_is_removed(self) -> None:
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({}, {"next": {"loop_history": {"weights": {"recency": None, "a": 1}}}})
+        assert result == {"next": {"loop_history": {"weights": {"a": 1}}}}
+
+    def test_null_leaf_under_scalar_base_is_removed(self) -> None:
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({"next": 5}, {"next": {"x": None, "y": 2}})
+        assert result == {"next": {"y": 2}}
+
+    def test_null_only_mapping_becomes_empty_mapping(self) -> None:
+        from little_loops.config.core import deep_merge
+
+        assert deep_merge({}, {"a": {"b": None}}) == {"a": {}}
+
+    def test_base_only_nulls_are_preserved(self) -> None:
+        from little_loops.config.core import deep_merge
+
+        base = {"project": {"type_cmd": None}, "keep": None}
+        assert deep_merge(base, {"project": {"name": "x"}}) == {
+            "project": {"type_cmd": None, "name": "x"},
+            "keep": None,
+        }
+
+    def test_falsy_override_values_survive(self) -> None:
+        from little_loops.config.core import deep_merge
+
+        result = deep_merge({}, {"a": {"f": False, "z": 0, "s": ""}})
+        assert result == {"a": {"f": False, "z": 0, "s": ""}}
+
+    def test_lists_are_opaque(self) -> None:
+        from little_loops.config.core import deep_merge
+
+        override = {"a": {"items": [None, {"k": None}]}}
+        assert deep_merge({}, override) == {"a": {"items": [None, {"k": None}]}}
+
+    def test_inputs_not_mutated(self) -> None:
+        from little_loops.config.core import deep_merge
+
+        base: dict = {"a": 1}
+        override: dict = {"n": {"x": None, "y": {"z": None, "w": 1}}}
+        deep_merge(base, override)
+        assert base == {"a": 1}
+        assert override == {"n": {"x": None, "y": {"z": None, "w": 1}}}
+
+
+class TestLocalNullResetEffectiveSettings:
+    """FEAT-3681: observable effective-setting changes from the merge correction."""
+
+    def _local(self, root: Path, frontmatter: str) -> None:
+        (root / ".ll").mkdir(exist_ok=True)
+        (root / ".ll" / "ll.local.md").write_text(f"---\n{frontmatter}\n---\n")
+
+    def test_cli_color_null_under_absent_ancestor_restores_default(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}")
+        self._local(tmp_path, "cli:\n  color: null")
+        # Previously the null survived the merge and resolved to None.
+        assert BRConfig(tmp_path).cli.color is True
+
+    @pytest.mark.parametrize("ancestor_base", [{}, {"project": "scalar"}, {"project": {}}])
+    def test_nullable_project_defaults_restored(self, tmp_path: Path, ancestor_base: dict) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps(ancestor_base))
+        self._local(tmp_path, "project:\n  type_cmd: null\n  format_cmd: null")
+        cfg = BRConfig(tmp_path)
+        assert cfg.project.format_cmd == "ruff format ."
+        assert cfg.project.type_cmd is not None and cfg.project.type_cmd.startswith("mypy")
+
+    @pytest.mark.parametrize("ancestor_base", [{}, {"analytics": "scalar"}, {"analytics": {}}])
+    def test_retention_default_restored(self, tmp_path: Path, ancestor_base: dict) -> None:
+        from little_loops.config.core import load_raw_config
+        from little_loops.config.features import RetentionConfig
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(json.dumps(ancestor_base))
+        self._local(tmp_path, "analytics:\n  retention:\n    raw_event_max_age_days: null")
+        raw = load_raw_config(tmp_path)
+        assert RetentionConfig.from_dict(raw["analytics"]["retention"]).raw_event_max_age_days == 90
+
+    def test_base_only_null_still_disables(self, tmp_path: Path) -> None:
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps(
+                {
+                    "project": {"type_cmd": None, "format_cmd": None},
+                    "analytics": {"retention": {"raw_event_max_age_days": None}},
+                }
+            )
+        )
+        from little_loops.config.core import load_raw_config
+        from little_loops.config.features import RetentionConfig
+
+        cfg = BRConfig(tmp_path)
+        assert cfg.project.type_cmd is None
+        assert cfg.project.format_cmd is None
+        retention = RetentionConfig.from_dict(load_raw_config(tmp_path)["analytics"]["retention"])
+        assert retention.raw_event_max_age_days is None
+
+
 class TestClusterConfig:
     """Tests for ClusterConfig dataclass."""
 

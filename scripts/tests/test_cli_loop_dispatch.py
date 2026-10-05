@@ -456,6 +456,10 @@ class TestMainLoopDispatch:
 
         assert result == 0
         mocks["cmd_next_loop"].assert_called_once()
+        # The already-loaded BRConfig is forwarded (no second load in the handler).
+        from little_loops.config import BRConfig
+
+        assert isinstance(mocks["cmd_next_loop"].call_args.args[3], BRConfig)
 
     # -- audit-meta --
 

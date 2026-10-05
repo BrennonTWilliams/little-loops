@@ -1,0 +1,26 @@
+[
+  {
+    "loop": "delta",
+    "input": null,
+    "context": {},
+    "score": 0.7803,
+    "rationale": "1 run; last run -5d ago; 100% success",
+    "command": "ll-loop run delta"
+  },
+  {
+    "loop": "today-loop",
+    "input": null,
+    "context": {},
+    "score": 0.5832,
+    "rationale": "1 run; last run today; 100% success",
+    "command": "ll-loop run today-loop"
+  },
+  {
+    "loop": "yday-loop",
+    "input": null,
+    "context": {},
+    "score": 0.5554,
+    "rationale": "1 run; last run yesterday; 100% success",
+    "command": "ll-loop run yday-loop"
+  }
+]

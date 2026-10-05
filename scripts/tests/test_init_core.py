@@ -4628,6 +4628,21 @@ class TestMergeHelpers:
         assert merged["loops"]["run_defaults"]["mode"] == "auto"
         assert merged["loops"]["run_defaults"]["clear"] is True
 
+    def test_merge_with_existing_keeps_base_nulls_and_partial_next_without_mutation(self) -> None:
+        """FEAT-3681: non-force merge keeps existing nulls/partial ``next``; inputs untouched."""
+        existing = {
+            "project": {"type_cmd": None},
+            "next": {"loop_history": {"weights": {"recency": 0.1}}},
+        }
+        new = {"project": {"name": "n", "build_cmd": None}}
+        existing_copy = json.loads(json.dumps(existing))
+        new_copy = json.loads(json.dumps(new))
+        merged = merge_with_existing(new, existing, force=False)
+        assert merged["project"] == {"type_cmd": None, "name": "n"}
+        assert merged["next"] == {"loop_history": {"weights": {"recency": 0.1}}}
+        assert existing == existing_copy
+        assert new == new_copy
+
     def test_load_existing_config_absent_returns_empty(self, tmp_path: Path) -> None:
         assert load_existing_config(tmp_path) == {}
 

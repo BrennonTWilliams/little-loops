@@ -6,6 +6,7 @@ and the install command (which has zero existing test coverage).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -15,11 +16,13 @@ from little_loops.cli.loop.next_loop import (
     LoopCandidate,
     _build_command,
     _build_rationale,
-    _recency_score,
     _resolve_params,
     _score_loop,
 )
 from little_loops.logger import Logger
+from little_loops.utility import recency_score
+
+_DEFAULT_WEIGHTS = {"frequency": 0.50, "recency": 0.30, "success": 0.20}
 
 # ---------------------------------------------------------------------------
 # LoopCandidate
@@ -93,31 +96,31 @@ class TestLoopCandidate:
 
 
 # ---------------------------------------------------------------------------
-# _recency_score
+# recency_score
 # ---------------------------------------------------------------------------
 
 
 class TestRecencyScore:
-    """Tests for _recency_score exponential decay function."""
+    """Tests for recency_score exponential decay function."""
 
     def test_none_returns_zero(self) -> None:
         """None input returns 0.0."""
-        assert _recency_score(None) == 0.0
+        assert recency_score(None, as_of=datetime.now(UTC)) == 0.0
 
     def test_empty_string_returns_zero(self) -> None:
         """Empty string returns 0.0 (ValueError caught)."""
-        assert _recency_score("") == 0.0
+        assert recency_score("", as_of=datetime.now(UTC)) == 0.0
 
     def test_invalid_format_returns_zero(self) -> None:
         """Invalid date string returns 0.0 (ValueError caught)."""
-        assert _recency_score("not-a-date") == 0.0
+        assert recency_score("not-a-date", as_of=datetime.now(UTC)) == 0.0
 
     def test_now_returns_near_one(self) -> None:
         """A timestamp just seconds ago returns a value close to 1.0."""
         from datetime import UTC, datetime, timedelta
 
         recent = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
-        score = _recency_score(recent)
+        score = recency_score(recent, as_of=datetime.now(UTC))
         assert 0.99 < score <= 1.0
 
     def test_halflife_decay(self) -> None:
@@ -125,7 +128,7 @@ class TestRecencyScore:
         from datetime import UTC, datetime, timedelta
 
         seven_days_ago = (datetime.now(UTC) - timedelta(days=7)).isoformat()
-        score = _recency_score(seven_days_ago)
+        score = recency_score(seven_days_ago, as_of=datetime.now(UTC))
         assert 0.45 < score < 0.55  # allow floating-point tolerance
 
     def test_very_old_returns_near_zero(self) -> None:
@@ -133,7 +136,7 @@ class TestRecencyScore:
         from datetime import UTC, datetime, timedelta
 
         long_ago = (datetime.now(UTC) - timedelta(days=100)).isoformat()
-        score = _recency_score(long_ago)
+        score = recency_score(long_ago, as_of=datetime.now(UTC))
         assert 0.0 <= score < 0.01
 
     def test_handles_z_suffix(self) -> None:
@@ -141,7 +144,7 @@ class TestRecencyScore:
         from datetime import UTC, datetime, timedelta
 
         recent = (datetime.now(UTC) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
-        score = _recency_score(recent)
+        score = recency_score(recent, as_of=datetime.now(UTC))
         assert 0.9 < score <= 1.0
 
 
@@ -155,7 +158,9 @@ class TestScoreLoop:
 
     def test_empty_runs_returns_zero_score(self) -> None:
         """Empty run list returns 0.0 score, 1.0 success rate, None last_run."""
-        score, success_rate, last_run = _score_loop([])
+        score, success_rate, last_run = _score_loop(
+            [], as_of=datetime.now(UTC), weights=_DEFAULT_WEIGHTS
+        )
         assert score == 0.0
         assert success_rate == 1.0
         assert last_run is None
@@ -166,7 +171,9 @@ class TestScoreLoop:
 
         recent = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         runs = [{"status": "completed", "started_at": recent}]
-        score, success_rate, last_run = _score_loop(runs)
+        score, success_rate, last_run = _score_loop(
+            runs, as_of=datetime.now(UTC), weights=_DEFAULT_WEIGHTS
+        )
         assert score > 0.0
         assert success_rate == 1.0
         assert last_run == recent
@@ -182,7 +189,9 @@ class TestScoreLoop:
             {"status": "interrupted", "started_at": recent},
             {"status": "completed", "started_at": recent},
         ]
-        score, success_rate, _ = _score_loop(runs)
+        score, success_rate, _ = _score_loop(
+            runs, as_of=datetime.now(UTC), weights=_DEFAULT_WEIGHTS
+        )
         assert success_rate == 0.5
 
     def test_uses_most_recent_started_at(self) -> None:
@@ -193,7 +202,7 @@ class TestScoreLoop:
             {"status": "completed", "started_at": older},
             {"status": "completed", "started_at": newer},
         ]
-        _, _, last_run = _score_loop(runs)
+        _, _, last_run = _score_loop(runs, as_of=datetime.now(UTC), weights=_DEFAULT_WEIGHTS)
         assert last_run == newer
 
     def test_runs_without_started_at_ignored_for_recency(self) -> None:
@@ -202,7 +211,7 @@ class TestScoreLoop:
             {"status": "completed"},
             {"status": "completed"},
         ]
-        _, _, last_run = _score_loop(runs)
+        _, _, last_run = _score_loop(runs, as_of=datetime.now(UTC), weights=_DEFAULT_WEIGHTS)
         assert last_run is None
 
 
@@ -253,13 +262,25 @@ class TestBuildRationale:
 
     def test_basic_rationale(self) -> None:
         """Rationale includes run count and success rate."""
-        r = _build_rationale(run_count=5, success_rate=0.8, last_started_at=None, param_note="")
+        r = _build_rationale(
+            run_count=5,
+            success_rate=0.8,
+            last_started_at=None,
+            param_note="",
+            as_of=datetime.now(UTC),
+        )
         assert "5 runs" in r
         assert "80% success" in r
 
     def test_single_run_singular(self) -> None:
         """Single run uses singular 'run'."""
-        r = _build_rationale(run_count=1, success_rate=1.0, last_started_at=None, param_note="")
+        r = _build_rationale(
+            run_count=1,
+            success_rate=1.0,
+            last_started_at=None,
+            param_note="",
+            as_of=datetime.now(UTC),
+        )
         assert "1 run" in r
         assert "runs" not in r
 
@@ -268,7 +289,13 @@ class TestBuildRationale:
         from datetime import UTC, datetime
 
         today = datetime.now(UTC).isoformat()
-        r = _build_rationale(run_count=3, success_rate=1.0, last_started_at=today, param_note="")
+        r = _build_rationale(
+            run_count=3,
+            success_rate=1.0,
+            last_started_at=today,
+            param_note="",
+            as_of=datetime.now(UTC),
+        )
         assert "last run today" in r
 
     def test_yesterday(self) -> None:
@@ -277,7 +304,11 @@ class TestBuildRationale:
 
         yesterday = (datetime.now(UTC) - timedelta(days=1)).isoformat()
         r = _build_rationale(
-            run_count=3, success_rate=1.0, last_started_at=yesterday, param_note=""
+            run_count=3,
+            success_rate=1.0,
+            last_started_at=yesterday,
+            param_note="",
+            as_of=datetime.now(UTC),
         )
         assert "last run yesterday" in r
 
@@ -287,13 +318,23 @@ class TestBuildRationale:
 
         five_days = (datetime.now(UTC) - timedelta(days=5)).isoformat()
         r = _build_rationale(
-            run_count=3, success_rate=1.0, last_started_at=five_days, param_note=""
+            run_count=3,
+            success_rate=1.0,
+            last_started_at=five_days,
+            param_note="",
+            as_of=datetime.now(UTC),
         )
         assert "last run 5d ago" in r
 
     def test_no_last_started_at(self) -> None:
         """Missing last_started_at omits recency info."""
-        r = _build_rationale(run_count=3, success_rate=0.9, last_started_at=None, param_note="")
+        r = _build_rationale(
+            run_count=3,
+            success_rate=0.9,
+            last_started_at=None,
+            param_note="",
+            as_of=datetime.now(UTC),
+        )
         assert "last run" not in r
 
     def test_param_note_appended(self) -> None:
@@ -303,6 +344,7 @@ class TestBuildRationale:
             success_rate=1.0,
             last_started_at=None,
             param_note="input resolved (5 items)",
+            as_of=datetime.now(UTC),
         )
         assert "input resolved (5 items)" in r
 
@@ -316,6 +358,7 @@ class TestBuildRationale:
             success_rate=0.9,
             last_started_at=yesterday,
             param_note="input resolved (3 items)",
+            as_of=datetime.now(UTC),
         )
         parts = r.split("; ")
         assert len(parts) == 4

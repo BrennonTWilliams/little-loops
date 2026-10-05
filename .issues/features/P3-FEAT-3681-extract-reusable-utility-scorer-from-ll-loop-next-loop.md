@@ -3,12 +3,13 @@ id: FEAT-3681
 type: FEAT
 title: Extract reusable utility scorer from ll-loop next-loop
 priority: P3
-status: open
+status: done
 blocks:
 - FEAT-3561
 discovered_by: ll-issues-create
 discovered_date: '2026-09-30'
 captured_at: '2026-09-30T01:30:51Z'
+completed_at: '2026-10-05T19:44:53Z'
 confidence_score: 95
 outcome_confidence: 58
 score_complexity: 5
@@ -154,6 +155,10 @@ The nullable-default source audit on `main` found three config dataclass fields 
 5. Add the geometric helper with focused missing-axis, zero-weight, zero-score, floor, no-utility, and invalid-input tests, including oversized integers and invalid arguments on otherwise empty/missing evidence. Include the independent analytical sparse-axis/floor cases above. Test invariance to multiplying all included weights by the same positive factor; keep gate evaluation tests in FEAT-3561. Reuse numeric validation with representative boundary cases rather than multiplying the same large test grid across every function.
 6. Add CLI cases for exclusions, no history, resolved parameters where practical, and `--execute` with `cmd_run` mocked. Preserve the existing behavior that `--json --execute` renders JSON without dispatching execution. Update docs and run the local suite, lint, and type checks.
 
+### Deviations
+
+- 2026-10-05: `_score_loop` (not `cmd_next_loop`) wraps the single `weighted_sum` call and re-raises its `ValueError` as a private `_AggregationError`; the command catches only that type and names the loop. Same boundary as designed (aggregate only, curve exceptions untouched), since the `weighted_sum` call lives inside the private adapter. `NextConfig` also gained a `from_raw_config(raw_config)` constructor (the envelope keys off root-key presence, so `from_dict` did not fit).
+
 ## Impact
 
 - **Priority**: P3 — prerequisite for FEAT-3561 without changing current recommendations.
@@ -163,18 +168,18 @@ The nullable-default source audit on `main` found three config dataclass fields 
 
 ## Acceptance Criteria
 
-- [ ] Golden output is captured before extraction. With default weights and unchanged effective settings outside `next`, text and JSON remain byte-identical with a fixed clock shared by recency and rationale, including stable ties, rounding, uncapped frequency, future recency, timestamp fallbacks/string ordering, and mixed statuses. Intentional local-null/default restoration has separate before/after evidence.
-- [ ] Default legacy weights are exactly `0.50/0.30/0.20`; the additive path retains the original multiplication/addition order without normalization, clipping, or `math.fsum`.
-- [ ] The legacy empty-run tuple and extreme-future recency exception are characterized and preserved. Public curve argument validation distinguishes a bad caller clock/count from missing timestamp evidence; scoring/rationale share one captured UTC instant without additional clock reads.
-- [ ] Pure aggregator tests enforce the contracts above: valid/invalid weights and score domains, missing data, zero weights, ordinary zero scores, the floor and values below it, geometric weight-scale invariance, and `None` when no positive-weight axis resolves. No gates or make-up term are added.
-- [ ] Zero-weight scores are still validated; large finite geometric weights normalize safely; oversized integer validation never leaks conversion exceptions; additive overflow from nondefault weights produces a controlled exit-2 failure before rendering/execution without catching legacy curve exceptions.
-- [ ] `next.loop_history.weights` is declared in `config-schema.json` with matching runtime validation, unknown-key rejection, and defaults. Partial objects and one-key local overrides preserve siblings; local leaf removal restores a default; explicit zero remains zero.
-- [ ] Local leaf and ancestor null resets work with missing ancestors and scalar-to-mapping replacement; null surviving in the merged `next` config is invalid, while overridden/removed base nulls are valid after merge. Shared and retained hook merge behavior agrees, base-only nulls/list contents and merge inputs remain unmodified, and the isolated merge correction has the fixed per-consumer evidence above, including CLI-color restoration, the three audited nullable defaults, uncached history backend reads and init writers. Base-null command/retention disable semantics, existing retention lifecycle tests and fragment merge remain unchanged.
-- [ ] Root config/property/export/serialization wiring is complete; schema-default parity and dataclass-map completeness pass. The lazy envelope preserves supplied partial/nondefault/invalid `next` values through serialization, emits defaults only for an absent root, and has explicit idempotence and returned-data mutation-isolation tests without global validation. Its concrete resolver returns fresh canonical-order weights.
-- [ ] Init's schema coverage guard accounts for `next` as deliberately untouched; non-force re-init preserves user `next` settings without new template/TUI wiring. All existing direct handler/scoring/rationale callers are updated for required config/clock injection, with no hidden clock/config fallback.
-- [ ] The real `ll-loop next-loop` entry point handles invalid consumed config in text/JSON modes with exit 2, one concise stderr diagnostic, empty stdout, no traceback, no loop archive scan, and no execution, including no-history/all-excluded projects. A mixed-key YAML override yields a controlled setting-naming resolver error. Existing CLI telemetry is stubbed in entry-point tests. Invalid `next` values alone do not break unrelated commands.
-- [ ] Existing no-history/all-excluded exit 1 behavior, exclusions, parameter resolution, mocked text execution, and JSON-with-execute behavior remain unchanged. Dispatch passes the already-loaded config through.
-- [ ] No `ll-next` entry point or history schema change is introduced; `python -m pytest scripts/tests/`, lint and type checks pass.
+- [x] Golden output is captured before extraction. With default weights and unchanged effective settings outside `next`, text and JSON remain byte-identical with a fixed clock shared by recency and rationale, including stable ties, rounding, uncapped frequency, future recency, timestamp fallbacks/string ordering, and mixed statuses. Intentional local-null/default restoration has separate before/after evidence.
+- [x] Default legacy weights are exactly `0.50/0.30/0.20`; the additive path retains the original multiplication/addition order without normalization, clipping, or `math.fsum`.
+- [x] The legacy empty-run tuple and extreme-future recency exception are characterized and preserved. Public curve argument validation distinguishes a bad caller clock/count from missing timestamp evidence; scoring/rationale share one captured UTC instant without additional clock reads.
+- [x] Pure aggregator tests enforce the contracts above: valid/invalid weights and score domains, missing data, zero weights, ordinary zero scores, the floor and values below it, geometric weight-scale invariance, and `None` when no positive-weight axis resolves. No gates or make-up term are added.
+- [x] Zero-weight scores are still validated; large finite geometric weights normalize safely; oversized integer validation never leaks conversion exceptions; additive overflow from nondefault weights produces a controlled exit-2 failure before rendering/execution without catching legacy curve exceptions.
+- [x] `next.loop_history.weights` is declared in `config-schema.json` with matching runtime validation, unknown-key rejection, and defaults. Partial objects and one-key local overrides preserve siblings; local leaf removal restores a default; explicit zero remains zero.
+- [x] Local leaf and ancestor null resets work with missing ancestors and scalar-to-mapping replacement; null surviving in the merged `next` config is invalid, while overridden/removed base nulls are valid after merge. Shared and retained hook merge behavior agrees, base-only nulls/list contents and merge inputs remain unmodified, and the isolated merge correction has the fixed per-consumer evidence above, including CLI-color restoration, the three audited nullable defaults, uncached history backend reads and init writers. Base-null command/retention disable semantics, existing retention lifecycle tests and fragment merge remain unchanged.
+- [x] Root config/property/export/serialization wiring is complete; schema-default parity and dataclass-map completeness pass. The lazy envelope preserves supplied partial/nondefault/invalid `next` values through serialization, emits defaults only for an absent root, and has explicit idempotence and returned-data mutation-isolation tests without global validation. Its concrete resolver returns fresh canonical-order weights.
+- [x] Init's schema coverage guard accounts for `next` as deliberately untouched; non-force re-init preserves user `next` settings without new template/TUI wiring. All existing direct handler/scoring/rationale callers are updated for required config/clock injection, with no hidden clock/config fallback.
+- [x] The real `ll-loop next-loop` entry point handles invalid consumed config in text/JSON modes with exit 2, one concise stderr diagnostic, empty stdout, no traceback, no loop archive scan, and no execution, including no-history/all-excluded projects. A mixed-key YAML override yields a controlled setting-naming resolver error. Existing CLI telemetry is stubbed in entry-point tests. Invalid `next` values alone do not break unrelated commands.
+- [x] Existing no-history/all-excluded exit 1 behavior, exclusions, parameter resolution, mocked text execution, and JSON-with-execute behavior remain unchanged. Dispatch passes the already-loaded config through.
+- [x] No `ll-next` entry point or history schema change is introduced; `python -m pytest scripts/tests/`, lint and type checks pass.
 
 ## Related
 
@@ -190,9 +195,17 @@ A user runs `ll-loop next-loop` with default configuration after the extraction 
 
 - `docs/reference/CLI.md` (`ll-loop next-loop`), `docs/reference/CONFIGURATION.md` (`next.loop_history.weights`), and `docs/reference/API.md` (pure utility contracts).
 
+## Resolution
+
+**Completed** 2026-10-05 — extracted `little_loops.utility` (`frequency_score`, `recency_score`, `weighted_sum`, `weighted_geometric`); `ll-loop next-loop` now scores through it with one injected UTC `as_of`, and consumes `next.loop_history.weights` via the lazily-validated `NextConfig` envelope (exit 2 on invalid settings, before any archive scan).
+
+- Golden text/JSON/colored output captured against the pre-extraction code (`scripts/tests/fixtures/next_loop_golden/`) and byte-identical after extraction; raw additive scores, the empty-run fast path and the extreme-future `OverflowError` are pinned.
+- Shared-merge correction (`config.core.deep_merge` + inline `hooks/scripts/session-start.sh`): a local null under a missing/non-mapping base ancestor is now removed. Per-consumer evidence: `config.core`/`BRConfig` (CLI color + the three nullable defaults, base-only nulls kept), session-start (+ inline parity), edit-batch, `_read_backend_block`, `init.writers.merge_with_existing`; `fsm.fragments._deep_merge` and retention lifecycle untouched. 16 of the new tests fail without the correction.
+- Verification: `ruff check`, `mypy` clean; full suite 28222 passed. The one failure (`test_verify_evidence::TestRepoGate`, ENH-3700 evidence spans) and eight `test_libsql_integration::TestLive` errors (live remote endpoint) are identical at the unmodified HEAD, so unrelated.
+
 ## Status
 
-**Open** | Created: 2026-09-30 | Priority: P3
+**Done** | Created: 2026-09-30 | Priority: P3
 
 ## Review Notes
 
@@ -225,6 +238,8 @@ _Added by `/ll:confidence-check` on 2026-10-05_
 Follow-up disposition (2026-10-05): the source audit now fixes the expected consumer boundaries above, and the dataclass-map action is explicit. Their production regression evidence remains an implementation gate. The scores above are the prior confidence-check result; this review does not rescore them or treat Opus's advisory confidence as an outcome-gate waiver.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-05T19:44:52 - `250ddee1-d19a-47ad-b705-d03a013d2f0a.jsonl`
+- `/ll:ready-issue` - 2026-10-05T19:26:12 - `5fcfc6d6-2c67-41cc-aae5-307bd86290fd.jsonl`
 - `/ll:confidence-check` - 2026-10-05T19:23:03 - `9b7402e5-782f-409e-8557-fa97a3a90dc0.jsonl`
 - `/ll:confidence-check` - 2026-10-05T18:50:34 - `1ad6292f-f7e1-46c9-9095-237d6fd2352d.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:27 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`

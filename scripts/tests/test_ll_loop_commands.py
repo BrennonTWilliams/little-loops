@@ -6983,11 +6983,14 @@ class TestCmdNextLoop:
     ) -> None:
         """next-loop returns exactly one suggestion by default."""
         from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.config import BRConfig
         from little_loops.logger import Logger
 
         logger = Logger(use_color=False)
         args = argparse.Namespace(count=1, json=False, execute=False, exclude=[])
-        result = cmd_next_loop(args, loops_dir_with_history, logger)
+        result = cmd_next_loop(
+            args, loops_dir_with_history, logger, BRConfig(loops_dir_with_history.parent)
+        )
 
         assert result == 0
         out = capsys.readouterr().out
@@ -7002,11 +7005,14 @@ class TestCmdNextLoop:
     ) -> None:
         """--count 2 returns two ranked suggestions."""
         from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.config import BRConfig
         from little_loops.logger import Logger
 
         logger = Logger(use_color=False)
         args = argparse.Namespace(count=2, json=False, execute=False, exclude=[])
-        result = cmd_next_loop(args, loops_dir_with_history, logger)
+        result = cmd_next_loop(
+            args, loops_dir_with_history, logger, BRConfig(loops_dir_with_history.parent)
+        )
 
         assert result == 0
         out = capsys.readouterr().out
@@ -7020,11 +7026,14 @@ class TestCmdNextLoop:
     ) -> None:
         """--json emits valid JSON with required keys."""
         from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.config import BRConfig
         from little_loops.logger import Logger
 
         logger = Logger(use_color=False)
         args = argparse.Namespace(count=1, json=True, execute=False, exclude=[])
-        result = cmd_next_loop(args, loops_dir_with_history, logger)
+        result = cmd_next_loop(
+            args, loops_dir_with_history, logger, BRConfig(loops_dir_with_history.parent)
+        )
 
         assert result == 0
         out = capsys.readouterr().out
@@ -7042,13 +7051,14 @@ class TestCmdNextLoop:
     ) -> None:
         """Empty history prints a clear message and returns exit code 1."""
         from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.config import BRConfig
         from little_loops.logger import Logger
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         logger = Logger(use_color=False)
         args = argparse.Namespace(count=1, json=False, execute=False, exclude=[])
-        result = cmd_next_loop(args, loops_dir, logger)
+        result = cmd_next_loop(args, loops_dir, logger, BRConfig(loops_dir.parent))
 
         assert result == 1
         out = capsys.readouterr().out
@@ -7061,11 +7071,14 @@ class TestCmdNextLoop:
     ) -> None:
         """--exclude skips the named loop from suggestions."""
         from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.config import BRConfig
         from little_loops.logger import Logger
 
         logger = Logger(use_color=False)
         args = argparse.Namespace(count=1, json=False, execute=False, exclude=["autodev"])
-        result = cmd_next_loop(args, loops_dir_with_history, logger)
+        result = cmd_next_loop(
+            args, loops_dir_with_history, logger, BRConfig(loops_dir_with_history.parent)
+        )
 
         assert result == 0
         out = capsys.readouterr().out
@@ -7077,11 +7090,17 @@ class TestCmdNextLoop:
         loops_dir_with_history: Path,
     ) -> None:
         """Loop with more runs scores higher than one with fewer, all else equal."""
+        from datetime import UTC, datetime
+
         from little_loops.cli.loop.next_loop import _scan_history, _score_loop
 
         history = _scan_history(loops_dir_with_history)
-        autodev_score, _, _ = _score_loop(history.get("autodev", []))
-        review_score, _, _ = _score_loop(history.get("review-loop", []))
+        kw = {
+            "as_of": datetime.now(UTC),
+            "weights": {"frequency": 0.50, "recency": 0.30, "success": 0.20},
+        }
+        autodev_score, _, _ = _score_loop(history.get("autodev", []), **kw)
+        review_score, _, _ = _score_loop(history.get("review-loop", []), **kw)
         assert autodev_score > review_score
 
 

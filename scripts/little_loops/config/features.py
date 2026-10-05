@@ -6,7 +6,9 @@ and sync configuration.
 
 from __future__ import annotations
 
+import copy
 import fnmatch
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -224,6 +226,110 @@ class NextIssueConfig:
         else:
             sort_keys = [NextIssueSortKey.from_dict(entry) for entry in sort_keys_data]
         return cls(strategy=strategy, sort_keys=sort_keys)
+
+
+class NextConfigError(ValueError):
+    """Invalid ``next`` settings, raised at the consuming command's boundary.
+
+    Construction of :class:`~little_loops.config.BRConfig` never raises this; an
+    unrelated command with a bad ``next`` value keeps working.
+    """
+
+
+# Allowed keys at each consumed level; mirrored by ``config-schema.json``.
+_NEXT_ROOT_KEYS: tuple[str, ...] = ("loop_history",)
+_NEXT_LOOP_HISTORY_KEYS: tuple[str, ...] = ("weights",)
+# Canonical axis order: the additive sum's left-to-right order depends on it.
+LOOP_HISTORY_WEIGHT_AXES: tuple[str, ...] = ("frequency", "recency", "success")
+DEFAULT_LOOP_HISTORY_WEIGHTS: dict[str, float] = {
+    "frequency": 0.50,
+    "recency": 0.30,
+    "success": 0.20,
+}
+
+
+def _describe_type(value: Any) -> str:
+    return "null" if value is None else type(value).__name__
+
+
+@dataclass
+class NextConfig:
+    """Raw-preserving envelope for the top-level ``next`` settings (FEAT-3681).
+
+    Holds the **merged** ``next`` value verbatim (partial objects, nulls,
+    malformed shapes and unknown keys included) and whether the root key exists.
+    Nothing is validated until a consumer calls a ``resolve_*`` method, so an
+    invalid ``next`` never breaks ``BRConfig`` construction. Each consumer
+    validates only its own subtree.
+    """
+
+    present: bool = False
+    raw: Any = None
+
+    @classmethod
+    def from_raw_config(cls, raw_config: dict[str, Any]) -> NextConfig:
+        """Capture ``next`` from the merged root config (deep-copied)."""
+        if "next" in raw_config:
+            return cls(present=True, raw=copy.deepcopy(raw_config["next"]))
+        return cls()
+
+    def to_dict(self) -> Any:
+        """Return a fresh copy of the supplied value, or the default tree when absent."""
+        if self.present:
+            return copy.deepcopy(self.raw)
+        return {"loop_history": {"weights": dict(DEFAULT_LOOP_HISTORY_WEIGHTS)}}
+
+    @staticmethod
+    def _mapping(path: str, value: Any, allowed: tuple[str, ...]) -> dict[Any, Any]:
+        if not isinstance(value, dict):
+            raise NextConfigError(f"{path} must be a mapping, got {_describe_type(value)}")
+        unknown = sorted(repr(key) for key in value if key not in allowed)
+        if unknown:
+            raise NextConfigError(
+                f"{path} has unknown keys: {', '.join(unknown)} (allowed: {', '.join(allowed)})"
+            )
+        return value
+
+    def resolve_loop_history_weights(self) -> dict[str, float]:
+        """Return validated effective ``next.loop_history.weights`` in canonical order.
+
+        Omitted sections and leaves take their defaults. Pure: no I/O, caching,
+        or mutation of the retained raw value; every call returns a fresh dict.
+
+        Raises:
+            NextConfigError: a consumed shape/key/number is invalid, or every
+                effective weight is zero.
+        """
+        supplied: dict[Any, Any] = {}
+        if self.present:
+            root = self._mapping("next", self.raw, _NEXT_ROOT_KEYS)
+            if "loop_history" in root:
+                history = self._mapping(
+                    "next.loop_history", root["loop_history"], _NEXT_LOOP_HISTORY_KEYS
+                )
+                if "weights" in history:
+                    supplied = self._mapping(
+                        "next.loop_history.weights", history["weights"], LOOP_HISTORY_WEIGHT_AXES
+                    )
+        weights: dict[str, float] = {}
+        for axis in LOOP_HISTORY_WEIGHT_AXES:
+            if axis not in supplied:
+                weights[axis] = DEFAULT_LOOP_HISTORY_WEIGHTS[axis]
+                continue
+            value = supplied[axis]
+            path = f"next.loop_history.weights.{axis}"
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise NextConfigError(f"{path} must be a number, got {_describe_type(value)}")
+            try:
+                number = float(value)
+            except OverflowError:
+                raise NextConfigError(f"{path} is too large to represent") from None
+            if not math.isfinite(number) or number < 0:
+                raise NextConfigError(f"{path} must be a finite number >= 0, got {value!r}")
+            weights[axis] = number
+        if not any(weights.values()):
+            raise NextConfigError("next.loop_history.weights: at least one weight must be nonzero")
+        return weights
 
 
 @dataclass

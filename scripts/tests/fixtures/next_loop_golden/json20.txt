@@ -1,0 +1,82 @@
+[
+  {
+    "loop": "alpha",
+    "input": null,
+    "context": {},
+    "score": 0.9966,
+    "rationale": "61 runs; last run yesterday; 100% success",
+    "command": "ll-loop run alpha"
+  },
+  {
+    "loop": "delta",
+    "input": null,
+    "context": {},
+    "score": 0.7803,
+    "rationale": "1 run; last run -5d ago; 100% success",
+    "command": "ll-loop run delta"
+  },
+  {
+    "loop": "today-loop",
+    "input": null,
+    "context": {},
+    "score": 0.5832,
+    "rationale": "1 run; last run today; 100% success",
+    "command": "ll-loop run today-loop"
+  },
+  {
+    "loop": "yday-loop",
+    "input": null,
+    "context": {},
+    "score": 0.5554,
+    "rationale": "1 run; last run yesterday; 100% success",
+    "command": "ll-loop run yday-loop"
+  },
+  {
+    "loop": "beta",
+    "input": null,
+    "context": {},
+    "score": 0.4359,
+    "rationale": "3 runs; last run 4d ago; 33% success",
+    "command": "ll-loop run beta"
+  },
+  {
+    "loop": "tie-a",
+    "input": null,
+    "context": {},
+    "score": 0.3568,
+    "rationale": "2 runs; last run 9d ago; 50% success",
+    "command": "ll-loop run tie-a"
+  },
+  {
+    "loop": "tie-b",
+    "input": null,
+    "context": {},
+    "score": 0.3568,
+    "rationale": "2 runs; last run 9d ago; 50% success",
+    "command": "ll-loop run tie-b"
+  },
+  {
+    "loop": "gamma",
+    "input": null,
+    "context": {},
+    "score": 0.2397,
+    "rationale": "2 runs; 50% success",
+    "command": "ll-loop run gamma"
+  },
+  {
+    "loop": "epsilon",
+    "input": null,
+    "context": {},
+    "score": 0.0881,
+    "rationale": "1 run; 0% success",
+    "command": "ll-loop run epsilon"
+  },
+  {
+    "loop": "zeta",
+    "input": null,
+    "context": {},
+    "score": 0.0881,
+    "rationale": "1 run; 0% success",
+    "command": "ll-loop run zeta"
+  }
+]

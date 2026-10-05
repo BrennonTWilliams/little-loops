@@ -686,6 +686,60 @@ class RefineStatusConfig:
 
 ---
 
+## little_loops.utility
+
+Pure scoring helpers (no filesystem, database, clock, or network access). Numeric arguments accept `int` or `float`; booleans, numeric strings, NaN, infinities, and integers too large for float arithmetic are rejected with a `ValueError` naming the axis.
+
+```python
+from little_loops.utility import frequency_score, recency_score, weighted_geometric, weighted_sum
+```
+
+### frequency_score
+
+```python
+frequency_score(run_count: int) -> float
+```
+
+`log1p(run_count) / log1p(50)` for a nonnegative integer (`0` returns `0.0`). Uncapped: counts above 50 score above 1. Raises `ValueError` for negative, boolean, non-integer, or unrepresentably large counts.
+
+### recency_score
+
+```python
+recency_score(started_at: str | None, *, as_of: datetime) -> float
+```
+
+Exponential decay with a seven-day half-life from the ISO-8601 *started_at* (a `Z` suffix is accepted) to *as_of*. A missing, malformed, or timezone-naive timestamp returns `0.0`; a future timestamp returns more than 1, and an extreme one raises `OverflowError`. *as_of* must be timezone-aware, otherwise `ValueError` is raised before any timestamp fallback; any aware instant gives the same result as its UTC equivalent.
+
+### weighted_sum
+
+```python
+weighted_sum(scores: Mapping[str, float], weights: Mapping[str, float]) -> float
+```
+
+Unnormalized, unclipped `sum(weights[k] * scores[k])`, accumulated left to right in the order of *weights*. Every weighted axis (including zero-weight ones) must have a finite nonnegative score; a missing or `None` score, or a score key without a weight, is a `ValueError`, as is an aggregate that overflows. Two empty mappings return `0.0`.
+
+### weighted_geometric
+
+```python
+weighted_geometric(
+    scores: Mapping[str, float | None],
+    weights: Mapping[str, float],
+    *,
+    floor: float = 1e-6,
+) -> float | None
+```
+
+Weighted geometric mean, computed in log space, over the axes that have a present score and a positive weight; their weights are renormalized, so missing and disabled axes never enter the denominator. Present scores must lie in `[0, 1]` and are floored at *floor* (`0 < floor < 1`). Returns `None` when no positive-weight axis resolves (never an invented `0` or `1`). The helper accepts no gates and applies no vetoes.
+
+## little_loops.config.NextConfig
+
+```python
+BRConfig.next -> NextConfig
+NextConfig.resolve_loop_history_weights() -> dict[str, float]
+```
+
+`BRConfig.next` is a raw-preserving envelope of the merged `next` setting: constructing `BRConfig` (and `to_dict()`) never validates it. `resolve_loop_history_weights()` returns a fresh `{"frequency", "recency", "success"}` mapping in that order with defaults applied, or raises `NextConfigError` (a `ValueError`) naming the offending setting. See [`next`](CONFIGURATION.md#next).
+
 ## little_loops.issue_parser
 
 Issue file parsing utilities.

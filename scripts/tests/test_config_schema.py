@@ -1412,6 +1412,7 @@ _DATACLASS_SECTION_MAP: dict[str, str | None] = {
     "LinkEpicsConfig": "issues",
     "NextIssueSortKey": "issues",
     "NextIssueConfig": "issues",
+    "NextConfig": "next",
     "IssuesConfig": "issues",
     "ScanConfig": "scan",
     "DesignTokensConfig": "design_tokens",

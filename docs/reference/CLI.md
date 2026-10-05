@@ -1429,6 +1429,10 @@ ll-loop next-loop --exclude autodev        # Skip autodev (e.g. from its own on-
 ll-loop next-loop --count 3 --json        # Top 3 as JSON for downstream tooling
 ```
 
+**Scoring:** `score = frequency × w_f + recency × w_r + success × w_s`, an unnormalized and unclipped weighted sum. Frequency is `log1p(run_count) / log1p(50)` (uncapped, so more than 50 runs scores above 1); recency is a seven-day half-life decay of the latest run (a missing, malformed, or timezone-naive timestamp scores 0; a future one scores above 1); success is the share of runs with status `completed`. The default weights are `0.50 / 0.30 / 0.20`; override them with [`next.loop_history.weights`](CONFIGURATION.md#next). Scoring and the rationale text share one UTC clock reading per invocation.
+
+**Exit codes:** 0 = suggestions printed; 1 = no loop history, or every loop excluded (`[]` with `--json`); 2 = invalid `next` settings, or weights that overflow the score. On exit 2 nothing is written to stdout, a single `error:` line naming the setting goes to stderr, the history is not scanned, and `--execute` does not run.
+
 #### `ll-loop audit`
 
 Compute deterministic counters for a single archived loop run (ENH-2949) — the non-LLM evidence base that `/ll:audit-loop-run` reasons over. Distinct from [`ll-loop audit-meta`](#ll-loop-audit-meta), which aggregates LLM-vs-external-evaluator agreement across many runs of one loop.

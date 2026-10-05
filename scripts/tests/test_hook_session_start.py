@@ -158,6 +158,49 @@ class TestSessionStartLocalOverrides:
         assert "Local overrides applied" not in result.feedback
 
 
+    def test_local_null_leaf_under_new_mapping_is_removed(self, in_tmp: Path) -> None:
+        """FEAT-3681: a null reset inside a newly introduced mapping no longer survives."""
+        self._write_base(in_tmp, {"a": 1})
+        self._write_local(in_tmp, "next:\n  loop_history:\n    weights:\n      recency: null\n      success: 0")
+
+        result = handle(_event())
+
+        assert result.stdout is not None
+        assert json.loads(result.stdout) == {
+            "a": 1,
+            "next": {"loop_history": {"weights": {"success": 0}}},
+        }
+
+
+class TestInlineHookMergeParity:
+    """FEAT-3681: the retained inline merge in ``hooks/scripts/session-start.sh`` agrees."""
+
+    CASES = [
+        ({}, {"a": {"b": None, "c": 1}}),
+        ({"a": 5}, {"a": {"b": None, "c": 1}}),
+        ({"a": {"x": 1}}, {"a": {"b": None}}),
+        ({"a": {"x": None}}, {"a": {"y": 2}}),
+        ({"l": [1]}, {"l": [None, {"k": None}], "m": {"n": {"o": None}}}),
+        ({"a": 1}, {"a": None}),
+    ]
+
+    @staticmethod
+    def _inline_deep_merge():
+        script = Path(__file__).parent.parent.parent / "hooks" / "scripts" / "session-start.sh"
+        text = script.read_text(encoding="utf-8")
+        start = text.index("def deep_merge(")
+        end = text.index("def parse_frontmatter(")
+        namespace: dict = {}
+        exec(text[start:end], namespace)  # noqa: S102 - trusted repo file
+        return namespace["deep_merge"]
+
+    @pytest.mark.parametrize(("base", "override"), CASES)
+    def test_matches_shared_merge(self, base: dict, override: dict) -> None:
+        from little_loops.config.core import deep_merge
+
+        assert self._inline_deep_merge()(base, override) == deep_merge(base, override)
+
+
 class TestSessionStartFeatureValidation:
     def _run_with(self, root: Path, cfg: dict) -> str:
         (root / ".ll").mkdir(exist_ok=True)

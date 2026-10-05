@@ -1,0 +1,42 @@
+[1mNext loop suggestions:[0m
+
+  [36;1m#1[0m  [1malpha[0m  [90mscore=0.997[0m
+       [2m61 runs; last run yesterday; 100% success[0m
+       [32m$[0m ll-loop run alpha
+
+  [36;1m#2[0m  [1mdelta[0m  [90mscore=0.780[0m
+       [2m1 run; last run -5d ago; 100% success[0m
+       [32m$[0m ll-loop run delta
+
+  [36;1m#3[0m  [1mtoday-loop[0m  [90mscore=0.583[0m
+       [2m1 run; last run today; 100% success[0m
+       [32m$[0m ll-loop run today-loop
+
+  [36;1m#4[0m  [1myday-loop[0m  [90mscore=0.555[0m
+       [2m1 run; last run yesterday; 100% success[0m
+       [32m$[0m ll-loop run yday-loop
+
+  [36;1m#5[0m  [1mbeta[0m  [90mscore=0.436[0m
+       [2m3 runs; last run 4d ago; 33% success[0m
+       [32m$[0m ll-loop run beta
+
+  [36;1m#6[0m  [1mtie-a[0m  [90mscore=0.357[0m
+       [2m2 runs; last run 9d ago; 50% success[0m
+       [32m$[0m ll-loop run tie-a
+
+  [36;1m#7[0m  [1mtie-b[0m  [90mscore=0.357[0m
+       [2m2 runs; last run 9d ago; 50% success[0m
+       [32m$[0m ll-loop run tie-b
+
+  [36;1m#8[0m  [1mgamma[0m  [90mscore=0.240[0m
+       [2m2 runs; 50% success[0m
+       [32m$[0m ll-loop run gamma
+
+  [36;1m#9[0m  [1mepsilon[0m  [90mscore=0.088[0m
+       [2m1 run; 0% success[0m
+       [32m$[0m ll-loop run epsilon
+
+  [36;1m#10[0m  [1mzeta[0m  [90mscore=0.088[0m
+       [2m1 run; 0% success[0m
+       [32m$[0m ll-loop run zeta
+

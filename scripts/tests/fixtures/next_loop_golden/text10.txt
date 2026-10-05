@@ -1,0 +1,42 @@
+Next loop suggestions:
+
+  #1  alpha  score=0.997
+       61 runs; last run yesterday; 100% success
+       $ ll-loop run alpha
+
+  #2  delta  score=0.780
+       1 run; last run -5d ago; 100% success
+       $ ll-loop run delta
+
+  #3  today-loop  score=0.583
+       1 run; last run today; 100% success
+       $ ll-loop run today-loop
+
+  #4  yday-loop  score=0.555
+       1 run; last run yesterday; 100% success
+       $ ll-loop run yday-loop
+
+  #5  beta  score=0.436
+       3 runs; last run 4d ago; 33% success
+       $ ll-loop run beta
+
+  #6  tie-a  score=0.357
+       2 runs; last run 9d ago; 50% success
+       $ ll-loop run tie-a
+
+  #7  tie-b  score=0.357
+       2 runs; last run 9d ago; 50% success
+       $ ll-loop run tie-b
+
+  #8  gamma  score=0.240
+       2 runs; 50% success
+       $ ll-loop run gamma
+
+  #9  epsilon  score=0.088
+       1 run; 0% success
+       $ ll-loop run epsilon
+
+  #10  zeta  score=0.088
+       1 run; 0% success
+       $ ll-loop run zeta
+

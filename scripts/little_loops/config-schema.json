@@ -2400,6 +2400,45 @@
       },
       "additionalProperties": false
     },
+    "next": {
+      "type": "object",
+      "description": "Next-action recommendation settings. Validated lazily by the consuming command (not at config load): invalid values make `ll-loop next-loop` exit 2 with one diagnostic. A local `.ll/ll.local.md` override merges per key; a local null removes a leaf so its default applies.",
+      "properties": {
+        "loop_history": {
+          "type": "object",
+          "description": "`ll-loop next-loop` scoring over loop run history.",
+          "properties": {
+            "weights": {
+              "type": "object",
+              "description": "Additive score weights. Not normalized: the weighted sum is neither rescaled nor clipped, and at least one effective weight must be nonzero. Zero disables an axis.",
+              "properties": {
+                "frequency": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.5,
+                  "description": "Weight of the log-scale run-count curve (uncapped; reference count 50)."
+                },
+                "recency": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.3,
+                  "description": "Weight of the seven-day half-life recency decay of the latest run."
+                },
+                "success": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.2,
+                  "description": "Weight of the share of runs with status `completed`."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "skill_budget": {
       "type": "object",
       "description": "Skill file token-budget enforcement, consumed by ll-verify-skill-budget / ll-doctor's skill-budget check (cli/docs.py, cli/doctor.py:_full_skill_budget_data). Precedence: --threshold CLI flag > skill_budget.threshold_tokens here > built-in default.",

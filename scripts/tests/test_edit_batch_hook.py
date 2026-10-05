@@ -397,6 +397,16 @@ class TestConfigSettings:
         assert all(r.stdout is None for r in results[:-1])
         assert results[-1].stdout is not None
 
+    def test_local_null_under_absent_ancestor_keeps_effective_defaults(
+        self, clock: _Clock, tmp_path
+    ) -> None:
+        """FEAT-3681: a null reset under an absent ancestor falls back to defaults."""
+        _write_raw_config(tmp_path, {})
+        _write_local(tmp_path, "hooks:\n  edit_batch_nudge:\n    threshold: null\n    enabled: null")
+        results = _unbatched_run(clock, _NUDGE_THRESHOLD, _BATCH_WINDOW_SECONDS + 1.0)
+        assert all(r.stdout is None for r in results[:-1])
+        assert results[-1].stdout is not None
+
     def test_non_finite_window_falls_back(self, clock: _Clock, tmp_path) -> None:
         # json.dumps emits the non-standard ``Infinity`` token, which json.loads accepts.
         (tmp_path / ".ll").mkdir(exist_ok=True)

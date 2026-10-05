@@ -1171,7 +1171,7 @@ Examples:
         elif args.command == "fragments":
             return cmd_fragments(args.lib, args, loops_dir, logger)
         elif args.command == "next-loop":
-            return cmd_next_loop(args, loops_dir, logger)
+            return cmd_next_loop(args, loops_dir, logger, config)
         elif args.command == "audit-meta":
             return cmd_audit_meta(args.loop, args, loops_dir)
         elif args.command == "calibrate-budget":

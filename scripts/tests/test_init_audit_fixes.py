@@ -1318,6 +1318,9 @@ _ALLOWED_UNTOUCHED_SECTIONS = frozenset(
         # allows them) are the correct posture for a fresh project, so init has nothing to
         # write — a project only needs this section to *loosen* the default.
         "mcp",
+        # FEAT-3681: runtime resolver defaults (next.loop_history.weights) suffice; a project
+        # only needs this section to override a weight, so init writes nothing.
+        "next",
         "observability",
         "queue",
         # ENH-3142: off by default (enabled: bool = False); a project only needs this

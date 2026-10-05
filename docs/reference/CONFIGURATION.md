@@ -1103,6 +1103,42 @@ Pre-patch check configuration (ENH-3142). When enabled, candidate tests added or
 }
 ```
 
+### `next`
+
+Next-action recommendation settings. Currently only `ll-loop next-loop` consumes this section.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `loop_history.weights.frequency` | `number` ≥ 0 | `0.50` | Weight of the log-scale run-count curve (uncapped; reference count 50). |
+| `loop_history.weights.recency` | `number` ≥ 0 | `0.30` | Weight of the seven-day half-life decay of the latest run. |
+| `loop_history.weights.success` | `number` ≥ 0 | `0.20` | Weight of the share of runs with status `completed`. |
+
+```json
+{
+  "next": {
+    "loop_history": {
+      "weights": { "frequency": 0.50, "recency": 0.30, "success": 0.20 }
+    }
+  }
+}
+```
+
+- Omitted sections and leaves take the defaults; a partial object is valid. Weights are **not normalized** (the weighted sum is neither rescaled nor clipped), a weight of `0` disables that axis, and at least one effective weight must be nonzero. Non-default weights can reorder recommendations by your choice.
+- `additionalProperties` is `false` at every level of the section: unknown keys are errors.
+- The section is validated when `ll-loop next-loop` runs, not when the config loads. Invalid values (wrong shape, unknown key, negative, non-numeric, non-finite, an explicit `null` left in the merged config, or all weights zero) make that command exit `2` with one stderr line naming the setting; every other command keeps working.
+- A one-key override in `.ll/ll.local.md` preserves the sibling weights. A local `null` **removes** the key at that level (`next`, `next.loop_history`, `next.loop_history.weights`, or a single weight), so its default applies again. A `null` in `ll-config.json` itself is a value, not a reset, and is rejected here.
+
+```markdown
+---
+next:
+  loop_history:
+    weights:
+      recency: 0.6
+---
+```
+
+> **Local `null` resets under new mappings.** A `null` in `.ll/ll.local.md` now removes its key even when the base config lacks the surrounding mapping (or has a scalar there). Previously such a `null` survived the merge as a value. This applies to every overlay-merged setting, not only `next`: for example a local `cli.color: null` over a base without `cli` now restores the default (`true`) instead of resolving to `None`. A `null` that is only in the base config keeps its meaning (for example `project.type_cmd: null` still disables type checking).
+
 ### `loops`
 
 FSM loop settings:

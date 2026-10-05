@@ -34,9 +34,11 @@ def deep_merge(base: dict, override: dict) -> dict:
         if value is None:
             # Explicit null removes the key
             result.pop(key, None)
-        elif isinstance(value, dict) and isinstance(result.get(key), dict):
-            # Deep merge nested dicts
-            result[key] = deep_merge(result[key], value)
+        elif isinstance(value, dict):
+            # Deep merge nested dicts; a missing/non-dict base merges against {}
+            # so null leaves inside a newly introduced mapping are removed
+            base_value = result.get(key)
+            result[key] = deep_merge(base_value if isinstance(base_value, dict) else {}, value)
         else:
             # Replace value (including arrays)
             result[key] = value

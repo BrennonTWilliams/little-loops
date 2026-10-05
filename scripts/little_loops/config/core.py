@@ -38,6 +38,7 @@ from little_loops.config.features import (
     LearningTestsConfig,
     LoopsConfig,
     McpConfig,
+    NextConfig,
     ObservabilityConfig,
     PrePatchCheckConfig,
     QueueConfig,
@@ -98,7 +99,10 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     - Nested dicts are merged recursively at every level.
     - All other value types (strings, ints, bools, lists) **replace** the base
       value — arrays do not append.
-    - An explicit ``None`` in *override* **removes** the key from the result.
+    - An explicit ``None`` in *override* **removes** the key from the result,
+      including a null leaf inside an override mapping whose base ancestor is
+      missing or a non-mapping (the mapping is merged against an empty base so
+      the null is dropped rather than surviving as a value).
 
     Differs from ``little_loops.fsm.fragments._deep_merge`` only in the
     null-removal semantic — fragments-merge passes ``None`` through as a value,
@@ -111,8 +115,9 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     for key, value in override.items():
         if value is None:
             result.pop(key, None)
-        elif isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = deep_merge(result[key], value)
+        elif isinstance(value, dict):
+            base_value = result.get(key)
+            result[key] = deep_merge(base_value if isinstance(base_value, dict) else {}, value)
         else:
             result[key] = value
     return result
@@ -391,6 +396,8 @@ class BRConfig:
         self._prepatch_check = PrePatchCheckConfig.from_dict(
             self._raw_config.get("prepatch_check", {})
         )
+        # Raw-preserving: validated lazily by the consuming command (FEAT-3681).
+        self._next = NextConfig.from_raw_config(self._raw_config)
 
     @property
     def project(self) -> ProjectConfig:
@@ -486,6 +493,11 @@ class BRConfig:
     def refine_status(self) -> RefineStatusConfig:
         """Get refine-status display configuration."""
         return self._refine_status
+
+    @property
+    def next(self) -> NextConfig:
+        """Get the raw-preserving ``next`` settings envelope (FEAT-3681)."""
+        return self._next
 
     @property
     def tamper_guard(self) -> TamperGuardConfig:
@@ -1050,6 +1062,7 @@ class BRConfig:
                 "db_path": self._queue.db_path,
             },
             "prepatch_check": self._prepatch_check.to_dict(),
+            "next": self._next.to_dict(),
             "sync": {
                 "enabled": self._sync.enabled,
                 "provider": self._sync.provider,
