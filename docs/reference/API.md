@@ -94,6 +94,7 @@ pip install little-loops
 | `little_loops.session_store` | Unified per-project SQLite + FTS5 history store (`.ll/history.db`; FEAT-1112) — single source of truth for tool events, file modifications, issue transitions, loop runs, and user corrections. Per-project by default; see `little_loops.workspace` (FEAT-3409) for declaring a multi-repo workspace to aggregate several projects' stores. |
 | `little_loops.sft_formatter` | SFT (supervised fine-tuning) data format converters — ChatML and siblings — used by `ll-messages --sft-format`. |
 | `little_loops.skill_expander` | Pre-expand skill/command Markdown content for subprocess prompts (replaces ToolSearch → Skill deferred-tool dependency in `ll-auto`). |
+| `little_loops.sqlite_uri` | Dependency-free SQLite `file:` URI builder (BUG-3737) — `sqlite_file_uri(path, *, mode="ro")` percent-encodes a literal local `Path` into an absolute URI with an internally owned `ro`/`rw` mode; rejects embedded NULs and other modes with `ValueError`. Never opens or creates the database. |
 | `little_loops.stats` | Statistical utilities — Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes. |
 | `little_loops.test_file_patterns` | Test-file classification shared across gates — `is_test_file(path, config=None)` and `filter_test_files(paths, config=None)`. |
 | `little_loops.test_tamper_guard` | Test-weakening detection core (ENH-2933) — `snapshot_test_paths()` / `snapshot_test_paths_at_ref()`, `compare_snapshots()`, `measure_test_strength()`, `is_weakening()`, `filter_weakening_findings()`,
@@ -10023,6 +10024,12 @@ access verification and every later read — instead of a fresh allowance per re
 or statement. `timeout` keeps its meaning (SQLite's busy wait in seconds); on a
 bound connection the effective lock wait is the smaller of `timeout` and the
 remaining budget, re-evaluated before each statement.
+
+The local read-only open builds its `file:` URI from the literal path with
+`little_loops.sqlite_uri.sqlite_file_uri` (percent-encoded, owned `mode=ro`), so
+paths containing `#`, `?` or `%XX` select exactly that file and never create or open
+a truncated/decoded alias. An embedded NUL in the path raises `ValueError`, which
+is not translated into `HistoryUnavailable`.
 
 - **Local SQLite.** Execution, `fetchone`/`fetchmany`/`fetchall` and iteration are
   cancelled through a progress handler that stays installed until `close()`.

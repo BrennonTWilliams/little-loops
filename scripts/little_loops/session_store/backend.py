@@ -51,6 +51,7 @@ from little_loops.session_store.targets import (  # noqa: F401 - re-exported
     LocalTarget,
     RemoteTarget,
 )
+from little_loops.sqlite_uri import sqlite_file_uri
 
 BackendProvider = Literal["sqlite", "libsql"]
 
@@ -439,7 +440,7 @@ class SqliteBackend:
         if deadline is not None:
             return self._connect_readonly_bound(path, timeout, deadline)
         try:
-            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=timeout)
+            conn = sqlite3.connect(sqlite_file_uri(path), uri=True, timeout=timeout)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA query_only = ON")
         except sqlite3.Error as exc:
@@ -455,7 +456,7 @@ class SqliteBackend:
         conn: _DeadlineConnection | None = None
         try:
             conn = sqlite3.connect(
-                f"file:{path}?mode=ro",
+                sqlite_file_uri(path),
                 uri=True,
                 timeout=min(timeout, deadline.remaining()),
                 factory=_DeadlineConnection,

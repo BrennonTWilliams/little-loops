@@ -35,6 +35,7 @@ from pathlib import Path
 
 from little_loops.codequery.core import CodeRef, Freshness, ProviderStatus
 from little_loops.git_operations import porcelain_paths
+from little_loops.sqlite_uri import sqlite_file_uri
 
 _NAME = "codegraph"
 _GIT_TIMEOUT = 10
@@ -83,7 +84,7 @@ def _open_db(db_path: Path) -> sqlite3.Connection | None:
     if not db_path.exists():
         return None
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(sqlite_file_uri(Path(db_path)), uri=True)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only = ON")
         return conn

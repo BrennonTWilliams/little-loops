@@ -18,6 +18,7 @@ import little_loops.session_store as _pkg
 from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.schema import _KIND_TABLE, VALID_KINDS
+from little_loops.sqlite_uri import sqlite_file_uri
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +258,7 @@ def _connect_readonly(db: Path) -> sqlite3.Connection:
     artifact (D19). ``mode=ro`` scopes read-only to the *main* database only — a
     writable scratch DB can still be ATTACHed, which is what makes D2 work.
     """
-    return sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    return sqlite3.connect(sqlite_file_uri(Path(db)), uri=True)
 
 
 def read_schema_version(conn: sqlite3.Connection) -> str | None:
@@ -542,7 +543,7 @@ def build_snapshot_db(
     conn.row_factory = sqlite3.Row
     try:
         schema_version = read_schema_version(conn)
-        conn.execute("ATTACH DATABASE ? AS snap", (str(dest),))
+        conn.execute("ATTACH DATABASE ? AS snap", (str(Path(dest).absolute()),))
         try:
             conn.execute("BEGIN")
             for type_name in tables:

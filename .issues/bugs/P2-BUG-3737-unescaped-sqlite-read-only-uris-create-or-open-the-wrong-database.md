@@ -3,10 +3,11 @@ id: BUG-3737
 type: BUG
 title: Unescaped SQLite read-only URIs create or open the wrong database
 priority: P2
-status: open
+status: done
 discovered_by: ll:capture-issue
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T18:21:19Z'
+completed_at: '2026-10-05T19:19:38Z'
 verify_verdict: VALID
 relates_to:
 - EPIC-3710
@@ -189,12 +190,23 @@ Fix literal local path handling at the existing read-only URI and export ATTACH 
 | external API | [SQLite URI filenames](https://www.sqlite.org/uri.html) | URI parsing, ATTACH inheritance and `ro`/`rw` modes. |
 | stdlib | [Path.absolute](https://docs.python.org/3.11/library/pathlib.html#pathlib.Path.absolute) | Absolute spelling preserves symlinks and does not normalize the path. |
 
+## Resolution
+
+**Fixed** 2026-10-05. Added `little_loops.sqlite_uri.sqlite_file_uri(path, *, mode="ro"|"rw")`, which percent-encodes the literal absolute path (`Path.absolute().as_uri()`) and appends the owned mode; actual NULs and unsupported modes raise `ValueError`. All seven read-only URI sites (`SqliteBackend.connect_readonly`, `_connect_readonly_bound`, export `_connect_readonly`, both native session-index readers, codegraph `_open_db`, workspace `_open_union` ATTACH) use it. The writable export scratch ATTACH now passes `str(Path(dest).absolute())`, so a relative `file:`-prefixed destination is a literal filename.
+
+- New `scripts/tests/test_sqlite_uri.py` (helper matrix, backend ordinary/deadline branches, each direct reader, export, workspace ATTACH).
+- Source-text pins in `test_feat3304_artifact_dashboard.py` and `test_feat3410_workspace_quality.py` re-expressed against AST (executable code only); chokepoint allowlist unchanged (wording only).
+- `docs/reference/API.md` documents the module and the literal-path contract.
+- Full suite: 28035 passed; 2 unrelated failures (`test_verify_evidence` repo gate on ENH-3700 — fails identically without these changes; `test_libsql_integration::TestLive` — needs a live remote endpoint).
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P2
+**Done** | Created: 2026-10-05 | Completed: 2026-10-05 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-05T19:19:38 - `5088c377-3417-4a87-bb6c-83fdd40695de.jsonl`
+- `/ll:ready-issue` - 2026-10-05T19:07:23 - `6fad690f-f12d-4d73-9c0f-655ce0701148.jsonl`
 - `/ll:confidence-check` - 2026-10-05T19:03:21 - `13393850-24a8-4cfe-a557-77414f835c41.jsonl`
 - `/ll:ready-issue` - 2026-10-05T18:55:50 - `da289930-1341-4bbf-a78c-edaba31967bf.jsonl`
 - `/ll:confidence-check` - 2026-10-05T18:46:02 - `31d58183-8758-4d4f-ad48-2c2f7478dd36.jsonl`

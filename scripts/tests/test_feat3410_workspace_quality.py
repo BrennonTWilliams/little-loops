@@ -221,14 +221,26 @@ class TestSourceDbUntouched:
         `history_reader/_base.py::_connect_readonly()`) would migrate a
         stale member in place before the schema-skew gate could see it.
         """
+        import ast
+
         import little_loops.issue_history.workspace_quality as mod
 
-        text = Path(mod.__file__).read_text()
-        code = text[text.index("def _open_member_readonly") :]
+        tree = ast.parse(Path(mod.__file__).read_text())
+        funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+        for fn in funcs.values():  # executable code only: drop docstrings (BUG-3737)
+            if ast.get_docstring(fn):
+                fn.body = fn.body[1:] or [ast.Pass()]
+        code = "\n".join(
+            ast.unparse(n)
+            for n in tree.body
+            if isinstance(n, ast.FunctionDef) and n.lineno >= funcs["_open_member_readonly"].lineno
+        )
         assert "ensure_db(" not in code
         assert "_connect_readonly(" not in code
         assert "immutable=1" not in code
-        assert "mode=ro" in code
+        # The ATTACH source URI is built by the shared encoder, read-only (BUG-3737).
+        assert "sqlite_file_uri(Path(path))" in ast.unparse(funcs["_open_union"])
+        assert "mode='rw'" not in code and 'mode="rw"' not in code
 
 
 class TestAggregationResultFormatters:

@@ -53,10 +53,10 @@ _ALLOWLIST: dict[str, str] = {
     ),
     "session_store/queries.py": (
         "_connect_readonly() already implements the strict read-only contract "
-        "(mode=ro, never creates/migrates, D19) and is pinned verbatim by "
+        "(mode=ro via sqlite_file_uri, never creates/migrates, D19) and is pinned by "
         "test_feat3304_artifact_dashboard.py::"
-        "test_snapshot_builder_never_uses_the_migrating_open_path's literal "
-        "source-text assertion"
+        "test_snapshot_builder_never_uses_the_migrating_open_path's AST "
+        "assertion on executable code"
     ),
     "issue_history/workspace_quality.py": (
         "_open_union()/_open_memory()'s :memory: connections are scratch hosts "

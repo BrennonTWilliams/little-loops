@@ -42,6 +42,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from little_loops.sqlite_uri import sqlite_file_uri
 from little_loops.user_messages import (
     _cwd_spellings,
     _get_claude_project_folder,
@@ -127,7 +128,7 @@ def _query_threads_db(db_path: Path, cwd: Path) -> list[SessionHandle] | None:
     is unverified (see fixtures/codex/README.md's Agent-thread finding).
     """
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = sqlite3.connect(sqlite_file_uri(Path(db_path)), uri=True)
     except sqlite3.Error:
         return None
     try:
@@ -693,7 +694,7 @@ def _first_record_cwd(project_dir: Path, session_glob: str = "*.jsonl") -> Path 
 def _list_codex_workspaces(home: Path) -> list[Path]:
     for db_path in _newest_state_dbs(home):
         try:
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            conn = sqlite3.connect(sqlite_file_uri(Path(db_path)), uri=True)
         except sqlite3.Error:
             continue
         try:

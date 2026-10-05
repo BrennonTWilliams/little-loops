@@ -506,12 +506,21 @@ class TestSourceDbUntouched:
 
     def test_snapshot_builder_never_uses_the_migrating_open_path(self) -> None:
         """The store's connect() migrates on open; the export must not call it."""
-        source = QUERIES_PY.read_text(encoding="utf-8")
-        builder = source[
-            source.index("def _connect_readonly") : source.index("def export_tables_help")
-        ]
-        assert "_pkg.connect" not in builder
-        assert "mode=ro" in builder
+        import ast
+
+        tree = ast.parse(QUERIES_PY.read_text(encoding="utf-8"))
+        funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+        for fn in funcs.values():  # executable code only: docstrings can mention anything
+            if ast.get_docstring(fn):
+                fn.body = fn.body[1:] or [ast.Pass()]
+        opener = ast.unparse(funcs["_connect_readonly"])
+        builder = ast.unparse(funcs["build_snapshot_db"])
+        assert "_pkg.connect" not in opener + builder
+        # Source opens through the shared literal-path encoder in its default ro mode.
+        assert "sqlite_file_uri(Path(db))" in opener
+        assert "uri=True" in opener and "mode=" not in opener
+        # Scratch destination is an ordinary absolute filename, never URI syntax.
+        assert "str(Path(dest).absolute())" in builder
 
 
 # ---------------------------------------------------------------------------

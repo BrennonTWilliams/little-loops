@@ -60,6 +60,7 @@ from little_loops.issue_history.agent_quality import QualityAnalysis, analyze_ag
 from little_loops.issue_parser import IssueInfo, find_issues
 from little_loops.session_store.queries import read_schema_version
 from little_loops.session_store.schema import SCHEMA_VERSION
+from little_loops.sqlite_uri import sqlite_file_uri
 from little_loops.workspace import WorkspaceMember
 
 _ALL_STATUSES = {"open", "in_progress", "blocked", "deferred", "done", "cancelled"}
@@ -220,7 +221,7 @@ def _open_union(db_paths: list[Path]) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:", uri=True)
     conn.row_factory = sqlite3.Row
     for i, path in enumerate(db_paths):
-        conn.execute(f"ATTACH DATABASE ? AS r{i}", (f"file:{path}?mode=ro",))
+        conn.execute(f"ATTACH DATABASE ? AS r{i}", (sqlite_file_uri(Path(path)),))
     for relation in _UNION_RELATIONS:
         conn.execute(_union_view_sql(conn, relation, len(db_paths)))
     conn.execute("PRAGMA query_only = ON")
