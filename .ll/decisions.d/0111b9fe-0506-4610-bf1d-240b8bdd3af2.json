@@ -1,0 +1,12 @@
+{
+  "id": "01d1d90c-1df4-4670-a9a3-1445d51d7c19",
+  "type": "decision",
+  "timestamp": "2026-10-05T19:14:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches create --parent None-means-skip contract (test_ll_issues_create.py:115); Option B would add body sections to parent:-only EPICs and fix_epic would still diverge. Score 11/12 vs 7/12.",
+  "rule": "Option A: skip EPIC-side body write when no ## Children heading",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: insert new ## Children before ## Status",
+  "issue": "BUG-3738"
+}
