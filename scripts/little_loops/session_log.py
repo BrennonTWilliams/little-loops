@@ -265,24 +265,38 @@ def last_command_timestamp(content: str, command: str) -> datetime | None:
     return max(stamps) if stamps else None
 
 
-def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:
+def get_current_session_jsonl(
+    cwd: Path | None = None, session_id: str | None = None
+) -> Path | None:
     """Resolve the active host session's JSONL file path.
 
-    Finds the most recently modified .jsonl file in the project's session
+    When *session_id* names an existing ``<session_id>.jsonl`` in the project's
+    session directory, that file is returned: it is the one session the caller
+    actually ran. Otherwise finds the most recently modified .jsonl file in the
     directory (host auto-detected via ``LL_HOOK_HOST``), excluding agent
-    session files. Resolves through ``get_sessions_folder`` so hosts whose
-    session JSONL nests one level deeper — qwen's ``chats/`` (ENH-3165) —
-    are reached too.
+    session files. The mtime heuristic is wrong whenever another host session
+    is writing in the same project concurrently (BUG-3741), so callers that know
+    their session ID should pass it. Resolves through ``get_sessions_folder`` so
+    hosts whose session JSONL nests one level deeper — qwen's ``chats/``
+    (ENH-3165) — are reached too.
 
     Args:
         cwd: Working directory to map. If None, uses current directory.
+        session_id: Host session ID (the JSONL filename stem) to prefer over the
+            most-recently-modified heuristic.
 
     Returns:
-        Path to the most recent JSONL file, or None if not found.
+        Path to the session's JSONL file (or the most recent one), or None if
+        not found.
     """
     project_folder = get_sessions_folder(cwd)
     if project_folder is None:
         return None
+
+    if session_id and "/" not in session_id and "\\" not in session_id:
+        exact = project_folder / f"{session_id}.jsonl"
+        if exact.is_file():
+            return exact
 
     jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
     if not jsonl_files:

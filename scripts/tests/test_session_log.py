@@ -43,6 +43,33 @@ class TestGetCurrentSessionJsonl:
             result = get_current_session_jsonl()
             assert result == new_file
 
+    def test_session_id_beats_more_recent_concurrent_session(self, tmp_path: Path) -> None:
+        """BUG-3741: a concurrent session's newer mtime must not win over the named one."""
+        mine = tmp_path / "mine.jsonl"
+        mine.write_text("{}")
+        time.sleep(0.05)
+        other = tmp_path / "other.jsonl"
+        other.write_text("{}")
+
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
+            assert get_current_session_jsonl(session_id="mine") == mine
+            assert get_current_session_jsonl() == other
+
+    def test_unknown_session_id_falls_back_to_most_recent(self, tmp_path: Path) -> None:
+        only = tmp_path / "only.jsonl"
+        only.write_text("{}")
+
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
+            assert get_current_session_jsonl(session_id="missing") == only
+
+    def test_path_like_session_id_is_not_joined(self, tmp_path: Path) -> None:
+        (tmp_path / "x.jsonl").write_text("{}")
+        outside = tmp_path.parent / "esc.jsonl"
+        outside.write_text("{}")
+
+        with patch("little_loops.session_log.get_sessions_folder", return_value=tmp_path):
+            assert get_current_session_jsonl(session_id="../esc") == tmp_path / "x.jsonl"
+
     def test_excludes_agent_session_files(self, tmp_path: Path) -> None:
         agent_file = tmp_path / "agent-coding.jsonl"
         agent_file.write_text("{}")

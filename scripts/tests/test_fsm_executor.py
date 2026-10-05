@@ -12653,6 +12653,28 @@ class TestObservedEffortFromSessionJsonl:
 
         assert completes[0]["effort"] == "high"
 
+    def test_session_jsonl_resolved_by_reported_session_id(self, tmp_path: Path) -> None:
+        """BUG-3741: the runner-reported session_id, not mtime, picks the transcript."""
+        fsm = self._prompt_fsm(effort=None)
+        runner = MockActionRunner()
+        runner.always_return(output="hi", exit_code=0)
+        seen: list[str | None] = []
+
+        def _fake(cwd: Path | None = None, session_id: str | None = None) -> Path | None:
+            seen.append(session_id)
+            return None
+
+        with (
+            patch("little_loops.fsm.executor.get_current_session_jsonl", side_effect=_fake),
+            patch.object(runner, "run", wraps=runner.run) as run,
+        ):
+            run.return_value = ActionResult(
+                output="hi", stderr="", exit_code=0, duration_ms=1, session_id="sid-123"
+            )
+            self._run_and_collect(fsm, runner)
+
+        assert seen == ["sid-123"]
+
     def test_falls_back_to_config_when_jsonl_has_no_effort(self, tmp_path: Path) -> None:
         session_jsonl = tmp_path / "session.jsonl"
         session_jsonl.write_text('{"type": "assistant", "message": {}}\n')

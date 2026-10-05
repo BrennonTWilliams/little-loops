@@ -2743,7 +2743,9 @@ class FSMExecutor:
             "iteration": self.iteration,
         }
         if action_mode == "prompt":
-            session_jsonl = get_current_session_jsonl()
+            # BUG-3741: resolve by the host's reported session ID; the mtime
+            # fallback misattributes when another session writes concurrently.
+            session_jsonl = get_current_session_jsonl(session_id=result.session_id)
             payload["session_jsonl"] = str(session_jsonl) if session_jsonl else None
             # ENH-2885: prefer the host CLI's actually-applied effort, observed
             # from the session JSONL's assistant lines, over the resolved
