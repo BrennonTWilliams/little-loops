@@ -501,7 +501,7 @@ When a flag is `false`/`0` (or `pii_action` is not `discard` with detected PII),
 
 Reusable iterative artifact generation oracle. Loops `generate → evaluate (Playwright screenshot) → score (LLM rubric)` until `ALL_PASS` or `max_steps`. Returns `done` on success; the calling thin-wrapper routes `on_yes` to its next state.
 
-Used by `html-website-generator`, `html-anything`, `hitl-md`, `hitl-compare`, `svg-image-generator`, and `interactive-component-generator` as a `loop:` delegation state named `run_gen_eval` (ENH-1869).
+Used by `html-website-generator`, `html-webapp-generator`, `html-anything`, `hitl-md`, `hitl-compare`, `svg-image-generator`, and `interactive-component-generator` as a `loop:` delegation state named `run_gen_eval` (ENH-1869).
 
 **Template-mode consumer (FEAT-3320)**: `html-anything` binds `pre_evaluate_cmd` to a
 mode-guarded render step — `case "${context.artifact_mode}" in template) rm -f
