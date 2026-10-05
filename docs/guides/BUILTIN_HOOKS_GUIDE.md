@@ -53,7 +53,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **SessionStart** | sweep-stale-refs | Finds/fixes prose calling a `done` issue still "open" | — | on (report) |
 | **SessionStart** | drift-check | Surfaces throttled `mention`/`route` doc-drift findings (`hooks.doc_drift_throttle_days`, default 7 days); opt out with `LL_DOC_DRIFT_DISABLE` | — | on |
 | **SessionStart** | scratch-cleanup | Prunes stale files from `.loops/tmp/scratch` (dead-PID >24h, anything idle >7d) | — | on |
-| **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | on (opt-in for recording) |
+| **UserPromptSubmit** | user-prompt-check | Optimizes vague prompts; records corrections & skill calls | — | off (opt-in; recording also needs `analytics.enabled`) |
 | **PreToolUse** | check-duplicate-issue-id | Blocks creating an issue file whose ID collides cross-type | **yes** | on |
 | **PreToolUse** | check-decisions-yaml | Blocks writing a corrupt `.ll/decisions.yaml` or `.ll/decisions.d/*.json` fragment from Claude-side Write/Edit | **yes** | on |
 | **PreToolUse** | learning-tests gate | Warns (or blocks) on imports with no Learning Test record | warn/block | off |
@@ -69,7 +69,7 @@ This adapter→handler split is why the same hook logic runs across Claude Code,
 | **PostToolUse** | session-capture | Appends structured event record (file/task/git/error) to `.ll/ll-session-events.jsonl` | — | off |
 | **Stop** | usage-stop | Schedules a detached refresh of this session's stored token usage | — | on |
 | **Stop** | context-handoff-sentinel | Drops a sentinel if the session ended context-heavy | — | on |
-| **Stop** | session-cleanup | Removes locks, state, scratch, orphaned worktrees | — | on |
+| **Stop** | session-cleanup | Removes locks, context state, orphaned worktrees | — | on |
 | **Stop** | record-hook-event | Telemetry shim: records the session-cleanup fire to `hook_events` | — | on |
 | **Stop** | pre_done | Auto-consults the advisor on the working diff, deduped per distinct diff state | — | off |
 | **PreCompact** | precompact | Snapshots task state before compaction (rubric-gated when `hooks.pre_compact.rubric.enabled: true`) | exit 2 | on |
@@ -125,7 +125,7 @@ An assistant turn ends
 
 The behaviors that **write data or change your repo** are **off until you opt in**:
 
-- `analytics.enabled` (recording to `history.db`) — **off** at runtime (the JSON schema lists `default: true` for documentation/UI purposes, but the hook code's `feature_enabled()` helper treats an *absent* key as `false`, so a project with no explicit `analytics.enabled` in `.ll/ll-config.json` gets no analytics recording)
+- `analytics.enabled` (recording to `history.db`) — **off** (the JSON schema default and the runtime default are both `false`, so a project with no explicit `analytics.enabled` in `.ll/ll-config.json` gets no analytics recording)
 - `scratch_pad.enabled` (output redirection) — **off**
 - `learning_tests.enabled` (import gate) — **off**
 - `issues.auto_commit` (auto-committing issue files) — **off**
@@ -201,7 +201,7 @@ If your prompt looks like it could be sharpened, the hook renders `scripts/littl
 
 To **customize the template**, place your own `optimize-prompt-hook.md` at `${CLAUDE_PLUGIN_ROOT}/hooks/prompts/optimize-prompt-hook.md`. When `CLAUDE_PLUGIN_ROOT` is set and that file exists, it takes precedence over the in-package version — allowing per-installation overrides without modifying the package.
 
-- `prompt_optimization.enabled` (default **true**)
+- `prompt_optimization.enabled` (default **false** — opt-in)
 - `prompt_optimization.mode` — `quick` (default) or `thorough` (the latter can call the `prompt-optimizer` agent for codebase context)
 - `prompt_optimization.confirm` (default **true**)
 - `prompt_optimization.bypass_prefix` (default `*`) — prefix a prompt with `*` to send it through untouched
@@ -211,7 +211,7 @@ Toggle interactively with `/ll:toggle-autoprompt`.
 
 ### Analytics recording
 
-If analytics is enabled, it records user **corrections** (messages matching patterns like "no", "don't", "instead", "remember") and `/ll:*` skill invocations to `history.db`. Gated by `analytics.enabled` (schema default `true`, but effectively **off** at runtime unless set explicitly — see [Safe by Default](#safe-by-default)) and `analytics.capture.corrections` (default **true**).
+If analytics is enabled, it records user **corrections** (messages matching patterns like "no", "don't", "instead", "remember") and `/ll:*` skill invocations to `history.db`. Gated by `analytics.enabled` (default **false**; set explicitly to enable — see [Safe by Default](#safe-by-default)) and `analytics.capture.corrections` (default **true**).
 
 **Never blocks.** Exit 0 always.
 
@@ -262,7 +262,7 @@ codebase — absolute paths into private checkouts, private project names, and t
 other patterns `ll-verify-private-refs` recognises. Exits **2** on a hit, so the
 write never lands.
 
-This is the fifth PreToolUse hook and one of the guide's blocking gates: if a
+This is one of the five PreToolUse hooks and one of the guide's blocking gates: if a
 `Write` is denied and the message mentions private references, this is why. Two
 paths are exempt because they are *expected* to hold machine-local content and
 are gitignored for exactly that reason — `.ll/ll-continue-prompt.md` and
@@ -274,7 +274,7 @@ let a genuine leak reach a commit.
 
 **Hook:** `scratch-pad-redirect.sh` (pure bash)
 
-Keeps large **Bash** output out of the conversation: it rewrites allowlisted commands to redirect output into `.loops/tmp/scratch/` and shows only the tail. Bash output is uncapped, so this is where context bloat actually comes from. The wrapped command's **exit status is preserved** (BUG-2491) — a failing `pytest`/`mypy` still surfaces as a non-zero exit, with the inline `tail` summary shown only. The rewrite re-raises `$?` in an outer subshell at `hooks/scripts/scratch-pad-redirect.sh:119` so the failure signal survives the redirection.
+Keeps large **Bash** output out of the conversation: it rewrites allowlisted commands to redirect output into `.loops/tmp/scratch/` and shows only the tail. Bash output is uncapped, so this is where context bloat actually comes from. The wrapped command's **exit status is preserved** (BUG-2491) — a failing `pytest`/`mypy` still surfaces as a non-zero exit, with the inline `tail` summary shown only. The rewrite re-raises `$?` in an outer subshell so the failure signal survives the redirection.
 
 `Read` is **not** intercepted. Denying a `Read` would leave the `Edit`/`Write` "file has been read" precondition unsatisfied, edit-locking the file for the rest of the session (BUG-2357); and `Read` is already self-capping via `offset`/`limit` pagination, so there was nothing to gain. Use `Read` with `offset`/`limit` to page through large files.
 
@@ -463,8 +463,9 @@ telemetry. (`SessionEnd` has no registered hooks — `scratch-cleanup.sh`, its
 only handler, moved to `SessionStart` in BUG-3363 — so there is no longer a
 second `record-hook-event.sh` pairing.)
 
-Gated by `analytics.enabled` **and** `analytics.capture.hooks` (both default
-`true`, but `analytics.enabled` is off unless you turn it on). Records only —
+Gated by `analytics.enabled` **and** `analytics.capture.hooks`
+(`analytics.capture.hooks` defaults `true`, but `analytics.enabled` defaults
+`false`, so nothing records unless you enable it). Records only —
 never blocks, never alters the shadowed hook's behavior.
 
 ### PreDone advisor consult
@@ -482,7 +483,7 @@ consult never poisons the dedup.
 
 An empty diff or a non-git-work-tree root short-circuits to a silent no-op.
 The consult timeout is clamped to 180s so it finishes inside the hook's own
-190s timeout, even when `advisor.timeout_seconds` is set higher. v1 is
+310s timeout, even when `advisor.timeout_seconds` is set higher. v1 is
 advisory only: a successful verdict is surfaced via **exit 0 + `feedback`**
 (the recommendation, confidence, risks, and dissent, printed to stderr) —
 never via blocking (`exit_code=2`). A failed or timed-out consult logs a
@@ -521,7 +522,7 @@ Signal lists are configurable via `hooks.pre_compact.rubric.signals.*`. Disabled
 
 Fires as a second PreCompact handler, after `precompact.sh`. Reads `.ll/ll-precompact-state.json` as an idempotency guard — it skips **only** when `.ll/ll-continue-prompt.md` is already newer than the snapshot's `compacted_at`. A missing, unreadable, or unparseable snapshot means freshness cannot be verified, so the hook proceeds with the write rather than skipping. It then writes `.ll/ll-continue-prompt.md` atomically with a 3s advisory lock, returning **exit 2**:
 
-> `[ll] Session continuation prompt written to .ll/ll-continue-prompt.md`
+> `[ll] Session handoff snapshot written.`
 
 **Two content paths**: when `.ll/ll-session-events.jsonl` is present (written by the `session-capture.sh` PostToolUse hook when `session_capture.enabled: true`), the handler builds the continuation prompt from structured event data — deduplicating file edits by subject and surfacing only unresolved errors. When the event log is absent, it falls back to a git-diff/loop-state snapshot. Enable `session_capture.enabled` to get richer, event-structured continuation prompts; the fallback still produces a usable prompt without it.
 
@@ -571,7 +572,7 @@ A few quick controls:
 | Config key | Hook | Default | Effect |
 |------------|------|:-------:|--------|
 | `history.session_digest.enabled` | SessionStart | `true` | Inject 7-day project digest |
-| `prompt_optimization.enabled` | UserPromptSubmit | `true` | Optimize vague prompts |
+| `prompt_optimization.enabled` | UserPromptSubmit | `false` | Optimize vague prompts |
 | `prompt_optimization.mode` | UserPromptSubmit | `quick` | `quick` or `thorough` |
 | `prompt_optimization.bypass_prefix` | UserPromptSubmit | `*` | Per-prompt bypass char |
 | `analytics.enabled` | UserPromptSubmit, PostToolUse | `false` | Record events to `history.db` |

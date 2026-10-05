@@ -296,7 +296,7 @@ check_skill:
 
 Uses an `llm_structured` evaluator where Claude assesses whether the previous action achieved its intent. The wizard collects two criteria from the user — what should change on success and what indicates failure — and generates a numbered multi-criteria evaluation prompt:
 
-> **Why `echo` as the action?** `check_semantic` receives the echo string as `<action_output>` in the LLM prompt — an empty `echo` provides minimal evidence. To evaluate a prior state's output, set `source: "${captured.<var>.output}"` on the `evaluate` block, where `<var>` is the `capture` key on the source state. Note: `${prev.output}` at `check_semantic` resolves to `check_concrete`'s output (pytest results), not `execute`'s skill output — use the `capture` + `source` pattern instead (see production examples in `loops/issue-staleness-review.yaml:36-47`).
+> **Why `echo` as the action?** `check_semantic` receives the echo string as `<action_output>` in the LLM prompt — an empty `echo` provides minimal evidence. To evaluate a prior state's output, set `source: "${captured.<var>.output}"` on the `evaluate` block, where `<var>` is the `capture` key on the source state. Note: `${prev.output}` at `check_semantic` resolves to `check_concrete`'s output (pytest results), not `execute`'s skill output — use the `capture` + `source` pattern instead (see production examples in the `triage` state of the built-in `issue-staleness-review` loop).
 
 ```yaml
 evaluate:
@@ -316,7 +316,7 @@ LLM self-grades average 33–55% accuracy without grounding (Table 1 of the SHOR
 
 **Runtime enforcement** (always on): `evaluate_llm_structured()` injects `CHECK_SEMANTIC_EVIDENCE_CONTRACT` into every prompt and coerces any verdict with an empty `evidence` field to `"no"` at the parsing layer — verdicts cannot pass through without a citation. Custom schemas (explicit `schema:` parameter) bypass coercion; callers who supply their own schema control the contract.
 
-**Static lint** (MR-8 WARNING): `ll-loop validate` flags `check_semantic` states whose `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`). States with no `evaluate.prompt` (inheriting `DEFAULT_LLM_PROMPT`) are not flagged — the contract is injected automatically. Suppress with `evidence_contract_ok: true` when justified.
+**Static lint** (MR-8 WARNING): `ll-loop validate` flags `check_semantic` states whose `evaluate.prompt` omits evidence-contract keywords (`verbatim`, `quote`, `evidence`). States with no `evaluate.prompt` (inheriting `DEFAULT_LLM_PROMPT`) are not flagged — the contract is injected automatically. Suppress with `evidence_contract_ok: true` (at the top level of the loop YAML) when justified.
 
 To satisfy MR-8, add one sentence to your `evaluate.prompt`:
 
@@ -522,7 +522,7 @@ check_invariants → diff size (cheapest final gate)
 
 ### Human-in-the-Loop Gate (`action_type: human_approval`) {#human-in-the-loop-gate-action_type-human_approval}
 
-Unlike the evaluation phases above, `human_approval` is not an `evaluate:` block on a `shell`/`prompt` state — it is a distinct `action_type` that blocks the FSM run and asks an operator for a verdict instead of a tool or an LLM judge (FEAT-1794). Use it at a strategic checkpoint: a diff exceeding a safety threshold, a planner output that warrants review before paying for the implement step, or any point where a meta-loop needs a non-LLM evaluator per `.claude/CLAUDE.md` § Loop Authoring MR-1.
+Unlike the evaluation phases above, `human_approval` is not an `evaluate:` block on a `shell`/`prompt` state — it is a distinct `action_type` that blocks the FSM run and asks an operator for a verdict instead of a tool or an LLM judge (FEAT-1794). Use it at a strategic checkpoint: a diff exceeding a safety threshold, a planner output that warrants review before paying for the implement step, or any point where a meta-loop needs a non-LLM evaluator per MR-1 (see [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-14)).
 
 ```yaml
 check_human:
@@ -636,10 +636,10 @@ The wizard reads `.ll/ll-config.json` to detect configured tool commands and pre
 ```
 Which evaluation phases should be included? (multi-select)
   ☑ Tool-based gates (Recommended)                      — Shell checks using test/lint/type commands
-  ☑ Stall detection (Recommended for prompt-based skills) — Detects no-op iterations
+  ☑ Stall detection (Recommended for prompt-based skills) — Detects no-op iterations (catches skills that return 'already done' without making file changes)
   ☑ LLM-as-judge                                        — Claude assesses output against skill description
   ☑ Diff invariants                                     — git diff --stat line count < 50
-  ○ Skill-based evaluation (Optional)                   — Invoke a skill to exercise and verify the feature as a user would
+  ○ Skill-based validation (Recommended — only phase that validates real user behavior) — Invoke a skill to exercise and verify the feature as a user would
 ```
 
 > **Note**: `check_mcp` is not offered by the wizard. If your harness requires an MCP tool call for evaluation, add a `check_mcp` state manually to the generated YAML after wizard completion. See [`check_mcp`](#mcp-tool-gates-check_mcp) in the Evaluation Phases Explained section for the required fields.
@@ -855,7 +855,7 @@ plan -> research -> implement -> check_stall -> check_concrete -> check_semantic
 
 ## Using the Example Files
 
-Four annotated example harness loops are built in to `loops/`:
+Four annotated example harness loops are built in to little-loops (see `ll-loop list`):
 
 | File | Variant | Phases included |
 |------|---------|-----------------|
@@ -875,10 +875,10 @@ ll-loop validate harness-multi-item
 
 ### Run interactively (dry-run)
 
-`ll-loop test` walks through every state and lets you choose simulated verdicts — useful for understanding the FSM transitions without executing the real skill:
+`ll-loop simulate` walks through every state and lets you choose simulated verdicts — useful for understanding the FSM transitions without executing the real skill:
 
 ```bash
-ll-loop test harness-single-shot
+ll-loop simulate harness-single-shot
 ```
 
 ### Run for real
@@ -888,7 +888,7 @@ ll-loop run harness-single-shot
 ll-loop run harness-multi-item
 ```
 
-The multi-item example discovers open issues via `ll-issues list` and runs `/ll:manage-issue` on each one. Make sure you have open issues before running it.
+The multi-item example discovers open issues via `ll-issues list` and runs `/ll:refine-issue` on each one. Make sure you have open issues before running it.
 
 ### Adapt to your own workflow
 
@@ -1184,7 +1184,7 @@ two output strings.
 When validating or running a harness under `ll-loop run`, know how the
 loop reacts to POSIX signals — the audit trail's durability depends on
 it. The signal handlers live at
-`scripts/little_loops/cli/loop/signals.py` and are registered
+`little_loops.cli.loop.signals` and are registered
 for both `SIGINT` and `SIGTERM`.
 
 ### First Ctrl-C (or `SIGTERM`) — graceful shutdown
@@ -1202,17 +1202,17 @@ current state, then `PersistentExecutor.run`'s post-block calls
 
 If a second `SIGINT` arrives while the loop is still shutting down, the
 handler takes a force-exit branch (ENH-2516, in the
-`scripts/little_loops/cli/loop/signals.py` module) that calls
+`little_loops.cli.loop.signals` module) that calls
 `PersistentExecutor.archive_run_only(terminated_by="interrupted_force")`
 *before* `sys.exit(1)`. The `.history/<run_id>-<loop_name>/` archive
-still lands. Exit code: `1`. This is the user-visible contract that little-loops' own test suite pins.
+still lands. Exit code: `1`. The archive is written before exit.
 
 ### `SIGKILL` (`kill -9`) — cannot be trapped
 
 POSIX `SIGKILL` cannot be intercepted by a Python signal handler. If a
 supervisor, CI runner, or OOM killer issues `SIGKILL`, the loop dies
 without invoking any handler code. Rows already appended to
-`events.jsonl` survive (ENH-2515, `scripts/little_loops/fsm/persistence.py:193-209` —
+`events.jsonl` survive (ENH-2515, `little_loops.fsm.persistence._append_jsonl` —
 every append is `flush()` + `os.fsync()`-d before returning), but the
 `.history/<run_id>-<loop_name>/` archive and the final `state.json`
 snapshot may not land.
@@ -1227,9 +1227,7 @@ on shutdown rather than `SIGKILL`:
 | Detached session | `nohup ll-loop run … &` — survives shell exit; the parent shell's exit sends `SIGHUP` which `nohup` ignores, then the loop continues until the next signal |
 | Long-running service | `systemd` unit with `KillSignal=SIGTERM` (the default), `TimeoutStopSec=30` |
 
-The end-to-end SIGINT contract is verified by little-loops' own test suite. When in
-doubt, prefer
-to inspect the audit trail — but note `events.jsonl` (the live, fsync'd
+When in doubt, prefer to inspect the audit trail — but note `events.jsonl` (the live, fsync'd
 run file) and the `.history/...` archive (a copy written by
 `archive_run()`) are not guaranteed to be co-located after a hard kill:
 the former can survive `SIGKILL` on its own even when the latter never

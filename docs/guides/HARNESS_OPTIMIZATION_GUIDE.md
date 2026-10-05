@@ -25,10 +25,14 @@ exist to make harness optimization safe — see [Why It Needs Guardrails](#why-i
 - [Why It Needs Guardrails](#why-it-needs-guardrails)
 - [The Design Rules (MR-1…MR-14)](#the-design-rules-mr-1mr-14)
 - [The Optimizer Error Taxonomy](#the-optimizer-error-taxonomy)
+  - [Runtime Failure Modes](#runtime-failure-modes)
 - [The Canonical Shape](#the-canonical-shape)
 - [Creating One](#creating-one)
 - [Validating and Measuring](#validating-and-measuring)
 - [Planning Loop Guards](#planning-loop-guards)
+- [Resolving a Project Command Inside a Loop](#resolving-a-project-command-inside-a-loop)
+- [Fencing a User-Authored Brief/Goal](#fencing-a-user-authored-briefgoal)
+- [Runtime Containment Gates](#runtime-containment-gates)
 - [See Also](#see-also)
 
 ---
@@ -85,7 +89,7 @@ trial-and-error into *safe* trial-and-error.
 ## The Design Rules (MR-1…MR-14)
 
 `ll-loop validate` enforces these rules. [`.claude/CLAUDE.md` § Loop Authoring](../../.claude/CLAUDE.md)
-carries the compact lookup table for quick in-session reference; **this section is the rationale
+carries the three meta-loop shape rules and points here for the full rule table; **this section is the rationale
 it points to** — the "why" behind each row, kept here so `CLAUDE.md` stays lean. Each rule can be
 suppressed with a top-level flag when you have a justified reason.
 
@@ -261,7 +265,7 @@ which covers mistakes a harness-optimizer loop makes when editing another loop.
 | Failure mode | What it looks like | Detection signal | Remediation |
 |---|---|---|---|
 | **feature-stubbing** | Loop claims it implemented X but only added a placeholder, comment, or TODO; no real code change. | External verification state (run tests, lint, or smoke command) absent before `success`. | Add a non-LLM exit-code evaluator that runs the target and confirms real output before allowing `success`. |
-| **shallow-iteration** | Burns high tool-call budget (>30 `action_complete` events) without creating or modifying helper files outside the primary artifact path. Loop iterates without accumulating reusable structure. | `ll:audit-loop-run` Step 5.5 flags when `action_complete` count exceeds threshold with no auxiliary file mutations. Corroborated by a co-present `diff_stall` evaluator verdict. When the primary path is gitignored (e.g. the default `.loops/runs/` run-directory root), `git diff HEAD` can't see it — Step 5.5 checks `git check-ignore` first and falls back to a `find -newermt <run_start>` filesystem scan, reporting `unknown` (not a false `0`) when neither signal is available (BUG-2482). | Add intermediate artifact-write states that produce named helper files each iteration; break monolithic iteration into smaller sub-tasks. |
+| **shallow-iteration** | Burns high tool-call budget (>30 `action_complete` events) without creating or modifying helper files outside the primary artifact path. Loop iterates without accumulating reusable structure. | `ll:audit-loop-run` Step 5.5 flags when `action_complete` count exceeds threshold with no auxiliary file mutations. Corroborated by a co-present `diff_stall` evaluator verdict. Step 5.5 calls `ll-loop audit --json`, and its auxiliary-mutation scan is mtime-based since the run start (no `git check-ignore` fallback), so it works even when the primary path is gitignored (e.g. the default `.loops/runs/` run-directory root). | Add intermediate artifact-write states that produce named helper files each iteration; break monolithic iteration into smaller sub-tasks. |
 
 **Relationship between the two modes**: `feature-stubbing` is about the *content* of the output (placeholder vs. real work); `shallow-iteration` is about the *shape* of execution (high budget with no structural accumulation). A run can exhibit both simultaneously — shallow iteration that never produces real output — in which case both warnings are emitted and the `diff_stall` corroboration signal is particularly diagnostic.
 
@@ -315,7 +319,7 @@ of `target_score`, even one below baseline; `reference` is checked *before* that
 it closes this gap. The run-level effect is **not** skip-and-retry: a reference regression
 routes the same as any other `stall` (`gate.route.stall → revert_and_log →
 write_trajectory_rejected`), which ends the whole-file run or closes the current queued
-state's segment — see `write_trajectory_rejected`'s routing in the state table above.
+state's segment (`write_trajectory_rejected` routes `on_yes` → `check_queue`, `on_no` → `done`).
 
 `reference` is a **within-run** anchor: it is seeded once per run from `baseline_score`, but
 the next run's own `baseline_score` re-captures from the freshly committed HEAD, so the anchor
@@ -329,9 +333,10 @@ lineage itself against drifting below a fixed external standard across many runs
 workflow; wiring the pin's `outcome` into this loop's routing is a follow-up, not part of this
 guard.
 
-Artifacts isolate per run under `${context.run_dir}/states/<state>/trajectory.jsonl`
-(resolved by the loop runner, not hard-coded by the doc; the actual default for `harness-optimize` is `.ll/runs/harness-optimize-<timestamp>/...`),
-recording every iteration's score and accept/reject verdict — so the trajectory survives
+Artifacts isolate per run. In whole-file mode, `harness-optimize` writes
+`.ll/runs/harness-optimize-<unix-ts>/states/whole-file/trajectory.jsonl`; in state mode it
+writes `${context.run_dir}/states/<state>/trajectory.jsonl` (resolved by the loop runner,
+under `.loops/runs/<loop>-<ts>/`), recording every iteration's score and accept/reject verdict — so the trajectory survives
 even when individual edits are reverted (MR-3 / MR-5).
 
 > **One-line hardening for `diagnose`:** make the priority ranking an explicit gate, not a
@@ -353,6 +358,7 @@ states:
   diagnose:                          # identify WHICH component is weakest before editing
     action: "Review skills/capture-issue/SKILL.md against the test results and name the single highest-priority component to fix (prompt/tool/workflow). Output: COMPONENT=<name>"
     action_type: prompt
+    capture: diagnose
     next: baseline
 
   baseline:                          # measure BEFORE the edit so the gate has a reference
@@ -397,6 +403,9 @@ states:
   revert:                            # discard the failed edit
     action: "git restore skills/capture-issue/SKILL.md"
     action_type: shell
+    next: done
+
+  done:
     terminal: true
 ```
 
@@ -422,6 +431,7 @@ Run `/ll:create-loop` and choose **"Optimize a harness (meta-loop)"**. The wizar
 - **Scorer** — a shell command that exits 0 and prints a numeric score
   (e.g. `pytest tests/test_docs_sync.py -q --tb=no`).
 - **Tasks directory** — the benchmark/task set the scorer runs against.
+- **Target score** — early-stop threshold (default `1.0`, never early-stop).
 - **Diagnose action** — shell or prompt that surfaces what is currently wrong (this seeds
   the priority-identification step).
 
@@ -439,7 +449,7 @@ Run these three commands in sequence before declaring a harness optimizer produc
 ```bash
 # Step 1: Check the YAML for rule violations
 ll-loop validate my-optimizer
-# → Enforces MR-1, MR-7, MR-9, MR-12 Check 1 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-12 Checks 2–3/MR-13/MR-14 (WARNING). Fix all ERRORs before continuing.
+# → Enforces MR-1, MR-7, MR-9, MR-12 Check 1 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-12 Checks 2–3/MR-13/MR-14 (WARNING), plus MR-11 malformed marker, static `loop:` ref, and capture-reachability sub-loop nested-field (ERROR); and the named rules in the table above (WARNING). Fix all ERRORs before continuing.
 
 # Step 2: Verify the gate actually discriminates
 ll-loop diagnose-evaluators my-optimizer
@@ -452,7 +462,8 @@ ll-loop run my-optimizer --baseline
 #   If the harness doesn't beat baseline by a meaningful margin, the loop isn't worth the overhead.
 ```
 
-- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9, MR-12 Check 1 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-12 Checks 2–3/MR-13/MR-14 (WARNING)
+- **`ll-loop validate <loop>`** — enforces MR-1, MR-7, MR-9, MR-12 Check 1 (ERROR) and MR-2/MR-3/MR-4/MR-5/MR-6/MR-8/MR-10/MR-11/MR-12 Checks 2–3/MR-13/MR-14 (WARNING),
+  plus MR-11 malformed marker, static `loop:` ref, and capture-reachability sub-loop nested-field (ERROR); and the named rules in the table above (WARNING)
   before you run.
 - **`ll-loop diagnose-evaluators <loop>`** — after MR-1 passes, checks that your gate is
   actually *discriminating*. A gate can satisfy MR-1 yet be toothless if its verdict never

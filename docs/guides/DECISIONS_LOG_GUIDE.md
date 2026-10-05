@@ -21,6 +21,7 @@ Record implementation choices, enforce team rules, and prevent automation from p
 - [Recording Outcomes](#recording-outcomes)
 - [Superseding Old Entries](#superseding-old-entries)
 - [Configuration](#configuration)
+- [Load-Time Validation](#load-time-validation)
 - [See Also](#see-also)
 
 ---
@@ -199,9 +200,9 @@ This is the end-to-end flow when you're running issues through `ll-auto`, `ll-pa
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-The `decision_needed` flag is the handshake. `confidence-check` sets it when it sees ambiguity; `decide-issue` clears it once no unresolved decision *group* remains (BUG-3278) — an issue can hold more than one decision point, and annotating the highest-precedence one does not earn the right to clear a flag a lower-precedence group still needs. Automation never implements an issue while the flag is set.
+The `decision_needed` flag is the handshake. `confidence-check` sets it when it sees ambiguity; `decide-issue` clears it once no unresolved decision *group* remains (BUG-3278) — an issue can hold more than one decision point, and annotating the highest-precedence one does not earn the right to clear a flag a lower-precedence group still needs. `ll-auto` and `ll-parallel` invoke `/ll:decide-issue --auto` when the flag is set; if that call fails they log a warning and continue to implementation. The pause-until-cleared behavior belongs to the FSM loops (`rn-remediate`, `autodev`, `refine-to-ready-issue`).
 
-**The structural-vs-semantic gap (ENH-2443):** `decision_needed: true` sometimes has *nothing to decide* — the `## Proposed Solution` section is structurally complete but has no enumerable options (no `### Option A/B`, no bullet alternatives). `ll-issues format-check` reports this as compliant, since the gap is semantic, not structural. `/ll:decide-issue`'s Phase 2.5 catches this by calling `ll-issues locate-options --json` (the same call Phase 3 makes): `OPTIONS_MISSING` on a `--validate-only` probe, or — in `--auto` mode — one bounded `/ll:refine-issue --auto` retry to deposit options before falling through to Phase 3b's inline provisional-language scan (BUG-2606), which can still lock in a clear winner from prose recommendations even without formal option blocks — or, for a passage that names alternatives with an imperative decide-marker but states no preference, routes through Pattern E (ENH-2936, reported by `locate-options` as `pattern: "provisional_e"`) to full evidence-based scoring instead. Pattern E is not only a last-resort fallback for when formal option blocks are wholly absent — `locate_enumerable_options()` also probes it *alongside* a tier match (BUG-3287), so a document that already has formal options can still carry a separate, un-preferenced directive elsewhere; that case surfaces as a non-null `residual_directive` on the tier result rather than as the primary `pattern`. Only if Phase 3b also finds nothing does `decision_needed` stay `true` — `MANUAL_REVIEW_RECOMMENDED` (distinct from `MANUAL_REVIEW_NEEDED`) is an FSM-level diagnostic derived from the deposit-attempt marker, not emitted by this phase directly. FSM (finite-state machine) loop callers (`rn-remediate`, `refine-to-ready-issue`) pre-check with the deterministic `ll-issues check-decidable <ID>` CLI rather than paying for a full `decide` pass with nothing to score; `ll-issues locate-options <ID> --json` is the data-frontend sibling (ENH-2950) for callers that need the option spans themselves, not just a boolean. The pattern precedence for both CLIs — and for `/ll:decide-issue` Phase 3's own extraction — is defined exactly once, in `issue_parser.locate_enumerable_options()`.
+**The structural-vs-semantic gap (ENH-2443):** `decision_needed: true` sometimes has *nothing to decide* — the `## Proposed Solution` section is structurally complete but has no enumerable options (no `### Option A/B`, no bullet alternatives). `ll-issues format-check` reports this as compliant, since the gap is semantic, not structural. `/ll:decide-issue`'s Phase 2.5 catches this by calling `ll-issues locate-options --json` (the same call Phase 3 makes): `OPTIONS_MISSING` on a `--validate-only` probe, or — in `--auto` mode — one bounded `/ll:refine-issue --auto` retry to deposit options before falling through to Phase 3b's inline provisional-language scan (BUG-2606), which can still lock in a clear winner from prose recommendations even without formal option blocks — or, for a passage that names alternatives with an imperative decide-marker but states no preference, routes through Pattern E (ENH-2936, reported by `locate-options` as `pattern: "provisional_e"`) to full evidence-based scoring instead. Pattern E is not only a last-resort fallback for when formal option blocks are wholly absent — `locate_enumerable_options()` also probes it *alongside* a tier match (BUG-3287), so a document that already has formal options can still carry a separate, un-preferenced directive elsewhere; that case surfaces as a non-null `residual_directive` on the tier result rather than as the primary `pattern`. Only if Phase 3b also finds nothing does `decision_needed` stay `true` — `MANUAL_REVIEW_RECOMMENDED` (distinct from `MANUAL_REVIEW_NEEDED`) is an FSM-level diagnostic derived from the deposit-attempt marker, not emitted by this phase directly. FSM loop callers (`rn-remediate`, `refine-to-ready-issue`, `autodev`) pre-check, via the shared `oracles/resolve-decision` sub-loop, with the deterministic `ll-issues check-decidable <ID>` CLI rather than paying for a full `decide` pass with nothing to score; `ll-issues locate-options <ID> --json` is the data-frontend sibling (ENH-2950) for callers that need the option spans themselves, not just a boolean. The pattern precedence for both CLIs — and for `/ll:decide-issue` Phase 3's own extraction — is defined exactly once, in `issue_parser.locate_enumerable_options()`.
 
 **Signal phrases that trigger `decision_needed: true`:**
 
@@ -266,7 +267,7 @@ CHANGES APPLIED
   - Propagation (Phase 7c): Implementation Steps (line 214): `beta_writer` — rewritten
 ```
 
-`CHANGES APPLIED` reports these issue-file edits (each line flips to "Skipped (idempotent)" / "already false — no change" on a repeat run). The decisions.yaml log append happens separately in Phase 7b via `ll-issues decisions add` — it's a silent no-op when `decisions.yaml` doesn't exist, and isn't itself listed in the `CHANGES APPLIED` block. The propagation line (ENH-3280) is Phase 7c's report of any rejected-option prose it rewrote in a directive section; residuals it flagged but did not edit (the bounded-scope rule) appear in a separate "Flagged, not edited" block instead.
+`CHANGES APPLIED` reports these issue-file edits (each line flips to "Skipped (idempotent)" / "already false — no change" on a repeat run). The decisions.yaml log append happens separately in Phase 7b via `ll-issues decisions add` — it's a silent no-op when neither `.ll/decisions.yaml` nor `.ll/decisions.d/` exists, and isn't itself listed in the `CHANGES APPLIED` block. The propagation line (ENH-3280) is Phase 7c's report of any rejected-option prose it rewrote in a directive section; residuals it flagged but did not edit (the bounded-scope rule) appear in a separate "Flagged, not edited" block instead.
 
 ---
 
@@ -397,11 +398,11 @@ matching files, instead of repo-wide:
 
 ```bash
 ll-issues decisions add --type rule --enforcement required \
-  --path 'scripts/little_loops/fsm/**/*.py' \
+  --path 'src/myapp/api/**/*.py' \
   --category architecture --rule "..." --rationale "..."
 ```
 
-A value ending in `/` (e.g. `--path scripts/`) is normalized to `scripts/**/*`;
+A value ending in `/` (e.g. `--path src/`) is normalized to `src/**/*`;
 a value with no wildcard is stored as-is with a stderr warning, because OCR
 matches nothing for a bare directory path. `--path` is repeatable. `decisions
 list` does not render `paths` — inspect the fragment/YAML or the exported
@@ -415,7 +416,7 @@ emits `**/*` with no stderr warning — the warning is reserved for an
 *unset* `src_dir`:
 
 ```bash
-ll-issues decisions export --target ocr --scope-glob 'scripts/**/*'
+ll-issues decisions export --target ocr --scope-glob 'src/**/*'
 ```
 
 **OCR resolves exactly one rule entry per file, first-match-wins by
@@ -429,7 +430,7 @@ declaration order** — this drives the exporter's grouping:
   fold into every more specific scoped entry whose prefix they cover, so
   nesting a scoped rule under a repo-wide or directory rule never shadows it.
 - **Known limitation:** two globs that overlap *without* one being a directory
-  glob covering the other (e.g. `**/*.py` vs. `scripts/fsm/**/*`) still shadow
+  glob covering the other (e.g. `**/*.py` vs. `src/myapp/**/*`) still shadow
   each other under first-match-wins — only the higher-sorted entry's rules
   apply to a file matching both. No general glob-intersection folding is
   attempted.
@@ -515,7 +516,7 @@ ll-issues decisions suggest-rules
 
 The `[high-signal]` tag appears when a category holds 3+ decisions — a bare count, with no token-overlap requirement. Shared tokens are computed separately, and only to populate the "and reference ..." hint; a high-signal cluster with nothing in common is still tagged. Without the tag, the cluster was detected via pairwise token overlap in a smaller group.
 
-> `suggest-rules` requires at least 3 `DecisionEntry` records to run. It exits 1 if fewer exist, or if all decisions are one-off choices (entries whose `rule` text starts with `Option A`, `Option B`, `Option C`, `NO-GO`, or `Captured:`). It operates only on `DecisionEntry` records — existing `RuleEntry` records are not considered for promotion.
+> `suggest-rules` requires at least 3 `DecisionEntry` records to run. It exits 1 if fewer exist, or if no candidate clusters are found (for example, all decisions are one-off choices — entries whose `rule` text starts with `Option A`, `Option B`, `Option C`, `NO-GO`, or `Captured:`). It operates only on `DecisionEntry` records — existing `RuleEntry` records are not considered for promotion.
 
 ### Promoting to a Standing Rule: `promote`
 
@@ -534,7 +535,7 @@ Promoted ARCH-001 → rule (enforcement: required)
 
 > When `--enforcement required` is used (the default), `promote` automatically runs `sync` — see [Rules & Active Rules Sync](#rules--active-rules-sync) for what that writes to `.ll/ll.local.md`. Using `--enforcement advisory` skips the auto-sync; advisory rules appear in `ll-issues decisions list --type rule` but are not propagated to `.ll/ll.local.md`.
 
-There is no `demote` subcommand — promotion is one-way via CLI. To revert, edit `.ll/decisions.yaml` directly and change the `type:` field back to `"decision"`.
+There is no `demote` subcommand — promotion is one-way via CLI. To revert, edit `.ll/decisions.yaml` directly (or the `.ll/decisions.d/<uuid>.json` fragment holding the entry) and change the `type:` field back to `"decision"`.
 
 ---
 
@@ -558,7 +559,7 @@ Use `--force` to overwrite an existing outcome.
 
 ## Superseding Old Entries
 
-When a rule or decision is replaced by a newer one, mark the old entry as superseded rather than deleting it:
+When a rule is replaced by a newer one, mark the old entry as superseded rather than deleting it:
 
 ```bash
 ll-issues decisions add \
@@ -589,7 +590,7 @@ The decisions feature has a small config namespace in `.ll/ll-config.json`. Defa
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `decisions.enabled` | `false` | Feature gate for the decisions log and its CLI surface. It does **not** gate the automation pause: neither `ll-auto` nor `ll-parallel` reads this key, and an issue with `decision_needed: true` in its frontmatter pauses automation whether or not this is set |
+| `decisions.enabled` | `false` | Records whether the decisions log was opted into (written by `ll-init` / `/ll:configure`). Not enforced: `ll-issues decisions` subcommands run regardless of this value. It does **not** gate the automation pause: neither `ll-auto` nor `ll-parallel` reads this key, and an issue with `decision_needed: true` in its frontmatter pauses automation whether or not this is set |
 | `decisions.log_path` | `".ll/decisions.yaml"` | Path to the legacy flat file. The per-entry fragment directory is **derived** from this — always `log_path`'s sibling with a `.d` suffix (`.ll/decisions.d/`) — and is not independently configurable (BUG-2647, Option A) |
 | `decisions.auto_generate` | `[]` | Issue type prefixes to auto-generate entries from when `ll-issues decisions generate` runs (e.g., `["FEAT", "ENH"]` skips BUG entries) |
 | `decisions.export.scope_globs` | `[]` | Target-agnostic glob(s) that repo-wide required rules are scoped to on `ll-issues decisions export` (FEAT-3485). Empty falls through to `project.src_dir` (a root `src_dir` of `.`/`./` emits `**/*`), then `**/*` if `src_dir` is unset. Overridable per-invocation with `--scope-glob` |
@@ -599,24 +600,20 @@ The decisions feature has a small config namespace in `.ll/ll-config.json`. Defa
 ## Load-Time Validation
 
 Both storage tiers — the flat `.ll/decisions.yaml` and the
-`.ll/decisions.d/*.json` fragments — are gated by `ll-verify-decisions`
-(ENH-2589) at three transport layers, listed in order of when they fire.
+`.ll/decisions.d/*.json` fragments — can be checked by `ll-verify-decisions`
+(ENH-2589) at two transport layers, listed in order of when they fire.
 `ll-verify-decisions` re-globs the fragment directory in a strict second pass
 (bypassing the read path's silent skip), so a single malformed fragment fails the
 gate:
 
-1. **Git pre-commit hook** (ENH-2590) — `repo: local` block in
-   `.pre-commit-config.yaml` invokes `ll-verify-decisions` on staged changes
-   to `.ll/decisions.yaml` or `.ll/decisions.d/*.json` (matched by
-   `^\.ll/decisions(\.yaml|\.d/.*\.json)$`). Blocks `git commit` on any `yaml.YAMLError`,
-   missing required field, or unknown entry-type discriminator. Active after
-   `pre-commit install`.
-2. **Pytest CI belt** (ENH-2591) — wraps the same validator as a
-   subprocess-asserting gate in little-loops' own test suite, so
-   `git commit --no-verify` and non-hook edit paths still cannot land a
-   corruption on `main`.
-3. **Claude Code `PreToolUse` hook** (ENH-2592,
-   [`hooks/scripts/check-decisions-yaml.sh`](../../hooks/scripts/check-decisions-yaml.sh))
+1. **Git pre-commit hook** (optional, ENH-2590) — add a `repo: local` block to
+   your own `.pre-commit-config.yaml` that invokes `ll-verify-decisions` on
+   staged changes to `.ll/decisions.yaml` or `.ll/decisions.d/*.json` (matched
+   by `^\.ll/decisions(\.yaml|\.d/.*\.json)$`). It then blocks `git commit` on
+   any `yaml.YAMLError`, missing required field, or unknown entry-type
+   discriminator. Active after `pre-commit install`.
+2. **Claude Code `PreToolUse` hook** (ENH-2592,
+   `hooks/scripts/check-decisions-yaml.sh`)
    — blocks the corruption in the editor session, before the file is even
    written. Fires on `Write`/`Edit` of either `.ll/decisions.yaml` or a
    `.ll/decisions.d/*.json` fragment with `timeout: 5`. The hook stages the **candidate content**
@@ -628,10 +625,9 @@ gate:
    as host-level exit 2 with the validator's single-line `ERROR:` on
    stderr; clean candidates exit 0 and let Claude write through. Skips
    gracefully when `python3` or `ll-verify-decisions` is missing — the
-   pre-commit and pytest belts remain authoritative. little-loops' own test suite
-   pins this hook's behavior.
+   pre-commit hook (if you added it) remains authoritative.
 
-All three layers share the validator's exit-code contract: `0` on a clean
+Both layers share the validator's exit-code contract: `0` on a clean
 file, `1` with a single-line `ERROR:` message on stderr pointing at the
 file path for any caught corruption class. Manually re-run the validator
 against an arbitrary config root with:

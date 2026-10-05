@@ -6,7 +6,7 @@ Use a sprint when you have 4 or more issues, or issues with dependencies that mu
 
 **Sprint sizing guidance:**
 - **1–5 issues** — focused burst (a morning's work)
-- **5–20 issues** — weekly sprint
+- **6–20 issues** — weekly sprint
 - **20+ issues** — run `/ll:map-dependencies` first; a large sprint benefits from explicit dependency ordering before it runs
 
 ---
@@ -62,9 +62,9 @@ Two relationship fields affect sprint scheduling differently:
 | Field | Arrow | Effect on sprint |
 |-------|-------|-----------------|
 | `blocked_by` | `──→` (hard dependency) | Wave-gated and fatal — the dependent waits in a strictly later wave; an unresolved cycle raises an error |
-| `depends_on` | `-->` (soft ordering) | Wave-gated but non-fatal — the dependent is scheduled in a strictly later wave than its prerequisites (BUG-2632), yet a prerequisite that is absent from the graph never delays it |
+| `depends_on` | `-->` (soft ordering) | Wave-gated — the dependent is scheduled in a strictly later wave than its prerequisites (BUG-2632). A `depends_on` cycle raises an error just like a `blocked_by` cycle; only a prerequisite that is absent from the graph is non-fatal (it never delays the dependent) |
 
-Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., ISSUE-A calls an API that ISSUE-B introduces). Use `depends_on` when the ordering is recommended but the issues can technically proceed in parallel (e.g., ISSUE-A tests a subsystem that ISSUE-B improves, but ISSUE-A is still valid without ISSUE-B).
+Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., ISSUE-A calls an API that ISSUE-B introduces). Use `depends_on` when ISSUE-B should land first but ISSUE-A is still valid without it (e.g., ISSUE-A tests a subsystem that ISSUE-B improves). Both fields place the dependent in a later wave; `depends_on` simply tolerates a prerequisite that isn't part of the sprint.
 
 ### Single vs. Multi-Issue Waves
 
@@ -76,7 +76,7 @@ Use `blocked_by` when ISSUE-A **cannot start** until ISSUE-B is merged (e.g., IS
 
 ### File Contention Splitting
 
-When two issues in the same wave touch the same files, running them in parallel would cause merge conflicts. The system detects this automatically using the Integration Map sections of each issue file, and splits the wave into sequential sub-waves:
+When two issues in the same wave touch the same files, running them in parallel would cause merge conflicts. The system detects this automatically using the "### Files to Modify" / "### Files Changed" sections of each issue file, and splits the wave into sequential sub-waves:
 
 ```
 Wave 2 (2 issues, serialized — file overlap [min_files=2, ratio=0.25]):
@@ -90,7 +90,7 @@ Wave 2 (2 issues, serialized — file overlap [min_files=2, ratio=0.25]):
 
 Sub-waves are displayed as a single logical wave in the execution plan. The user sees "Wave 2 (serialized)" rather than two separate waves — the contention is handled transparently. The effective threshold values are shown in the wave header so users can tune `dependency_mapping` in `.ll/ll-config.json` if the sprint over-serializes.
 
-**Both thresholds must be crossed to trigger serialization** — crossing just one is not enough. An issue pair sharing 3 files out of 100 total (high count, low ratio) will not serialize unless both `overlap_min_files` and `overlap_min_ratio` are exceeded simultaneously. Raise either threshold in `.ll/ll-config.json` to reduce over-serialization on large issue sets.
+**Both thresholds must be crossed to trigger serialization** — crossing just one is not enough. An issue pair sharing 3 files out of 100 total (high count, low ratio) will not serialize unless both `overlap_min_files` and `overlap_min_ratio` are exceeded simultaneously. Raise either threshold in `.ll/ll-config.json` to reduce over-serialization on large issue sets. The both-thresholds rule applies to exact shared-file matches; directory overlap, or a file that sits inside another issue's directory, also counts as contention. Issues that lack `### Files to Modify` hints cannot be checked, so they are serialized with a warning.
 
 ---
 
@@ -119,7 +119,7 @@ options:
 | `issues` | yes | List of issue IDs (e.g., `BUG-001`, `FEAT-010`) |
 | `options.timeout` | no | Per-issue timeout in seconds (default: 3600). **Currently has no effect** — parsed but never read at run time; see [Configuration](#configuration) for the mechanisms that actually enforce per-issue timeouts. |
 | `options.max_workers` | no | Max parallel workers per wave (default: 2) |
-| `options.max_iterations` | no | Max Claude iterations per issue (default: 100) |
+| `options.max_iterations` | no | Max Claude iterations per issue (default: 100). **Currently has no effect.** |
 
 Issue IDs in the sprint list are resolved to actual files at runtime. The sprint itself only stores IDs — the file search happens when you run.
 
@@ -133,14 +133,14 @@ Issue IDs in the sprint list are resolved to actual files at runtime. The sprint
 /ll:create-sprint
 ```
 
-The interactive skill walks you through sprint creation:
+The interactive command walks you through sprint creation:
 
 1. **Goal clarification** — asks what you're trying to accomplish
 2. **Auto-grouping** — proposes issue groupings based on your backlog; you select or reject each
 3. **Dependency validation** — checks that blocked issues are included or have their blockers satisfied
 4. **Confirmation** — shows the proposed sprint before writing the YAML
 
-The skill proposes seven auto-grouping strategies:
+The command proposes seven auto-grouping strategies:
 
 | Strategy | Groups issues by |
 |----------|-----------------|
@@ -176,7 +176,7 @@ Before executing a sprint, especially if issues have been refined since the spri
 /ll:review-sprint bug-fixes
 ```
 
-The skill runs six phases:
+The command runs six phases:
 
 1. **Load & Health Check** — reads the sprint and its YAML, then surfaces invalid issue references, dependency cycles, the execution-wave structure, file-contention warnings, and any issues already `status: done`.
 2. **Backlog Scan** — looks for related issues not in the sprint that may belong.
@@ -189,7 +189,7 @@ Goal coherence (3b) and wave optimization (3e) are easy to miss: they are the tw
 
 **EPIC awareness**: When any sprint member has a `parent:` field referencing an EPIC, the review also produces an **EPIC Context** section. For each touched EPIC, it resolves the full active-children set (via `ll-sprint show EPIC-NNN`, backed by `ll-deps tree EPIC-NNN --json` for blocker edges) and computes the delta — EPIC children not in the sprint. If a delta member is listed in any sprint member's `blocked_by:`, the review flags it as a critical-path blocker gap and offers to add it to the sprint. This prevents the common mid-sprint stall where a manually curated sprint includes the "interesting" children of an EPIC but skips the blocker.
 
-The skill is interactive: it proposes changes and you approve or reject each one. Accepted changes are applied via `ll-sprint edit`. When you're done reviewing, the sprint is ready to run.
+The command is interactive: it proposes changes and you approve or reject each one. Accepted changes are applied via `ll-sprint edit`. When you're done reviewing, the sprint is ready to run.
 
 > **When to review**: any time more than a day has passed since you built the sprint, or after running `/ll:refine-issue` or `/ll:verify-issues` on issues in the sprint.
 
@@ -209,7 +209,13 @@ ll-sprint run sprint-name --skip-analysis                 # bypass pre-execution
 ll-sprint run sprint-name --quiet                         # suppress progress output
 ll-sprint run sprint-name --handoff-threshold 80          # context window handoff threshold (1–100)
 ll-sprint run sprint-name --feature-branches              # enable feature-branch mode (overrides config)
+ll-sprint run sprint-name --no-feature-branches           # disable feature-branch mode (overrides config)
+ll-sprint run sprint-name --epic-branches                 # enable per-EPIC integration branches (overrides config)
+ll-sprint run sprint-name --no-epic-branches              # disable per-EPIC integration branches (overrides config)
 ll-sprint run sprint-name --skip-learning-gate            # bypass learning-test gate checks
+ll-sprint run sprint-name --label fsm,cli                 # run only issues with these labels
+ll-sprint run sprint-name --context-limit 1000000         # override the context window token estimate
+ll-sprint run sprint-name --save                          # write the resolved sprint YAML to .ll/sprints/ before executing
 
 # ll-auto also supports the same flag for its per-issue gate:
 ll-auto --skip-learning-gate                              # bypass per-issue learning-test gate
@@ -226,8 +232,8 @@ Before the first wave runs, `ll-sprint` validates the sprint:
 - Wave structure computed and displayed
 - Completed and cancelled issues are logged individually and surfaced in a pre-validation summary rather than silently skipped
 - Issues with `status: done` or `status: cancelled` in frontmatter are auto-skipped (logged individually, see above); if all issues are already completed, the sprint exits with success immediately
-- **Learning-test gate** (ENH-2210): aggregates all `learning_tests_required` targets across sprint issues and runs the `ready-to-implement-gate` loop once; an unproven target hard-stops the sprint before any wave runs. Skip with `--skip-learning-gate` (see below).
-- **Per-EPIC base-branch check** (FEAT-2652): for each sprint issue whose nearest EPIC ancestor declares a `base_branch:` (alias `target_branch:`), asserts that ref exists locally or on the remote before dispatch; a missing ref hard-stops the sprint (see [Per-EPIC Integration Branch](#per-epic-integration-branch)).
+- **Learning-test gate** (ENH-2210): aggregates all `learning_tests_required` targets across sprint issues and runs the `ready-to-implement-gate` loop once (only when `learning_tests.enabled` is true); an unproven target hard-stops the sprint before any wave runs. Skip with `--skip-learning-gate` (see below).
+- **Per-EPIC base-branch check** (FEAT-2652): for each sprint issue whose nearest EPIC ancestor declares a `base_branch:` (alias `target_branch:`), asserts that ref exists locally or on the remote before dispatch (only when `parallel.epic_branches.enabled` is true); a missing ref hard-stops the sprint (see [Per-EPIC Integration Branch](#per-epic-integration-branch)).
 
 `ll-sprint run` prints the wave order as a plain log line per wave before any work begins:
 
@@ -273,16 +279,16 @@ Wave 3 (after Wave 2):
 Legend: ──→ blocks (must complete before)
 ```
 
-`ll-sprint show`/`ll-sprint analyze` use the shared `_render_execution_plan`/`_render_dependency_graph` renderers (`scripts/little_loops/cli/sprint/_helpers.py`, `show.py`); `ll-sprint run` does not — it only ever prints the plain per-wave list above.
+`ll-sprint run` prints only the plain per-wave list above; `ll-sprint show` and `ll-sprint analyze` render the full execution-plan tree and dependency graph.
 
 ### Wave Execution
 
 Each wave runs as follows:
 
 - **Single-issue wave**: `/ll:manage-issue` runs in-place (no worktree overhead) — this is the same skill used for individual issue implementation, invoked automatically by the sprint runner
-- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With `use_feature_branches: true` in `.ll/ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
+- **Multi-issue wave**: `ParallelOrchestrator` creates a git worktree for each issue, runs them in parallel, then the merge coordinator integrates results. With `parallel.use_feature_branches: true` in `.ll/ll-config.json`, auto-merge is skipped and each issue produces a PR-ready `feature/<id>-<slug>` branch instead — use this for PR-based CI/CD workflows.
 
-> **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When `use_feature_branches` is set and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch the work lands on. Dependency chains that produce all single-issue waves will see this warning for every sprint run; if per-issue feature branches are required for all issues, avoid all-sequential dependency chains or track the follow-up enhancement.
+> **Coverage boundary**: `use_feature_branches` only applies to multi-issue waves dispatched through `ParallelOrchestrator`. Single-issue waves and contention sub-waves always run in-place on the current branch — no worktree is created and no feature branch is produced for those issues. When `use_feature_branches` is set and a wave runs in-place, `ll-sprint` emits a one-time warning naming the branch the work lands on. Dependency chains that produce all single-issue waves will see this warning for every sprint run; if per-issue feature branches are required for all issues, avoid all-sequential dependency chains.
 >
 > **State checkpoint cadence** (ENH-2530): State is checkpointed after each execution wave or contention sub-wave completes, not only after each logical dependency wave — so a refined sub-wave plan that splits a wave into N serialized steps yields N checkpoints, one per sub-wave.
 
@@ -305,10 +311,10 @@ By default, multi-issue waves auto-merge each worktree back to the current branc
 
 | Config key | Default | Effect |
 |---|---|---|
-| `push_feature_branches` | `false` | Push the branch to `remote_name` (default `origin`) via `git push --force-with-lease` after worker success |
-| `open_pr_for_feature_branches` | `false` | Open a draft PR via `gh pr create` after push; records `pr_url:` on the issue; requires `push_feature_branches: true` and `gh auth status` |
+| `parallel.push_feature_branches` | `false` | Push the branch to `parallel.remote_name` (default `origin`) via `git push --force-with-lease` after worker success |
+| `parallel.open_pr_for_feature_branches` | `false` | Open a draft PR via `gh pr create` after push; records `pr_url:` on the issue; requires `parallel.push_feature_branches: true` and `gh auth status` |
 
-Set `push_feature_branches: true` to push branches automatically after each issue finishes. Add `open_pr_for_feature_branches: true` to also open a draft PR and record `pr_url:` on the issue. If `gh` is unavailable or unauthenticated, the push proceeds but the PR step is skipped with a warning.
+Set `parallel.push_feature_branches: true` to push branches automatically after each issue finishes. Add `parallel.open_pr_for_feature_branches: true` to also open a draft PR and record `pr_url:` on the issue. If `gh` is unavailable or unauthenticated, the push proceeds but the PR step is skipped with a warning.
 
 ### Cleaning up merged feature branches
 
@@ -334,7 +340,7 @@ When a multi-issue wave is dominated by children of a single EPIC, running each 
 
 **What changes when per-EPIC branches are enabled:**
 
-- All children of an EPIC share one integration branch (named `epic/<EPIC-ID>-<slug>`, e.g. `epic/EPIC-2451-per-epic-integration-branch-strategy`)
+- All children of an EPIC share one integration branch (named `epic/<EPIC-ID>-<slug>`, e.g. `epic/epic-2451-per-epic-integration-branch-strategy`)
 - Each child forks from that branch (not from `parallel.base_branch`) and merges back into it, so intermediate conflicts surface at the EPIC branch instead of at the base
 - The EPIC integration branch itself forks from `parallel.base_branch` by default, but the EPIC issue may declare a `base_branch:` (alias `target_branch:`) frontmatter field to fork from a different ref; `ll-sprint` dispatch validates it up front and hard-stops if the declared base does not exist (local or remote), rather than degrading dependent children to a false `partial` (FEAT-2652)
 - When the last EPIC child completes, the orchestrator opens a single EPIC-level merge/PR from `epic/<EPIC-ID>-<slug>` into the base branch — one PR per EPIC instead of one per child
@@ -354,7 +360,7 @@ When a multi-issue wave is dominated by children of a single EPIC, running each 
 
 `ll-sprint run sprint-name` needs no flag for config-driven runs — the orchestrator decides per wave whether to use the EPIC integration branch based on `epic_branches.enabled` and each issue's `parent:` field. To toggle the mode for a single run without editing config, pass `--epic-branches` (or `--no-epic-branches`) to `ll-parallel` or `ll-sprint run`; the flag overrides `parallel.epic_branches.enabled` for that invocation.
 
-**Interaction with `use_feature_branches`:** the two flags are orthogonal. `use_feature_branches` governs *individual-issue* branch behavior (`feature/<id>-<slug>`, no auto-merge, manual PR). `epic_branches` governs *EPIC-level* integration (one shared branch per EPIC, single EPIC-level PR on completion). They are not designed to combine — if you enable both, the per-EPIC branching wins for children of an EPIC (so the per-issue `feature/` branch is skipped inside an EPIC); standalone issues still get per-issue `feature/` branches. Most teams pick one or the other:
+**Interaction with `use_feature_branches`:** the two flags are orthogonal. `use_feature_branches` governs *individual-issue* branch behavior (`feature/<id>-<slug>`, no auto-merge, manual PR). `epic_branches` governs *EPIC-level* integration (one shared branch per EPIC, single EPIC-level PR on completion). If you enable both, each child of an EPIC still gets its per-issue `feature/<id>-<slug>` branch, but that branch forks from the shared EPIC integration branch rather than from `parallel.base_branch`; standalone issues fork from the base branch as usual. Most teams pick one or the other:
 
 - Use `epic_branches` when you plan work as coordinated EPICs and want one review surface per EPIC
 - Use `use_feature_branches` when each issue ships independently and you don't plan work under EPICs
@@ -392,10 +398,10 @@ A sprint with some failures still completes — it doesn't stop at the first fai
 ### Diagnosing a Failed Issue
 
 ```bash
-ll-sprint show sprint-name        # see which issues failed and their error messages
+ll-sprint show sprint-name        # see which issues failed (IDs only; reasons are in .sprint-state.json and the run log)
 ```
 
-The show output includes a **Failed Issues** section with the error output from each failure. Common causes:
+The failure reasons are in the `failed_issues` entry of `.sprint-state.json` and in the run output. Common causes:
 - Issue file has open questions (`manage-issue` requires all questions answered before starting)
 - Test command fails before the agent can even begin (pre-existing test failures)
 - Context limit hit mid-issue (lower `--handoff-threshold` and re-run)
@@ -415,7 +421,7 @@ ll-sprint run sprint-name --only FAILED-ID-1
 
 ### Graceful Shutdown
 
-Send `Ctrl+C` once to request graceful shutdown. The runner finishes the current wave, saves state, and exits. Send `Ctrl+C` again to force immediate exit (state is still saved before exit).
+Send `Ctrl+C` once to request graceful shutdown. The runner finishes the current wave, saves state, and exits. Send `Ctrl+C` again to force immediate exit (state reflects only the last completed wave checkpoint).
 
 ---
 
@@ -463,7 +469,7 @@ ll-sprint delete sprint-1                          # delete a sprint entirely
 
 `--prune` scans each issue ID in the sprint and removes any that are completed (`status: done` or `status: cancelled` in frontmatter) or whose file no longer exists on disk. Use this to clean up a sprint that's been running for a while.
 
-`--revalidate` re-reads the dependency graph after edits and updates any ordering implications. Run this after adding new issues to ensure wave groupings are still accurate.
+`--revalidate` re-runs dependency analysis and prints warnings; it does not modify the sprint. Run this after adding new issues to ensure wave groupings are still accurate.
 
 **Edit vs. recreate**: Edit when you're making minor adjustments to an existing sprint. Recreate (delete + create) when the scope has changed significantly or you want `/ll:create-sprint` to re-run its auto-grouping logic.
 
@@ -473,8 +479,8 @@ ll-sprint delete sprint-1                          # delete a sprint entirely
 
 ```bash
 ll-sprint list                          # all sprints, one per line
-ll-sprint list --verbose                # sprints with issue counts and descriptions
-ll-sprint list --json                   # output as JSON array
+ll-sprint list --verbose                # sprints with description, issue ID list and created date
+ll-sprint list --json                   # JSON array with name, path and issue count
 ll-sprint show sprint-1                 # sprint details + wave visualization
 ll-sprint show sprint-1 --json          # structured JSON output
 ll-sprint show sprint-1 --skip-analysis # skip dependency analysis step
@@ -485,7 +491,7 @@ ll-sprint analyze sprint-1 --format json
 `ll-sprint show` is the primary inspection command. It displays the sprint YAML contents, validates that all issue files exist, and renders the dependency graph and wave structure — the same execution plan you'd see at the start of a run. The output also includes:
 
 - **Composition breakdown** — issue count by type (BUG/FEAT/ENH/EPIC) and priority distribution
-- **Sprint run state** — progress from `.sprint-state.json` if the sprint has been started (only present on `ll-sprint run`, not on `ll-sprint show`)
+- **Sprint run state** — a one-line "Last run: <date> — N completed, M failed (...)" summary from `.sprint-state.json` when a run exists for this sprint (text output only; not in `--json`)
 - **Issue file paths** — full paths included in `ll-sprint show --json` for easy machine consumption; the text output also prints each issue's file path inline in the execution-plan tree
 - **Readiness/confidence scores** — per-issue scores from any completed confidence checks
 - **Human-friendly timestamps** — relative time suffixes (e.g., "3 days ago") on dated fields
@@ -518,8 +524,7 @@ Sprint behavior is configured in `.ll/ll-config.json` under the `sprints` key:
 | `max_issue_wall_clock_time` | `2700` | Hard wall-clock cap per issue in seconds (45 min); enforced via SIGALRM. This is the actual per-issue timeout for in-place (single-issue and contention-subwave) waves. |
 | `parallel.timeout_per_issue` | `3600` | Timeout for multi-issue waves dispatched through `ParallelOrchestrator` (independent default from `max_issue_wall_clock_time`); this is the actual per-issue timeout for those waves. |
 
-Per-sprint `options.max_workers` overrides `default_max_workers`; `--max-workers` overrides both. `--timeout` (CLI flag) and `options.timeout` (per-sprint YAML) are parsed but **not currently wired to either timeout mechanism above** — they have no runtime effect. Real per-issue timeout enforcement always comes from `sprints.max_issue_wall_clock_time` (single-issue/contention-subwave waves) or `parallel.timeout_per_issue` (multi-issue orchestrator waves), neither of which is fed from `--timeout`/`options.timeout`/`default_timeout`. This is a known code gap, not intended behavior — worth wiring up or removing in a follow-up.
-
+Per-sprint `options.max_workers` overrides `default_max_workers`; `--max-workers` overrides both. `--timeout` (CLI flag) and `options.timeout` (per-sprint YAML) are parsed but **not currently wired to either timeout mechanism above** — they have no runtime effect. Real per-issue timeout enforcement always comes from `sprints.max_issue_wall_clock_time` (single-issue/contention-subwave waves) or `parallel.timeout_per_issue` (multi-issue orchestrator waves), neither of which is fed from `--timeout`/`options.timeout`/`default_timeout`.
 ---
 
 ## Common Recipes

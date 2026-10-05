@@ -30,7 +30,7 @@ keep or discard, repeat until a score clears a threshold or the step budget runs
 Two properties of that shape matter more than any individual loop's mechanics, and both are
 easy to miss:
 
-**Scoring is asserted by a model, not computed.** All five APO loops decide convergence with
+**Scoring is asserted by a model, not computed.** All five general-purpose APO loops (`rn-plan-apo` is covered below) decide convergence with
 the same evaluator — `output_contains` matching the literal string `CONVERGED`
 (`apo-textgrad.yaml:43-49` and its equivalents). There is no numeric comparator anywhere in
 the family. The loop asks a model to score its own work, compare that score to your threshold,
@@ -169,7 +169,7 @@ tree you cannot tell what the loop changed, and you cannot get back.
 git status --porcelain   # confirm clean
 ```
 
-**2. Write the corpus.** Ten pairs, spanning the failure you can describe and the cases that
+**2. Write the corpus.** A corpus (three of ten pairs shown), spanning the failure you can describe and the cases that
 already work:
 
 ```json
@@ -295,7 +295,8 @@ a red mark.
 > but `prompt-regression-test` declares no `examples_file` of its own. The child therefore
 > falls back to `examples.json` in the working directory. If your corpus lives anywhere else,
 > pass `--context examples_file=<path>` on the parent run, or the repair sub-loop optimizes
-> against the wrong file — or none.
+> against the wrong file — or none. Likewise `prompt_file` defaults to `system.md` in the
+> child; pass `--context prompt_file=<path>` on the parent run.
 
 Note the scope difference: `prompt-regression-test` takes a *directory* of prompts
 (`prompt_suite`), not a single file. It is the only loop in this guide built for a suite.
@@ -325,11 +326,11 @@ Note the scope difference: `prompt-regression-test` takes a *directory* of promp
 > does not.) The other three use `>=`. Set 90, not 100.
 
 > **`max_steps` counts state executions, not rounds.** The executor increments its counter on
-> every state entry (`fsm/executor.py:728`), including the pure evaluator states that only
+> every state entry, including the pure evaluator states that only
 > route. Divide by states-per-cycle for your real budget: `apo-textgrad` 20/4 ≈ 5 rounds,
-> `apo-contrastive` 15/3 = 5, `apo-opro` 25/4 ≈ 6. Raise it with `-n`/`--max-steps`.
+> `apo-contrastive` 15/3 = 5, `apo-opro` 25/4 ≈ 6. Raise it with `-n`/`--max-steps` (see `ll-loop run --help`).
 > `--max-iterations` does **not** help here — it counts maintain-mode restarts
-> (`fsm/executor.py:597-599`), and no APO loop runs in maintain mode.
+> (the `max_iterations` check beside the `max_steps` check in the run loop; see `ll-loop run --help`), and no APO loop runs in maintain mode.
 
 > **`target_pass_rate` means different things in different loops.** `apo-textgrad` reads it as
 > an integer percent (`90`); `examples-miner` declares the same name as a fraction (`0.6`).
@@ -372,4 +373,4 @@ rubric.
 - [Loops Guide](LOOPS_GUIDE.md) — FSM fundamentals: states, evaluators, routing, and the `/ll:create-loop` wizard
 - [Harness Optimization Guide](HARNESS_OPTIMIZATION_GUIDE.md) — hill-climbing a skill, command, or agent definition against a benchmark, rather than a prompt file against examples
 - [Loops Guide → Composable Sub-Loops](LOOPS_GUIDE.md#composable-sub-loops) — how `context_passthrough` works, relevant to both the miner and regression-test handoffs
-- [`apo-textgrad.yaml`](../../scripts/little_loops/loops/apo-textgrad.yaml) — the loop definition itself; the action text is the real specification for `examples.json`
+- built-in `apo-textgrad` loop (`ll-loop show apo-textgrad`) — the loop definition itself; the action text is the real specification for `examples.json`

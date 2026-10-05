@@ -54,7 +54,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI). Each `ll-*` command waits at most 250 ms for a busy history.db before skipping its `cli_events` row, so a long-running writer never stalls your commands; skipped rows are counted in `.ll/history.db.cli-event-drops` and `ll-doctor` reports the last-7-day count. To run an `ll-*` CLI without writing its per-invocation analytics row — or authoring the db at all — set `LL_ANALYTICS_CAPTURE=0` (kill switch: no resolution, no file, no `cli_events` row; wins over `LL_HISTORY_DB`; per-invocation use, not a shell-profile export — ENH-3449).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 52, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 58, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
 | Version | Issue | Adds |
 |---------|-------|------|
@@ -114,8 +114,10 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v54 | ENH-3538 | Nullable usage provenance, host, scope, and observation-time columns |
 | v55 | BUG-3542 | `host_basis` marks raw source-handle host attribution and replayed usage |
 | v56 | ENH-3532 | `raw_events.ordinal` and nullable rollout thread/span/request identity plus source-position columns on `usage_events`; no unproven request-uniqueness index |
+| v57 | ENH-3546 | Nullable `usage_contract` column on `raw_events` and `usage_events` (persisted producer qualification for Claude usage; legacy rows stay NULL) |
+| v58 | ENH-3651 | `usage_events` source-link columns (`source_raw_event_id`, `source_path`, `observation_key`) with unique indexes, plus the `usage_source_cursors` table (source-tail and derive completion proof) |
 
-v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
+v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; v41 onward are individual feature- or fix-driven migrations, each described in the table above; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
 
 ---
 
@@ -137,7 +139,8 @@ v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observabil
 | `sessions` | Maps session IDs to their `.jsonl` file paths |
 | `commit_events` | Git commit metadata: `commit_sha` (unique), `parent_sha`, message, author, branch, `issue_id` (linked when known), `files_json`. Populated live by the session-start backfill. Queryable via `ll-session recent --kind commit` (ENH-2458, v17). |
 | `test_run_events` | Pytest runs: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Queryable via `ll-session recent --kind test_run` (ENH-2459, v18). |
-| `usage_events` | LLM token observations from live invocations (`channel='live'`), Claude-shaped transcript usage (`'transcript'`), and Codex rollout requests (`'rollout'`). Nullable token components, provenance, cost and identity fields preserve uncertainty. Codex v56 rows carry the host-observed thread in `session_id`, native span `turn_id`, native response `request_id` where available, and distinct ordinal/physical-line positions. Old-shape requests have unverified identity and unknown provenance. Rebuild replaces replayable channels and preserves live rows; live/rollout overlap is not yet selected away. Queryable via `ll-session recent --kind usage` and the history reader. |
+| `usage_events` | LLM token observations from live invocations (`channel='live'`), Claude-shaped transcript usage (`'transcript'`), and Codex rollout requests (`'rollout'`). Nullable token components, provenance, cost and identity fields preserve uncertainty. Codex v56 rows carry the host-observed thread in `session_id`, native span `turn_id`, native response `request_id` where available, and distinct ordinal/physical-line positions. Old-shape requests have unverified identity and unknown provenance. Rebuild replaces replayable channels and preserves live rows; live/rollout overlap is not yet selected away. v57 added a nullable `usage_contract` column (persisted producer qualification for Claude usage; legacy rows stay NULL), and v58 added source-link columns (`source_raw_event_id`, `source_path`, `observation_key`) with unique indexes. Queryable via `ll-session recent --kind usage` and the history reader. |
+| `usage_source_cursors` | Source-tail and derive completion proof for `usage_events` (v58, ENH-3651). |
 | `orchestration_runs` | Final per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: invocation-scoped `run_id`, driver, status, duration, failure reason, sprint wave label, optional PR URL, timestamps, git context, dequeue-time `base_sha`/`base_dirty` stamp (v38), and `ll_version` (v48, the little-loops version installed at write time). Retries UPSERT the same `(run_id, issue_id)` and refresh FTS. Queryable via `ll-session recent --kind orchestration_run`, FTS search, export, and `history_reader.recent_orchestration_runs()`/`aggregate_orchestration_runs()` (ENH-2492, v22). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
 | `prompt_opt_events` | Prompt-optimization offer/outcome telemetry: `ts`, `session_id`, `mode`, `offered`, `bypass_reason`, `raw_len`, `optimized_len`, `optimized_text`, `accepted`. Live-written per prompt by `user_prompt_submit.py::handle()` (gated on `analytics.enabled`); `optimized_len`/`optimized_text`/`accepted` filled in later, in place, by `_backfill_prompt_opt()` when a parseable `ENHANCED:` block is found in the transcript. Queryable via `ll-session recent --kind prompt_opt` and `history_reader.recent_prompt_opt_events()`/`prompt_opt_offer_rate()` (ENH-2498, v32). |
@@ -280,7 +283,7 @@ ll-session search --fts "rate limit" --kind correction
 ll-session search --fts "worktree" --kind tool --limit 5
 ```
 
-Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `harness`, `prompt_opt`, `verdict`, `context_pressure`, `review`, `advisor_consult` — 24 kinds in total, sourced from `VALID_KINDS` in `session_store/schema.py`. Note the kind for `harness_events` is `harness`, not `harness_event`.
+Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `harness`, `prompt_opt`, `verdict`, `context_pressure`, `review`, `advisor_consult`, `research_triage`, `credential_scope`, `harness_admission` — 27 kinds in total, sourced from `VALID_KINDS` in `session_store/schema.py`. Note the kind for `harness_events` is `harness`, not `harness_event`.
 
 ### Most recent events
 
@@ -324,7 +327,7 @@ ll-session export --since 2026-06-01 -o export.jsonl  # date-filtered, to a file
 ll-session export --include-messages                  # also include message_events (~46K rows)
 ```
 
-Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `loop_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event`, `review_event`, `advisor_consult_event` — 20 in total, sourced from `_EXPORT_TABLE_MAP` in `session_store/queries.py`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add messages back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ended_at` for `orchestration_run` and `loop_run`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
+Dumps selected tables as newline-delimited JSON (one record per line, each tagged with a `"type"` field) for visualization or external tooling. `--tables` accepts one or more of: `session`, `issue_event`, `issue_snapshot`, `skill_event`, `loop_event`, `correction`, `summary_node`, `message_event`, `commit_event`, `test_run_event`, `usage_event`, `orchestration_run`, `loop_run`, `session_lifecycle_event`, `harness_event`, `prompt_opt_event`, `verdict_event`, `context_pressure_event`, `review_event`, `advisor_consult_event`, `research_triage_event`, `harness_admission` — 22 in total, sourced from `_EXPORT_TABLE_MAP` in `session_store/queries.py`. When `--tables` is omitted, the default set is every type except `message_event` (pass `--include-messages` to add messages back, or select it explicitly via `--tables`). `--since` filters each table by its own timestamp column (`started_at` for `session`, `created_at` for `summary_node`, `ended_at` for `orchestration_run` and `loop_run`, `ts` for the rest) and accepts an ISO 8601 date or datetime. `-o FILE` / `--output FILE` writes to a file instead of stdout and prints a summary count on success; without it, records stream to stdout with no trailing summary (so output stays pipeable).
 
 ---
 
@@ -492,14 +495,14 @@ ll-history quality               # Fix-rate/correction/cost/tokens/retry-inflati
 
 Both answer "are things getting better or worse," not "what happened" — see
 [Quality Metric Definitions](#quality-metric-definitions) below for what each metric means, and
-`docs/reference/CLI.md`'s `ll-history rework` / `ll-history quality` sections for the full flag
+the [CLI Reference](../reference/CLI.md)'s `ll-history rework` / `ll-history quality` sections for the full flag
 tables.
 
 `ll-history quality --workspace` (FEAT-3410) runs the same per-window analysis once per member
 of a declared `ll-workspace.yaml` manifest, read-only, producing a per-repo breakdown plus a
 skipped-with-reason list for any member whose `history.db` is missing or schema-skewed, plus a
 workspace-wide *totals* number (FEAT-3418) computed over the union of every gated member's
-tables — see `docs/reference/CLI.md`'s "Cross-repo workspace aggregation" subsection for the
+tables — see the [CLI Reference](../reference/CLI.md)'s "Cross-repo workspace aggregation" subsection for the
 full behavior, including the cross-repo id-collision handling and the attach-limit fallback.
 
 `ll-history activity` (FEAT-3446) is the third report in this family: per-repo and union
@@ -517,7 +520,7 @@ gate, extracted into `issue_history/_utils.py` so the two reports read side by s
 silently diverge. (`ll-history activity`, FEAT-3446, is related but deliberately outside this
 convention — its window is `summary`-style inclusive ISO timestamps, not calendar months.)
 This section states each metric's definition once; the CLI flag tables live in
-`docs/reference/CLI.md` and are not restated here.
+the [CLI Reference](../reference/CLI.md) and are not restated here.
 
 | Metric | Command | Formula | Notes |
 |---|---|---|---|

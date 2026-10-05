@@ -123,7 +123,7 @@ The loop follows a structured cycle:
 
    After writing the verification report, `check_done` routes unconditionally to a `count_done` shell state. `count_done` parses both files and emits a JSON object `{"hard_unchecked_dod": N, "soft_unchecked_dod": N, "unchecked_plan": N, "failed_samples": N, "total": N}`, then uses an `output_json` evaluator to route deterministically: `total == 0` → `final_verify`, `total > 0` → `continue_work`, missing file → `diagnose`. The `.total` field is `hard_unchecked_dod + soft_unchecked_dod + unchecked_plan`; `failed_samples` is emitted for observability but does **not** contribute to `.total` — a sample failure already blocks authoritatively by flipping the corresponding criterion back to `[ ]`, which is counted in the DoD terms. The gate applies a two-tier model: hard criteria (tagged `[hard]` at the end of the criterion line) always block; soft criteria (untagged) only block when the overall DoD pass rate falls below `context.min_pass_rate` (default 0.95). This means a loop reaches the terminal gate when all hard criteria are verified and ≥95% of all criteria are checked, even if soft (human-decision) criteria remain unchecked. This removes LLM judgment from the per-iteration termination decision and makes the success contract machine-readable.
 
-   When `count_done` routes to `final_verify`, the loop enters a terminal gate that runs exactly once per successful completion. `final_verify` (prompt) re-verifies **every** DoD criterion independently from evidence — not just the sample — and appends a `## Final Verification` section to the DoD file with per-criterion pass/fail results. Any criterion that fails re-verification is flipped back to `[ ]` in the Verification Criteria list. `final_verify` also runs a **closing consistency sweep** (ENH-2859): it checks that no documentation, docstring, or comment touched during the run states a count or enumeration contradicted by the current code (the "six tools" class of drift), and for any module written before its corresponding verification doc landed, diffs the code against that doc and reconciles the mismatch (knowledge back-propagation for stale-doc rot); sweep failures are appended to the same `## Final Verification` section in the existing `FAILED — <reason>` format. `final_verify` then routes to `run_final_tests` (shell, via the shared `shell_exit` fragment from `lib/common.yaml`) — the **final-only whole-suite gate** (ENH-2225): it reads the command `check_baseline_tests` already resolved from `resolved-test-cmd.txt` (BUG-3269 §3c — the two states can no longer disagree) and gates on its exit code: a `SKIP` baseline (opt-out or unrunnable) passes on `FINAL_EXIT` in `{0, 127}`; a numeric baseline additionally passes on equality with it. `126` (found but not executable) is deliberately never admitted, so any whole-artifact gate embedded in that command (e.g. `--cov-fail-under=N`) is enforced *here*, at completion time, rather than after every step. On a passing exit it routes to `count_final`; on failure it routes to `final_verify_spin_gate`. `count_final` (shell) then counts `FAILED` entries in the most-recent `## Final Verification` section (resetting on each new section header, so only the latest pass is evaluated): zero failures → `summarize_success`; any failures → `final_verify_spin_gate`. `final_verify_spin_gate` (shell, BUG-3270) closes the coverage gap left by `spin_gate`: `run_final_tests`/`count_final` failures never reach `select_step`, so the existing `continue-work-spin-counter.txt` guard cannot see them, and without a second guard the cycle `continue_work → final_verify → run_final_tests → continue_work` would spin forever whenever the final test command is permanently unsatisfiable. It hashes the working tree's content (tracked diff plus untracked-file contents, both scoped away from `${context.run_dir}`) into a per-lap fingerprint stored in its own `final-verify-fingerprint.txt`; a lap that changes anything in the repo resets its own `final-verify-spin-counter.txt` to 0, a byte-identical lap increments it. Under the cap (`context.max_final_verify_spins`, default 2 — trips on the third identical lap) it routes back to `continue_work` (which reads the captured `verify-output.txt` to remediate); at the cap it diverts to `summarize_partial` instead, preserving the run's completed work. In a non-git project (no fingerprint possible) it falls back to counting laps unconditionally against a looser `max_final_verify_spins * 3` bound. `summarize_success` (shell) writes a machine-readable `summary.json` to the run directory (ENH-2365) containing `{"verdict":"success","implemented":<done_count>,"failed_finals":0}` — this file is then copied to `.loops/.history/<run_id>-general-task/` by `archive_run()` so downstream tools (e.g. `audit-loop-run`) can distinguish genuine success from phantom runs. This structurally prevents false-positive completion: reaching terminal `done` always implies every DoD criterion was independently re-verified **and** the whole-suite test command passed in the same iteration. If `final_verify` itself errors or times out (its per-state timeout is 1800s), the loop does **not** collapse to `failed`: `on_error` routes to `summarize_partial`, which writes a prose `summary.md`, then a mechanical `write_partial_summary` shell state writes `summary.json` with `{"verdict":"partial", ...}` criterion counts, and the run ends at a distinct `partial` terminal (ENH-2575) — deliberately neither `done` (which sub-loop routing would treat as success) nor `failed` (which would discard the verified progress).
+   When `count_done` routes to `final_verify`, the loop enters a terminal gate that runs exactly once per successful completion. `final_verify` (prompt) re-verifies **every** DoD criterion independently from evidence — not just the sample — and appends a `## Final Verification` section to the DoD file with per-criterion pass/fail results. Any criterion that fails re-verification is flipped back to `[ ]` in the Verification Criteria list. `final_verify` also runs a **closing consistency sweep** (ENH-2859): it checks that no documentation, docstring, or comment touched during the run states a count or enumeration contradicted by the current code (the "six tools" class of drift), and for any module written before its corresponding verification doc landed, diffs the code against that doc and reconciles the mismatch (knowledge back-propagation for stale-doc rot); sweep failures are appended to the same `## Final Verification` section in the existing `FAILED — <reason>` format. `final_verify` then routes to `run_final_tests` (shell, via the shared `shell_exit` fragment from `lib/common.yaml`) — the **final-only whole-suite gate** (ENH-2225): it reads the command `check_baseline_tests` already resolved from `resolved-test-cmd.txt` (BUG-3269 §3c — the two states can no longer disagree) and gates on its exit code: a `SKIP` baseline (opt-out or unrunnable) passes on `FINAL_EXIT` in `{0, 127}`; a numeric baseline additionally passes on equality with it. `126` (found but not executable) is deliberately never admitted, so any whole-artifact gate embedded in that command (e.g. `--cov-fail-under=N`) is enforced *here*, at completion time, rather than after every step. On a passing exit it routes to `count_final`; on failure it routes to `final_verify_spin_gate`. `count_final` (shell) then counts `FAILED` entries in the most-recent `## Final Verification` section (resetting on each new section header, so only the latest pass is evaluated): zero failures → `check_provisional_markers` (scans files changed since the baseline for `PROVISIONAL`/`TODO`/`GUESS`/`REPLACE BEFORE SHIPPING` markers; none → `summarize_success`, any → `summarize_partial`); any failures → `final_verify_spin_gate`. `final_verify_spin_gate` (shell, BUG-3270) closes the coverage gap left by `spin_gate`: `run_final_tests`/`count_final` failures never reach `select_step`, so the existing `continue-work-spin-counter.txt` guard cannot see them, and without a second guard the cycle `continue_work → final_verify → run_final_tests → continue_work` would spin forever whenever the final test command is permanently unsatisfiable. It hashes the working tree's content (tracked diff plus untracked-file contents, both scoped away from `${context.run_dir}`) into a per-lap fingerprint stored in its own `final-verify-fingerprint.txt`; a lap that changes anything in the repo resets its own `final-verify-spin-counter.txt` to 0, a byte-identical lap increments it. Under the cap (`context.max_final_verify_spins`, default 2 — trips on the third identical lap) it routes back to `continue_work` (which reads the captured `verify-output.txt` to remediate); at the cap it diverts to `summarize_partial` instead, preserving the run's completed work. In a non-git project (no fingerprint possible) it falls back to counting laps unconditionally against a looser `max_final_verify_spins * 3` bound. `summarize_success` (shell) writes a machine-readable `summary.json` to the run directory (ENH-2365) containing `{"verdict":"success","implemented":<done_count>,"failed_finals":0}` — this file is then copied to `.loops/.history/<run_id>-general-task/` by `archive_run()` so downstream tools (e.g. `audit-loop-run`) can distinguish genuine success from phantom runs. This structurally prevents false-positive completion: reaching terminal `done` always implies every DoD criterion was independently re-verified **and** the whole-suite test command passed in the same iteration. If `final_verify` itself errors or times out (its per-state timeout is 1800s), the loop does **not** collapse to `failed`: `on_error` routes to `summarize_partial`, which writes a prose `summary.md`, then a mechanical `write_partial_summary` shell state writes `summary.json` with `{"verdict":"partial", ...}` criterion counts, and the run ends at a distinct `partial` terminal (ENH-2575) — deliberately neither `done` (which sub-loop routing would treat as success) nor `failed` (which would discard the verified progress).
 
    **Hard vs. soft criteria**: Tag each criterion that must be technically verified with `[hard]` at the end of the line (e.g., `- [ ] Tests pass [hard]`). Leave criteria that depend on human decisions or environment state (e.g., "Working tree is clean", "PR approved") untagged — they are non-blocking once the pass rate threshold is met. Override `context.min_pass_rate` per run: `ll-loop run general-task --context min_pass_rate=1.0` to require 100% satisfaction.
 5. **Continue** — `continue_work` handles three cases based on `${captured.work_result.exit_code}`:
@@ -133,7 +133,7 @@ The loop follows a structured cycle:
 
    In all cases `continue_work` captures its output and checks for the literal `WORK_COMPLETE`. If all DoD criteria and all plan steps are already `[x]` and there is genuinely nothing left to remediate, the agent prints `WORK_COMPLETE` and `continue_work` routes directly to `final_verify`, bypassing `select_step`. This escape hatch prevents infinite loops when every criterion is satisfied but `count_done` re-evaluates before the terminal gate can fire. `WORK_COMPLETE` must only be printed when the work is truly done; otherwise `continue_work` appends a remediation step and routes back to `select_step` as normal. `continue_work` does not implement steps directly.
 
-The loop runs up to **500 steps** (`max_steps: 500` in `general-task.yaml:7`) and uses `on_handoff: spawn` to continue across session boundaries. Each **pass** consumes approximately 6 iterations minimum (`select_step` + `do_work` + `verify_step` + `mark_done` + `check_done` + `count_done`), plus a one-time `resume_check` iteration at startup and a one-time four-state terminal gate (`final_verify` + `run_final_tests` + `count_final` + `summarize_success`). With the default `steps_per_pass: 0` a plan is normally one pass plus remediation passes, so the cap is effectively unreachable; under `stepwise-task` (`steps_per_pass: 1`) a pass is one step and the cap supports ~83 plan steps.
+The loop runs up to **500 steps** (the loop's `max_steps: 500`) and uses `on_handoff: spawn` to continue across session boundaries. Each **pass** consumes approximately 6 iterations minimum (`select_step` + `do_work` + `verify_step` + `mark_done` + `check_done` + `count_done`), plus a one-time `resume_check` iteration at startup and a one-time five-state terminal gate (`final_verify` + `run_final_tests` + `count_final` + `check_provisional_markers` + `summarize_success`). With the default `steps_per_pass: 0` a plan is normally one pass plus remediation passes, so the cap is effectively unreachable; under `stepwise-task` (`steps_per_pass: 1`) a pass is one step and the cap supports ~83 plan steps.
 
 The confidence-gated loops use configurable thresholds (defaults: readiness ≥ 85, outcome confidence ≥ 65). Override per-run:
 
@@ -201,11 +201,11 @@ ll-loop run adopt-third-party-api "https://manual.raycast.com/extensions"
 # Scrapes docs → enumerates targets → proves each → writes docs/integration-manual-raycast-com.md
 
 # Gate an issue against the LT registry before implementing
-ll-loop run assumption-firewall --context issue_file=".issues/features/P2-FEAT-1234-my-feature.md"
+ll-loop run assumption-firewall "FEAT-1234"
 # Extracts API assumptions → classifies testable/untestable → proves testable, records untestable via --assume → routes done/blocked/no_external_deps
 
 # Prove a specific list of targets standalone
-ll-loop run ready-to-implement-gate --context targets="stripe.PaymentIntent stripe.Webhook"
+ll-loop run ready-to-implement-gate --context targets="stripe.PaymentIntent,stripe.Webhook"
 # Iterates targets → proves each via /ll:explore-api → routes done or blocked
 
 # Scaffold a proof-backed SDK integration (auto-detects existing usage vs. greenfield)
@@ -306,7 +306,7 @@ init             (shell: mkdir run_dir, touch plan.md / plan-rubric.md / researc
   → load_planning_prompt  (shell: read the current planning-guidance prompt file so
   │                         generate_rubric consumes rn-plan-apo's latest optimized
   │                         text, BUG-2417)
-  → generate_rubric     (prompt: write initial outline + 8-dim rubric at LOW)
+  → generate_rubric     (prompt: write initial outline + 9-dim rubric at LOW)
     → check_substrate   (llm: validate plan actions against env constraints; ENH-2098)
         on_yes (feasible)   → research_iteration
         on_no/partial       → generate_rubric  (revise plan before iterating)
@@ -558,11 +558,12 @@ init               (shell: seed queue from epic-as-input OR comma-separated inpu
 **Usage:**
 
 ```bash
-# Standalone decomposition
-ll-loop run rn-decompose "<issue-id>"
+# Standalone decomposition (issue_id and run_dir are context parameters, not a positional)
+ll-loop run rn-decompose --context issue_id=<ID> \
+  --context run_dir=.loops/runs/<prior-rn-implement-run>/
 
 # Invoked by parent rn-implement with context
-ll-loop run rn-decompose "<issue-id>" \
+ll-loop run rn-decompose --context issue_id=<ID> \
   --context parent_depth=1 \
   --context run_dir=.loops/runs/rn-implement-20260604T130000/
 ```
@@ -618,11 +619,11 @@ snap_for_size_review  (shell: snapshot current scores and pre-review ID list)
 **Usage:**
 
 ```bash
-# Standalone remediation
-ll-loop run rn-remediate "<issue-id>"
+# Standalone remediation (issue_id and run_dir are context parameters, not positionals)
+ll-loop run rn-remediate --context issue_id=<ID> --context run_dir=.loops/runs/<prior-rn-implement-run>/
 
 # With custom thresholds
-ll-loop run rn-remediate "<issue-id>" \
+ll-loop run rn-remediate --context issue_id=<ID> --context run_dir=.loops/runs/<prior-rn-implement-run>/ \
   --context readiness_threshold=90 \
   --context max_remediation_passes=5
 ```
@@ -730,7 +731,7 @@ Phase 5 — Convergence:
 ### `rn-build` — Spec-to-Project Capstone Orchestrator
 
 **Category**: orchestration  
-**File**: `scripts/little_loops/loops/rn-build.yaml`
+**Loop**: `rn-build` (view with `ll-loop show rn-build`)
 
 End-to-end spec-to-project pipeline. Accepts a spec Markdown file and drives the full automated build: spec validation → tech research → design artifacts → **check_substrate** (ENH-2098) → commit → scope EPIC + feature stubs → issue refinement → eval harness → goal-cluster (batched `rn-implement`) → eval gate → **integration/acceptance gate** (FEAT-2414) → structured JSON result.
 
@@ -807,7 +808,7 @@ If normalization fails (e.g., the spec file is empty or contains no project desc
 
 #### Smoke test
 
-Run the built-in integration test to confirm the full pipeline fires without an FSM crash:
+Run a manual one-shot build to confirm the full pipeline fires without an FSM crash:
 
 ```bash
 # Manual one-shot run (30–120 min wall time)
@@ -815,8 +816,6 @@ ll-loop run rn-build \
     --context spec=specs/sample.md \
     --context max_eval_retries=0
 
-# ll-audience-ok: integration test (PYTEST_INTEGRATION=1) that only exists in little-loops' own checkout
-PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_rn_build.py::TestE2E -v -s
 ```
 
 **Manual checklist** — after `ll-loop run` completes, verify:
@@ -944,7 +943,7 @@ Sprint file must exist at `.sprints/<sprint-name>.yaml` (standard sprint locatio
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `sprint_name` | *(positional)* | Name of the sprint to process; set automatically from the positional argument |
-| `skip_learning_gate` | `false` | Skip the learning-tests gate for this run |
+| `skip_learning_gate` | `""` | Skip the learning-tests gate for this run |
 
 **Error behavior:**
 - Missing sprint name → rejected by `required_inputs: [sprint_name]` before the loop runs
@@ -1350,7 +1349,7 @@ assess_context → self_assess → route
 **Diagnosis tags**:
 - `CONTEXT_HEALTHY` — No action needed; scratch dir is below threshold
 - `PRESSURE_SCRATCH` — Scratch files are large; Claude compacts them by summarizing to essential findings
-- `PRESSURE_OUTPUTS` — Output files are stale; archived to `{scratch_dir}/archive/`
+- `PRESSURE_OUTPUTS` — Output files are stale; archived to `.loops/archive/`
 
 **Notes**: `compact_scratch` summarizes large files in-place rather than deleting them — files referenced in active issues are preserved. Use `ll-loop install context-health-monitor` to add a pre-run hook that triggers it automatically before long sprints.
 
@@ -1460,7 +1459,7 @@ ll-loop run test-coverage-improvement --context coverage_target=80
 # Focus on specific directories
 ll-loop run test-coverage-improvement \
   --context coverage_target=85 \
-  --context focus_dirs=scripts/little_loops/fsm
+  --context focus_dirs=src/mypkg
 ```
 
 **Key context variables:**
@@ -1544,8 +1543,6 @@ run_eval → score_results → analyze_failures
 - `failed` — Any state exhausted `max_retries` (2 retries). Check `captured.eval_results` via `ll-loop history agent-eval-improve` to diagnose
 
 **Notes**: Each state has `max_retries: 2` with `on_retry_exhausted: diagnose`. Use `ll-loop install agent-eval-improve` to copy the YAML to `.loops/` and customize scoring logic or add domain-specific evaluation steps.
-
-**Benchmark scoring opt-in (FEAT-1245)**: `agent-eval-improve` ships with optional `run_benchmark` states from `lib/benchmark.yaml` that can replace the default LLM-scored `score_results` step with a Harbor-format scorer command. Install the loop (`ll-loop install agent-eval-improve`) and set `use_benchmark: true` with a `benchmark_scorer` context variable pointing to your scorer command to activate the numeric score path. This is useful when you have a deterministic evaluation harness (e.g., unit tests, exact-match checks) rather than LLM-graded task results.
 
 ### Automatic Prompt Optimization (APO)
 
@@ -1940,7 +1937,7 @@ ll-loop run flux-image-generator "a clean vector illustration of a server rack, 
 |----------|---------|-------------|
 | `description` | (from `loop_input`) | Natural language image description |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/flux-image-generator-{instance_id}/`) for `image.png`, `image-iter-N.png`, `seeds.txt`, `image-prompt.txt`, `brief.md`, `critique.md` |
-| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all five** must clear it |
+| `pass_threshold` | `8` | Minimum score per criterion (1–10); **all five** must clear it |
 | `steps` | `20` | Diffusion steps per generation |
 | `base_seed` | `1` | Seed basis; the per-iteration seed derives from it so a regenerate re-samples the latent instead of re-rendering the same image |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values, or empty |
@@ -2215,7 +2212,7 @@ ll-loop run pixi-data-viz "animated bar chart showing monthly revenue by product
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `description` | (from `loop_input`) | Natural language visualization description — passed as the positional argument |
+| `input` | (from `loop_input`) | Natural language visualization description — passed as the positional argument |
 | `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/pixi-data-viz-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, and `frame_*.png`; created automatically. Override with `--context run_dir=path/`. |
 | `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
 | `pass_threshold` | `6` | Minimum score for non-gated criteria (1–10); `encoding_clarity` is hard-gated at 7 regardless of this value |
@@ -2480,7 +2477,7 @@ on_max_steps: finalize → done  (best.html always published)
 
 **Technique**: RLHF-style generate-score-refine harness for animated SVG artifacts. A **planner** decomposes the natural-language description into a motion choreography brief (elements, timing, easing, palette); a **generator** renders a zero-dependency self-contained HTML file with inline SVG and an `anime.js v3.2.2` CDN `<script>` tag (UMD, `file://`-safe with static-SVG `onerror` fallback); a headless browser **smoke gate** verifies the animation runs without JS errors; and an **image-analysis scorer** evaluates the rendered output on four criteria. Refines until the score target is met. Three phases gate the optimization strategy: explore (iterations 0–5, unconstrained), exploit (6–15, brief-anchored), converge (16+, micro-adjustments only).
 
-**File**: `scripts/little_loops/loops/rlhf-animated-svg.yaml`
+**Loop**: `rlhf-animated-svg` (view with `ll-loop show rlhf-animated-svg`)
 
 **When to use**: When you want an animated SVG/HTML artifact and need motion-quality evaluation, not just static composition. The headless smoke gate (checks for JS errors, verifies `window.__animationReady === true`) and animation-specific rubric are the key differentiators from `svg-image-generator`: a static SVG and a broken animation can look identical in a single screenshot; the smoke gate separates them before the LLM scorer runs.
 
@@ -2756,7 +2753,7 @@ ll-loop run cli-anything-bootstrap --context target="https://github.com/user/rep
 
 **Adversarial minimum-coupling shrink (optional, `enable_shrink: "false"` by default)**: Operationalizes "reusability is a property of minimum coupling, not completeness." For each non-terminal, non-initial state in the emitted artifact, tries removing it and re-splicing routes around it, then probes the candidate with `ll-loop simulate` (reached terminal state) + `ll-loop validate --json` (violation set + warning count). The removal is kept only if all three match the pre-removal baseline exactly — `ll-loop validate` alone is a toothless discriminator for state removal (most single-state removals still validate), so the probe is `simulate`-based, not `validate`-based. Off by default because it has no in-repo precedent and carries the most outcome risk of the six passes.
 
-**Promotion (HITL-gated, `auto_promote: "false"` by default)**: Landing a runnable loop where `loop-router`/`loop-composer` can auto-select it has real blast radius, so promoting the validated artifact from `${context.run_dir}/workflow.yaml` into the project loops dir (`context.loops_dir`, default `.ll/loops`) requires explicit opt-in — mirroring `loop-composer`'s `auto: "false"` safe default. Without `auto_promote`, the run stops at `await_confirmation` and reports the validated draft's path. On promotion, the target name is checked against both `ll-loop list --json` (built-ins + discovered project loops) and the loops dir itself; a collision appends a numeric suffix rather than overwriting, and a built-in name is never shadowed.
+**Promotion (HITL-gated, `auto_promote: "false"` by default)**: Landing a runnable loop where `loop-router`/`loop-composer` can auto-select it has real blast radius, so promoting the validated artifact from `${context.run_dir}/workflow.yaml` into the project loops dir (`context.loops_dir`, default `.loops`) requires explicit opt-in — mirroring `loop-composer`'s `auto: "false"` safe default. Without `auto_promote`, the run stops at `await_confirmation` and reports the validated draft's path. On promotion, the target name is checked against both `ll-loop list --json` (built-ins + discovered project loops) and the loops dir itself; a collision appends a numeric suffix rather than overwriting, and a built-in name is never shadowed.
 
 **Usage:**
 
@@ -2819,7 +2816,7 @@ Five orchestration loops address different goal shapes:
 ### `loop-composer` — Multi-Loop DAG Orchestrator
 
 **Category**: orchestration  
-**File**: `scripts/little_loops/loops/loop-composer.yaml`
+**Loop**: `loop-composer` (view with `ll-loop show loop-composer`)
 
 Accepts a natural-language goal too large for a single loop, decomposes it into an ordered DAG of up to 8 loop invocations, presents the plan for HITL approval (unless `auto=true`), then walks the DAG sequentially, returning a JSON summary of all step results.
 
@@ -2862,7 +2859,7 @@ discover_loops → decompose_goal → (auto=true → execute_plan | approve_plan
 ### `loop-composer-adaptive` — Fault-Tolerant Composer
 
 **Category**: orchestration  
-**File**: `scripts/little_loops/loops/loop-composer-adaptive.yaml`
+**Loop**: `loop-composer-adaptive` (view with `ll-loop show loop-composer-adaptive`)
 
 Adaptive variant of `loop-composer`. Decomposes a goal into a DAG the same way, but when a sub-loop fails the adaptive variant invokes a **reassess gate** that decides one of:
 
@@ -2901,7 +2898,7 @@ Config knobs: `orchestration.composer.max_plan_nodes`, `orchestration.composer.a
 ### `goal-cluster` — Multi-Goal Batch Orchestrator
 
 **Category**: orchestration  
-**File**: `scripts/little_loops/loops/goal-cluster.yaml`
+**Loop**: `goal-cluster` (view with `ll-loop show goal-cluster`)
 
 Multi-goal orchestrator for sprint- or EPIC-shaped input. Accepts a list of goals, normalizes them, groups related goals into batches by predicted loop, executes each batch sequentially with per-batch reassess gates on failure, propagates cross-cutting context ("hints") between batches, and synthesizes a cluster-wide summary.
 
@@ -2964,7 +2961,7 @@ load_goals → normalize_goals → plan_batches → (auto=false → approve_plan
 
 Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
 
-This section documents eight loops. Six resolve to `category: apo` — `apo-textgrad`, `apo-beam`, and `apo-opro` declare it directly; `apo-contrastive`, `apo-feedback-refinement`, and `rn-plan-apo` inherit it via `from: lib/apo-base`. The remaining two are grouped here for workflow reasons rather than category: `examples-miner` is `category: data` and `prompt-regression-test` is `category: evaluation`.
+This section documents eight loops. Six resolve to `category: apo` — `apo-textgrad`, `apo-beam`, and `apo-opro` declare it directly; `rn-plan-apo` inherits it via `from: lib/apo-base`, and `apo-contrastive` and `apo-feedback-refinement` inherit it via `from: lib/apo-shape-a` (which itself inherits `lib/apo-base`). The remaining two are grouped here for workflow reasons rather than category: `examples-miner` is `category: data` and `prompt-regression-test` is `category: evaluation`.
 
 ---
 
@@ -3310,7 +3307,7 @@ ll-loop run examples-miner \
   --context prompt_file=skills/capture-issue/SKILL.md
 ```
 
-**Oracle sub-loop (v2)**: The `scripts/little_loops/loops/oracles/oracle-capture-issue.yaml` file provides a two-phase oracle (mechanical checks + semantic LLM scoring) that can be promoted to a sub-loop in a customized `examples-miner.yaml` via `loop: oracles/oracle-capture-issue` + `context_passthrough: true` on the `judge` state. The built-in `examples-miner.yaml` uses inline oracle scoring (v1 approach) — install and customize to enable sub-loop promotion.
+**Oracle sub-loop (v2)**: The `oracles/oracle-capture-issue` loop provides a two-phase oracle (mechanical checks + semantic LLM scoring) that can be promoted to a sub-loop in a customized `examples-miner.yaml` via `loop: oracles/oracle-capture-issue` + `context_passthrough: true` on the `judge` state. The built-in `examples-miner.yaml` uses inline oracle scoring (v1 approach) — install and customize to enable sub-loop promotion.
 
 ---
 
@@ -3479,7 +3476,7 @@ State mode activates when `context.targets` points to a loop YAML file whose `ta
 ```yaml
 # .ll/program.md
 ## Targets
-- file: scripts/little_loops/loops/my-loop.yaml
+- file: .loops/my-loop.yaml
   states:
     - name: propose
       examples_file: .ll/examples/propose.jsonl
@@ -3555,7 +3552,7 @@ harvest becomes the lexically-newest sidecar, i.e. the baseline for the next man
 
 ## Built-in Fragment Libraries
 
-Eleven libraries ship with little-loops, all in `scripts/little_loops/loops/lib/`: `common.yaml`, `benchmark.yaml`, `score-plan-quality.yaml`, `cli.yaml`, `prompt-fragments.yaml`, `harness.yaml`, `apo-base.yaml`, `apo-shape-a.yaml`, `rubric-router.yaml`, `policy-router.yaml`, and `composer.yaml`.
+Eleven libraries ship with little-loops, all in the built-in `lib/*.yaml` directory: `common.yaml`, `benchmark.yaml`, `score-plan-quality.yaml`, `cli.yaml`, `prompt-fragments.yaml`, `harness.yaml`, `apo-base.yaml`, `apo-shape-a.yaml`, `rubric-router.yaml`, `policy-router.yaml`, and `composer.yaml`.
 
 ### `lib/common.yaml` — type-pattern fragments
 
@@ -3660,7 +3657,7 @@ states:
 | `ll_history_summary` | `ll-history summary` | Print completed issue history summary. Override `action` to add `2>/dev/null` fallback. |
 | `ll_check_links` | `ll-check-links 2>&1` | Check markdown docs for broken links. Exit code is broken-only (ENH-2836); unreachable/timeout links are reported but don't fail. |
 | `ll_messages` | `ll-messages --stdout` | Extract user messages from session logs. Override `action` to add `--skill`, `--examples-format`, etc. |
-| `ll_deps` | `ll-deps check` | Validate cross-issue dependency references. |
+| `ll_deps` | `ll-deps validate` | Validate cross-issue dependency references. |
 | `ll_sprint_list` | `ll-sprint list` | List all defined sprint files. |
 | `ll_parallel` | `ll-parallel` | Process issues concurrently using isolated worktrees. |
 | `ll_workflows` | `ll-workflows` | Identify workflow patterns from user message history. |
@@ -3713,7 +3710,7 @@ states:
 
 ### `lib/apo-base.yaml` — APO base loop skeleton
 
-Base skeleton for Automated Prompt Optimization (APO) loops. Unlike the other ten libraries (which are fragment collections), this is a **loop template** inherited via `from:` rather than `import:`. Provides the common `category`, `max_steps`, `timeout`, `on_handoff`, `context.prompt_file`, and a terminal `done` state. Child loops (e.g. `apo-beam`, `apo-textgrad`, `apo-opro`, `apo-contrastive`, `apo-feedback-refinement`) inherit from it and supply their own `initial:` state and operative state graph.
+Base skeleton for Automated Prompt Optimization (APO) loops. Unlike the other ten libraries (which are fragment collections), this is a **loop template** inherited via `from:` rather than `import:`. Provides the common `category`, `max_steps`, `timeout`, `on_handoff`, `context.prompt_file`, and a terminal `done` state. Child loops inherit from it — directly (e.g. `apo-beam`, `apo-textgrad`, `apo-opro`, `rn-plan-apo`) or via `lib/apo-shape-a`, which itself inherits `lib/apo-base` (`apo-contrastive`, `apo-feedback-refinement`) — and supply their own `initial:` state and operative state graph.
 
 ```yaml
 from: lib/apo-base

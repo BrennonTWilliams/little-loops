@@ -44,7 +44,7 @@ The point is to stop re-discovering the same API behavior every session. Once a 
 ll-learning-tests check "Anthropic SDK streaming"
 
 # 3. Future sessions: skip re-discovery
-ll-learning-tests check "Anthropic SDK streaming" && echo "already proven, reuse it"
+ll-learning-tests check "Anthropic SDK streaming" --stale-aware && echo "already proven, reuse it"
 ```
 
 The record lives at `.ll/learning-tests/anthropic-sdk-streaming.md`. The raw proof output is at `.ll/learning-tests/raw/anthropic-sdk-streaming.txt`.
@@ -168,15 +168,16 @@ To turn the whole mechanism off, set `learning_tests.version_aware_staleness: fa
 
 ## CLI Reference
 
-`ll-learning-tests` owns reads, stale-marking, and (via `prove`) triggering the existing proving loop — it never hand-writes a registry record directly. Record creation remains owned by `/ll:explore-api` so the prompt context that produces the record also captures the reasoning behind it; `prove` just orchestrates that existing skill/loop for callers that only have a bare target, not an issue file.
+`ll-learning-tests` owns reads, stale-marking, issue-level verdicts (via `assess`), and (via `prove`) triggering the existing proving loop — it never hand-writes a registry record directly. Record creation remains owned by `/ll:explore-api` so the prompt context that produces the record also captures the reasoning behind it; `prove` just orchestrates that existing skill/loop for callers that only have a bare target, not an issue file.
 
 | Subcommand | Purpose | Exit |
 |---|---|---|
-| `check "<target>" [--stale-aware]` | Print the matching record as JSON. With `--stale-aware`, exits `1` if the record is missing, has a non-proven status (`refuted` or `stale`), or is proven but stale (version drift or age — see [What Makes a Record Stale](#what-makes-a-record-stale)). Exits `0` only when status is `proven` and not stale. Used by gates that treat non-proven or aged records as "needs re-proof". | `0` if found and not stale, `1` if missing, non-proven, or stale |
+| `check "<target>" [--stale-aware]` | Print the matching record as JSON. With `--stale-aware`, exits `1` if the record is missing, has a non-proven status (`refuted` or `stale`), or is proven but stale (version drift or age — see [What Makes a Record Stale](#what-makes-a-record-stale)). Exits `0` only when status is `proven` and not stale. Used by gates that treat non-proven or aged records as "needs re-proof". | `0` if found, `1` if missing; with `--stale-aware`, `0` only if proven and not stale |
 | `list` | Print every record as a JSON array | always `0` |
 | `mark-stale "<target>"` | Set `status: stale` on an existing record | `0` on success, `1` if not found |
-| `orphans [--mark-stale] [--scope DIRS]` | List records whose target package is not imported by any project file. Orphaned records accumulate when you remove a dependency or rename an integration. With `--mark-stale`, atomically sets `status: stale` on all orphans. `--scope DIRS` overrides the default import-scan directories (comma-separated; defaults to `learning_tests.scan_dirs` config key or `scripts/`). | `0` if no orphans found, or with `--mark-stale`; `1` if orphans exist |
+| `orphans [--mark-stale] [--scope DIRS]` | List records whose target package is not imported by any project file. Orphaned records accumulate when you remove a dependency or rename an integration. With `--mark-stale`, atomically sets `status: stale` on all orphans. `--scope DIRS` overrides the default import-scan directories (comma-separated; defaults to the `learning_tests.scan_dirs` config key or `scripts/`; set `learning_tests.scan_dirs` to your own source directories, e.g. `["src/"]`). | `0` if no orphans found, or with `--mark-stale`; `1` if orphans exist |
 | `prove "<target>"` | Target-addressed proving (ENH-2430) — no issue file required. Shells to `ll-loop run ready-to-implement-gate --context targets=<target>` (see [Using Learning Tests in Loops](#using-learning-tests-in-loops)), then stamps `proven_package`/`proven_version` (ENH-3125) and prints the refreshed record. | `0` if the target ends `proven`, `1` if `refuted` or still missing |
+| `assess --issue <ID> [--json]` | Print the issue's aggregated `ProofStatus` verdict (registry targets + spike proof + attempt budget). | `0` proven/not_required, `1` stale/refuted/absent, `2` unresolvable |
 | `backfill-versions [--dry-run]` | Stamp `proven_package`/`proven_version` onto existing records so they participate in version-drift staleness (ENH-3125). Stdlib and unresolvable targets are left untouched. Idempotent. | always `0` |
 
 ```bash
@@ -262,7 +263,7 @@ Six named loops (five direct entry points, plus one shared internal sub-loop) co
 | `assumption-firewall` | You have an issue file and want the gate to extract and validate API assumptions for you before you start writing code. |
 | `integrate-sdk` | You are starting from an SDK discovery (greenfield or existing usage) and want proof-backed scaffolding with citation comments in the output. |
 | `adopt-third-party-api` | You are starting from a vendor docs URL and want an end-to-end pipeline: scrape → enumerate endpoints → prove each → write an integration playbook. |
-| `proof-first-task` | **Recommended default** — wraps any implementation loop with a Learning-Test Registry gate. Use this when you are not sure which specific gate fits; it proves a caller-supplied `targets_csv` directly when given, otherwise falls back to `assumption-firewall` for automatic assumption extraction, and delegates to `general-task` (or a caller-specified impl loop) once proven. |
+| `proof-first-task` | **Recommended default** — wraps any implementation loop with a Learning-Test Registry gate. Use this when you are not sure which specific gate fits; it proves a caller-supplied `targets_csv` directly when `issue_file` is also supplied (with no `issue_file` the gate is skipped and the impl loop runs directly), otherwise falls back to `assumption-firewall` for automatic assumption extraction, and delegates to `general-task` (or a caller-specified impl loop) once proven. |
 
 See [LOOPS_REFERENCE.md → API Adoption](LOOPS_REFERENCE.md#api-adoption) for the full description and `Run:` examples for each loop.
 
@@ -298,7 +299,7 @@ The loop enumerates installed packages (pip + npm), uses the LLM to map record t
 
 **`/ll:explore-api` asks to overwrite a record I want to keep**
 
-This only happens in an interactive human session — Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. Automated callers (FSM loops, `ll-action invoke`, or any invocation with `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS`/`--auto` set) never see this prompt — they always get a fresh exploration, since a stale/proven record with nobody available to answer is the normal re-prove case, not an ambiguity. To reuse a record from a script instead, run `ll-learning-tests check "<target>"` first and skip the skill call if exit code is 0.
+This only happens in an interactive human session — Phase 1 (Ingest) prompts before overwriting. Answer "reuse" to short-circuit. Automated callers (FSM loops, `ll-action invoke`, or any invocation with `LL_NON_INTERACTIVE`/`DANGEROUSLY_SKIP_PERMISSIONS`/`--auto` set) never see this prompt — they always get a fresh exploration, since a stale/proven record with nobody available to answer is the normal re-prove case, not an ambiguity. To reuse a record from a script instead, run `ll-learning-tests check "<target>" --stale-aware` first and skip the skill call if exit code is 0.
 
 > Loop-state troubleshooting (`type: learning` states that re-trigger, `No valid transition` errors) lives in [LOOPS_GUIDE.md → Troubleshooting](LOOPS_GUIDE.md#troubleshooting).
 
@@ -317,7 +318,7 @@ This only happens in an interactive human session — Phase 1 (Ingest) prompts b
    → Add a comment: # Verified shape: .ll/learning-tests/httpx-asyncclient.md
 
 4. Future sessions and agents skip re-discovery — the record is there
-   → ll-learning-tests check "httpx AsyncClient" → exit 0, prints the record
+   → ll-learning-tests check "httpx AsyncClient" --stale-aware → exit 0, prints the record
 ```
 
 **Prove before integrating.** Run `/ll:explore-api` against any new SDK, undocumented HTTP API, or stdlib corner you're uncertain about *before* writing the integration code. Cheaper than discovering the behavior mid-implementation.
@@ -364,7 +365,7 @@ When `learning_tests.enabled` is `true`, little-loops surfaces learning-test gap
 
 ### How it works
 
-Whenever Claude Code is about to execute a `Write` or `Edit` tool call, the hook parses the file content for external package imports (`import stripe`, `from httpx import ...`, `require('openai')`, etc.) and queries the Learning Test Registry for each package. If a package has no proven record, a one-line hint is emitted before the write proceeds.
+Whenever Claude Code is about to execute a `Write` or `Edit` tool call, the hook parses the file content for external package imports (`import stripe`, `from httpx import ...`, `require('openai')`, etc.) and queries the Learning Test Registry for each package. If a package has no proven, non-stale record, a one-line hint is emitted before the write proceeds.
 
 ### Configuration
 
@@ -373,7 +374,7 @@ Controlled by the `learning_tests.discoverability` block in `.ll/ll-config.json`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `discoverability.mode` | `str` | `"warn"` | `"off"` — silent; `"warn"` — emits hint, allows tool call; `"block"` — injects feedback into model context and blocks the write. |
-| `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Package names that are never flagged (stdlib, type stubs, internal). Unioned at runtime with a hardcoded `_BUILTIN_SKIP` set (`__future__`, `__builtins__`, `typing_extensions`, `abc`, `io`, `re`, `json`) in `scripts/little_loops/hooks/learning_tests_gate.py` — these are always skipped and cannot be re-enabled via config. |
+| `discoverability.skip_packages` | `list[str]` | `["std", "typing", "os", "sys"]` | Package names that are never flagged (stdlib, type stubs, internal). Unioned at runtime with a hardcoded `_BUILTIN_SKIP` set (`__future__`, `__builtins__`, `typing_extensions`, `abc`, `io`, `re`, `json`) in `little_loops.hooks.learning_tests_gate` — these are always skipped and cannot be re-enabled via config. |
 
 Enabling the gate:
 
@@ -409,7 +410,7 @@ Or, to suppress the hint for a specific package without adding it to the skip li
 
 ### Caching
 
-The gate caches each package lookup for the lifetime of the hook process (`_SESSION_CACHE` is module-level in `scripts/little_loops/hooks/learning_tests_gate.py`). Re-running `/ll:explore-api "<target>"` while the same hook process is alive will not pick up freshly-proven records; restart the session to clear the cache.
+The gate caches each package lookup for the lifetime of the hook process (`_SESSION_CACHE` is module-level in `little_loops.hooks.learning_tests_gate`). Re-running `/ll:explore-api "<target>"` while the same hook process is alive will not pick up freshly-proven records; restart the session to clear the cache.
 
 ---
 

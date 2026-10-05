@@ -7,7 +7,7 @@ Use this when you want to discover automation opportunities in your own working 
 **New? Jump straight to the quick start:**
 
 ```bash
-ll-messages -n 200              # 1. Extract your recent messages
+ll-messages --include-cli -n 200  # 1. Extract your recent messages
 /ll:analyze-workflows           # 2. Run the full pipeline (auto-detects the file)
 # Results: .ll/workflow-analysis/summary-*.md
 ```
@@ -42,7 +42,7 @@ Read the rest of this guide if you want to interpret the output, run steps manua
   - [Quick pattern check (Step 1 patterns only)](#quick-pattern-check-step-1-patterns-only)
   - [Fresh proposals from existing data](#fresh-proposals-from-existing-data)
   - [Extract only recent messages](#extract-only-recent-messages)
-  - [Filter messages by type (`--skip-cli` / `--commands-only`)](#filter-messages-by-type---skip-cli----commands-only)
+  - [Filter messages by type (`--include-cli` / `--commands-only`)](#filter-messages-by-type---include-cli----commands-only)
   - [Sequences-driven loop suggestions (`ll-logs sequences`)](#sequences-driven-loop-suggestions-ll-logs-sequences)
 - [See Also](#see-also)
 
@@ -100,7 +100,7 @@ ll-messages --include-cli --stdout
 ll-messages --include-cli --include-response-context
 ```
 
-The output is a JSONL file (one JSON object per line) at `.claude/user-messages-{timestamp}.jsonl`. Each line has at minimum a `content` field with the message text and a `timestamp` field.
+The output is a JSONL file (one JSON object per line) at `.ll/user-messages-{timestamp}.jsonl`. Each line has at minimum a `content` field with the message text and a `timestamp` field.
 
 Key flags reference:
 
@@ -108,8 +108,9 @@ Key flags reference:
 |------|-------|-------------|
 | `--limit N` | `-n N` | Max messages to extract (default: 100) |
 | `--since DATE` | `-S` | Only messages after this date (YYYY-MM-DD or ISO) |
-| `--output FILE` | `-o FILE` | Output file path (default: `.claude/user-messages-{timestamp}.jsonl`) |
+| `--output FILE` | `-o FILE` | Output file path (default: `.ll/user-messages-{timestamp}.jsonl`) |
 | `--cwd DIR` | | Working directory to use (default: current directory) |
+| `--host HOST` | | Restrict extraction to one host (e.g. `claude-code`, `codex`, `opencode`); default is all registered hosts (or `LL_HOOK_HOST` if set) |
 | `--exclude-agents` | | Exclude agent session files (`agent-*.jsonl`) |
 | `--stdout` | | Print to terminal instead of file |
 | `--verbose` | `-v` | Show progress information |
@@ -129,7 +130,7 @@ Key flags reference:
 The simplest way to run all three steps is the single orchestrating command:
 
 ```bash
-# Auto-detect most recent messages file in .claude/
+# Auto-detect most recent messages file in .ll/
 /ll:analyze-workflows
 
 # Use a specific file
@@ -227,7 +228,7 @@ You can run Step 2 independently — useful if you've run Step 1 manually or wan
 ```bash
 # Shortest form — assumes step1-patterns.yaml already exists from a prior Step 1 agent run;
 # writes ll-messages output to ll-workflows' default --input path so it's found automatically
-ll-messages --output .ll/workflow-analysis/step1-patterns.jsonl
+ll-messages --include-cli --output .ll/workflow-analysis/step1-patterns.jsonl
 ll-workflows analyze --patterns .ll/workflow-analysis/step1-patterns.yaml
 
 # Explicit input
@@ -255,13 +256,13 @@ ll-workflows analyze \
 
 The CLI performs four analyses on your messages:
 
-1. **Session linking** — identifies when a message in one session continues work from a prior session (by matching entity names, file paths, or explicit references). Links are scored by entity overlap.
+1. **Session linking** — identifies when a message in one session continues work from a prior session (scored from shared signals: the same git branch, +0.4; a handoff marker such as `/ll:handoff` or "continuation of", +0.4; entity overlap, +0.2 or +0.1 for partial overlap). A link is kept when its score exceeds 0.3.
 
-2. **Entity clustering** — groups messages that reference the same files, commands, or named concepts. A cluster becomes a workflow candidate if it has ≥ 3 messages and a cohesion score above the threshold.
+2. **Entity clustering** — groups messages that reference the same files, commands, or named concepts. Clustering uses only `--overlap-threshold` (Jaccard similarity on entity overlap); workflows come from boundary detection and template matching, not from clusters alone.
 
 3. **Boundary detection** — finds transitions between distinct workflows by looking for topic shifts, time gaps between sessions, and changes in entity sets. These boundaries separate one workflow from the next.
 
-4. **Template matching** — compares detected workflows against known patterns (e.g., "issue management cycle", "code review and fix", "test-fix-lint loop", "PR preparation") and scores each match. High-confidence matches get labeled with the template name.
+4. **Template matching** — compares detected workflows against five known templates: `explore → modify → verify`, `create → refine → finalize`, `review → fix → commit`, `plan → implement → verify`, and `debug → fix → test`. A match needs at least 2 template steps appearing in order; confidence is matched steps divided by template length. High-confidence matches get labeled with the template name.
 
 ## The Automation Proposer: `/ll:workflow-automation-proposer`
 
@@ -344,7 +345,7 @@ Variable definitions:
 
 Friction indicators: debug/fix/test cycles, multiple session spans, retry keywords in messages, error keywords in context.
 
-> **Note on LOW priority proposals**: LOW priority items (score < 4) are generated for patterns with 1–2 occurrences that still show friction or workflow involvement. The "Frequency ≥ 5" target in [What It Looks For](#what-it-looks-for) is the threshold for emphasis during analysis — patterns below it may still appear as LOW priority proposals when friction or workflow signals are present.
+> **Note on LOW priority proposals**: The proposer skips patterns with fewer than 3 occurrences, so LOW priority proposals (score < 4) come from patterns that appear at least 3 times but score low on friction and workflow involvement. The "Frequency ≥ 5" target in [What It Looks For](#what-it-looks-for) is the threshold for emphasis during analysis.
 
 ### Effort Estimation
 

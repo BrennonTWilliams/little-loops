@@ -22,6 +22,7 @@ Automatic context management and session continuation for long-running tasks.
   - [Transcript Baseline Mode (Default)](#transcript-baseline-mode-default)
   - [Token Estimation Weights](#token-estimation-weights)
 - [Files](#files)
+  - [State File Format](#state-file-format)
 - [Troubleshooting](#troubleshooting)
 - [Best Practices](#best-practices)
 - [Integration](#integration)
@@ -225,19 +226,20 @@ Resuming from previous session
 ─────────────────────────────────────────────────────────────────
 [Continuation prompt content displayed]
 ─────────────────────────────────────────────────────────────────
-
-Ready to continue. What would you like to do next?
 ```
+
+Claude shows a structured header (Intent and Next Steps, taken from the prompt's sections) and then proceeds directly with the Next Steps rather than asking what to do.
 
 **Error — file not found:**
 
-If the specified path does not exist, `/ll:resume` reports an error and stops:
+If no continuation prompt exists, `/ll:resume` reports the problem and stops:
 
 ```
-Error: No continuation prompt found at .ll/ll-continue-prompt.md
+No continuation state found.
 
-Run /ll:handoff to generate one, or specify a custom path:
-  /ll:resume path/to/custom-prompt.md
+To create a handoff point:
+  /ll:handoff              Generate continuation prompt
+  /ll:handoff "context"    With explicit context description
 ```
 
 ## Configuration
@@ -267,11 +269,12 @@ Run /ll:handoff to generate one, or specify a custom path:
     "include_todos": true,
     "include_git_status": true,
     "include_recent_files": true,
-    "max_continuations": 3,
     "prompt_expiry_hours": 24
   }
 }
 ```
+
+The ll-auto / ll-parallel continuation limit is set separately via `automation.max_continuations` (see the reference table below).
 
 ### Configuration Reference
 
@@ -292,10 +295,10 @@ Run /ll:handoff to generate one, or specify a custom path:
 | `continuation.include_todos` | `true` | Include current todo list state in deep mode handoff output |
 | `continuation.include_git_status` | `true` | Include git status in deep mode handoff output |
 | `continuation.include_recent_files` | `true` | Include recently modified files in deep mode handoff output |
-| `continuation.max_continuations` | `3` | Max auto-continuations per issue (automation) |
+| `automation.max_continuations` | `3` | Max auto-continuations per issue (`ll-auto` / `ll-parallel`) |
 | `continuation.prompt_expiry_hours` | `24` | Hours before prompt marked stale |
 
-The threshold can also be overridden per-run via the `--handoff-threshold` CLI flag (1-100), which takes precedence over the config value. It is available on `ll-auto`, `ll-parallel`, `ll-sprint run`, and — via `add_handoff_threshold_arg` in `cli_args.py` — on `ll-loop run` and `ll-loop resume` as well, where it sets the `LL_HANDOFF_THRESHOLD` environment variable consumed by the context-monitor hook:
+The threshold can also be overridden per-run via the `--handoff-threshold` CLI flag (1-100), which takes precedence over the config value. It is available on `ll-auto`, `ll-parallel`, `ll-sprint run`, and on `ll-loop run` and `ll-loop resume` as well, where it sets the `LL_HANDOFF_THRESHOLD` environment variable consumed by the context-monitor hook:
 
 ```bash
 ll-auto --handoff-threshold 90      # Trigger handoff at 90% for this run
@@ -350,9 +353,10 @@ The context monitor estimates the current-turn delta based on tool activity:
 | `.ll/ll-continue-prompt.md` | Generated continuation prompt |
 | `.ll/ll-context-state.json` | Running context usage state |
 | `.ll/ll-context-handoff-needed` | Sentinel written by `Stop → context-handoff-sentinel.sh` when the session ended context-heavy (≥ ~50% estimated) — consumed by `run_with_continuation` and the next session |
-| `.ll/ll-precompact-state.json` | Idempotency guard written by `pre_compact.py::handle()` (invoked via `precompact.sh`); read by `precompact-handoff.sh` to prevent duplicate continuation-prompt writes |
+| `.ll/ll-precompact-state.json` | Idempotency guard written by the PreCompact hook; read by `precompact-handoff.sh` to prevent duplicate continuation-prompt writes |
+| `.ll/ll-context-crossings.log` | Appended by the context monitor at each first threshold crossing |
 
-> **Note**: `.ll/ll-session-state.json` is mentioned in `commands/resume.md` but is not currently produced by any hook or script. `FEAT-1680` (session-end hook sweeping stale cross-issue status refs) landed, but it only sweeps stale cross-issue status prose — it does not write `.ll/ll-session-state.json`. Treat the `commands/resume.md` reference as legacy documentation.
+> **Note**: `.ll/ll-session-state.json` is not currently written by any hook.
 
 ### State File Format
 
@@ -454,17 +458,13 @@ Ensure the handoff command outputs the signal:
 CONTEXT_HANDOFF: Ready for fresh session
 ```
 
-Check `scripts/little_loops/subprocess_utils.py` detection pattern:
-
-```python
-CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
-```
+The detection (in `little_loops.subprocess_utils`) matches the text `CONTEXT_HANDOFF:` followed by `Ready for fresh session`.
 
 ### Max continuations reached
 
-If you see "Reached max continuations", the issue required more than 3 session restarts. Options:
+Once `continuation_count >= max_continuations`, the automation loop silently stops starting new sessions, so an issue that needed more than 3 session restarts is left unfinished. Options:
 
-1. Increase `continuation.max_continuations` in config
+1. Increase `automation.max_continuations` in config
 2. Break the issue into smaller tasks
 3. Run remaining work manually
 
@@ -506,19 +506,12 @@ The `/ll:handoff` command auto-generates prompts from conversation history. You 
 ### With Other Hooks
 
 - **PostToolUse hook**: Monitors context usage and triggers handoff reminders
-- **Stop hook**: Cleans up context state when the session ends by deleting `.ll/ll-context-state.json`; the continuation prompt `.ll/ll-continue-prompt.md` is preserved for use by `/ll:resume`
+- **Stop hook**: Cleans up context state on Stop (and `SessionStart` also resets it) by deleting `.ll/ll-context-state.json`; the continuation prompt `.ll/ll-continue-prompt.md` is preserved for use by `/ll:resume`
 - **PreCompact hook** (`precompact-handoff.sh`): Writes `.ll/ll-continue-prompt.md` passively before context compaction; use `/ll:resume` after compaction to re-inject the continuation prompt — passive counterpart to the active `/ll:handoff` command
 
 ### With Automation Tools
 
-Both `ll-auto` and `ll-parallel` support automatic continuation:
-
-```python
-# In issue_manager.py and worker_pool.py
-if detect_context_handoff(result.stdout):
-    prompt_content = read_continuation_prompt(repo_path)
-    # Spawn fresh session with prompt
-```
+Both `ll-auto` and `ll-parallel` support automatic continuation: they detect the `CONTEXT_HANDOFF` signal in session output, read `.ll/ll-continue-prompt.md`, and start a fresh session with it.
 
 ## See Also
 

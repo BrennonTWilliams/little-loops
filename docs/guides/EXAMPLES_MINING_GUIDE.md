@@ -90,7 +90,7 @@ Two loops coupled together:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-The **outer loop** mines, calibrates, and publishes the corpus. The **inner loop** (`apo-textgrad`) runs as a child FSM (finite-state machine) via sub-loop chaining (`context_passthrough: true`), inheriting the outer loop's `prompt_file` and `examples_file`. After the inner loop completes, the outer loop reads its gradient signal from `${captured.run_optimizer.gradient.output}` and uses it to synthesize adversarial examples that target the exact failure pattern the optimizer found.
+The **outer loop** mines, calibrates, and publishes the corpus. The **inner loop** (`apo-textgrad`) runs as a child FSM (finite-state machine) via sub-loop chaining (`context_passthrough: true`). The child's own declared context values win over the parent's, so `apo-textgrad` reads its own `prompt_file` and `examples_file` defaults rather than any override you pass to the miner. After the inner loop completes, the outer loop reads its gradient signal from `${captured.run_optimizer.gradient.output}` and uses it to synthesize adversarial examples that target the exact failure pattern the optimizer found.
 
 ---
 
@@ -112,7 +112,7 @@ The **outer loop** mines, calibrates, and publishes the corpus. The **inner loop
 # 1. Check that session data exists for the skill
 ll-messages --skill capture-issue --examples-format --stdout | head -3
 
-# 2. First run: mine all history, optimize the prompt, publish examples.json
+# 2. First run: mine recent history, optimize the prompt, publish examples.json
 ll-loop run examples-miner \
   --context skill_name=capture-issue \
   --context prompt_file=skills/capture-issue/SKILL.md
@@ -129,7 +129,7 @@ print('Difficulty range:', min(e.get(\"difficulty_score\", 0) for e in data),
 "
 ```
 
-On the first run, no `corpus.last_harvested` sentinel exists so all session history is harvested. Subsequent runs are incremental — only sessions newer than the sentinel are re-processed.
+On the first run, no `corpus.last_harvested` sentinel exists so up to the 100 most recent examples are harvested (`ll-messages --limit` default; `harvest` does not override it). Subsequent runs are incremental — only sessions newer than the sentinel are re-processed.
 
 ---
 
@@ -157,13 +157,13 @@ The `harvest` state runs `ll-messages` with `--examples-format` to extract `(inp
 }
 ```
 
-> **ResponseMetadata** — A JSON object automatically captured by little-loops at issue completion.
+> **ResponseMetadata** — A JSON object derived at harvest time from the session transcript.
 > Key fields: `tools_used` (array of `{tool, count}` objects), `files_read` (array), `files_modified` (array), `completion_status` (string: `"success" | "failure" | "partial"`), `error_message` (string or `null`).
-> You don't create this manually — the harness captures it automatically.
+> You don't create this manually — `ll-messages` derives it when `harvest` runs.
 
 **Important**: the `output` field is not free text. It is a JSON-serialized `ResponseMetadata` object recording what tools the agent used and what files it changed — not the raw assistant response. The oracle judge evaluates tool choices and file changes, not prose quality.
 
-On the first run, no sentinel file exists and all sessions are harvested. On subsequent runs, `--since $(cat corpus.last_harvested)` limits the query to sessions added after the last publish.
+On the first run, no sentinel file exists and up to the 100 most recent examples are harvested (`ll-messages --limit` default; `harvest` does not override it). On subsequent runs, `--since $(cat corpus.last_harvested)` limits the query to sessions added after the last publish.
 
 ---
 
@@ -238,6 +238,8 @@ This range targets non-trivial but learnable examples — too easy (< 40) provid
 
 If `corpus_state_file` (default: `corpus.json`) exists, calibrate loads it, decays each existing entry's `freshness_weight` by ×0.9, and merges with today's included set (deduplicating by input text). This preserves the accumulated corpus across runs while progressively down-weighting stale examples.
 
+> **Note**: no state in `examples-miner` writes `corpus_state_file` (`corpus.json`). Decay only applies if you create that file yourself, for example by copying the published `examples.json` to `corpus.json` between runs.
+
 The output is a JSON array capturing all metadata. The final line is a sentinel: `CALIBRATED_COUNT=N`.
 
 ---
@@ -251,17 +253,17 @@ write_examples (prompt, 60s)
   produces: write_examples_result
 
 run_optimizer (sub-loop: apo-textgrad, context_passthrough: true)
-  reads: examples_file (from disk), prompt_file (from disk)
+  reads: apo-textgrad's own examples_file / prompt_file defaults (from disk)
   on_success → synthesize
   on_failure → diversify
 ```
 
 `apo-textgrad` reads `examples_file` from disk — it cannot receive the corpus via FSM captures. The `write_examples` state handles this by writing the calibrated corpus to `examples_file` before the optimizer starts. This is the intermediate write; `publish` performs the final write at the end.
 
-`run_optimizer` invokes `apo-textgrad` as a child FSM. With `context_passthrough: true`, the child inherits the parent's `prompt_file`, `examples_file`, and other context variables. The child runs to completion independently (up to its inherited `max_steps: 20` from `lib/apo-base.yaml`), then routes the parent:
+`run_optimizer` invokes `apo-textgrad` as a child FSM. With `context_passthrough: true`, the parent's context is passed to the child, but the child's own declared context values win (`apo-textgrad` declares `examples_file: examples.json`, and `lib/apo-base` declares `prompt_file: system.md`). So the child reads those defaults, not any `prompt_file` / `examples_file` override passed to the miner. The child runs to completion independently (up to its inherited `max_steps: 20` from `lib/apo-base.yaml`), then routes the parent:
 
 - **SUCCESS** (child reached its `done` terminal state): gradient signal is available in `${captured.run_optimizer.gradient.output}` → proceed to `synthesize`
-- **FAILURE** (child hit `max_iterations` or timed out): no gradient available → skip adversarial synthesis, go directly to `diversify`
+- **FAILURE** (child hit `max_steps` or timed out): no gradient available → skip adversarial synthesis, go directly to `diversify`
 
 ---
 
@@ -403,10 +405,10 @@ Set context variables with `--context key=value` flags or by editing the loop's 
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `skill_name` | `capture-issue` | Controls `ll-messages --skill` filter; must match a real skill name exactly |
-| `prompt_file` | `system.md` | Path to the prompt being optimized; passed to the inner `apo-textgrad` loop |
-| `examples_file` | `examples.json` | Written twice per run: intermediate (before optimizer) and final (at publish) |
+| `prompt_file` | `system.md` | Path to the prompt being optimized. The miner declares it, but it is not propagated to the inner `apo-textgrad` loop, which reads its own `prompt_file` default (`system.md`) |
+| `examples_file` | `examples.json` | Written twice per run by the miner: intermediate (before optimizer) and final (at publish). The inner `apo-textgrad` reads its own `examples_file` default (`examples.json`), so a custom value here is not seen by the optimizer |
 | `corpus_state_file` | `corpus.json` | If this file exists, calibrate loads it and decays `freshness_weight` ×0.9 |
-| `target_pass_rate` | `0.6` | Defined in context but **not currently read** by any `examples-miner` state. `context_passthrough` would inherit this into `apo-textgrad` and override its default (`90`), silently changing the convergence comparison (`PASS_RATE exceeds target_pass_rate` where `PASS_RATE` is 0–100). Leave unset unless you want this override. |
+| `target_pass_rate` | `0.6` | Defined in context but not read by any `examples-miner` state; it is not propagated to `apo-textgrad`, whose own `target_pass_rate: 90` takes precedence. |
 
 ---
 
@@ -415,7 +417,7 @@ Set context variables with `--context key=value` flags or by editing the loop's 
 | File | Read by | Written by | Purpose |
 |------|---------|------------|---------|
 | `corpus.last_harvested` | `harvest` (incremental `--since` flag) | `publish` (UTC timestamp) | Incremental harvest sentinel |
-| `corpus.json` (or `corpus_state_file`) | `calibrate` (Read tool, optional) | Not written by the miner | Persisted calibration state for freshness decay |
+| `corpus.json` (or `corpus_state_file`) | `calibrate` (Read tool, optional) | Not written by the miner; you must create it | Persisted calibration state for freshness decay |
 | `examples.json` (or `examples_file`) | `run_optimizer` inner loop | `write_examples` (intermediate), `publish` (final) | The training corpus for `apo-textgrad` |
 | `.issues/**/*.md` (`status: done`) | `judge` (session log entry count via Bash) | Never | Source of revision distance heuristic |
 | Session log files of any registered host (e.g. `~/.claude/projects/`, `~/.codex/sessions/`) | `ll-messages` in `harvest` | Never | Source of raw harvested candidates |
@@ -442,8 +444,8 @@ python3 -c "import json; d=json.load(open('refine-examples.json')); print(len(d)
 
 1. **Check harvest availability**: `ll-messages --skill <name> --examples-format --stdout | wc -l` — if 0, the skill has no eligible session history yet
 2. **Set `skill_name`** to the skill's exact name (e.g., `ready-issue`, `manage-issue`)
-3. **Set `prompt_file`** to the skill's SKILL.md or equivalent prompt file
-4. **Use a separate `examples_file`** per skill to avoid cross-contaminating corpora
+3. **Know the `prompt_file` / `examples_file` limit**: these `--context` overrides on the miner do not reach the inner `apo-textgrad` loop, which reads its own defaults (`system.md`, `examples.json`). To optimize a different prompt, edit or copy the skill's prompt to those default paths, or run `apo-textgrad` separately against your own files
+4. **Use a separate `examples_file`** per skill to avoid cross-contaminating corpora (the miner writes it, but the optimizer will not read it unless it is the default `examples.json`)
 5. **Use a separate `corpus_state_file`** per skill for independent freshness tracking
 
 **On the inline oracle**: the judge's oracle rubric is generic — it scores `tools_used`, `files_modified`, and `completion_status` without knowing what the "correct" tools or files are for a given skill. For skill-specific precision (e.g., knowing that `refine-issue` must always modify an issue file), see the Oracle Sub-loop section below.
@@ -458,7 +460,7 @@ The sentinel file `corpus.last_harvested` is the key to efficient re-runs:
 First run:
   corpus.last_harvested not present
   → harvest state: SINCE_ARG=""
-  → ll-messages harvests ALL session history
+  → ll-messages harvests up to the 100 most recent examples (--limit default)
   → publish writes: 2026-03-21T22:00:00Z > corpus.last_harvested
 
 Second run (next day):
@@ -502,11 +504,12 @@ ll-loop install examples-miner
 
 ### 2. Create the oracle YAML
 
-Copy the reference implementation and adapt for your skill:
+Copy the built-in `oracles/oracle-capture-issue` loop (shipped in the `little_loops` package; run `ll-loop show oracles/oracle-capture-issue` to view it) into your project and adapt it for your skill:
 
 ```bash
 mkdir -p .loops/oracles
-cp scripts/little_loops/loops/oracles/oracle-capture-issue.yaml .loops/oracles/oracle-<skill>.yaml
+# Place your adapted copy at .loops/oracles/oracle-<skill>.yaml
+# (start from the YAML shown by `ll-loop show oracles/oracle-capture-issue`)
 ```
 
 Edit `.loops/oracles/oracle-<skill>.yaml`:
@@ -526,7 +529,7 @@ judge:
   on_failure: done
 ```
 
-> **Note**: Although `loop:` is interpolated at parse time (the executor runs `interpolate(state.loop, ctx)` in `scripts/little_loops/fsm/executor.py`), `ll-loop validate` skips dynamic loop names so a `${context.skill_name}` reference is only checkable at runtime. Hardcode the oracle path in production YAML; treat interpolation here as a debugging convenience, not a load-bearing tool.
+> **Note**: Although `loop:` is interpolated at parse time (the executor runs `interpolate(state.loop, ctx)` in `little_loops.fsm.executor`), `ll-loop validate` skips dynamic loop names so a `${context.skill_name}` reference is only checkable at runtime. Hardcode the oracle path in production YAML; treat interpolation here as a debugging convenience, not a load-bearing tool.
 
 ### 4. Calibrate the oracle
 
@@ -574,7 +577,7 @@ The loop exits at `done` (terminal). If it exits early via `on_blocked: done` on
 - **Verify harvest first**: run `ll-messages --skill <name> --examples-format --stdout | wc -l` standalone before running the full loop — it confirms the session data exists and the skill name is correct.
 - **Separate `examples_file` per skill**: don't share `examples.json` across skills; each skill's corpus should be isolated for clean gradient signals.
 - **Delete `corpus.last_harvested` after major refactors**: when skill conventions change significantly (new file layout, renamed commands), force a full reharvest to pick up all historical examples under the new conventions.
-- **Use `corpus_state_file`** for long-running projects: it preserves `freshness_weight` decay across runs and prevents corpus churn when recent sessions produce no new candidates.
+- **Use `corpus_state_file`** for long-running projects (you must create the file yourself; no state writes it): it preserves `freshness_weight` decay across runs and prevents corpus churn when recent sessions produce no new candidates.
 - **The `synthesize → []` result is the happy path**: if the optimizer converged and `FAILURE_PATTERN` is absent, `synthesize` correctly outputs `[]`. No adversarial examples means the corpus is already doing its job.
 - **Install before customizing**: `ll-loop install examples-miner` copies the YAML to `.loops/` so you can tune timeouts, adjust the difficulty band, or wire a skill-specific oracle without affecting the built-in.
 - **The intermediate `write_examples` matters**: if this state is blocked, `run_optimizer` will read whatever `examples.json` was on disk before the run — potentially stale. Check `write_examples` output in `--verbose` mode if the optimizer behaves unexpectedly.
@@ -588,7 +591,7 @@ The loop exits at `done` (terminal). If it exits early via `on_blocked: done` on
 | `harvest` produces 0 lines | No sessions match `--skill` filter; or sentinel timestamp is in the future | Run `ll-messages --skill <name> --stdout` standalone to verify; delete `corpus.last_harvested` to reset the window |
 | `judge` outputs empty array `[]` | All candidates discarded: files absent from HEAD, or oracle_score too low | Use `--verbose` to see which layer is discarding; check `git log` for `files_modified` paths; the skill may not modify trackable files |
 | `calibrate` outputs `CALIBRATED_COUNT=0` | All judged candidates outside 40–80 difficulty band | Corpus may be all easy (prompt too good for history) or all hard (few quality examples); delete `corpus.json` to clear stale accumulated state |
-| Loop skips to `diversify` after `run_optimizer` | Inner `apo-textgrad` hit `max_iterations` or timed out | Expected behavior on timeout; increase outer loop `timeout:` (default 7200s) or override inner loop via context; check `--verbose` for inner loop state |
+| Loop skips to `diversify` after `run_optimizer` | Inner `apo-textgrad` hit `max_steps` or timed out | Expected behavior on timeout; increase outer loop `timeout:` (default 7200s) or override inner loop via context; check `--verbose` for inner loop state |
 | `synthesize` outputs `[]` | Gradient is `CONVERGED` or `FAILURE_PATTERN` absent | This is the happy path — the optimizer converged on the current corpus; no adversarial synthesis is needed |
 | `ADVERSARIAL_ACCEPTED=0` | All adversarial candidates outside 40–80 band, below oracle threshold, or cap already full | Check `synthesize` output in `--verbose`; the perturbation type may not match the actual failure pattern; or harvested corpus is already at/near the 30% adversarial cap |
 | Final corpus is empty | All paths produced empty arrays | Run with `--verbose` and trace which state first produced `[]`; the most common cause is an empty harvest (no sessions) flowing through to an empty judge and calibrate |
@@ -637,8 +640,8 @@ The `source` field distinguishes harvested real examples from synthesized target
 
 - [Prompt Optimization Guide](PROMPT_OPTIMIZATION_GUIDE.md) — the prerequisite: choosing an APO technique, building a first `examples.json`, and interpreting `PASS_RATE` before you reach the plateau this guide addresses
 - [LOOPS_REFERENCE.md](LOOPS_REFERENCE.md) — quick-reference section for `examples-miner`: context variables table, FSM flow diagram, perturbation taxonomy, basic invocations
-- [`scripts/little_loops/loops/examples-miner.yaml`](../../scripts/little_loops/loops/examples-miner.yaml) — full annotated loop source (11 non-terminal states + a `done` terminal)
-- [`scripts/little_loops/loops/oracles/oracle-capture-issue.yaml`](../../scripts/little_loops/loops/oracles/oracle-capture-issue.yaml) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)
-- [`scripts/little_loops/loops/apo-textgrad.yaml`](../../scripts/little_loops/loops/apo-textgrad.yaml) — inner optimizer loop invoked by `run_optimizer`; reads `examples_file`, emits `FAILURE_PATTERN` / `ROOT_CAUSE` / `GRADIENT`
+- Built-in loop `examples-miner` (`ll-loop show examples-miner`) — full annotated loop source (11 non-terminal states + a `done` terminal)
+- Built-in loop `oracles/oracle-capture-issue` (`ll-loop show oracles/oracle-capture-issue`) — reference implementation for the v2 oracle sub-loop (two-phase: shell mechanical checks + LLM semantic scoring)
+- Built-in loop `apo-textgrad` (`ll-loop show apo-textgrad`) — inner optimizer loop invoked by `run_optimizer`; reads `examples_file`, emits `FAILURE_PATTERN` / `ROOT_CAUSE` / `GRADIENT`
 - [Automatic Harnessing Guide](AUTOMATIC_HARNESSING_GUIDE.md) — related guide for wrapping skills in layered quality evaluation pipelines
 - [FSM Loop Architecture](../generalized-fsm-loop.md) — sub-loop chaining (`context_passthrough`), state field reference, evaluator catalog

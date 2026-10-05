@@ -227,7 +227,7 @@ Two inertness traps to know about:
 - **Only `prompt`/`slash_command` states can trip a ceiling.** Cost is derived from `usage.jsonl`, which only gets a row for LLM-invoking actions — `shell` and `mcp_tool` actions never produce token data, so their cost is always 0 and a declared ceiling can never fire. The validator emits a warning (not an error) when `cost_ceiling` is declared on such a state.
 - **The ceiling needs a persistent run.** Cost is read live from `<run_dir>/usage.jsonl`, which only exists under `PersistentExecutor` (i.e. a real `ll-loop run`, not a bare in-process `FSMExecutor.run()`). Without it, the check logs a one-time "cost_ceiling_unknown" notice per state and does not abort — unknown cost is never treated as under budget.
 
-The validator at `fsm/validation/structural_rules.py:_validate_state_cost_ceiling` enforces the negative-value rejection, the `warn_at > ceiling` rejection, and the inert-action-type warning. Per-state cost attribution is independent; a global `--max-cost` loop-level ceiling was tracked separately by FEAT-2476 (cancelled 2026-07-10) and is not currently shipped.
+The validator at `little_loops.fsm.validation` (`_validate_state_cost_ceiling`) enforces the negative-value rejection, the `warn_at > ceiling` rejection, and the inert-action-type warning. Per-state cost attribution is independent; a global `--max-cost` loop-level ceiling was tracked separately by FEAT-2476 (cancelled 2026-07-10) and is not currently shipped.
 
 ### Prompt-Size Guard (prompt_size_guard)
 
@@ -249,7 +249,7 @@ prompt_size_guard:
 ```
 
 The event payload carries `{loop, state, size, threshold, est_tokens}` (where
-`est_tokens = size // 4`, the repo's char-based estimate — there is no
+`est_tokens = size // 4`, little-loops' char-based estimate — there is no
 tokenizer dependency) and auto-persists to `<run>.events.jsonl`, so
 `ll-loop`/diagnostics can flag ballooning states after the fact. The optional
 hard-cap (route an oversized prompt to `on_error`/diagnose instead of
@@ -513,7 +513,7 @@ Use `$current` as a target to retry the current state. Define `on_blocked` on an
 
 > **`on_no` → `on_error` fallthrough**: When a `no` verdict arrives and the state defines `on_error` but not `on_no`, the executor routes to `on_error`. Use this to share one recovery branch for both evaluator failures and hard-`no` verdicts.
 
-**Route table resolution order** (`FSMExecutor._route()`, when a `route:` block is present):
+**Route table resolution order** (`little_loops.fsm.executor.FSMExecutor._route()`, when a `route:` block is present):
 
 1. An explicit `routes[verdict]` entry (including a `_uncertain`-suffixed verdict's own explicit route).
 2. The `_uncertain` base-verdict fallback (BUG-3228): a verdict ending in `_uncertain` with no route of its own falls back to its base verdict's route, resolved via this same order.
@@ -621,13 +621,13 @@ These fields apply to `action_type: prompt` states only:
 states:
   check_tests_pass:
     action: "Did the test output above show all tests passing? Answer yes or no."
-    action_type: check_semantic
+    action_type: prompt
     model: claude-haiku-4-5-20251001
     on_yes: done
     on_no: fix
 ```
 
-Don't pin haiku on *generator* states (states that produce the actual content — code, prose, a plan) — the MR-lint `haiku-gen` rule (see [Loop Authoring](../../.claude/CLAUDE.md#loop-authoring)) warns when a `model:` names a haiku variant on a non-evaluator state, since generator output has no MR-1 non-LLM-evaluator backstop to catch quality regressions from the cheaper model.
+Don't pin haiku on *generator* states (states that produce the actual content — code, prose, a plan) — the MR-lint `haiku-gen` rule (see [Loop Authoring design rules](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-14)) warns when a `model:` names a haiku variant on a non-evaluator state, since generator output has no MR-1 non-LLM-evaluator backstop to catch quality regressions from the cheaper model.
 
 #### Portable model hints (`model_hint:`)
 
@@ -660,7 +660,7 @@ A state's own `model_hint` (or `model`) wins over `llm.model_hint`. On the host 
 
 - **Exposure**: a `github`-scoped child's env *contains the operator's live token in plaintext* — visible to `env`, `ps e`, crash dumps, and any `set -x` output the action logs. Never log the value; the `GH_TOKEN` name is fine to log, its contents are not.
 - **`config.yml` loss**: the `GH_CONFIG_DIR` redirect also hides the operator's `config.yml` (`git_protocol`, `editor`, aliases) — `gh` falls back to `git_protocol: https` inside the child regardless of the operator's own `ssh` setting.
-- **Non-`github`-declaring children get HTTP 401, not a local error**: since the `GH_SCOPED_NO_TOKEN` sentinel fix (BUG-3402), any `gh` command that hits the network inside a declaring-but-non-github child fails with "Bad credentials" (HTTP 401) instead of the previous local "run gh auth login" message, and any other tool that honors `GH_TOKEN` loses its anonymous fallback. The residual gap — a fully ambient invocation with no scoping declared at all — is unaffected and out of scope for this mechanism. See `.ll/learning-tests/gh.md` and `gh_scope_extra`'s docstring (`docs/reference/API.md#gh_scope_extra`).
+- **Non-`github`-declaring children get HTTP 401, not a local error**: since the `GH_SCOPED_NO_TOKEN` sentinel fix (BUG-3402), any `gh` command that hits the network inside a declaring-but-non-github child fails with "Bad credentials" (HTTP 401) instead of the previous local "run gh auth login" message, and any other tool that honors `GH_TOKEN` loses its anonymous fallback. The residual gap — a fully ambient invocation with no scoping declared at all — is unaffected and out of scope for this mechanism. See `gh_scope_extra`'s docstring (`docs/reference/API.md#gh_scope_extra`).
 
 Do not confuse this `scopes:` field with the unrelated loop-lock `scope:` field described under [Scope-Based Concurrency](#scope-based-concurrency).
 
@@ -692,13 +692,13 @@ states:
 | `suppress_catalog:` | **Declarative-only — not yet implemented.** Intended to narrow the skill/command catalog via the state/loop `tools:` allowlist. No runtime consumer reads it; it currently only triggers an MR-12 validator warning. |
 | `suppress_claude_md:` | **Declarative-only — not yet implemented.** Intended to suppress CLAUDE.md loading. No runtime consumer reads it, and no host supports the underlying capability. |
 
-A `pruning_profile:` at the loop level sets the default for every state; a state-level `pruning_profile:` overrides it. Declaring the profile sets `LL_AUTOMATION=1` / `LL_AUTOMATION_PROFILE=<name>` in the child process environment, which automation-aware hooks (`session_start.py`, `history_context.py`) check to suppress their own static-prefix output. **This env-signal path is the only part of pruning that is implemented**, and it applies on every host regardless of `ll-doctor` capability confirmation. Because the signal is inherited by every descendant process, an invocation that declines a profile (`automation=None`, or `automation.profile=None`) actively clears it to `""` (present-but-falsy, ENH-3081) — both consumers already read the var by truthiness, so a non-automation invocation never silently carries an ancestor's signal.
+A `pruning_profile:` at the loop level sets the default for every state; a state-level `pruning_profile:` overrides it. Declaring the profile sets `LL_AUTOMATION=1` / `LL_AUTOMATION_PROFILE=<name>` in the child process environment, which automation-aware hooks (`little_loops.hooks.session_start`, `little_loops.cli.history_context`) check to suppress their own static-prefix output. **This env-signal path is the only part of pruning that is implemented**, and it applies on every host regardless of `ll-doctor` capability confirmation. Because the signal is inherited by every descendant process, an invocation that declines a profile (`automation=None`, or `automation.profile=None`) actively clears it to `""` (present-but-falsy, ENH-3081) — both consumers already read the var by truthiness, so a non-automation invocation never silently carries an ancestor's signal.
 
 A second, independent env var shares the same `automation.profile is not None` gate — both are fields on the single `AutomationContext` that `host_runner.build_streaming()` accepts (ENH-3095): `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` (FEAT-3078), sourced from `orchestration.disable_background_tasks` config (default `false`), not from `pruning_profile:`. When enabled, it hard-disables tool-level background tasks — both `Bash run_in_background: true` and Agent/Task-tool spawns left to their background-by-default behavior (BUG-3209) — in the Claude Code child so completed work can't be silently discarded because the parent session ended before a background task's result was retrieved. Claude-Code-only; set `orchestration.disable_background_tasks: true` to opt into that hard-disable.
 
 > **What pruning actually saves today.** Only the hook output is pruned — roughly 1K tokens per invocation. The two larger components are *not* pruned: the skill/command catalog (~6.4K tokens) and CLAUDE.md (~7.7K tokens) both still load in full, because `suppress_catalog` and `suppress_claude_md` are forward-declarations that no code path consults. `claude_md_suppression` is reported `unsupported` by every host — the claude CLI exposes no flag to skip CLAUDE.md. Setting either field is harmless but changes nothing; don't budget for savings from them.
 
-`ll-loop validate` lints for coverage of this feature — the MR-12 rule (see [Loop Authoring](../../.claude/CLAUDE.md#loop-authoring)) warns when a skill/command-invoking state has no resolvable `pruning_profile` (state override or loop default) at all, since that state pays the full static prefix on every invocation. `request_path: sdk`/`batch` states are exempt since pruning is a no-op there — including when no state-level `request_path` is set but the project's `orchestration.request_path` config defaults to `sdk`/`batch` (ENH-2810); an explicit state-level `request_path: cli` still warns regardless of the config default.
+`ll-loop validate` lints for coverage of this feature — the MR-12 rule (see [Loop Authoring design rules](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-14)) warns when a skill/command-invoking state has no resolvable `pruning_profile` (state override or loop default) at all, since that state pays the full static prefix on every invocation. `request_path: sdk`/`batch` states are exempt since pruning is a no-op there — including when no state-level `request_path` is set but the project's `orchestration.request_path` config defaults to `sdk`/`batch` (ENH-2810); an explicit state-level `request_path: cli` still warns regardless of the config default.
 
 ### Continuity Chains
 
@@ -758,7 +758,7 @@ The snapshot is taken at *this guarded state's own entry*, never at run start �
 `ll-loop validate` warns on an unrecognized `tamper_guard` value (anything outside `revert`/`fail`/`allow`) at either the loop or state level — suppress with `tamper_guard_ok: true` at the loop top-level.
 
 This `tamper_guard:` key is FSM-only. `ll-auto`, `ll-parallel`, and `ll-sprint` verify
-completed work in plain Python (`work_verification.py`), never entering the FSM, so this key
+completed work in plain Python (`little_loops.work_verification`), never entering the FSM, so this key
 never applies to them. That non-FSM path has its own guard hook (ENH-2935) driven by the
 [`tamper_guard.policy` project config key](../reference/CONFIGURATION.md#tamper_guard) instead — the two
 are independent; the project config key never overrides an explicit state-level `tamper_guard:`
@@ -841,7 +841,7 @@ Precedence, highest first: CLI flags → loop `config:` block → global `ll-con
 
 > **Status note (BUG-2767):** only `handoff_threshold` and `automation.max_continuations` are
 > applied at runtime today. The block's `commands.confidence_gate.*` keys parse and display
-> (`ll-loop info`) but have no runtime consumer — the aspirational half of the chain above.
+> (`ll-loop show`) but have no runtime consumer — the aspirational half of the chain above.
 > Confidence-gate thresholds are instead seeded into `context.readiness_threshold` /
 > `context.outcome_threshold` directly from `ll-config.json` at launch, so use
 > `--context readiness_threshold=NN` or `commands.confidence_gate.*` to control them.
@@ -976,6 +976,11 @@ Every terminating loop sets `terminated_by` to one of these values. Inspect with
 | `no_route` | Decision-step failure: no valid transition, a `before_route` veto, or an evaluator crash — the executor could not decide where to go next (ENH-3471) | Add the missing route (`on_yes`/`on_no`/`route.default`/etc.), fix the `before_route` interceptor, or fix the evaluator; the `loop_complete` event's `error` field carries the reason |
 | `user_stopped` | `ll-loop stop` invoked (writes a `user-stop.marker` sentinel so the runner can attribute the cause even when SIGKILL races past `_finish()`) | Resume with `ll-loop resume` |
 | `system_signal` | Kernel/SIGKILL/OOM kill — `last_result.exit_code <= -1` (e.g. -9 = SIGKILL, -11 = SIGSEGV, -6 = SIGABRT) with no `user-stop.marker` present | **Not resumable** — the runner died mid-state. Reduce per-step memory footprint, split into smaller invocations, or lower `host_guard.max_cumulative_subproc_mb` so the guard trips before the kernel does; rerun |
+| `terminal` | Reached a `terminal: true` state | Normal completion |
+| `timeout` | Loop-level `timeout` elapsed | Raise `timeout`, or split the loop |
+| `stall_detected` | `circuit.repeated_failure` fired with `on_repeated_failure: abort` | Fix the repeating failure, or route `on_repeated_failure` to a recovery state |
+| `cost_ceiling_exceeded` | A state's per-state cost ceiling (`cost_ceiling_per_state`) was crossed | Raise the ceiling, or reduce that state's fan-out |
+| `handoff` | Context-handoff exit | Resume with `ll-loop resume` |
 | `interrupted` | Ctrl-C caught by our own signal handler (the subprocess was killed by `proc.kill()`) | Resume with `ll-loop resume` |
 
 ### Evaluator verdict → recovery mapping
@@ -997,7 +1002,7 @@ cat "$(ll-loop status <name> --json | jq -r .events_file)" \
 > **Advanced** — see [AUTOMATIC_HARNESSING_GUIDE.md](AUTOMATIC_HARNESSING_GUIDE.md) for the full
 > harness guide. **Meta-loops** (loops that modify other harness artifacts) follow stricter
 > design rules — see [HARNESS_OPTIMIZATION_GUIDE.md](HARNESS_OPTIMIZATION_GUIDE.md) and
-> [CLAUDE.md § Loop Authoring](../../.claude/CLAUDE.md).
+> [HARNESS_OPTIMIZATION_GUIDE.md § The Design Rules](HARNESS_OPTIMIZATION_GUIDE.md#the-design-rules-mr-1mr-14).
 
 A **harness loop** wraps a skill or prompt in a layered quality evaluation pipeline, then repeats over a list of work items (or runs once in single-shot mode). The core idea: running a skill is easy; knowing the output is actually good is hard. Each result passes through up to five evaluation phases, cheapest first, so expensive LLM calls only happen when objective gates already pass:
 
@@ -1084,7 +1089,7 @@ check_stall:
 | `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--resolved` expands sub-loops) |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions (`--scenario all-pass\|all-fail\|all-error\|first-fail\|alternating`) |
-| `ll-loop list` | List loops as a compact name grid (public tier only by default); `-l/--long` for the detailed per-row layout; `--all`, `--internal`, `--examples`, `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
+| `ll-loop list` | List loops as a detailed one-row-per-loop table (public tier only by default); `--grid` for a compact name grid; `--all`, `--internal`, `--examples`, `--running`, `--builtin`, `--category <cat>`, `--label <tag>` |
 | `ll-loop status <name>` | Current state and iteration count (`--json` for paths and PIDs) |
 | `ll-loop queue list` | List pending run-queue entries (loops waiting on a scope lock via `--queue`); prunes dead-PID entries as a side effect (`-j/--json` for a JSON array) |
 | `ll-loop queue remove <id>` | Cancel a queued waiter by full uuid or 8+-char prefix: SIGTERM its process (psutil identity-checked unless `--force`) and delete its entry; exit `1` on unknown/ambiguous id (`-j/--json` for a JSON result) |
@@ -1228,7 +1233,7 @@ A loop can also declare a `visibility` tier — the *audience* axis, orthogonal 
 | `internal` | Delegated-only sub-loop, never run directly (e.g. `oracles/*`) | ❌ No — `--internal` or `--all` |
 | `example` | Demo or copy-me template (e.g. the `harness-*` EXAMPLE loops) | ❌ No — `--examples` or `--all` |
 
-`ll-loop list` shows only `public` loops by default; a bold summary header carries the loop/category/kind counts, and the footer prints next-action hints plus, when hidden tiers exist, an extra hint line (`2 hidden (1 internal, 1 example) — pass --all to show`). The default output is a compact name grid (one column when piped); `-l/--long` switches to the detailed one-row-per-loop layout. Your own project loops are pinned in a `YOUR PROJECT` section at the top (with their home category as a dim inline tag), categories with fewer than 3 members fold into a trailing `OTHER` group, and remaining categories are ordered by size. Built-in is the unlabeled default kind — only exceptions carry a `◆ project` / `◆ internal` / `◆ example` badge. Resolution by name is unaffected — `ll-loop run <name>` still finds internal/example loops regardless of tier. Set the tier in frontmatter:
+`ll-loop list` shows only `public` loops by default; a bold summary header carries the loop/category/kind counts, and the footer prints next-action hints plus, when hidden tiers exist, an extra hint line (`2 hidden (1 internal, 1 example) — pass --all to show`). The default output is a detailed one-row-per-loop table; `--grid` switches to a compact name grid (one column when piped). Your own project loops are pinned in a `YOUR PROJECT` section at the top (with their home category as a dim inline tag), categories with fewer than 3 members fold into a trailing `OTHER` group, and remaining categories are ordered by size. Built-in is the unlabeled default kind — only exceptions carry a `◆ project` / `◆ internal` / `◆ example` badge. Resolution by name is unaffected — `ll-loop run <name>` still finds internal/example loops regardless of tier. Set the tier in frontmatter:
 
 ```yaml
 name: my-sub-loop
@@ -1281,9 +1286,9 @@ Browse a library without opening the YAML:
 ll-loop fragments lib/common.yaml
 ```
 
-**Mine fragments from history instead of hand-writing them**: the `/ll:distill-traces` skill mines `.loops/.history/` for a named loop and writes ranked state templates, transition patterns, and a human-readable catalogue to `scripts/little_loops/loops/lib/<loop-name>/`. Use its output as the starting point for a new library.
+**Mine fragments from history instead of hand-writing them**: the `/ll:distill-traces` skill mines `.loops/.history/` for a named loop and writes ranked state templates, transition patterns, and a human-readable catalogue to `.loops/lib/<loop-name>/`. Use its output as the starting point for a new library.
 
-Built-in libraries ship in `scripts/little_loops/loops/lib/` — `common.yaml` (type-pattern gates), `cli.yaml` (pre-filled ll- CLI states), `benchmark.yaml`, `score-plan-quality.yaml`, `prompt-fragments.yaml`, `harness.yaml` (Playwright screenshot + rubric scoring), `composer.yaml`, `policy-router.yaml`, `rubric-router.yaml`, `apo-base.yaml` (a `from:` template, not a fragment collection), and `apo-shape-a.yaml`. They resolve automatically from user loops — no copying needed. Full fragment tables: [Built-in Fragment Libraries](LOOPS_REFERENCE.md#built-in-fragment-libraries).
+Built-in libraries ship in the built-in `lib/` library directory — `common.yaml` (type-pattern gates), `cli.yaml` (pre-filled ll- CLI states), `benchmark.yaml`, `score-plan-quality.yaml`, `prompt-fragments.yaml`, `harness.yaml` (Playwright screenshot + rubric scoring), `composer.yaml`, `policy-router.yaml`, `rubric-router.yaml`, `apo-base.yaml` (a `from:` template, not a fragment collection), and `apo-shape-a.yaml`. They resolve automatically from user loops — no copying needed. Full fragment tables: [Built-in Fragment Libraries](LOOPS_REFERENCE.md#built-in-fragment-libraries).
 
 | Approach | Best for |
 |----------|----------|
@@ -1407,7 +1412,7 @@ auth_failed:
   terminal: true
 ```
 
-The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (the `error_patterns` override branch in `evaluate_output_contains`, `scripts/little_loops/fsm/evaluators.py`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="no_route"` (ENH-3471 — no route was declared for the `error` verdict, a decision-step failure, not an action crash). `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
+The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (the `error_patterns` override branch in `evaluate_output_contains`, `little_loops.fsm.evaluators`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="no_route"` (ENH-3471 — no route was declared for the `error` verdict, a decision-step failure, not an action crash). `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
 
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
 

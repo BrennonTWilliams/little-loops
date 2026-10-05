@@ -16,6 +16,9 @@
   - [Failure Routing and Clean-Slate Scoring](#failure-routing-and-clean-slate-scoring)
 - [Visual Builder (greenfield)](#visual-builder-greenfield)
   - [Issue Lifecycle Mode](#issue-lifecycle-mode)
+  - [Scenario Suites (offline)](#scenario-suites-offline)
+    - [Suggest cases](#suggest-cases)
+    - [Import an issue file](#import-an-issue-file)
 - [Editing the Table with `ll-loop edit-routes`](#editing-the-table-with-ll-loop-edit-routes)
 - [Adding and Removing Rows](#adding-and-removing-rows)
 - [Warnings: Gaps, Shadows, and Catch-alls](#warnings-gaps-shadows-and-catch-alls)
@@ -259,7 +262,7 @@ a real or mocked artifact.
   `RouteConfig.from_dict()` strips underscore-prefixed keys from explicit verdict routes at
   runtime, so an authored outcome or rule target starting with `_` would silently vanish rather
   than route. Separately, `aggregate` is reserved as a **dimension** name (it is the overall
-  rubric score `fsm/validation/reachability.py` skips as a predicate LHS) — a custom field that
+  rubric score `little_loops.fsm.validation.reachability` skips as a predicate LHS) — a custom field that
   normalizes to `aggregate` is rejected the same way. The Visual Builder's `validateBuilderModel`
   rejects all of these before emission with a diagnostic naming the offending token (and disables
   Copy/Download while any error-severity diagnostic exists); hand-written loops should avoid them
@@ -271,7 +274,7 @@ When you are authoring a **new** policy-router or rubric loop from scratch — r
 editing one that already exists — generate the self-contained HTML builder:
 
 ```bash
-ll-artifact policy-builder            # writes ./policy-router-builder.html
+ll-artifact policy-builder            # writes policy-router-builder.html to artifacts.default_output_dir (default: the project root)
 ll-artifact policy-builder -o ~/tmp   # custom output directory
 ```
 
@@ -345,7 +348,7 @@ loop YAML and the builder does not read an *existing* loop YAML back in. `ll-loo
 `issue_lifecycle` is a third builder mode for a narrower, very common case: driving a single
 Issue file (`.issues/*.md`) through **prepare → refine → gate → implement → verify** based on
 its own YAML frontmatter, without hand-writing FSM YAML or adopting little-loops' own
-hand-tuned `autodev.yaml` (2650+ lines, not a realistic template to copy). It's the
+hand-tuned `autodev.yaml` (~1,450 lines, not a realistic template to copy). It's the
 self-service version of `autodev.yaml`'s *shape* — route an issue through lifecycle stages
 based on frontmatter conditions — for consumers with their own issue conventions (a custom
 `severity` field, a `review_status` field, anything not part of little-loops' own schema).
@@ -514,7 +517,7 @@ builder's Try-it encoder:
   Absent/`null` → no file (the router's missing-dimension semantics: `!=` matches, everything
   else does not).
 - **list** → count semantics: a list scores its length, a non-empty scalar scores `1`,
-  absent/`null`/empty scores `0`. Always written — this is what makes `blocked_by:==0` /
+  absent/`null`/empty list scores `0`. Always written — this is what makes `blocked_by:==0` /
   `blocked_by:<1` match the common "not blocked" case for an issue that has no `blocked_by` key
   at all.
 - **string** → the value, trimmed, verbatim. Absent/`null`/empty → no file.
@@ -673,7 +676,7 @@ Common flags:
 | `--dry-run` | Print the table to stdout; don't open the editor or write YAML |
 | `--format csv` | Render (and parse) CSV instead of markdown |
 | `--decision-table` | Force compound mode (otherwise auto-detected for policy-router loops) |
-| `--no-warnings` | Skip the gap/conflict warnings (verdict-matrix: pre-editor; compound-mode: post-save) |
+| `--no-warnings` | Skip the gap/conflict warnings (verdict-matrix: pre-editor; compound-mode: after the editor closes, before the YAML is written) |
 | `--allow-delete` | Apply state-row deletions instead of ignoring them (verdict-matrix mode only — `PolicyRuleApplier` for compound mode does not consume this flag) |
 
 Exit codes: `0` success or no changes, `1` parse error or an unknown state name in the edited
@@ -689,7 +692,7 @@ table, `2` loop not found.
   `1` — since the router can't guess the rest of the block.)
 - **Delete a state** — remove the row entirely, then re-run with `--allow-delete`. The state
   block is removed and any remaining routes that still point at it are flagged as dangling.
-  Without `--allow-delete`, removed rows are silently ignored — a deliberate guard so an
+  Without `--allow-delete`, removed rows are skipped with a warning (`--allow-delete` not set; skipping deletion) — a deliberate guard so an
   accidental deletion in the editor never drops a state.
 
 **In compound decision-table mode**, add or remove rules by adding or deleting grid rows; on
@@ -738,22 +741,23 @@ Tune `policy-refine` to be stricter — require a high security score before dec
 
    This prints the 7-rule grid shown above (decision-table mode auto-detected).
 
-2. **Add a stricter rule.** Open it for real and insert a rule *above* the `aggregate:>=85`
-   row so it takes precedence — only call it `done` when both the aggregate and security clear
-   85:
+2. **Add a stricter rule.** Open it for real and replace the `aggregate:>=85` row (rule 5)
+   with a conjunctive one — only call it `done` when both the aggregate and security clear 85.
+   (Inserting a rule above the old row would not work: the old `aggregate:>=85` rule would
+   still catch a high-aggregate, low-security artifact.)
 
    ```bash
    ll-loop edit-routes policy-refine
    ```
 
-   Add the row:
+   Change row 5 to:
 
    ```
    | 5 | >=85 | — | — | — | >=85 | done |
    ```
 
-   On save, `edit-routes` re-serializes the table back into `context.policy_rules` as
-   `aggregate:>=85 & security:>=85 -> done`, and re-numbers the rows.
+   The grid still has 7 rules. On save, `edit-routes` re-serializes the table back into
+   `context.policy_rules` as `aggregate:>=85 & security:>=85 -> done`.
 
 3. **Confirm the round-trip:**
 
@@ -761,8 +765,7 @@ Tune `policy-refine` to be stricter — require a high security score before dec
    ll-loop edit-routes policy-refine --dry-run
    ```
 
-   The new conjunctive rule appears in the grid with `>=85` in both the `aggregate` and
-   `security` columns. The loop now routes a high-aggregate-but-low-security artifact to repair
+   The `done` rule now carries `>=85` in both the `aggregate` and `security` columns. The loop now routes a high-aggregate-but-low-security artifact to repair
    instead of `done`, with no state rewiring — only a table edit.
 
 4. **Validate, then run.** Before executing, validate the loop — `ll-loop validate` enforces
@@ -779,7 +782,7 @@ Tune `policy-refine` to be stricter — require a high security score before dec
 ## See Also
 
 - [Loops Guide](LOOPS_GUIDE.md) — FSM authoring fundamentals, evaluators, the `/ll:create-loop` wizard
-- [Built-in Loops Reference](LOOPS_REFERENCE.md#built-in-fragment-libraries) — the full fragment-library catalog, including `lib/policy-router.yaml` and `lib/rubric-router.yaml`
+- [Built-in Loops Reference](LOOPS_REFERENCE.md#built-in-fragment-libraries) — the fragment-library list (dedicated `policy-router`/`rubric-router` sections are still pending)
 - [Harness Optimization Guide](HARNESS_OPTIMIZATION_GUIDE.md) — the MR-4 routing rule and other meta-loop guardrails
 - [CLI Reference: `ll-loop edit-routes`](../reference/CLI.md) — complete flag and exit-code reference
 - [CLI Reference: `ll-loop validate` / `ll-loop run`](../reference/CLI.md) — validate routing before executing the loop

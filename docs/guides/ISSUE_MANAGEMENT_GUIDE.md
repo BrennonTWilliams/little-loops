@@ -61,7 +61,7 @@ duplicate_of:              # set when closing as duplicate of another issue
 
 For the full frontmatter schema, see the [Issue Template reference](../reference/ISSUE_TEMPLATE.md).
 
-**Code references always use anchors, not line numbers.** Write `in function _cmd_sprint_run()`, not `at line 1847`. Line numbers drift; function names don't.
+**Code references always use anchors, not line numbers.** Write `in function process_order()`, not `at line 1847`. Line numbers drift; function names don't.
 
 ## The Lifecycle
 
@@ -125,8 +125,8 @@ The lifecycle diagram above shows conceptual workflow phases. The frontmatter `s
 Synonyms (`complete`, `completed`, `finished`, `closed`, `wip`, `in-progress`, `in progress`, `pending`) are silently coerced to canonical values on read; authors don't need to worry about fixing them manually.
 
 A `deferred` transition also stamps `deferred_by` (`human` by default, or `automation` when
-`rn-implement`'s remediation circuit-breaker, or `autodev`'s not-ready exits (ENH-2666), park
-an issue), plus `deferred_reason` and `deferred_date`. Both automation producers use the same
+`rn-implement`'s remediation circuit-breaker, `autodev`'s not-ready exits (ENH-2666), or
+`refine-to-ready-issue` park an issue), plus `deferred_reason` and `deferred_date`. All automation producers use the same
 transition — `ll-issues set-status <ID> deferred --by automation --reason <code>` — so behavior
 is predictable regardless of which orchestrator ran. Run `ll-issues deferred-triage` to see the
 cross-run backlog of automation-deferred issues — grouped by reason and sorted by age — so
@@ -199,7 +199,7 @@ Both commands can generate many issues at once. Run them when onboarding to a ne
 
 ### The Refinement Pipeline
 
-Refinement transforms raw captures into implementation-ready issues. **You don't need all ten steps on every issue** — use the decision tree below to pick your path:
+Refinement transforms raw captures into implementation-ready issues. **You don't need all 10 steps on every issue** — use the decision tree below to pick your path:
 
 ```
 What kind of issue is it?
@@ -333,7 +333,7 @@ Reads each issue and tests its claims against the actual codebase. Checks that:
 
 Flags issues with incorrect claims (file moved, function renamed, behavior already fixed) and either updates them or recommends closure. Run this before a sprint to avoid implementing against stale information.
 
-**Flags:** `--auto` — non-interactive mode for FSM loop automation. Skips user approval and does not move resolved issues.
+**Flags:** `--auto` — non-interactive mode for FSM loop automation. Applies all non-destructive changes without prompting.
 
 ### Pruning Low-Value Issues
 
@@ -343,8 +343,8 @@ Flags issues with incorrect claims (file moved, function renamed, behavior alrea
 
 Evaluates each active issue for utility vs. complexity. Recommends one of:
 - **Implement** — clear value, tractable effort
-- **Update** — valid idea but needs more information before proceeding
-- **Close** — speculative, low-value, or superseded by other work
+- **Update first** — valid idea but needs more information before proceeding
+- **Close/Defer** — speculative, low-value, or superseded by other work
 
 Use this to sense-check your backlog before sprint planning. A backlog with 200 issues is paralyzing; one with 30 well-chosen issues is actionable.
 
@@ -355,7 +355,7 @@ Use this to sense-check your backlog before sprint planning. A backlog with 200 
 ### The Validation Gate
 
 ```
-/ll:ready-issue                      ← validate all issues
+/ll:ready-issue                      ← validate the highest-priority issue
 /ll:ready-issue P2-BUG-042-...md    ← validate one issue
 ```
 
@@ -366,17 +366,17 @@ Use this to sense-check your backlog before sprint planning. A backlog with 200 
 - Impact includes justifications (not just "P2 / Medium / Low")
 - Integration Map covers all affected files
 - Implementation Steps are present and high-level
-- No deprecated sections used, and no retired frontmatter keys/values (e.g. hand-authored `superseded_by`, a coerced status synonym like `completed`) — see `deprecated_key` in `check_format_gaps()` (ENH-2876)
+- No deprecated sections used, and no retired frontmatter keys/values (e.g. hand-authored `superseded_by`, a coerced status synonym like `completed`) — see the `deprecated_key` gap reported by `ll-issues format-check` (ENH-2876)
 - Proposed Solution uses anchors, not line numbers
 - For BUGs: Root Cause identifies file + function anchor + explanation
 - For FEATs: Acceptance Criteria are individually testable
 
-Issues that pass validation have their Status updated to `Ready`. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are closed via `status: done` with a "Closed - Invalid" resolution note.
+Issues that pass validation receive a READY (or CORRECTED) verdict. Issues that fail get specific improvement notes — `ready-issue` will auto-correct what it can and flag what requires human attention. Issues that are fundamentally invalid (e.g., the bug doesn't exist) are closed via `status: done` with a "Closed - Invalid" resolution note.
 
 ### Confidence Scoring
 
 ```
-/ll:confidence-check                 ← check all active issues
+/ll:confidence-check                 ← single issue (manage-issue context); use --all for every active issue
 /ll:confidence-check P2-BUG-042-... ← check one issue
 /ll:confidence-check --all --auto   ← batch, non-interactive
 /ll:confidence-check --sprint my-sprint ← sprint-scoped pre-flight check
@@ -384,8 +384,8 @@ Issues that pass validation have their Status updated to `Ready`. Issues that fa
 
 Complementary to `ready-issue`, this skill evaluates implementation readiness from the agent's perspective. It produces two scores:
 
-- **Readiness Score** (0-100) — go/no-go for starting implementation. Evaluates five criteria: problem clarity, solution specificity, codebase context, test strategy, and risk understanding. If the issue declares `learning_tests_required` targets and any are `missing` or `refuted`, a hard STOP — ADDRESS GAPS is forced regardless of aggregate score. The same hard override applies when a `blocked_by` frontmatter entry names an issue whose status is not `done`/`cancelled` (`deferred` is non-terminal) — the Dependencies Hard Override (BUG-3051). Separately, a `missing_behavior_parity`/`stale_symbol_ref`/`stale_cli_flag` gap from `ll-issues format-check` caps (but does not STOP-override) the Issue Well-Specified criterion at 10 (ENH-3047).
-- **Outcome Confidence Score** (0-100) — predicted implementation risk. Evaluates: correctness likelihood, completeness likelihood, test coverage likelihood, and no-regression likelihood.
+- **Readiness Score** (0-100) — go/no-go for starting implementation. Evaluates five criteria: no duplicate implementations, architecture compliance, problem understanding, issue well-specified, and dependencies satisfied. If the issue declares `learning_tests_required` targets and any are `missing` or `refuted`, a hard STOP — ADDRESS GAPS is forced regardless of aggregate score. The same hard override applies when a `blocked_by` frontmatter entry names an issue whose status is not `done`/`cancelled` (`deferred` is non-terminal) — the Dependencies Hard Override (BUG-3051). Separately, a `missing_behavior_parity`/`stale_symbol_ref`/`stale_cli_flag` gap from `ll-issues format-check` caps (but does not STOP-override) the Issue Well-Specified criterion at 10 (ENH-3047).
+- **Outcome Confidence Score** (0-100) — predicted implementation risk. Evaluates: complexity, test coverage, ambiguity, and change surface/fanout verifiability.
 
 Both scores are persisted to the issue's frontmatter as `confidence_score` and `outcome_confidence`. Use these during sprint planning to sequence high-confidence issues first.
 
@@ -467,7 +467,7 @@ Planning separately from implementing catches misunderstandings early. An incorr
 
 Executes the approved plan. The skill works through each step, modifying files, writing tests, and verifying as it goes. After each significant change, it checks that existing tests still pass.
 
-The `type` argument is required (`bug`, `feature`, or `enhancement`).
+The `type` argument is required (`bug`, `feature`, or `enhancement`, or `epic`, which redirects to the EPIC's children).
 
 ### The No Open Questions Rule
 
@@ -552,8 +552,8 @@ The minimal path from observation to merged fix:
 ```
 1. /ll:capture-issue "description of the bug"
 2. /ll:format-issue --auto
-3. /ll:refine-issue <file>
-4. /ll:ready-issue <file>
+3. /ll:refine-issue <issue-id>
+4. /ll:ready-issue <issue-id>
 5. /ll:manage-issue bug fix <issue-id>
    → /ll:commit
 ```
@@ -608,7 +608,7 @@ When a fix regresses or an issue was closed prematurely:
 1. Update frontmatter: set status from `done` back to `open` using the Edit tool
 2. Update Status footer: **Reopened** | Reopened: 2026-02-24 | Reason: regression in commit abc123
 3. Add a "Reopen Note" section explaining what changed
-4. Run /ll:verify-issues <file> to refresh codebase claims
+4. Run /ll:verify-issues <issue-id> to refresh codebase claims
 5. Continue from Phase 3 (validate) or Phase 4 (implement)
 ```
 

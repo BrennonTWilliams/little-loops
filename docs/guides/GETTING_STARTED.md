@@ -43,13 +43,6 @@ The slash commands (`/ll:*`) run inside Claude Code sessions. If `claude-code` i
 /plugin install ll@little-loops
 ```
 
-For local development, use a local path instead:
-
-```bash
-/plugin marketplace add /path/to/little-loops
-/plugin install ll@little-loops
-```
-
 ### Step 3: Verify
 
 ```bash
@@ -84,6 +77,7 @@ ll-init
 .claude/settings.local.json     # ll tool permissions (claude-code host; --settings)
 .claude/CLAUDE.md               # ## little-loops CLI Commands block (claude-code host; --no-claude-md)
 AGENTS.md                        # same block for codex / kimi-code / qwen hosts
+GEMINI.md                        # same block for the gemini host
 .codex/hooks.json, .qwen/settings.json, .gemini/settings.json   # hook adapters per selected host
 .gemini/, .kimi-code/, .qwen/ {skills,commands,agents}/   # pre-built skill/command/agent mirrors (gemini, kimi-code, qwen)
 .codegraph/                      # code-graph index when built (gitignored)
@@ -276,7 +270,7 @@ By default, `/ll:capture-issue` creates a full v2.0 issue with all sections. Pas
 
 ```bash
 /ll:capture-issue "login button broken"           # full template (default)
-/ll:capture-issue "login button broken" --quick   # minimal template variant (per creation_variants.minimal in your config)
+/ll:capture-issue "login button broken" --quick   # minimal template (--quick overrides issues.capture_template)
 /ll:format-issue BUG-001                          # align issue with template v2.0 (sections, gaps, quality)
 ```
 

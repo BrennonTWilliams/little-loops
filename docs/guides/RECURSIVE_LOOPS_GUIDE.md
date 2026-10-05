@@ -46,7 +46,9 @@ There are two sub-families, joined by that shared idea:
 
 > **Note**: The sub-loops (`rn-remediate`, `rn-decompose`) are normally driven by
 > `rn-implement`, but each is independently runnable with `ll-loop run` if you
-> want to operate on a single issue.
+> want to operate on a single issue. Run one standalone with `--context issue_id=<ID>`
+> and a `run_dir` (normally a prior `rn-implement` run's directory). They are hidden
+> from the default `ll-loop list` output (`visibility: internal`).
 
 ## The Big Picture
 
@@ -177,7 +179,7 @@ own. Given an issue ID (or comma-separated list), it seeds a queue and loops:
 dequeue next issue
   → is it blocked_by an unfinished dep?           → defer
   → does it have unproven learning_tests_required? → defer (prove with /ll:explore-api)
-  → is it deeper than max_depth (3)?               → cap
+  → is it at or beyond max_depth (3)?               → cap
   → is it already done/cancelled?                  → skip
   → otherwise → delegate to rn-remediate
         ↳ if remediation says "decompose" → delegate to rn-decompose
@@ -292,7 +294,7 @@ before Phase 2's `run_with_continuation` is ever reached. Unlike the outcome
 tokens in the table above, this is not an `rn-remediate` sidecar token — it is
 consumed the same way `LEARNING_GATE_BLOCKED`/`AUTH_FAILED` are, via a
 run-dir-file grep fragment (`ll_auto_not_started_check`, see
-[`docs/guides/LOOPS_REFERENCE.md`](LOOPS_REFERENCE.md)) placed ahead of
+[Loops Reference](LOOPS_REFERENCE.md)) placed ahead of
 `ll_auto_learning_gate_check` in `autodev.yaml`'s `implement_current` failure
 chain, so a Phase 1 rejection is reported as `not_started` in `summary.json`
 rather than misattributed as a failed implementation (`phantom`). The `reason`
@@ -345,7 +347,7 @@ get the same behavior at every recursion depth.
 **Diagnostic stderr tokens from `check_blocked_by` (ENH-2534).** `rn-implement`'s
 `check_blocked_by` state emits three diagnostic tokens to **stderr** immediately
 before each silent fail-open exit so `audit-loop-run` and the
-`fsm/executor.py:stderr_preview` surface (ENH-2469) can distinguish a real
+the executor's stderr preview in the run output (ENH-2469) can distinguish a real
 "READY — proceed" from a degraded empty-parse:
 
 | Token | Meaning |
@@ -393,9 +395,9 @@ ll-loop run rn-implement "FEAT-1808"
 ll-loop run rn-implement "FEAT-1808,ENH-1842,BUG-1001"
 ll-loop run rn-implement --context epic=EPIC-2457   # implement an EPIC's children (ENH-2660)
 
-# Sub-loops standalone, against a single issue
-ll-loop run rn-remediate "ENH-1842"
-ll-loop run rn-decompose "FEAT-1808"
+# Sub-loops standalone, against a single issue (a run_dir from a prior parent run is required)
+ll-loop run rn-remediate --context issue_id=ENH-1842 --context run_dir=.loops/runs/<prior-rn-implement-run>/
+ll-loop run rn-decompose --context issue_id=FEAT-1808 --context run_dir=.loops/runs/<prior-rn-implement-run>/
 ```
 
 When `rn-implement` finishes it writes a `summary.json` and a human-readable

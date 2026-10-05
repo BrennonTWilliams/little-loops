@@ -17,7 +17,7 @@
 - [Resources and Prompts in Practice](#resources-and-prompts-in-practice)
 - [Adding a Tool](#adding-a-tool)
 - [The Mutation Surface and Its Guards](#the-mutation-surface-and-its-guards)
-- [Polling and Stopping a Run: `tasks/*`](#polling-and-stopping-a-run-tasks)
+- [Starting, Polling, and Stopping a Run](#starting-polling-and-stopping-a-run)
 - [Troubleshooting](#troubleshooting)
 - [See Also](#see-also)
 
@@ -26,7 +26,7 @@
 ## What `ll-mcp` Is
 
 `ll-mcp` is an MCP server (stdio by default, streamable HTTP with `--http`) that exposes
-a little-loops project over the Model Context Protocol. It advertises three surfaces:
+a little-loops project over the Model Context Protocol. It advertises the following surfaces:
 
 | Surface | What it gives a client |
 |---------|------------------------|
@@ -34,7 +34,8 @@ a little-loops project over the Model Context Protocol. It advertises three surf
 | **Tools (write)** | `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log`, `queue_add`, `queue_remove`, `queue_requeue` — dry-run by default, see [below](#the-mutation-surface-and-its-guards) |
 | **Resources** | Issue files, `.ll/ll-goals.md`, and `docs/**/*.md` under an `ll://` scheme; one interactive `ui://issues/view` MCP Apps resource (ENH-3306) |
 | **Prompts** | Every discovered `SKILL.md`, listed as an invocable MCP prompt |
-| **Tasks** | `tasks/get` / `tasks/cancel` — poll or stop an in-flight `ll-loop` run, see [below](#polling-and-stopping-a-run-tasks) |
+| **Tools (run control)** | `loop_start` — starts a detached `ll-loop` run, gated by `allow_tasks` |
+| **Tasks** | `tasks/get` / `tasks/cancel` — poll or stop an in-flight `ll-loop` run, see [below](#starting-polling-and-stopping-a-run) |
 
 It is launched *by a host*, never by hand — it speaks JSON-RPC on stdin/stdout and prints
 nothing useful to a terminal. Each tool wraps a `little_loops` library call directly: no
@@ -51,7 +52,7 @@ dependency that most little-loops users never need:
 pip install "little-loops[mcp]"
 ```
 
-Without the extra, `ll-mcp` exits `2` with `ll-mcp requires the `mcp` extra` rather than
+Without the extra, `ll-mcp` exits `2` with ``ll-mcp requires the `mcp` extra: pip install 'little-loops[mcp]'`` rather than
 an `ImportError` traceback. Because hosts usually swallow a server's stderr, this failure
 typically surfaces only as "server failed to start" in the client — run `ll-mcp` directly
 in a terminal to see the real message (it will hang waiting for JSON-RPC input if the
@@ -317,7 +318,7 @@ mcp-call ll-mcp/queue_list '{}'
     "action": { "name": "rn-refine", "runner": "loop", "target": "FEAT-3122", "args": [], "timeout": null },
     "enqueuedAt": "2026-08-20T10:00:00Z",
     "priority": 0,
-    "status": "queued",
+    "status": "pending",
     "result": null,
     "claimedAt": null,
     "ownerPid": null,
@@ -338,7 +339,7 @@ mcp-call ll-mcp/queue_get '{"id": "a1b2c3d4"}'
   "action": { "name": "rn-refine", "runner": "loop", "target": "FEAT-3122", "args": [], "timeout": null },
   "enqueuedAt": "2026-08-20T10:00:00Z",
   "priority": 0,
-  "status": "queued",
+  "status": "pending",
   "result": null,
   "claimedAt": null,
   "ownerPid": null,
@@ -396,7 +397,7 @@ the next call after it's written — no restart needed — and a deleted or rena
 being advertised the same way. The same applies to a newly added `SKILL.md` and the
 prompts list.
 
-Two caveats follow from *how* that check works:
+Three caveats follow from *how* that check works:
 
 - The check is a directory mtime, not a recursive walk — a change **directly inside** a
   watched directory is detected; a change two or more levels down (a new `SKILL.md`
@@ -492,13 +493,13 @@ adding a tool.
 Two mitigations cover every case in the little-loops MCP server today:
 
 1. **Prefer extracting a non-printing library function.** `_tool_issue_set_status` and
-   `_tool_issue_link` (`mcp_server/tools.py:317-420`) never call `cmd_set_status`/`cmd_link`
+   `_tool_issue_link` (in `little_loops.mcp_server.tools`) never call `cmd_set_status`/`cmd_link`
    — they call `apply_status_transition`/`apply_link`, the non-printing functions FEAT-3149
    extracted from those `cmd_*` implementations for exactly this reason. When the CLI
    function you're wrapping still prints, extract its logic first rather than wrapping the
    printing function.
 2. **`redirect_stdout`/`redirect_stderr` when extraction isn't practical.** `_tool_loop_start`
-   (`mcp_server/tools.py:699-705`) wraps `run_background()` — which prints on both its
+   (in `little_loops.mcp_server.tools`) wraps `run_background()` — which prints on both its
    success and pre-flight-failure paths — in `contextlib.redirect_stdout`/`redirect_stderr`,
    reading the captured stderr back to build an error message on non-zero return. Reach for
    this only when the wrapped call is otherwise unsafe to extract.
@@ -521,16 +522,18 @@ Registration checklist for a new tool:
 
 ## The Mutation Surface and Its Guards
 
-Four tools write: `issue_capture`, `issue_set_status`, `issue_link`, and
-`issue_append_log`. Each wraps the same library function the equivalent `ll-issues`
-subcommand calls, so a tool call and a CLI invocation produce the same file state.
+Seven tools write: `issue_capture`, `issue_set_status`, `issue_link`, `issue_append_log`,
+`queue_add`, `queue_remove`, and `queue_requeue`. Each issue tool wraps the same library
+function the equivalent `ll-issues` subcommand calls, and each queue tool wraps the
+corresponding queue-store function behind `ll-queue`, so a tool call and a CLI invocation
+produce the same file state.
 
 `ll-auto`, `ll-parallel`, and `ll-action invoke` are still off the surface entirely. `ll-loop`
 is the one exception: `loop_start` (below, alongside `tasks/*`) starts a detached run.
 Everything else about the boundary is unchanged — `tasks/cancel` is a control operation over
 a run that is already going, signalling an existing PID, never spawning one.
 
-Two guards sit in front of the four.
+Two guards sit in front of these seven.
 
 ### Guard 1 — dry-run by default
 
@@ -586,10 +589,10 @@ unaffected:
 
 ```
 $ # with http.allow_mutations = false
-$ mcp-call ll-mcp tools/call issue_set_status '{"issue_id":"FEAT-1","status":"done"}'
+$ mcp-call ll-mcp/issue_set_status '{"issue_id":"FEAT-1","status":"done"}'
 {"jsonrpc":"2.0","id":null,"error":{"code":-32001,"message":"policy denied tools/call/issue_set_status: …"}}
 
-$ mcp-call ll-mcp tools/call issues_query '{}'
+$ mcp-call ll-mcp/issues_query '{}'
 [ … works fine … ]
 ```
 
@@ -601,7 +604,7 @@ cannot reach a mutating handler while hiding its identity from the guard.
 ### Distinguishing the two groups from a client
 
 The seven mutating tools carry a `readOnlyHint: false` annotation in `tools/list`; the nine
-read-only tools carry no annotations at all. A host can key presentation — a confirmation
+read-only tools and `loop_start` carry no annotations. A host can key presentation — a confirmation
 prompt, a different icon — off that.
 
 ---
@@ -618,7 +621,7 @@ this way.
 ### Starting a run: `loop_start`
 
 ```
-$ mcp-call ll-mcp tools/call loop_start '{"loop": "rn-refine", "context": ["ISSUE_ID=FEAT-3151"]}'
+$ mcp-call ll-mcp/loop_start '{"loop": "rn-refine", "context": ["ISSUE_ID=FEAT-3151"]}'
 {"instance_id": "rn-refine-20260814T160000-a1b2", "loop": "rn-refine"}
 ```
 
@@ -655,6 +658,11 @@ shaped to track the (not-yet-shipped) `io.modelcontextprotocol/tasks` extension 
 future swap to the official mechanism is a registration change, not a client-visible one.
 `initialize`'s capabilities never advertise the extension itself — the server does not
 claim a capability it only implements privately.
+
+Because `tasks/get` and `tasks/cancel` are JSON-RPC methods rather than tools, `mcp-call`
+(which only calls tools) cannot reach them; the `mcp-call` lines below show the request and
+response shape only. To send them for real, use the raw `printf ... | ll-mcp` pattern shown
+in [Troubleshooting](#troubleshooting).
 
 `taskId` is the `ll-loop` `instance_id` verbatim — the same string `ll-loop status`
 already prints — not a handle minted by the server:
@@ -755,7 +763,7 @@ printf '%s\n' \
   response shapes, and the resource/prompt surface contract
 - [CLI Reference § `ll-adapt`](../reference/CLI.md#ll-adapt) — the host adapter that emits
   MCP config
-- [API Reference § `little_loops.mcp_server`](../reference/API.md) — module-level internals
+- [API Reference](../reference/API.md) — module-level internals
 - [Host Compatibility](../reference/HOST_COMPATIBILITY.md) — which hosts support what
 - [Issue Management Guide](ISSUE_MANAGEMENT_GUIDE.md) — the write path the MCP surface
   deliberately omits
