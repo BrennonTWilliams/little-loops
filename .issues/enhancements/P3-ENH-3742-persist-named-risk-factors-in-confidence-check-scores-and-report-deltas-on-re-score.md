@@ -30,7 +30,7 @@ This is additive to scoring: no rubric change, no threshold change, no migration
 
 ## Expected Behavior
 
-- Every successful non-check assessment records the complete factor set, including an explicit empty set, independently of display thresholds. Factors identify distinct reasons for a readiness/outcome point deduction or a hard-gate failure; a full-score criterion with no override contributes no factor.
+- Every non-check assessment supplies the complete factor set, including an explicit empty set, independently of display thresholds. Successful factor writes record that set; persistent validation failure follows the explicitly reported scores-only fallback below. Factors identify distinct reasons for a readiness/outcome point deduction or a hard-gate failure; a full-score criterion with no override contributes no factor.
 - Re-scoring against a recorded baseline reports a deterministic delta in skill output. Any membership change is also recorded in a new Notes section, including unchanged totals and a transition to no factors. Existing finding-bearing Notes include the comparison even when membership is unchanged.
 - The first factor-aware assessment of an issue reports that no prior baseline exists, even when numeric scores already exist. Legacy prose is not converted into a guessed baseline.
 - The stored set means **last assessment that recorded factors**. It can outlive cleared scores or a later scores-only update, and is never evidence of score freshness or a gate input.
@@ -68,7 +68,7 @@ risk_factors:
 - Rewording or changing a factor's domain/criterion retains its ID and reports the changed metadata fields. Exact ID matching only; no similarity fallback. An ID removed on one run and later reintroduced is added relative to the immediately preceding recorded set.
 - Sort persisted records and delta entries by ID. Retain only the latest set; prior records needed for a removed entry come from the pre-write read, not a second permanent history field.
 
-### CLI and Baseline Contract
+### Decision Rules
 
 Extend `set-scores`/`ss` with a **planned** `--risk-factors-file PATH` option accepting a JSON array; `-` reads stdin. Add optional JSON result output. The existing scalar-only invocation retains its quiet success, no-flags warning, omitted-field and exit-code behavior.
 
@@ -85,14 +85,15 @@ Validation covers file/read/JSON errors, a non-array root, record shape, require
 
 The read of the previous baseline, comparison, frontmatter update and write use one shared issue-tree mutation lock (`issue_lock_path(path, config.issues.base_dir)` / `acquire_lock()`) and `atomic_write()`. Use that same locked path for scalar-only updates. Return a successful comparison only after the write succeeds; preserve unrelated metadata and issue body text.
 
-The JSON result has `issue_id` and a `risk_factors` object. With recorded factors, that object contains `recorded: true`, `baseline: absent|present`, the assessed `factors` list, and `added`, `removed`, `retained`. For an absent baseline the three comparison fields are `null`; for a present baseline they are arrays, including empty arrays. Added entries contain new records, removed entries prior records, and retained entries contain the assessed record plus a `changed_fields` list drawn from `domain`, `criterion`, `description`. An empty `changed_fields` means fully unchanged. With no factor input, return only `recorded: false` and baseline presence under this object.
+The JSON result has `issue_id` and a `risk_factors` object. With recorded factors, that object contains `recorded: true`, `baseline: absent|present`, the assessed `factors` list, and `added`, `removed`, `retained`. For an absent baseline the three comparison fields are `null`; for a present baseline they are arrays, including empty arrays. Added entries contain new records, removed entries prior records, and retained entries contain all four assessed record fields plus `changed_fields`, listed in stable `domain`, `criterion`, `description` order. An empty `changed_fields` means fully unchanged. With no factor input, return only `recorded: false` and baseline presence under this object.
 
 ### Signatures
 
-- Existing entry point: `cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int` in `scripts/little_loops/cli/issues/set_scores.py`.
-- Existing clearing helper: `clear_scores(path: Path) -> bool`; its six-key removal contract stays intact.
+- `cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int` — existing entry point in `scripts/little_loops/cli/issues/set_scores.py`.
+- `clear_scores(path: Path) -> bool` — existing clearing helper; its six-key removal contract stays intact.
 - Proposed internal data types: `RiskFactor`, `RetainedRiskFactor`, `RiskFactorDelta` dataclasses in the score-writer module; records expose string fields and delta lists rather than embedding prose parsing.
-- Proposed pure helpers: `parse_risk_factors(raw: str) -> list[RiskFactor]` and `diff_risk_factors(previous: list[RiskFactor] | None, assessed: list[RiskFactor]) -> RiskFactorDelta`. These names describe new helpers, not existing APIs.
+- `parse_risk_factors(raw: str) -> list[RiskFactor]` — proposed pure input helper, not an existing API.
+- `diff_risk_factors(previous: list[RiskFactor] | None, assessed: list[RiskFactor]) -> RiskFactorDelta` — proposed pure comparison helper, not an existing API.
 
 ### Call Path
 
@@ -157,7 +158,7 @@ Makes risk composition changes visible when aggregate scores stay fixed, includi
 2. JSON comparison follows Program Design, is deterministic under input reordering, and distinguishes fully unchanged retained factors from metadata changes under the same ID. First assessments report an absent baseline with `null` comparison lists; a known-empty baseline produces ordinary array comparisons.
 3. Re-scoring with identical totals and changed membership reports a non-empty delta in skill output and a new Notes section. Removing the final factor works when `HAS_FINDINGS` is otherwise false. Threshold crossing alone does not add/remove a factor.
 4. Numeric score clearing, including the automated clear-before-rescore precondition, preserves the baseline; scalar-only partial updates and factor-only CLI writes follow the specified omitted-field behavior. Factors never supply score freshness or gating evidence.
-5. Malformed JSON, invalid record shape/fields and duplicate IDs leave issue bytes unchanged and write no scores. The read/diff/write uses the shared lock and atomic writer; write failure emits no successful result. Skill validation failure has the bounded repair and explicitly reported scores-only fallback, without stopping other batch issues.
+5. Rejected factor-bearing CLI calls (malformed JSON, invalid record shape/fields or duplicate IDs) leave issue bytes unchanged and write no scores. The read/diff/write uses the shared lock and atomic writer; write failure emits no successful result. Skill validation failure has the bounded repair and explicitly reported separate scores-only fallback call, without stopping other batch issues.
 6. Removed/historical signal phrases inside `Risk Factor Delta` cannot set flags through either note-input path. Active findings elsewhere still match; existing true flags are not cleared by factor removals.
 7. Single/auto/batch/sprint modes use the same factor contract. `--check` retains its existing output/exit behavior and writes nothing. Notes preserve Session Log and Resolved Concerns structure, including the latest-notes behavior used by flags.
 8. The five readiness criteria, four outcome criteria, point allocations, caps, configured readiness/outcome thresholds and flag preconditions are unchanged. Existing scored issues need no migration and retain their numeric behavior. Documentation covers the new CLI/metadata contract, and the relevant tests above exercise these outcomes.

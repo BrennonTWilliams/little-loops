@@ -30,6 +30,12 @@ relates_to:
 - ENH-3675
 - ENH-3676
 size: Large
+confidence_score: 100
+outcome_confidence: 68
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3731: Shared usage qualification core and source readers
@@ -271,6 +277,7 @@ _Historical. The 2026-10-05 re-score (Readiness 95, Outcome 63 — below `outcom
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T20:41:58 - `db871f03-686f-4948-9fc4-2cabe2027d34.jsonl`
 - Pre-implementation review - 2026-10-05 - `/ll:advise` with `claude-fable-5-1` (confidence 0.85) plus code checks. Split the `channel=` selector scope to ENH-3748; added `blocked_by: BUG-3735` (in flight in the working tree, same selector) and removed the either-landing-order clauses; moved maintainer-store sample counts out of the end-user docs requirement; decided the `subtotal` → `audit_subtotal` rename and the per-column `require_cost` mapping; resolved the provenance-label masking contradiction (result unmasked, public fields masked), the stored-cache pointer reason vocabulary, the estimated Codex rollout coverage rule and the invariant scope vs direct-JSONL `partial`; put `empty_selection` first in precedence; converted the publication-gate AC to a verified note; consolidated normative rules into Decision Rules. Stale scores removed; rerun the confidence gate.
 - `/ll:confidence-check` - 2026-10-05T20:20:41 - `ae6dd8ed-dfaf-4c44-8d2a-2461e60f636e.jsonl`
 - Pre-implementation review - 2026-10-05 - Inspected `main`; `/ll:advise` with `claude-opus-5-5` (confidence 0.80) and direct helper probes identified incorrect stored-cache pointer coverage, ambiguous waste-ratio evidence counts and order-dependent float totals/overflow. Tightened measured-only result reuse, actual coverage propagation, pair/count semantics, metadata grouping, visible figure-reason footnotes and stable cost finalization. The 64 focused provenance/coverage/cache/chokepoint baseline tests and issue format/design/whitespace checks passed.

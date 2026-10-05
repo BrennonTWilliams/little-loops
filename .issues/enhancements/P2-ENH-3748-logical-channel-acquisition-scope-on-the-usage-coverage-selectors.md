@@ -21,6 +21,12 @@ relates_to:
 - ENH-3730
 - ENH-3733
 - ENH-3723
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3748: Logical channel acquisition scope on the usage coverage selectors
@@ -125,6 +131,7 @@ Thread `channel` through both selectors in `history_reader/usage.py`. Filter Pyt
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T20:41:25 - `db871f03-686f-4948-9fc4-2cabe2027d34.jsonl`
 - Split from ENH-3731 - 2026-10-05 - Pre-implementation review (`/ll:advise` with `claude-fable-5-1`, confidence 0.85) moved the `channel=` selector scope out of ENH-3731 and ordered it after BUG-3735, which rewrites the same acquisition/output ordering.
 
 ## Status
