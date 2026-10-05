@@ -17,6 +17,12 @@ blocks:
 - ENH-3728
 parent: EPIC-3693
 epic: EPIC-3693
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3677: Hoist the shared remote history-backend test fixture into conftest.py
@@ -204,6 +210,7 @@ Prior 100/67 scores and `verify_verdict: VALID` were cleared on 2026-10-04 becau
 - Keep the independent libsql `stub` for direct-backend tests; remote consumers and variants must not request a second server. Cleanup must cover migration/setup failures before yield.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-05T18:32:56 - `a7f624ef-fd4a-4f3c-baa9-6b359d58b554.jsonl`
 - EPIC-3693 review #3 - 2026-10-05 - six copies and variant/cleanup plan confirmed; backend-independent ENH-3729 removed from blocks, ENH-3728 remains a fixture consumer; no new fixture scope or implementation
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - variant ownership and setup-failure cleanup pinned; stale scores and cancelled/obsolete obligations removed; implementation not performed
 - `/ll:confidence-check` - 2026-09-30T01:48:11 - `6908c6b4-43de-49c6-9aef-d5ca638f2e23.jsonl`
