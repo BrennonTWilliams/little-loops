@@ -7,6 +7,7 @@ status: open
 discovered_by: ll:capture-issue
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T18:21:19Z'
+verify_verdict: VALID
 relates_to:
 - EPIC-3710
 - FEAT-3721
@@ -14,6 +15,12 @@ relates_to:
 - ENH-3720
 blocks:
 - FEAT-3721
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3737: Unescaped SQLite read-only URIs create or open the wrong database
@@ -42,7 +49,7 @@ Add one dependency-light helper that builds a percent-encoded absolute `file:` U
 
 ### Files to Modify
 
-- New dependency-free `scripts/little_loops/sqlite_uri.py`: shared literal file-URI builder.
+- `scripts/little_loops/sqlite_uri.py` — **new**: dependency-free shared literal file-URI builder.
 - `scripts/little_loops/session_store/backend.py`: both ordinary and deadline-bound read-only opens.
 - `scripts/little_loops/session_store/queries.py`: `_connect_readonly`, preserving read-only main / writable attached scratch export semantics.
 - `scripts/little_loops/session_store/sessions.py`: both native SQLite session-index opens, preserving fail-soft fallback.
@@ -64,11 +71,66 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 - **No existing URI helper or escaping convention.** No `as_uri(` or `urllib.parse.quote` call exists under `scripts/little_loops`; `urllib.parse` appears only for `urlsplit`/`parse_qs` parsing. This is a new primitive, not a consolidation.
 - **Convention — placement:** single-purpose dependency-free helpers are flat top-level `scripts/little_loops/<name>.py` modules with a prose docstring (evidence: `paths.py`, `env_file.py`, `pii.py`, `text_utils.py`), tested by flat `scripts/tests/test_<name>.py` with `tmp_path` fixtures. Contested: SQLite-adjacent helpers have precedent both ways (`session_store/deadline.py` in the subpackage vs top-level `queue_store.py`); the issue's top-level `sqlite_uri.py` is consistent with the first rule but not with the subpackage precedent.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/__init__.py` — re-exports module-level `connect_readonly`; no change (the helper lives in top-level `little_loops.sqlite_uri`, not this package) [Agent 1 finding]
+- `scripts/little_loops/session_store/lifecycle.py` — calls `connect_readonly(...)` in `rebuild_needed()` and a second site near :1658; inherits corrected `backend.py` behavior, no edit [Agent 1 finding]
+- `scripts/little_loops/issue_history/workspace_quality.py` — `_open_member_readonly()` already routes through `resolve_backend().connect_readonly(...)`; only `_open_union()`'s ATTACH parameter is a raw URI. The two `sqlite3.connect(":memory:", uri=True)` hosts in `_open_union()` carry no path and need no change [Agent 1 finding]
+- `scripts/little_loops/issue_history/evolution.py` — `_open_db()` calls `resolve_backend().connect_readonly(...)`; inherits the fix. Not `codegraph._open_db` (same name, different function) [Agent 1 finding]
+- `scripts/little_loops/cli/history.py`, `cli/session.py`, `cli/logs.py`, `cli/ctx_stats.py`, `cli/doctor.py`, `cli/doctor_trim.py` — consume `connect_readonly` / `resolve_backend().connect_readonly`; inherit the fix, no edit [Agent 1 finding]
+- `scripts/little_loops/cli/artifact/dashboard.py` — calls `build_snapshot_db()`, which calls `queries._connect_readonly()` at :541; inherits the fix [Agent 2 finding]
+- `scripts/little_loops/session_store/sessions.py` — `_query_threads_db()` is reached only via `detect_sessions()` (:241) and `_list_codex_workspaces()` only via `list_workspaces()` (:584); neither is called directly by tests [Agent 1/3 finding]
+- `scripts/little_loops/history_reader/_base.py` — `_connect_readonly()` routes through `open_history_readonly`, not a raw URI; same name as `queries._connect_readonly`, unaffected [Agent 1 finding]
+- `scripts/tests/spike/session_store_backend_dialect/dialects.py:79` — spike-only raw `f"file:{self.db_path}?mode=ro"` copy; deliberately out of scope [Agent 1 finding]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_feat3410_workspace_quality.py` — **will break**: `test_never_uses_migrating_opener` slices `workspace_quality.py` from `def _open_member_readonly` and asserts `"mode=ro" in code`; the only `mode=ro` text in that slice is the ATTACH f-string in `_open_union()`. Replacing it with `sqlite_file_uri(path, mode="ro")` removes the substring (the module-docstring mention at :8 precedes the slice). Re-express the pin (e.g. assert `sqlite_file_uri(` and `mode="ro"`) while keeping the `ensure_db(` / `_connect_readonly(` / `immutable=1` absences [Agent 2/3 finding]
+- `scripts/tests/test_feat3304_artifact_dashboard.py` — `test_snapshot_builder_never_uses_the_migrating_open_path` survives only by accident: its slice (`def _connect_readonly` → `def export_tables_help`) includes the `_connect_readonly` docstring, which contains `mode=ro` (:252, :257). Decide deliberately whether to re-express it so the raw-open property stays asserted by code rather than docstring text [Agent 2/3 finding]
+- `scripts/tests/test_history_store_chokepoint_gate.py` — `test_allowlist_entries_still_exist_and_still_have_raw_connects` fails if an allowlisted file (`codequery/codegraph.py`, `session_store/sessions.py`, `session_store/queries.py`, `issue_history/workspace_quality.py`) loses its last `sqlite3.connect`; keep every connect in place. The new `sqlite_uri.py` is auto-scanned by `rglob("*.py")` and must contain no `sqlite3.connect` (else it needs an allowlist entry) [Agent 2/3 finding]
+- `scripts/tests/test_sqlite_uri.py` — **new**: flat helper test following `test_env_file.py` (module docstring naming `little_loops.sqlite_uri`, `from __future__ import annotations`, one class per behavior, `tmp_path: Path`, `-> None`, no mocks, no markers). Cover `ro`/`rw`, relative vs absolute, literal `%`/`#`/`?`/space/Unicode, missing file stays missing in both modes (pins the `rw` contract for FEAT-3711), and mode injection via path content [Agent 3 finding]
+- `scripts/tests/test_session_store_backend.py` — extend `TestConnectReadonlyStrict` using `_mark(db_path, value)` and the decoy-file shape of `test_explicit_non_default_shaped_path_bypasses_env_override`; add special-character identity + no-creation cases there [Agent 3 finding]
+- `scripts/tests/test_enh3720_session_store_deadline.py` — add deadline-bound identity/no-creation cases to `TestLocalBinding` (uses `connect_readonly(db, deadline=Deadline.after(10))`); unmarked, since not timing-sensitive (`no_parallel` is only on `TestLocalCancellationTiming` / `TestRemoteSocketEnforcement`) [Agent 3 finding]
+- `scripts/tests/test_session_discovery.py` — `_query_threads_db` / `_list_codex_workspaces` have no direct tests; extend `TestDetectSessionsCodexSqlitePath` and `TestListWorkspaces::test_list_workspaces_codex_via_sqlite` (build the Codex home / `state_N.sqlite` under a `#`/`?`/`%` directory via `_make_state_db`) and keep `TestDetectSessionsCodexFallback` fail-soft cases (`..._when_db_missing`, `..._when_db_unusable_at_first_statement`) green [Agent 3 finding]
+- `scripts/tests/test_codequery_codegraph.py` — `codegraph._open_db` has no direct test; extend `TestQueries` with `_build_index(db_path, ...)` at a special-character repo path, and keep `TestStatusMissingIndex::test_no_db_reports_unavailable` (the `db_path.exists()` guard) [Agent 3 finding]
+- `scripts/tests/test_feat3304_artifact_dashboard.py` — extend `TestBuildSnapshotDb` / `TestSnapshotRoundTrip` (writable attached scratch DB) and `TestSourceDbUntouched::test_history_db_byte_identical_after_export` with a special-character source path; `TestMissingDatabase::test_missing_history_db_exits_1` covers missing-source [Agent 3 finding]
+- `scripts/tests/test_feat3323_sse_bridge.py` — `TestHistoryRoute::test_readonly_opener_rejects_writes` and `test_never_migrates_or_creates_missing_db` call `queries._connect_readonly` directly; must stay green [Agent 2/3 finding]
+- `scripts/tests/test_feat3418_workspace_quality.py` — `TestUnionViewCoverage`, `TestSupersedesScopedPerMember`, `TestFollowUpFixSurvivesDiscriminator` call `_open_union([...])`; add a special-character member path to `TestUnionViewCoverage`, and keep `TestSourceUntouchedDuringTotals::test_member_files_unchanged_after_totals_run` green [Agent 2/3 finding]
+- `scripts/tests/test_feat3410_workspace_quality.py` — `_healthy_member(tmp_path, name, role)` deliberately uses non-default-shaped `<name>-history.db` names (the autouse `_isolate_history_db` fixture would otherwise collapse members); a special-character fixture must keep that property [Agent 3 finding]
+- `scripts/tests/test_feat3445_workspace_activity.py` — `TestNeverUsesMigratingOpener` slices `workspace_activity.py` with no `mode=ro` assertion and does not import the helper; no change [Agent 2 finding]
+- Fixture hygiene: new fixtures must use `tmp_path` (or `/nonexistent/...`), never `/home/<user>/` — the private-refs pre-commit hook rejects those [Agent 2 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — Module Overview table (near the `little_loops.env_file` / `little_loops.paths` / `little_loops.queue_store` rows): add a `little_loops.sqlite_uri` row (dotted name only, per the docs-audience gate) describing `sqlite_file_uri(path, *, mode)` [Agent 2 finding]
+- `docs/reference/API.md` — "Backend chokepoint: little_loops.session_store.backend" section (:9988 "strict read-only open: never creates or migrates (D19)") and "Total deadline for read-only connections (ENH-3720)" (:10009-10047): note that read-only opens encode the literal path so `#`/`?`/`%` select the exact file [Agent 2 finding]
+- `docs/reference/API.md:2421` — `aggregate_history_dbs` row in the `little_loops.issue_history` table says "each via its own read-only `mode=ro` connection"; wording stays true, optional [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — Directory Structure tree (top-level modules near `text_utils.py` / `pii.py` at :218-219; not exhaustive, so optional) and "History DB: Producer→Consumer Flow" ("never-create" / "strict read-only"). Keep the `_connect_readonly` string at :862 — `test_wiring_guides_and_meta.py` pins it (`("docs/ARCHITECTURE.md", "_connect_readonly", "ENH-1753")`) [Agent 2/3 finding]
+- `CONTRIBUTING.md` — project-structure tree (:294-307) lists `text_utils.py`, `pii.py`, `queue_store.py`; optionally add `sqlite_uri.py` [Agent 2 finding]
+- `docs/reference/CLI.md` — "ll-artifact dashboard" (:5586) says the snapshot uses "a raw `file:…?mode=ro` connection"; still true, no edit [Agent 2 finding]
+- `.ll/learning-tests/sqlite3.md` — proven claim "ATTACH DATABASE 'file:<path>?mode=ro' … works" is for the raw form; the encoded `file:///…?mode=ro` form is the same mechanism but not separately proven. Not a gate; consider re-proving via `/ll:explore-api` [Agent 2 finding]
+- No test compares the API.md Module Overview, the ARCHITECTURE.md tree or the CONTRIBUTING.md tree to the filesystem; `test_docs_audience_gate.py` applies to any new entry. Any CHANGELOG entry belongs under a concrete version section, not `[Unreleased]` [Agent 2/3 finding]
+
+### Configuration
+_Wiring pass added by `/ll:wire-issue`:_
+- None. `scripts/pyproject.toml` ships the new module automatically (`packages = ["little_loops"]`, wheel `include = ["little_loops/**", ...]`); no `config-schema.json` key, `history.db` schema/`SCHEMA_VERSION` change or `ll-verify-package-data` entry is needed [Agent 1/2 finding]
+
 ## Implementation Steps
 
 1. Add a focused reproduction with literal filename and directory characters `#`, `?`, `%`, spaces and Unicode, plus differently populated truncated/decoded decoy DBs.
 2. Implement the shared stdlib URI builder; adapt both backend read-only branches and the enumerated raw read-only/ATTACH consumers without changing their connection policies.
 3. Verify existing and missing-file identity, no alias creation/mutation, relative and absolute paths, timeout/deadline/error behavior, and writable attached export scratch behavior. Run focused tests, the chokepoint gate and the local suite.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_feat3410_workspace_quality.py::test_never_uses_migrating_opener` — the `"mode=ro" in code` assertion fails once `_open_union()` calls `sqlite_file_uri(path, mode="ro")`; re-express it (e.g. `sqlite_file_uri(` + `mode="ro"`) and keep the `ensure_db(` / `_connect_readonly(` / `immutable=1` absences
+- Update `scripts/tests/test_feat3304_artifact_dashboard.py::test_snapshot_builder_never_uses_the_migrating_open_path` — passes only via docstring text after the edit; re-express so the raw-open/no-migration property is asserted by code
+- Keep every `sqlite3.connect` call in `codegraph.py`, `sessions.py`, `queries.py` and `workspace_quality.py` — `test_history_store_chokepoint_gate.py::test_allowlist_entries_still_exist_and_still_have_raw_connects` fails otherwise; keep `sqlite_uri.py` free of `sqlite3.connect` (else it needs an allowlist entry)
+- Create `scripts/tests/test_sqlite_uri.py` following `test_env_file.py` conventions (real `tmp_path` files, no mocks, no markers)
+- Extend special-character fixtures in `test_session_store_backend.py::TestConnectReadonlyStrict`, `test_enh3720_session_store_deadline.py::TestLocalBinding`, `test_session_discovery.py::TestDetectSessionsCodexSqlitePath` / `TestListWorkspaces`, `test_codequery_codegraph.py::TestQueries`, `test_feat3304_artifact_dashboard.py::TestBuildSnapshotDb` / `TestSnapshotRoundTrip`, and `test_feat3418_workspace_quality.py::TestUnionViewCoverage`
+- Update `docs/reference/API.md` — add a `little_loops.sqlite_uri` Module Overview row (dotted name only) and note literal-path encoding in the "Backend chokepoint" and ENH-3720 deadline sections; optionally list `sqlite_uri.py` in `docs/ARCHITECTURE.md` and `CONTRIBUTING.md` module trees, preserving the `_connect_readonly` string `test_wiring_guides_and_meta.py` pins
 
 ## Program Design
 
@@ -139,6 +201,12 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 - **Source-text pins bind the `mode=ro` literal and will react to the edit.** `test_feat3304_artifact_dashboard.py::test_snapshot_builder_never_uses_the_migrating_open_path` slices `queries.py` from `def _connect_readonly` to `def export_tables_help` and asserts `"mode=ro" in builder` and `"_pkg.connect" not in builder`. `test_feat3410_workspace_quality.py::test_never_uses_migrating_opener` slices `workspace_quality.py` from `def _open_member_readonly` onward and asserts `"mode=ro" in code` while `ensure_db(`, `_connect_readonly(` and `immutable=1` are absent. If the `mode=ro` text moves into the helper (`mode` as a parameter, not an inline literal), both pins must still hold or be deliberately re-expressed; they exist to prove the raw-open/no-migration property and that property must stay asserted.
 - **History chokepoint gate** (`test_history_store_chokepoint_gate.py`): AST-matches `sqlite3.connect` calls only (not URI strings or ATTACH) against `_ALLOWLIST`, and `test_allowlist_entries_still_exist_and_still_have_raw_connects` fails if an allowlisted file loses its last raw connect. Routing all opens through `sqlite_file_uri` leaves every `sqlite3.connect` call in place, so the allowlist should be unchanged; replacing a raw connect with a different opener would force removing that file's entry.
 
+## Verification Notes
+
+Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Integration Map, Files to Modify: `scripts/little_loops/sqlite_uri.py` was cited as an existing path, but the file is not yet created or tracked (format-check `stale_file_ref`, blocking). Rewritten in place with the recognized `**new**` marker, matching `scripts/tests/test_sqlite_uri.py`. A follow-up `ll-issues format-check BUG-3737` reports no blocking gap keys.
+
 ## Review Notes
 
 - 2026-10-05: Found during EPIC-3710 pre-implementation review; temporary-store reproduction confirmed wrong-file creation. `/ll:advise` with Opus (confidence 0.76) corroborated the URI mechanism and recommended an independent prerequisite bug so current readers do not wait on the arena core.
@@ -155,5 +223,10 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-05T18:46:02 - `31d58183-8758-4d4f-ad48-2c2f7478dd36.jsonl`
+- `/ll:verify-issues` - 2026-10-05T18:44:52 - `ba9691d0-f847-4e4f-9425-b042e4d6175b.jsonl`
+- `/ll:verify-issues` - 2026-10-05T18:43:39 - `b9eeeb68-d3f1-47df-931c-17a810117e8f.jsonl`
+- `/ll:verify-issues` - 2026-10-05T18:42:30 - `9c8983c4-64a7-4209-9036-53d8d388216c.jsonl`
+- `/ll:wire-issue` - 2026-10-05T18:40:42 - `011d2688-48f6-4303-aaa6-bc531df0e6b7.jsonl`
 - `/ll:refine-issue` - 2026-10-05T18:34:07 - `af0cc2df-1eb5-430f-a8c4-2e0bd187887f.jsonl`
 - `/ll:capture-issue` - 2026-10-05T18:26:42 - `e0d3fb45-7fc3-4e7a-a2c8-9ad8bfdb517e.jsonl`
