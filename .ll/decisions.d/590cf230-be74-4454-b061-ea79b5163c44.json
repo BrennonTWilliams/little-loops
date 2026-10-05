@@ -1,0 +1,11 @@
+{
+  "id": "1a5781f5-a3d2-42bb-9f36-2135ed42b464",
+  "type": "decision",
+  "timestamp": "2026-10-05T23:43:14Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Closes the manual-edit gaps left by BUG-3738 (one-winner apply) and BUG-3739 (children-listed drift) by reusing BUG-3738's preserving writers, lock, and Children helper.",
+  "rule": "Captured: Add a parent-assignment option to ll-issues link for single child-to-EPIC assignment",
+  "scope": "issue",
+  "issue": "ENH-3749"
+}
