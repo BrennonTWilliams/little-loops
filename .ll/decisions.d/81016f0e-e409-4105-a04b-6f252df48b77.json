@@ -1,0 +1,12 @@
+{
+  "id": "163078a8-4a29-4a2d-aac9-9c29e4579334",
+  "type": "decision",
+  "timestamp": "2026-10-05T04:37:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Rides the three-place schema edit and allowlist bump already required for label/reason columns; no manifest/dashboard.py/HistoryPayload change; carried by standalone build_snapshot_db output.",
+  "rule": "Option C: policy-version column on usage_coverage_audit",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: page stamp only; Option B: in-snapshot policy table",
+  "issue": "ENH-3733"
+}
