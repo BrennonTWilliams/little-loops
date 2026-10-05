@@ -3,7 +3,7 @@ id: ENH-3723
 type: ENH
 title: Canonical usage qualification across source and snapshot consumers
 priority: P2
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-10-03'
 captured_at: '2026-10-04T01:43:57Z'
@@ -292,6 +292,7 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-run on the revised scope; sup
 
 ## Session Log
 
+- `/ll:issue-size-review` - 2026-10-05T00:00:00 - `<session-dir>/session.jsonl`
 - `/ll:confidence-check` - 2026-10-05T03:02:22 - `8b143c38-25bb-46fe-827f-32c895e75d3c.jsonl`
 - Pre-implementation review - 2026-10-04 - `/ll:advise` with `claude-opus-5-5` (confidence 0.72) supported channel scoping and explicit per-metric eligibility, while recommending a narrower raw-to-usage completeness check. Inspected checkpoint/version, producer markers, workspace union and regression code; in-memory probes reproduced live-row coverage contamination and rejection of an observed-zero baseline. Adopted member-local status/map injection, source-loss controls and derived-no-usage versus positive-contract-gap semantics. Advisor dissent favored treating every raw-without-usage session as unavailable; not adopted because most raw events contain no usage, with no-observation/unknown-proof windows still fail-closed. The suggested raw-ID reuse risk does not apply to the inspected `AUTOINCREMENT` schema. Focused existing coverage/provenance/snapshot/quality/workspace suite: 101 passed. Updated this issue and epic handoff; no implementation or fresh confidence score is claimed.
 - `/ll:confidence-check` - 2026-10-05T02:38:51 - `2aefc2a8-3cc7-463c-8fe9-e07529945488.jsonl`
@@ -306,3 +307,18 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-run on the revised scope; sup
 - Pre-implementation epic review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.76) supported whole-aggregate qualification, cost/rate prerequisites, filter parity and empty-versus-zero controls. Kept the legacy policy decision open with a conservative recommendation and measured raw/global-selection counts; a historical exception must preserve raw provenance presence explicitly. Specification changes only.
 
 - `/ll:capture-issue` - 2026-10-04T01:51:01 - `7ac1ad38-c74f-402b-a14d-5845cde7ff55.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-10-05
+- **Reason**: Issue too large for single session (size score 8/11, outcome confidence 63 below the 65 gate)
+
+### Decomposed Into
+- ENH-3731: Shared usage qualification core, transcript channel scope, and source readers
+- ENH-3732: Quality usage qualification, session derive status, and per-metric baselines (blocked by ENH-3731)
+- ENH-3733: Snapshot export and dashboard usage qualification (blocked by ENH-3731)
+
+The production-publication gate for ENH-3671–3676 requires ENH-3731, ENH-3732 and ENH-3733 together.
