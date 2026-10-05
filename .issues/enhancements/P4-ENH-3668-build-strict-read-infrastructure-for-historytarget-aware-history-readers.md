@@ -30,6 +30,8 @@ deferred_date: '2026-10-02T17:58:39Z'
 > - **(A) No `strict` parameter on `open_history_readonly`.** ENH-3700's read-mode remote ensure is already `check_access(write=False)` with no migrate, so a `strict=True` open path would be nearly identical. Keep strictness only in the `strict_reads()` contextvar (the only real delta is raise-instead-of-`None` in `_connect_readonly`).
 > - **(B) `HistorySchemaUninitialized` is raised only at the strict boundary**, not in the shared `check_access` read branch. A read-branch raise would change every remote read-only statement, including telemetry, doctor and the `ll-harness` probe, which can hit a version-0 store before first migration.
 > - **(C) Stamped-schema rule follows ENH-3700:** serve an exact or behind store, refuse an ahead store (an older client may query renamed/removed columns).
+>
+> **Revival note 2026-10-04:** ENH-3700 was slimmed after a second Opus review and **no longer** provides a read-mode remote ensure (`check_access(write=False)`), the shared missing-stamp tightening, serving of behind/ahead stores, the `HranaStub` read-only permission mode, or a `HistoryRemoteRefused` re-raise from `_connect_readonly` (the guard maps to `None` + one fixed-text `warn_once`). The decisions and coordination notes below that cite those ENH-3700 pieces (including ENH-3684/3685, which defer to this issue) are stale: re-derive the strict read-mode, stamp rule and `_connect_readonly` coordination against ENH-3700 as landed before implementing.
 
 ## Summary
 

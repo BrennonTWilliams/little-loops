@@ -21,6 +21,12 @@ relates_to:
 - ENH-3674
 - ENH-3675
 - ENH-3676
+confidence_score: 90
+outcome_confidence: 55
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # ENH-3723: Canonical usage qualification across source and snapshot consumers
@@ -191,8 +197,27 @@ Opus second opinion (2026-10-04, confidence 0.74) preferred making estimated row
 **Open** | Created: 2026-10-03 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-04_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 55/100 → LOW
+
+### Concerns
+- Legacy-NULL and estimated/mixed provenance policy is still an open `decision_needed` gate; step 1 (impact measurement + recorded choice) must land before any published figure changes.
+- Criterion 4 held at 15: figure prerequisites hinge on the unresolved policy, so the admission rules for estimated rows are not yet final.
+
+### Outcome Risk Factors
+- Deep per-site complexity: new shared `UsageQualification` contract threaded through source rollups, snapshot selection, ctx_stats, quality baselines and dashboard (contract changes, not mechanical edits).
+- Broad enumeration across 7 modify sites plus workspace_quality and dashboard dependents (~6-10 consumers).
+- Unresolved legacy/estimated policy decision (decision_needed: true) leaves several design choices open.
+
 ## Session Log
 
+- `/ll:decide-issue` - 2026-10-05T01:46:59 - `b606fd82-aba7-4cff-a1d1-d303a7baa87f.jsonl`
+- `/ll:confidence-check` - 2026-10-05T01:40:54 - `c65364f3-0e6e-4339-ad18-d1167792b7ba.jsonl`
+- `/ll:confidence-check` - 2026-10-05T01:33:45 - `db7a7cbe-4bdf-470b-adb8-0b1fabd56d3e.jsonl`
 - Targeted pre-implementation review - 2026-10-04 - Inspected `main`; temporary-database probes reproduced measured-partial canonical leakage and empty quality baselines. `/ll:advise` with `claude-opus-5-5` (confidence 0.74) supported fixed row admission, explicit metadata/CLI owners and qualified per-metric baselines. Added the figure contract, waste/workspace consumers, snapshot policy version and independent pricing handoff. Retained the legacy/estimated decision gate and documented advisor dissent; five sampled verified Claude sessions remained unaffected, without claiming a full impact census. Specification changes only.
 
 - Pre-implementation follow-up review - 2026-10-04 - `/ll:advise` with Opus (confidence 0.72), checked against temporary-database probes: added the production-publication gate, explicit quality/dashboard owners, complete cache-rate denominator, filtered population and as-of compatibility controls. Kept the legacy/estimated decision open; no implementation or historical requalification is claimed.

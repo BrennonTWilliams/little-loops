@@ -17,6 +17,7 @@ blocked_by:
 - ENH-3677
 blocks:
 - ENH-3700
+- ENH-3728
 parent: EPIC-3693
 epic: EPIC-3693
 ---
@@ -46,10 +47,10 @@ These sites pre-resolve through `resolve_history_db()` and raise `HistoryBackend
 | `history analyze`, `activity`, `rework`, `quality`, `audit-issue-collisions`, `sessions`, `root` | **refuse** | boundary helper turns the pre-resolve's `HistoryBackendNotLocal` into `<prog> <sub>: <safe reason>`, exit 1 |
 | `logs` `_cmd_diff`, `_cmd_eval_export`, `_cmd_stats`, `_cmd_dead_skills` | **refuse** | keep the literal `"No history.db found"` warning for local-missing (the digest loop greps it); the refusal is a separate line |
 | `ctx_stats` | **refuse** | explicit `--db` skips the pre-resolve and still runs locally; no extra guard needed |
-| `ll-messages --sft-format --reader db` | **refuse** | clean CLI error; `reader=auto` degrade is ENH-3700 |
+| `ll-messages --sft-format --reader db` | **refuse** | clean CLI error; `reader=auto` degrade is ENH-3728 |
 | MCP `history_search` | **refuse** as a structured `is_error` naming the operation | its pre-resolve already takes `root=project_root`; verify the message names the operation |
 
-`history summary`, `ll-harness`, `decisions generate`, `reader=auto`, CT-0 and `sft-corpus` are **ENH-3700**.
+`history summary`, `decisions generate`, `reader=auto`, CT-0 and the `sft-corpus` reader flag/enrich passthrough are **ENH-3728**; `sft-corpus` failure routing is **ENH-3729**; `ll-harness` serve and the central guard are **ENH-3700**.
 
 ### One boundary helper
 
@@ -68,7 +69,7 @@ Remote-backend users hit an unhandled traceback from `ll-history`, `ll-logs` and
 ## Scope Boundaries
 
 - **In scope**: the boundary helper, the refuse sites in the table (including `logs` `_cmd_stats`/`_cmd_dead_skills`, deferred here by ENH-3658), epilog and skill exit-code wording, the single support table in `CONFIGURATION.md`, the parametrized refusal test.
-- **Out of scope**: the central guard, `_connect_readonly` re-raise, read-mode ensure, `ll-harness` serve, all degrade sites, CT-0, `sft-corpus` (ENH-3700); startup/write-path sites (BUG-3652, done); artifact hand-built paths (ENH-3658); `context-monitor.sh` (ENH-3680 cancelled, documented no-op); remote read serving for `ll-history` subcommands/MCP (ENH-3668/3684/3685, deferred indefinitely); `ll-session search --fts` (passes the caller's own `--db`; confirm no unhandled `HistoryBackendNotLocal` path); `ll-doctor` (already handles `HistoryError`; confirm); writers/runtime callers of `resolve_history_db` (`cli/parallel.py`, `fsm/*`, `hooks/*`).
+- **Out of scope**: the central guard and `ll-harness` serve (ENH-3700); all degrade sites, CT-0 and the `sft-corpus` reader flag (ENH-3728); `sft-corpus` failure routing (ENH-3729); startup/write-path sites (BUG-3652, done); artifact hand-built paths (ENH-3658); `context-monitor.sh` (ENH-3680 cancelled, documented no-op); remote read serving for `ll-history` subcommands/MCP (ENH-3668/3684/3685, deferred indefinitely); `ll-session search --fts` (passes the caller's own `--db`; confirm no unhandled `HistoryBackendNotLocal` path); `ll-doctor` (already handles `HistoryError`; confirm); writers/runtime callers of `resolve_history_db` (`cli/parallel.py`, `fsm/*`, `hooks/*`).
 
 ## Proposed Solution
 

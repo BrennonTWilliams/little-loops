@@ -13,11 +13,15 @@ blocks:
 - ENH-3719
 relates_to:
 - ENH-3723
+confidence_score: 100
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3696: Sonnet 5.5 cost unavailable: claude-sonnet-5-5 absent from MODEL_PRICING
-
-> **Re-run `/ll:confidence-check`**: earlier scores (90/67) predated two scope revisions (2026-10-02 and the 2026-10-04 split) and were cleared. This review does not replace that gate.
 
 ## Summary
 
@@ -144,6 +148,7 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T01:33:55 - `7a9a026a-d6fe-420c-9603-eb94be2e4fc8.jsonl`
 - Targeted pre-implementation review - 2026-10-04 - Reproduced on `main` and rechecked both official pricing/specification pages. `/ll:advise` with `claude-opus-5-5` (confidence 0.74) supported the small independent price fix and reuse of existing rate/batch tests. Added the explicit event-date control and literal-rate observed-row expectation; clarified existing live-versus-replayed rebuild behavior, API ownership, fixed test anchors and the independent ENH-3723 handoff. No implementation or historical repricing is claimed; the fresh confidence gate still precedes implementation.
 
 - Split into BUG-3696 (price) + ENH-3719 (footer/docs) - 2026-10-04 - `/ll:advise` with Opus (confidence 0.78): pricing lands alone so BUG-3701 unblocks cheaply; duplicate coverage test replaced by extending the existing one; footer/sentinel/reporter/doc work moved to ENH-3719 with its test matrix cut to four.

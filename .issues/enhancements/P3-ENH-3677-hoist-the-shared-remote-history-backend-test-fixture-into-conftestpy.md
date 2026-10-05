@@ -14,6 +14,8 @@ blocks:
 - ENH-3658
 - ENH-3682
 - ENH-3668
+- ENH-3728
+- ENH-3729
 parent: EPIC-3693
 epic: EPIC-3693
 ---

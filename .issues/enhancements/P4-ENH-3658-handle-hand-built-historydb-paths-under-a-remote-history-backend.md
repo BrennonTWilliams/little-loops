@@ -12,6 +12,7 @@ relates_to:
 - ENH-3657
 - ENH-3700
 - ENH-3680
+- ENH-3728
 discovered_by: ll-issues-create
 discovered_date: '2026-09-29'
 captured_at: '2026-09-29T05:29:44Z'
@@ -58,7 +59,7 @@ A remote backend should not look like an empty local database. These paths bypas
 
 1. At each of the five Python call sites, resolve the default path using the owning project's root. Branch on `RemoteTarget` before `is_file()`, `stat()`, or snapshot export. For `cmd_dashboard`, keep the existing `snapshot_export` refusal operation; no new `_REMOTE_REFUSALS` or `_REJECTED` entry is needed.
 2. Guard `--trim` in `main_doctor` using its existing `_remote_target()` pattern. For a local target, pass the resolver's returned Path to the existing `collect_trim_report(..., db_path=...)` parameter; otherwise a redirected `LL_HISTORY_DB` would still be ignored. Leave `doctor_trim.py` local-only. Add one shared unavailable-reason value consumed by the serve route, page factory, and loop `--serve` render.
-3. Replace the `skills/update-docs` literal-path existence check with target-aware behavior. Add a pytest hazard gate over `skills/`, `commands/`, `loops/*.yaml`, and `hooks/` for executable `history.db` existence tests and `resolve_history_db()` calls, with reasoned allowlist entries. This issue is no longer `blocked_by` ENH-3657/ENH-3700 (2026-10-02 Opus review): it never edits `session_store/backend.py`, and its five Python sites classify with `resolve_history_store`, not the central guard. CT-0 (`skills/improve-claude-md/SKILL.md` ~L206-209) calls `resolve_history_db()` directly, so the gate flags it until ENH-3700 switches it to `resolve_history_store`: add a **temporary** allowlist entry for CT-0 that ENH-3700's PR removes. Add a **permanent** allowlist entry for `context-monitor.sh` with the reason "remote writes intentionally skipped (ENH-3680 cancelled)". Do not flag the bare string in prose.
+3. Replace the `skills/update-docs` literal-path existence check with target-aware behavior. Add a pytest hazard gate over `skills/`, `commands/`, `loops/*.yaml`, and `hooks/` for executable `history.db` existence tests and `resolve_history_db()` calls, with reasoned allowlist entries. This issue is no longer `blocked_by` ENH-3657/ENH-3700 (2026-10-02 Opus review): it never edits `session_store/backend.py`, and its five Python sites classify with `resolve_history_store`, not the central guard. CT-0 (`skills/improve-claude-md/SKILL.md` ~L206-209) calls `resolve_history_db()` directly, so the gate flags it until ENH-3728 switches it to `resolve_history_store`: add a **temporary** allowlist entry for CT-0 that ENH-3728's PR removes. Add a **permanent** allowlist entry for `context-monitor.sh` with the reason "remote writes intentionally skipped (ENH-3680 cancelled)". Do not flag the bare string in prose.
 4. Add remote-stub tests and local twins, then update the remote-history support docs with end-user wording.
 
 ### Preserve explicit snapshot-target intent through export
@@ -72,7 +73,7 @@ The remote page needs a renderer path, not only a precheck at its caller: add an
 ## Scope Boundaries
 
 - **In scope:** the five Python call sites, renderer unavailable branch/501 client, snapshot-local provenance through export, the `main_doctor` guard and existing `db_path=` override, `skills/update-docs` and mirrors, the narrow hazard gate, tests and user-facing docs.
-- **Out of scope:** `context-monitor.sh` behavior (ENH-3680, cancelled: remote writes stay skipped); `cli/logs.py` readers (ENH-3657) and CT-0 behavior (ENH-3700); `workflow_sequence/io.py` (correct JSONL fallback); `doctor_trim.py` internals; remote snapshot export itself.
+- **Out of scope:** `context-monitor.sh` behavior (ENH-3680, cancelled: remote writes stay skipped); `cli/logs.py` readers (ENH-3657) and CT-0 behavior (ENH-3728); `workflow_sequence/io.py` (correct JSONL fallback); `doctor_trim.py` internals; remote snapshot export itself.
 
 ## Behavior Parity
 
@@ -115,7 +116,7 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 ## Implementation Steps
 
 1. Land ENH-3677's shared `remote` test fixture, then implement the Python target checks and one shared unavailable reason. ENH-3657/ENH-3700 may edit the same remote-operation test file: merge independent assertions rather than replacing rows. `cli/doctor.py` and the `CLI.md` install-surface check wording are also touched by ENH-3698 and ENH-3679: sequence those edits, do not run them in parallel.
-2. Implement the named `refreshHistory` 501 branch and polling cancellation. Update `skills/update-docs` and add the narrow hazard gate with a **temporary** CT-0 allowlist entry only while ENH-3700's seam work remains pending (its PR removes the entry), and a **permanent** `context-monitor.sh` entry (reason: remote writes intentionally skipped). Scan packaged built-in loops under `scripts/little_loops/loops/` as well as repository `loops/` and `.loops/` executable artifacts.
+2. Implement the named `refreshHistory` 501 branch and polling cancellation. Update `skills/update-docs` and add the narrow hazard gate with a **temporary** CT-0 allowlist entry only while ENH-3728's CT-0 change remains pending (its PR removes the entry), and a **permanent** `context-monitor.sh` entry (reason: remote writes intentionally skipped). Scan packaged built-in loops under `scripts/little_loops/loops/` as well as repository `loops/` and `.loops/` executable artifacts.
 3. Add a remote stub plus local twin for each changed path, including a foreign-cwd/project-root case and `LL_HISTORY_DB` redirection. Confirm the existing local missing-file behavior.
 4. Update documentation and run `python -m pytest scripts/tests/`, `ruff check scripts/`, and `python -m mypy scripts/little_loops/`.
 
@@ -138,7 +139,7 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 ## Related
 
-- BUG-3652 (done startup/write caller audit), FEAT-3535 (remote libSQL backend), ENH-3677 (shared fixture prerequisite), ENH-3657/ENH-3700 (reader-CLI siblings; no longer `blocked_by`; ENH-3700 removes the temporary CT-0 allowlist entry), ENH-3680 (cancelled 2026-10-02: `context-monitor.sh` stays a documented remote no-op). ENH-3670 is cancelled and superseded by this issue.
+- BUG-3652 (done startup/write caller audit), FEAT-3535 (remote libSQL backend), ENH-3677 (shared fixture prerequisite), ENH-3657/ENH-3700 (reader-CLI siblings; no longer `blocked_by`; ENH-3728 removes the temporary CT-0 allowlist entry), ENH-3680 (cancelled 2026-10-02: `context-monitor.sh` stays a documented remote no-op). ENH-3670 is cancelled and superseded by this issue.
 
 ## Related Key Documentation
 
