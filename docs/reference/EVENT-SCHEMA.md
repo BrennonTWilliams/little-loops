@@ -223,6 +223,7 @@ Emitted after the action finishes, regardless of success or failure.
 | `cache_creation_tokens` | `int \| null` | prompt only | Cache-creation tokens written (same null rule) |
 | `usage_event_count` | `int` | prompt only, when usage observed | Number of usage observations aggregated into the token fields |
 | `input_tokens_missing` / `output_tokens_missing` / `cache_read_tokens_missing` / `cache_creation_tokens_missing` | `int` | prompt only, when usage observed | Observations that lacked that component; non-zero marks the token value a partial subtotal that must not be priced or reported as a total |
+| `usage_contributions` | `list[object]` | prompt only, when usage observed | One bucket per (`model`, `is_batch`, `pricing_date`) with `usage_event_count`, the nullable token components and their `<component>_missing` counts (BUG-3724). Cost is the sum of each bucket priced at its own rate; the flat token fields above are an audit summary and are never priced again. `pricing_date` is the UTC date of the observed event time, or `null` (resolved to the action-completion date). Absent on rows written before BUG-3724, which keep single model/flag pricing |
 | `model` | `str` | prompt only | Model ID reported by the host CLI (e.g. `claude-sonnet-4-5`) |
 | `effort` | `str` | prompt only | Reasoning effort level applied to the invocation (ENH-2885) |
 | `is_batch` | `bool` | prompt only | `true` if the host CLI invocation was a batch request (FEAT-2716) |
@@ -1007,12 +1008,12 @@ Emitted when a state's retryable API errors exhaust the retry allowance. Termina
 
 ### `cost_ceiling_unknown`
 
-Emitted by the post-action per-state cost-ceiling check (BUG-3360, `_check_cost_ceiling`) when a state with `cost_ceiling` configured cannot have its actual cost evaluated — because `usage.jsonl` is missing/empty for the run, or because the state's usage rows reference an unpriceable model. Logged at most once per state name per run. Unknown cost is never treated as under budget — the ceiling simply cannot be enforced for that visit.
+Emitted by the post-action per-state cost-ceiling check (BUG-3360, `_check_cost_ceiling`) when a state with `cost_ceiling` configured cannot have its actual cost evaluated — because `usage.jsonl` is missing/empty for the run, because the state's usage rows reference an unpriceable model, or because a row's `usage_contributions` attribution is invalid. Logged at most once per state name per run. Unknown cost is never treated as under budget — the ceiling simply cannot be enforced for that visit.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `state` | `str` | Name of the state whose cost could not be evaluated |
-| `reason` | `str` | `"usage.jsonl unavailable"` or `"unpriceable model"` |
+| `reason` | `str` | `"usage.jsonl unavailable"`, `"unpriceable model"`, or `"invalid usage attribution"` (a row's `usage_contributions` is empty or malformed) |
 
 **Example:**
 ```json
