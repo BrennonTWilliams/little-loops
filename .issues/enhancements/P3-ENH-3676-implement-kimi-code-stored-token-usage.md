@@ -133,7 +133,7 @@ ENH-3723 was closed by decomposition, not implementation. Its recorded policy is
 
 ## Session Log
 
-- Pre-implementation epic review - 2026-10-05 - Added the selected-contract channel/logical-candidate extension to quality derive status and clarified conditional no-source closeout. Native publication still requires all shared qualification owners and BUG-3735; no dependency or status change.
+- Pre-implementation epic review - 2026-10-05 - Added the selected-contract channel/logical-candidate extension to quality derive status and clarified conditional no-source closeout. Native publication requires all shared qualification owners and BUG-3735/3736; the matching hard evidence blocker and status are unchanged.
 
 - Pre-implementation epic review - 2026-10-05 - Resolved the decomposed-parent publication gate to ENH-3731/3732/3733 together. Kept the matching native-evidence blocker and independent adapter/raw-retention work; a done ENH-3723 is not an implementation pass.
 

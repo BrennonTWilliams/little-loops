@@ -136,9 +136,6 @@ All six link ENH-3723 and its actual owners ENH-3731/3732/3733 plus BUG-3735/373
 
 Standalone ENH-3649 (reader isolation and diagnostics) is done. Standalone ENH-3725 (Sonnet 5.5 cacheable-prefix minimum) relates to the completed EPIC-2456 and does not reopen it. Neither is included in this epic's child count.
 
-
-
-
 ## Nested qualification owners
 
 These remain children of the decomposed ENH-3723, rather than direct epic children:
