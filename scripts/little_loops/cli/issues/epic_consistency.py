@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import itertools
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+
+from little_loops.frontmatter import _mask_fenced_code
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -31,14 +32,75 @@ _REAL_ISSUE_TYPES = frozenset({"BUG", "FEAT", "ENH"})
 # Matches bullet list items with an optional bold wrapper around the ID:
 #   - FEAT-001 …            →  group(1) = "FEAT-001"
 #   - **FEAT-001** — …      →  group(1) = "FEAT-001"
-_BODY_BULLET_RE = re.compile(r"^\s*[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
+# ``(?!\w)`` is the whole-ID boundary: ``FEAT-1suffix`` is not an entry.
+_BODY_BULLET_RE = re.compile(r"^[ \t]*[-*][ \t]+\*{0,2}([A-Z]+-\d+)(?!\w)", re.MULTILINE)
 
 # Matches h3–h6 heading child refs with an optional bold wrapper around the ID:
 #   ### FEAT-001 — …        →  group(1) = "FEAT-001"
 #   ### **FEAT-001** — …    →  group(1) = "FEAT-001"
 # Recognizes the richer per-child prose-heading style (e.g. EPIC-2451), where each
 # child is documented under its own heading rather than as a single bullet.
-_BODY_HEADING_RE = re.compile(r"^\s*#{3,6}\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
+_BODY_HEADING_RE = re.compile(r"^[ \t]*#{3,6}[ \t]+\*{0,2}([A-Z]+-\d+)(?!\w)", re.MULTILINE)
+
+# Exact ``## Children`` heading; horizontal whitespace only, so the match never
+# consumes the following line. ``\r?`` admits CRLF files.
+_CHILDREN_HEADING_RE = re.compile(r"^##[ \t]+Children[ \t]*\r?$", re.MULTILINE)
+# Next H1/H2 ends the section (``###`` does not match: ``#{1,2}`` needs a following blank).
+_SECTION_END_RE = re.compile(r"^#{1,2}[ \t]", re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class ChildEntry:
+    """One documented child in a ``## Children`` section body.
+
+    ``span`` is the ``(start, end)`` offset range of the entry's line within the
+    section text passed to :func:`iter_child_entries`, excluding the newline.
+    """
+
+    issue_id: str
+    kind: Literal["bullet", "heading"]
+    span: tuple[int, int]
+
+
+def find_children_section(content: str) -> tuple[int, int] | None:
+    """Return ``(body_start, body_end)`` offsets of the ``## Children`` section body.
+
+    Shared Children recognizer (BUG-3738/BUG-3739). Selects the first unfenced,
+    unindented H2 whose text is exactly ``Children`` and ends at the next unfenced
+    H1/H2. Fenced headings neither open nor close the section. ``body_start`` is
+    the end of the heading line (before its newline). Returns None when there is
+    no such heading; aliases such as ``## Child Issues`` are not recognized.
+    """
+    masked = _mask_fenced_code(content)
+    match = _CHILDREN_HEADING_RE.search(masked)
+    if match is None:
+        return None
+    start = match.end()
+    next_match = _SECTION_END_RE.search(masked, start)
+    return start, next_match.start() if next_match else len(content)
+
+
+def iter_child_entries(section_text: str) -> list[ChildEntry]:
+    """Return the child entries in a ``## Children`` section body, in source order.
+
+    Recognizes optional-bold ``-``/``*`` bullets (indented ones included) and
+    per-child H3–H6 headings whose first token is a whole issue ID. Prose
+    mentions, fenced examples, and prefix tokens such as ``FEAT-1suffix`` are not
+    entries. All ID types are returned; callers filter by type.
+    """
+    masked = _mask_fenced_code(section_text)
+    entries: list[ChildEntry] = []
+    kinds: tuple[tuple[Literal["bullet", "heading"], re.Pattern[str]], ...] = (
+        ("bullet", _BODY_BULLET_RE),
+        ("heading", _BODY_HEADING_RE),
+    )
+    for kind, regex in kinds:
+        for m in regex.finditer(masked):
+            line_end = masked.find("\n", m.start())
+            end = len(masked) if line_end == -1 else line_end
+            entries.append(ChildEntry(m.group(1), kind, (m.start(), end)))
+    entries.sort(key=lambda e: e.span[0])
+    return entries
 
 
 @dataclass
@@ -95,21 +157,6 @@ class EpicDrift:
         }
 
 
-def _section_bounds(content: str, heading: str) -> tuple[int, int] | None:
-    """Return (body_start, body_end) byte offsets for a ## heading section.
-
-    Returns None when the heading is absent.
-    """
-    pattern = rf"^##\s+{re.escape(heading)}\s*$"
-    match = re.search(pattern, content, re.MULTILINE)
-    if not match:
-        return None
-    start = match.end()
-    next_match = re.search(r"^##\s", content[start:], re.MULTILINE)
-    end = start + next_match.start() if next_match else len(content)
-    return start, end
-
-
 def _parse_children_body(section_text: str) -> tuple[set[str], set[str]]:
     """Parse a ## Children section body.
 
@@ -124,11 +171,8 @@ def _parse_children_body(section_text: str) -> tuple[set[str], set[str]]:
     """
     real_ids: set[str] = set()
     sub_epic_ids: set[str] = set()
-    for m in itertools.chain(
-        _BODY_BULLET_RE.finditer(section_text),
-        _BODY_HEADING_RE.finditer(section_text),
-    ):
-        token = m.group(1)
+    for entry in iter_child_entries(section_text):
+        token = entry.issue_id
         issue_type = token.split("-")[0]
         if issue_type in _REAL_ISSUE_TYPES:
             real_ids.add(token)
@@ -187,7 +231,7 @@ def compute_drift(
     # Schema check (e): children: frontmatter key is forbidden
     has_children_frontmatter = bool(_FM_CHILDREN_RE.search(fm_block))
 
-    bounds = _section_bounds(content, "Children")
+    bounds = find_children_section(content)
     if bounds is not None:
         section_body = content[bounds[0] : bounds[1]]
         body_real_ids, _ = _parse_children_body(section_body)
@@ -240,7 +284,7 @@ def fix_epic(epic_path: Path, missing_from_body: list[str]) -> None:
         for child_id in sorted(missing_from_body)
     )
 
-    bounds = _section_bounds(content, "Children")
+    bounds = find_children_section(content)
     if bounds is None:
         # No ## Children section — create one at the end of the file
         new_section = "\n## Children\n\n" + new_bullets + "\n"

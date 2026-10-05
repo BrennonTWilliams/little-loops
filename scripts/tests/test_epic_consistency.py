@@ -1222,3 +1222,120 @@ class TestEpicConsistencyCompositionReviewTerminalExempt:
             result = main_issues()
 
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# Shared Children recognizer (BUG-3738 / BUG-3739)
+# ---------------------------------------------------------------------------
+
+
+class TestFindChildrenSection:
+    """find_children_section: exact, fence-aware ## Children selection."""
+
+    def _section(self, content: str) -> str | None:
+        from little_loops.cli.issues.epic_consistency import find_children_section
+
+        bounds = find_children_section(content)
+        return None if bounds is None else content[bounds[0] : bounds[1]]
+
+    def test_absent_heading_returns_none(self) -> None:
+        assert self._section("# EPIC-1\n\n## Summary\n\ntext\n") is None
+
+    def test_section_stops_at_next_h2(self) -> None:
+        content = "## Children\n\n- FEAT-1 — a\n\n## Status\n\nopen\n"
+        assert self._section(content) == "\n\n- FEAT-1 — a\n\n"
+
+    def test_section_stops_at_next_h1(self) -> None:
+        content = "## Children\n\n- FEAT-1 — a\n# Appendix\n- FEAT-2 — b\n"
+        assert self._section(content) == "\n\n- FEAT-1 — a\n"
+
+    def test_h3_does_not_end_section(self) -> None:
+        content = "## Children\n\n- FEAT-1 — a\n\n### Notes\n\nprose\n"
+        assert self._section(content) == "\n\n- FEAT-1 — a\n\n### Notes\n\nprose\n"
+
+    def test_horizontal_whitespace_allowed(self) -> None:
+        assert self._section("##   Children \t\n- FEAT-1\n") == "\n- FEAT-1\n"
+
+    def test_crlf_heading_recognized(self) -> None:
+        assert self._section("## Children\r\n- FEAT-1\r\n") == "\n- FEAT-1\r\n"
+
+    def test_suffixed_or_alias_heading_ignored(self) -> None:
+        assert self._section("## Children (3)\n- FEAT-1\n") is None
+        assert self._section("## Child Issues\n- FEAT-1\n") is None
+        assert self._section("### Children\n- FEAT-1\n") is None
+
+    def test_heading_does_not_consume_next_line(self) -> None:
+        # `\s*$` used to let the heading regex swallow a following blank line.
+        assert self._section("## Children\n\n- FEAT-1\n") == "\n\n- FEAT-1\n"
+
+    def test_fenced_heading_ignored(self) -> None:
+        content = "```\n## Children\n- FEAT-9\n```\n\n## Children\n\n- FEAT-1\n"
+        assert self._section(content) == "\n\n- FEAT-1\n"
+
+    def test_fenced_h2_does_not_end_section(self) -> None:
+        content = "## Children\n\n- FEAT-1\n\n~~~\n## Example\n~~~\n- FEAT-2\n\n## Status\n"
+        assert self._section(content) == "\n\n- FEAT-1\n\n~~~\n## Example\n~~~\n- FEAT-2\n\n"
+
+
+class TestIterChildEntries:
+    """iter_child_entries: bullet/H3–H6 entries with whole-ID, fence-aware matching."""
+
+    def _ids(self, section: str) -> list[tuple[str, str]]:
+        from little_loops.cli.issues.epic_consistency import iter_child_entries
+
+        return [(e.issue_id, e.kind) for e in iter_child_entries(section)]
+
+    def test_bullet_styles(self) -> None:
+        section = "\n- FEAT-1 — a\n* **BUG-2** — b\n  - ENH-3 — nested\n"
+        assert self._ids(section) == [
+            ("FEAT-1", "bullet"),
+            ("BUG-2", "bullet"),
+            ("ENH-3", "bullet"),
+        ]
+
+    def test_heading_styles(self) -> None:
+        section = "\n### FEAT-1 — a\n\nprose\n\n#### **EPIC-4** — sub\n"
+        assert self._ids(section) == [("FEAT-1", "heading"), ("EPIC-4", "heading")]
+
+    def test_prefix_token_not_matched(self) -> None:
+        assert self._ids("\n- FEAT-1suffix — x\n- FEAT-10 — y\n") == [("FEAT-10", "bullet")]
+
+    def test_fenced_example_ignored(self) -> None:
+        section = "\n```markdown\n- FEAT-9 — example\n```\n- FEAT-1 — real\n"
+        assert self._ids(section) == [("FEAT-1", "bullet")]
+
+    def test_prose_mention_ignored(self) -> None:
+        assert self._ids("\nSee FEAT-7 for context.\n- FEAT-1 — real\n") == [("FEAT-1", "bullet")]
+
+    def test_span_covers_entry_line(self) -> None:
+        from little_loops.cli.issues.epic_consistency import iter_child_entries
+
+        section = "\nintro\n- **FEAT-1** — a\n"
+        (entry,) = iter_child_entries(section)
+        assert section[entry.span[0] : entry.span[1]] == "- **FEAT-1** — a"
+
+
+class TestRecognizerConsumers:
+    """compute_drift adopts the shared recognizer's fence and whole-ID rules."""
+
+    def test_fenced_and_prefix_tokens_are_not_documentation(
+        self, temp_project_dir: Path, epic_consistency_dir: Path
+    ) -> None:
+        epics_dir = epic_consistency_dir / "epics"
+        _write_epic(
+            epics_dir,
+            "EPIC-300",
+            "```\n- **FEAT-301** — example\n```\n- **FEAT-301suffix** — typo",
+        )
+        _write_child(epic_consistency_dir, "FEAT-301", "EPIC-300")
+
+        from little_loops.cli.issues.epic_consistency import _ALL_STATUSES, compute_drift
+        from little_loops.config import BRConfig
+        from little_loops.issue_parser import find_issues
+
+        config = BRConfig(temp_project_dir)
+        issues = find_issues(config, status_filter=_ALL_STATUSES)
+        drift = compute_drift("EPIC-300", issues)
+        assert drift is not None
+        assert drift.missing_from_body == ["FEAT-301"]
+        assert drift.body_without_parent == []
