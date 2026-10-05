@@ -8,7 +8,7 @@ discovered_by: capture-issue
 discovered_date: '2026-10-03'
 captured_at: '2026-10-04T01:43:57Z'
 parent: EPIC-3562
-decision_needed: true
+decision_needed: false
 testable: true
 relates_to:
 - BUG-3696
@@ -132,7 +132,7 @@ For usage-derived quality metrics, propagate `None` through optional numerators 
 
 ## Implementation Steps
 
-1. Measure the selected-report impact, then record the legacy-NULL and estimated/mixed policy decision and the figure-specific component requirements. Count raw and coverage-selected NULL/explicit-unknown rows separately; also count currently numeric figures that would become unavailable by actual grouping/window for all-history/per-model CLI, default quality windows and built-in snapshots. Do not infer a visibility change from raw counts alone. Keep `decision_needed: true` until both choices and their consequences are recorded.
+1. ~~Measure the selected-report impact, then record the legacy-NULL and estimated/mixed policy decision and the figure-specific component requirements. Count raw and coverage-selected NULL/explicit-unknown rows separately; also count currently numeric figures that would become unavailable by actual grouping/window for all-history/per-model CLI, default quality windows and built-in snapshots. Do not infer a visibility change from raw counts alone. Keep `decision_needed: true` until both choices and their consequences are recorded.~~ **Done 2026-10-04** — see "Step-1 impact measurement" and "Decision" under Decision Needed; `decision_needed` cleared. Human review of the decision remains the first acceptance criterion.
 2. Add one shared qualification result and apply it to source, all-history/session CLI, snapshot and quality consumers; retain raw/audit data, metadata parity, optional numerators and qualified baseline selection. Preserve unrelated quality metrics and the existing waste formula.
 3. Preserve qualification metadata through shareable export with privacy/allowlist checks.
 4. Prove the parameterized matrix, measured Claude/Codex and as-of controls, quality/regression consumers and built-in dashboard output; coordinate remaining-host production publication and cutover tests.
@@ -162,6 +162,42 @@ Also state whether estimated and mixed provenance remain numeric with explicit l
 Recommended estimated-data policy for review: admit complete `estimated` observations in general consumption reports with explicit estimated labels; measured + estimated aggregates are `mixed`. Keep unknown/legacy NULL audit-only and cache rates measured-only. This preserves supported estimates without treating them as measurements. It is a recommendation pending the same decision gate, not a silent cutover. BUG-3696 may land independently: adding a rate neither qualifies a usage observation nor backfills its evidence.
 
 Opus second opinion (2026-10-04, confidence 0.74) preferred making estimated rows audit-only initially, based on future tightening risk and possible quality-composition effects; it identified missing producer/volume evidence and explicitly dissented in favor of labeled estimates where useful. Neither recommendation settles the decision. Its suggestions to leave waste outside the cutover or manufacture zero for unsupported components are not adopted: waste is already part of the shared consumer contract, and component zeros require native evidence/an approved epic contract. Existing regression-window selection may remain compatible when older results visibly name their period.
+
+### Step-1 impact measurement (2026-10-04, read-only against `.ll/history.db`)
+
+Ran the real consumers and `select_usage_coverage`; nothing was modified. 517,222 usage rows.
+
+| Provenance | Rows | Notes |
+| --- | --- | --- |
+| explicit `unknown` | 512,735 | 482,949 Claude transcript rows with no `host_basis`; 29,697 `host_basis='handle'`; 89 live |
+| `measured` | 4,454 | 4,311 transcript (`handle`), 143 live; all complete-token |
+| legacy NULL | 33 | all `channel='live'`, `host` NULL, pre-2026-09-24, cost present |
+| `estimated` | 0 | no local rows |
+
+Incomplete-token rows: 2 (unknown, NULL `cache_creation_input_tokens`; unverified host). Every measured row is complete.
+
+**Unscoped consumers are already canonical-unavailable, independent of policy.** `_classify_coverage` is called with a store-wide `ambiguous_cross_channel` flag (live + non-live channels present, and some row lacks a verified identity). Here it is true, so all 20,045 coverage groups are `overlap_unresolved` / `unverified_cross_channel_identity` and `selected_rows` is empty. `ll-ctx-stats` all-history and per-model (16 models), `aggregate_usage`, `cost_attribution`, `waste_attribution` (17 loops) and the snapshot selection already return no numeric canonical figure. The report-window `since` filter is applied after reconciliation, so it does not change this. Zero figures there change under any legacy/estimated policy.
+
+**Scoped session reader (`_compute_cache_rate_from_usage`).** 1,343 verified host/session pairs, all `non_overlapping` with complete tokens: 366 measured-only, 976 unknown-only, 1 mixed. It already requires measured provenance, so its output is the same under either policy; the 976 unknown-only sessions are already unavailable with `unverified_usage`. Legacy NULL rows have no `host`, so they can never be in a verified pair.
+
+**Quality windows (`agent_quality._usage_totals`) are the only consumer whose numbers move.** It reads audit rows and ignores coverage and provenance. 17 windows, 3,355 closed issues, 353,412 fractional attributed rows unknown vs 741 measured (99.8% unknown). Legacy NULL contributes nothing (live channel is excluded). Today's `tokens_per_issue`:
+
+- 5 windows with no usage publish a numeric `0.0` / `stable` (2026-01..04 and `unknown`).
+- 9 windows containing unknown rows publish numbers and verdicts (5 degrading, 2 improving, 2 stable).
+- 1 window is all-measured and complete (2026-10 `ll-auto`, 16 closed).
+
+Cost is the same except 2026-09 and 2026-10 `ll-auto` already withhold the verdict (low priced coverage).
+
+### Decision (2026-10-04, `/ll:decide-issue` after step-1 measurement)
+
+1. **Legacy NULL: conservative.** Absent/NULL provenance is treated exactly like explicit `unknown`: audit-only for canonical totals and rates, with labeled numeric audit subtotals kept. No provenance-presence discriminator column and no historical-compatibility label. *Consequence:* none for published figures. The 33 rows reach no report today (unscoped reports are coverage-blocked, scoped reports need a host, quality excludes the live channel). Compatibility mode would add a code path and a source/snapshot parity burden to protect rows nothing displays.
+2. **Estimated/mixed: admit complete `estimated` rows in general consumption reports with an explicit `estimated` / `mixed` label; keep cache rate measured-only; quality baselines and verdicts require an all-`measured` composition.** A window containing estimated or mixed contributions shows its labeled value but no verdict and cannot be a baseline, so a provenance-composition change cannot masquerade as a measured quality change. *Consequence:* none today (0 local estimated rows). It follows the epic's "measured vs estimated" distinction and the Opus dissent is addressed by tightening the one place where composition effects bite (quality), while avoiding a future breaking change for consumption reports.
+3. **Quality consequence accepted.** Under the shared policy the 5 phantom zero baselines and the 9 unknown-containing windows (all 7 non-stable verdicts) become unavailable with a reason. The one measured window becomes the first qualified, sample-sufficient baseline (`stable`, no verdict against a prior window). This removes unsupported trend verdicts rather than a measured history. **Underived sessions (Opus, verified 2026-10-04):** an issue-attributed session with raw events but no derived `usage_events` rows, or a lagging derive cursor, makes its window **unavailable**, never a zero or "complete" numerator. Example: session `cf766a9e` has 145 `raw_events` and 0 `usage_events` and is a silent zero in the 2026-10 `ll-auto` window today. That window's baseline is therefore provisional until derives catch up.
+4. **Gate finding and resolution (Option A, refined).** `ambiguous_cross_channel` is tripped by **two independent populations**: the 482,949 transcript rows with NULL `host_basis`, and all 266 `channel='live'` rows, which have a NULL `session_id`/`identity_basis`. Reconciling either alone would not clear it, and Option C could not certify the live rows without a timestamp join, which this issue forbids. Chosen approach: add a `channel=` scope to `select_usage_coverage` (following the existing `host`/`session_id` scoping precedent) so coverage and the ambiguity gate are computed over the consumer's own transcript-only population. This is **scope-local coverage, not skipped coverage**: quality stays on the shared contract, the store-wide gate and ENH-3543's contract are unchanged, and live/rollout is documented as an excluded population (including Codex/rollout-orchestrated work). Required test: a live counterpart cannot change quality figures. Narrowing the store-wide gate itself (Option C) is a separate issue.
+5. **Guardrails.** Do not change `_rate_metrics`' absence-equals-zero default (correction/fix/retry counts depend on it); pass usage qualification in separately.
+6. **Re-deriving unknown transcript rows.** Relabeling them, or stamping `measured` during a rebuild, is promotion and is forbidden. Re-ingesting a source that still exists through the usage-refresh path is legitimate fresh evidence, but only if the old rows are deleted in the same transaction (the old unknown rows have no `observation_key`, so quality would otherwise double-count). Yield is small: about 5,410 eligible rows, and the 2026-09 windows contain rows that can never qualify. Not required by this issue.
+
+**Second opinion (2026-10-04, `/ll:advise` Opus, confidence 0.8):** accepts decisions 1-3 (siding with labeled estimated rows over its earlier audit-only preference) and chose Option A, refined as above.
 
 ## Acceptance Criteria
 
@@ -215,6 +251,7 @@ _Added by `/ll:confidence-check` on 2026-10-04_
 
 ## Session Log
 
+- `/ll:decide-issue` - 2026-10-05T01:57:06 - `dd4da702-03cb-4aad-8b85-189a7f98afba.jsonl`
 - `/ll:decide-issue` - 2026-10-05T01:46:59 - `b606fd82-aba7-4cff-a1d1-d303a7baa87f.jsonl`
 - `/ll:confidence-check` - 2026-10-05T01:40:54 - `c65364f3-0e6e-4339-ad18-d1167792b7ba.jsonl`
 - `/ll:confidence-check` - 2026-10-05T01:33:45 - `db7a7cbe-4bdf-470b-adb8-0b1fabd56d3e.jsonl`

@@ -1,0 +1,11 @@
+{
+  "id": "04ba85d0-496d-4b66-8281-677737561adc",
+  "type": "decision",
+  "timestamp": "2026-10-05T02:23:24Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option C from ENH-3723: root-cause fix split out of the interim channel= scope.",
+  "rule": "Captured: Narrow the store-wide cross-channel ambiguity gate",
+  "scope": "issue",
+  "issue": "ENH-3730"
+}

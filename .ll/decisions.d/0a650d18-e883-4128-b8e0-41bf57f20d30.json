@@ -1,0 +1,12 @@
+{
+  "id": "7937a41e-f5c1-43ec-9763-960be542cf11",
+  "type": "decision",
+  "timestamp": "2026-10-05T01:57:22Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Step-1 measurement: unscoped consumers already coverage-blocked; 33 legacy NULL rows reach no report; 0 estimated rows locally; only quality windows change (99.8% of attributed rows unknown).",
+  "rule": "Legacy NULL provenance is audit-only like explicit unknown; admit complete estimated rows in consumption reports with labels; cache rate measured-only; quality baselines/verdicts require all-measured composition",
+  "scope": "issue",
+  "alternatives_rejected": "Historical-compatibility label for legacy NULL; estimated rows audit-only initially",
+  "issue": "ENH-3723"
+}
