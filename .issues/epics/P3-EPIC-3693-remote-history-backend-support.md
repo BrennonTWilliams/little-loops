@@ -60,7 +60,7 @@ The seven active children cover the shared test fixture, refusal boundary, centr
 
 ## Implementation order
 
-Remote track (revised 2026-10-05): **ENH-3677 and ENH-3729 can start independently**. After ENH-3677, ENH-3657, ENH-3658 and ENH-3682 are independently eligible. ENH-3728 requires ENH-3677 + ENH-3657 + ENH-3729 (fixture, selected-root/fallback wiring, and the SFT quality-refusal failure route). ENH-3700 requires ENH-3657 + ENH-3677 + ENH-3682; it does not wait for ENH-3728 or ENH-3729. ENH-3682 consumes landed ENH-3720 without a hard edge. Sequence ENH-3729 before ENH-3728's edits to the same SFT states, preserving failure routes/atomic publication. ENH-3658's temporary CT-0 allowlist is removed by ENH-3728; if ENH-3728 lands first, never introduce it. Shared CLI/docs/mirror edits require integration coordination, not additional artificial dependencies. Merge each slice's rows into the single support table without discarding siblings' rows.
+Remote track (revised 2026-10-05, review #4): **ENH-3677 and ENH-3729 can start independently**. After ENH-3677, ENH-3657, ENH-3658 and ENH-3682 are independently eligible. ENH-3657 now includes the narrow typed-local SQLite reader setup fix (moved from dependent ENH-3700), conversation-target forwarding and explicit relative ctx-stats overrides; its selected-root local tests must pass on its own. ENH-3728 requires ENH-3677 + ENH-3657 + ENH-3729 (fixture, selected-root/fallback wiring, and the SFT quality-refusal failure route), and owns direct-schema provenance through summary/decisions parsing helpers. ENH-3700 requires ENH-3657 + ENH-3677 + ENH-3682; it does not wait for ENH-3728 or ENH-3729. ENH-3682 consumes landed ENH-3720 without a hard edge. Sequence ENH-3729 before ENH-3728's edits to the same SFT states, preserving failure routes/atomic publication. ENH-3658's temporary CT-0 allowlist is removed by ENH-3728; if ENH-3728 lands first, never introduce it. Shared backend/base-helper/CLI/docs/mirror edits require integration coordination, not additional artificial dependencies. Merge each slice's rows into the single support table without discarding siblings' rows.
 
 Local track: ENH-3678 → ENH-3698, with ENH-3679 independent of remote readers. Sequence `cli/doctor.py` / `CLI.md` check-count edits in ENH-3679, ENH-3698 and ENH-3658 when integrating; shared-file ownership is not an additional functional dependency. ENH-3698 must land before any `REBUILD_DERIVE_VERSION` bump. ENH-3699 remains deferred until a spike proves bounded-lock timeout recovery across a newer ingest watermark. Deferred remote serving follows ENH-3700 → ENH-3668 → ENH-3684/3685 if revived.
 
@@ -84,7 +84,7 @@ Amendments: ENH-3700 was slimmed — the `HistoryRemoteRefused` re-raise, read-m
 
 ## Final support matrix
 
-_Current acceptance baseline after review #3 (2026-10-05); historical composition notes above describe earlier plans._
+_Current acceptance baseline after review #4 (2026-10-05); historical composition notes above describe earlier plans._
 
 | Surface | Remote verdict at epic closure | Owner |
 |---|---|---|
@@ -94,13 +94,13 @@ _Current acceptance baseline after review #3 (2026-10-05); historical compositio
 | `ll-harness` | Serve an exact-version stamped remote store through existing access policy; advisory reads degrade safely. Per-call required retry/baseline-of/measure/compare/frozen/pin/pin-force reads distinguish successful absence from unavailable history, reuse validated results and fail closed with existing exits | ENH-3700 |
 | Packaged SFT stage/enrich | Auto JSONL; remote enrich passes records/metadata through unchanged only when all DB-quality flags are disabled. Any enabled DB-quality flag refuses before output and reaches the failure terminal; other failures also terminate atomically | ENH-3728 / ENH-3729 |
 | Artifact snapshot route/dashboard/history panel; loop `--serve`; doctor `--trim` | Named refusal/501/unavailable panel or informational skip; server remains usable | ENH-3658 |
-| Prepatch base SHA/dirty reads | Per-invocation deadline shared by verification/query on one client, with connection-scoped verification completion (no duplicate warm-file-cache request); otherwise `None`. A read-scoped TTL marker suppresses later advisory reads without silencing writes and permits recovery | ENH-3682 (ENH-3720 landed) |
+| Prepatch base SHA/dirty reads | Per-invocation deadline shared by verification/query on one client, with connection-scoped verification completion (no duplicate warm-file-cache request); otherwise `None`. A read-scoped TTL marker suppresses later advisory reads without silencing writes and permits recovery. Malformed cache/marker state and expected setup/bookkeeping failures cannot escape this fallback or suppress indefinitely | ENH-3682 (ENH-3720 landed) |
 | Context-monitor pressure/handoff writes | Documented remote no-op; reminders and exits unchanged | ENH-3680 (cancelled) |
 | Existing backend-aware `ll-session recent`/search queries | Existing remote support retained; omission of pressure/handoff writes is documented, not absence of all remote consumers | Existing behavior |
 
 This matrix is the acceptance baseline for the single public table in `docs/reference/CONFIGURATION.md`; link it from CLI/API guides rather than maintaining contradictory promises.
 
-## Pre-implementation Review (2026-10-05)
+## Pre-implementation Review #3 (2026-10-05)
 
 Seven open children remain on-theme; no additional child is needed. Progress output: `"total": 8`, `"open": 7`, `"cancelled": 1`, `"percent_done": 12.5`. No child is stalled: session-log/mtime activity is within one day (14-day default threshold). Closure: **No** — the seven open children still require implementation and their revised confidence checks.
 
@@ -118,6 +118,24 @@ A further explicit-local probe returned `"typed_local_ensure_reader_error": "His
 
 Opus favored per-call required flags over duplicate CLI SQL, connection-scoped verification and remote quality refusal. Its dissent offered lazy-only verification (loses warm file-cache benefit) and documentation-only SFT semantics (leaves unchecked correction filters passing); neither is adopted. Its warning that `write=True` might need write-token privileges was checked against `check_access`: the policy uses metadata SELECTs, so the exact-version/stamp rule is retained. No broad strict-reader subsystem, serving-behind policy, new host parser or filter redesign is added. Planned tests and the advisor verdict do not certify implementation readiness.
 
+## Pre-implementation Review #4 (2026-10-05)
+
+All seven open children remain on-theme. ENH-3677's fixture and ENH-3658's snapshot plans were retained; no extra child, hard dependency or reopening of deferred serving is needed. Existing progress remains `"open": 7`, `"cancelled": 1`; implementation and fresh readiness checks are still outstanding.
+
+Five child plans were amended from code inspection and temporary deterministic probes:
+
+- **ENH-3657:** the selected-root local tests relied on a setup fix scheduled in dependent ENH-3700. Move only typed-local `SqliteBackend.ensure_schema` preservation into this prerequisite and forward selected conversation targets through the reached helpers. Explicit relative default-shaped ctx-stats DB paths must be anchored to remain local.
+- **ENH-3700:** env presence alone cannot exempt an unrelated absolute shadow path. Tie the carve-out to the actual selected env target or typed local intent, without redirecting absolute arguments. Clarify typed required helper signatures, expected filesystem/invalid-row failure handling and shared safe query diagnostics alongside catch widening.
+- **ENH-3682:** reached existing marker/cache timestamp casts can throw or suppress indefinitely; validate malformed/nonfinite/future timestamps and make expected marker I/O/local setup failures advisory. Successful data must survive failed marker cleanup, and unavailable configuration must not throw again while forming a marker key.
+- **ENH-3728:** summary/decisions helpers call `schema.connect` directly; carry optional selected-local provenance through those three helpers so foreign remote cwd cannot cause a remote query or a misleading file fallback. This is separate from the reader setup fix.
+- **ENH-3729:** add safe wrong-shape/source JSON and non-regular sentinel cases to the actual-state failure tests; permit correctly checked shell conditionals while requiring failure status propagation.
+
+Probe evidence: `"root_resolved_local_under_foreign_remote_ensure": "HistoryBackendNotLocal"`, followed by `"only_typed_ensure_fix_resolved_local": true`; `"absolute_default_with_env_reads_shadow": true`, `"reads_override": false`; malformed marker timestamps returned `ValueError`/`TypeError`, and `Infinity` yielded active suppression; local prepatch setup returned `"prepatch_setup_escaped": "FileExistsError"`; the local direct-schema summary probe from a remote cwd returned `"local_summary_probe_escaped": "HistoryDbUnavailable"`. Temporary projects were removed; no production code was changed.
+
+A fresh `/ll:advise --signal user_requested --host claude-code --model opus` consult was attempted but did not run: `advisor consult budget exhausted for this task (advisor.max_consults_per_task)` (3/3 spent in this chat). This review has no new Opus verdict or confidence score; earlier reviews remain historical evidence. Planned regression tests and structural checks do not certify implementation readiness.
+
+Review validation: `ll-issues format-check` and `ll-issues check-design` exit 0 for all seven open children; `ll-issues epic-consistency EPIC-3693` reports empty drift lists; the edited-file `git diff --check` exits 0. Existing non-blocking advisory symbol notes concern the fixture plan and the planned guard exception. The implementation test suite was not run for these issue-only edits.
+
 ## Acceptance Criteria
 
 - [ ] All active children are `done` or deliberately `cancelled`; deferred/detached work is not required to close the epic.
@@ -129,6 +147,8 @@ Opus favored per-call required flags over duplicate CLI SQL, connection-scoped v
 - [ ] Required harness retry/baseline-of/measure/compare/frozen/pin/pin-force lookup failures cannot run subjects or write candidate/pin artifacts; genuine absent/insufficient rows and first-use missing local stores retain intended behavior. Validated baselines are reused without advisory rereads; remote recording errors are safe. Advisory rates/admissions cannot change grading. Behind/ahead/unstamped remote stores keep existing refusal policy; advisory mid-query errors degrade through subclass-aware catches (AST-gated).
 - [ ] Remote summary never consults a stale shadow DB or its secondary count helper; loop metrics remain unavailable. Messages/logs use selected project roots, mixed-project default readers cannot return misleading partial aggregates, and local config overrides obey existing provider precedence.
 - [ ] Remote SFT enrich with disabled DB-quality flags preserves records/metadata with one note; each enabled DB-quality flag fails before publication through the actual terminal route. Local override enrichment still works. Cold-process warm-file-cache prepatch reads make one data POST with no duplicate verification and no process-cache contamination.
+- [ ] ENH-3657's local selected-root tests pass independently of ENH-3700, with local intent preserved through conversation reads/setup; explicit relative ctx-stats DB overrides read actual local metrics. Local summary/decisions carry selected provenance through direct schema helpers under foreign remote cwd. Env presence never exempts an unrelated absolute shadow path.
+- [ ] Malformed/future/nonfinite marker/cache timestamps and expected bookkeeping/setup failures preserve the advisory read contract; required filesystem/invalid-row failures produce safe validation refusal. Wrong-shape SFT records and non-regular sentinel paths reach the failure terminal without raw-record output, traceback or partial publication.
 - [ ] The reader importer inventory, hazard gate allowlists, support docs and dependency backlinks agree with the implemented scope. Stale confidence scores are removed; re-run readiness checks on revised issues before implementation, after their prerequisites land.
 - [ ] The local authoritative suite (`python -m pytest scripts/tests/`) passes for the implementation; no unsupported reader message promises deferred remote serving.
 
@@ -138,6 +158,7 @@ Opus favored per-call required flags over duplicate CLI SQL, connection-scoped v
 
 ## Session Log
 
+- EPIC-3693 open-child review #4 - 2026-10-05 - five child plans amended for prerequisite ordering/local provenance, actual env selection, malformed marker/cache state and safe SFT input failures; ENH-3677/3658 retained. Fresh Opus consult skipped at the existing 3/3 chat budget; no new advisor score or implementation.
 - EPIC-3693 open-child review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - all seven child files and epic acceptance/order updated; required-read gaps, cache seam, SFT quality refusal, selected-root coverage and dependency cleanup; implementation not performed
 
 - EPIC-3693 open-child review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - five child plans amended and external ENH-3720 dependency reconciled; implementation not performed

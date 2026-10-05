@@ -51,6 +51,10 @@ After selecting a remote target, do not retain a usable local `db_path`: bypass 
 
 Messages auto mode uses the owning `root` parameter (default `None`) introduced by ENH-3657, threaded from `args.cwd or Path.cwd()`. The fallback is only the **existing Claude-shaped JSONL parser**: Codex/Kimi handles do not gain conversation windows in this slice. Document this limitation and exercise a supported JSONL handle with actual windows; do not claim that successful empty output proves multi-host SFT support. Direct library callers that omit `root` retain existing resolution.
 
+**Preserve local selection through direct schema callers (review #4).** Root-aware resolution alone does not protect local summary/decisions reads: `issue_history.parsing.issue_events_ever_recorded`, `scan_completed_issues_from_db` and `count_loop_runs_in_window` all call `schema.connect(db_path)`, which re-resolves a plain default-shaped Path against ambient cwd. A local owning DB from a foreign remote cwd was observed to contact the remote endpoint and raise `HistoryDbUnavailable`. ENH-3657's typed-local reader setup fix cannot cover these direct schema callers.
+
+Add optional keyword-only `db_target: LocalTarget | None = None` to those three parsing helpers, retaining their Path argument for filesystem checks; when supplied, call `schema.connect(db_target)`. In this slice's local summary and `generate_from_completed` branches, carry the already-selected local target through those helpers. Existing callers that omit the argument keep the existing resolver behavior; do not turn every unclassified Path into an explicit override inside the helpers. Remote branches still bypass all three helpers. This issue owns the direct-schema propagation; it does not wait for ENH-3700 or broaden the writer/hook resolution rules.
+
 ### Remote SFT enrichment and quality contract
 
 In the packaged enrich action, resolve the target once before any filesystem probe or `lookup_session_metadata` call. Under remote, with `require_issue_outcome=false`, `exclude_user_corrections=false`, `min_tool_invocations=0` and `require_file_modifications=false`, copy parsed records through without adding/replacing metadata, preserving any existing metadata, emit one fixed stderr note, and publish through ENH-3729's atomic path. Local/environ-override enrichment keeps its current metadata shape.
@@ -78,12 +82,14 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 
 ### Files to Modify
 - `scripts/little_loops/cli/history.py` (`summary`), `scripts/little_loops/decisions.py` / `scripts/little_loops/cli/issues/decisions.py`, `user_messages.py` / `cli/messages.py`, `skills/improve-claude-md/SKILL.md` (+ mirrors), `scripts/little_loops/loops/sft-corpus.yaml`.
+- `scripts/little_loops/issue_history/parsing.py` — selected-local target parameter (default `None`) on the three summary/decisions DB helpers; preserve existing filesystem Paths and legacy caller behavior. ENH-3657 owns the reader-side setup/conversation prerequisite; no ENH-3700 edge is added.
 - Anchors drift: re-grep every `resolve_history_db(` site (`scripts/little_loops/decisions.py:596`, `user_messages.py` ~`:1227`).
 
 ### Tests
 - Degrade tests keep stdout unchanged with exactly one `note:` line and no token; default-`auto` JSONL fallback; `ll-messages` default-`auto` regression (`extract_conversation_turns` currently reaches the remote pre-resolve); `"No history.db found"` invariant (`test_bug_3216_telemetry_digest_invocations.py`); `sft-corpus` `stage` reader flag (`test_loops_sft_corpus.py`).
 - Use the hoisted `remote` fixture (ENH-3677; `delenv("LL_HISTORY_DB")` to override the autouse `conftest._isolate_history_db`).
 - Summary tests execute `main_history` with text/JSON, date filters, a populated stale shadow DB and a foreign cwd; all three DB helpers are asserted uncalled, loop metrics are unavailable, and only file issues contribute. Preserve local DB-first, legitimate empty-window and file-fallback loop metrics.
+- Local summary/decisions tests select a local owning root from a remote foreign cwd and observe seeded issue/loop data through all reached helpers, with zero remote reader requests and no fallback masking. Include `LL_HISTORY_DB` pointing to a default-shaped local file; match the existing explicit/env resolution precedence and keep legacy parsing callers unchanged.
 - Execute the packaged stage/enrich actions through the real FSM after ENH-3729: remote/no-quality-flags preserves records and pre-existing metadata with one note and zero metadata lookups; each of the four enabled flags fails before output publication (also with empty input), retaining the previous good output and never reaching filters/sentinel. A local `LL_HISTORY_DB` override enriches actual session data. No copied enrich script alone is sufficient evidence.
 - Exercise public messages `--cwd` in both foreign-cwd directions and direct auto-library fallback without a notice; supported Claude-shaped JSONL produces actual windows and Codex/Kimi remain at their documented limitation.
 - Keep green: `test_cli_decisions.py`/`test_decisions.py` DB-first local branch, `test_cli_messages.py`, `test_adapt_skills_for_codex.py`, `test_verify_skill_prose.py`, `test_enh494_skill_companions.py`.
@@ -96,6 +102,7 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 ### Signatures
 - `generate_from_completed(config: BRConfig) -> int` — degrade site in `little_loops.decisions`; local branch stays DB-first.
 - `extract_conversation_turns(..., reader="auto")` — catches `HistoryUnsupported` before the JSONL fallback.
+- `issue_events_ever_recorded(db_path: Path, *, db_target: LocalTarget | None = None) -> bool`, `scan_completed_issues_from_db(db_path: Path, since=None, until=None, *, db_target: LocalTarget | None = None) -> list[CompletedIssue]`, `count_loop_runs_in_window(db_path: Path, since, until, *, db_target: LocalTarget | None = None) -> tuple[int | None, int | None]` — optional local provenance for these callers; filesystem checks keep the Path, SQL receives the supplied target.
 
 ### Call Path
 - `cmd_decisions` -> `generate_from_completed` -> `scan_completed_issues` (degrade, remote only).
@@ -109,7 +116,7 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 
 Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper and selected-root threading) and ENH-3729 (SFT failure routes and atomic publish) landed. The ENH-3729 edge is functional: this issue introduces an intentional remote quality refusal that must terminate rather than continue through `next`.
 
-1. Library fallbacks + CLI notes for `history summary`, `decisions generate`, `reader=auto`.
+1. Library fallbacks + CLI notes for `history summary`, `decisions generate`, `reader=auto`; preserve the already-selected local target through the direct-schema parsing helpers and consume ENH-3657's conversation/setup fix.
 2. CT-0 skill change, mirrors.
 3. `sft-corpus.yaml` reader flag and enrich passthrough.
 4. Docs/support-table rows; remove the CT-0 allowlist entry from ENH-3658's hazard gate if it exists.
@@ -131,6 +138,7 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper an
 
 - [ ] `history summary`, `decisions generate`, `--reader auto` and permitted `sft-corpus` enrich passthrough preserve data stdout, exit 0 for intentional fallbacks and emit their single safe stderr note only under remote config; direct/automatic library fallbacks add no notice.
 - [ ] Remote summary bypasses every DB probe/count helper even with a stale shadow DB, preserves date filtering and `source=files`, and exposes unavailable loop metrics in text/JSON. Local summary's DB-first/empty-window/loop-count behavior is retained.
+- [ ] Local summary/decisions from a foreign remote cwd read seeded issue/loop data via their selected local target with zero remote reader requests, including default-shaped env redirection. Direct-schema parsing helpers preserve optional provenance through `schema.connect`, and existing callers without provenance retain their resolution behavior; no ENH-3700 dependency is needed.
 - [ ] CT-0 emits parseable `verdict: skipped` plus its note and never reports "no candidates" for a remote skip; it uses `resolve_history_store` and branches on `RemoteTarget`; no bare `resolve_history_db()` remains in `skills/`; mirrors regenerated.
 - [ ] Packaged stage uses `--reader auto` and preserves the CLI's single note. Remote enrich with all DB-quality flags disabled preserves input records/metadata, makes no metadata lookup and adds no fabricated zero/false fields; its output is published atomically.
 - [ ] Each enabled DB-quality flag makes remote enrich fail through `corpus_failed` before output publication, including empty input and pre-existing metadata; previous output survives and filter/publish/sentinel do not run. The actual packaged YAML/FSM tests also prove a local env override still enriches.
@@ -157,4 +165,5 @@ Scope amended 2026-10-05; no readiness or passing-test claim is made. Re-run `/l
 
 ## Session Log
 
+- EPIC-3693 review #4 - 2026-10-05 - direct-schema summary/decisions helpers now preserve selected local provenance so foreign remote cwd cannot re-resolve them or hide failure behind file fallback; ENH-3657 owns the earlier reader setup fix. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - complete summary fallback, selected messages root, exact SFT passthrough/quality-refusal semantics and ENH-3729 dependency added; implementation not performed

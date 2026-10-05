@@ -130,7 +130,7 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 
 - Four existing presets satisfy FEAT-3667's schema; functional/visual/business tuning meets the bounded measurement gate before the default flips to auto.
 - One reference brief per mode is routed using stubbed classifier output plus documented real calibration runs; stubbed success alone is not evidence of classifier accuracy.
-- Explicit mode skips classification; invalid explicit inputs cause zero LLM dispatches even with mode=auto.
+- Explicit mode skips classification; invalid explicit inputs cause zero LLM dispatches even with mode=auto, including ideas_per_round outside FEAT-3667's 1–10 cap or min_ideas above nine-lens capacity. Reuse engine validation; do not add a second bound implementation.
 - Confidence 0.6 is accepted; lower, nonfinite/out-of-range, boolean, malformed, unknown mode and classifier host failure/timeout all fall back visibly to artifact.
 - A **built** numeric override (e.g. mode=business ideas_per_round=3) wins over the preset. Empty inherits; false/none disables. Unbuilt optional overrides fail preflight rather than requiring materialize to exist.
 - Every successful capability token reaches its explicitly mapped state; fail and _ routes remain failures. No route pre-wires an unbuilt state.
@@ -172,6 +172,7 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:28 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:26 - `813546cd-0058-4cf8-a1bc-da17040cac6b.jsonl`

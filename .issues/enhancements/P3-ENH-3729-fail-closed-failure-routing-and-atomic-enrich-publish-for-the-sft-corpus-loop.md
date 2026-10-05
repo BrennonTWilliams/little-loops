@@ -42,7 +42,9 @@ A masked failure in `sft-corpus` silently yields an empty or partially enriched 
 
 ## Proposed Solution
 
-Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shell actions and write per-run artifacts under `${context.run_dir}/`. Remember the FSM interpolates the whole action string before bash. A subprocess failure must exit non-zero in the state's shell so `on_error` routes (do not wrap the host command in `if cmd; then` / `|| true`).
+Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shell actions and write per-run artifacts under `${context.run_dir}/`. Remember the FSM interpolates the whole action string before bash. A subprocess failure must exit non-zero in the state's shell so `on_error` routes. A checked conditional is allowed if it captures/propagates the failing status; an unchecked conditional, `|| true`, or succeeding final echo must not mask it.
+
+Validate the enrich input record shape before `.get`/`Path(source)`: a syntactically valid JSON array/scalar or non-string non-null source is malformed input, not a traceback-producing `AttributeError`/`TypeError`. Null/missing source retains its existing empty-session behavior. Use the same fixed safe boundary reason and atomic cleanup as syntax/I/O failures, without printing a record or exception text. This is validation for the existing accepted object records, not a change to SFT formats or downstream filters.
 
 ## Integration Map
 
@@ -52,6 +54,7 @@ Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shel
 ### Tests
 - Execute the actual packaged YAML states and the FSM failure route (not copied shell snippets): a failing `ll-messages` status cannot be overwritten by its pathname echo; stage/enrich failures reach `terminal: true, failure: true` without filter/publish/success sentinel; failure after one record leaves the previous `enriched.jsonl` intact and no leaked temp file; success stdout contains only the captured pathname.
 - Cover absent vs unreadable harvest sentinel, failed run-directory/sidecar writes, malformed second JSONL record and replace failure. These are local deterministic failure injections; ENH-3677's remote fixture is not needed. Leave remote quality-refusal integration tests to ENH-3728 and preserve these routes/temp cleanup in that later edit.
+- Include valid JSON with the wrong top-level shape and invalid source type after a good first record: safe non-zero failure, no traceback/raw-record canaries, previous final retained and no temp leak. An existing non-regular harvest sentinel is an error; only genuine absence takes the optional-sentinel path.
 - `ll-loop validate` must stay clean (MR rules).
 
 ## Program Design
@@ -91,6 +94,7 @@ Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shel
 - [ ] `stage` and `enrich` both route `on_error` to a `terminal: true, failure: true` state; no failure reaches filter/publish or the harvest success sentinel.
 - [ ] `enriched.jsonl` is published atomically only after success; a failure after one record retains the previous final file and cleans temps.
 - [ ] Absent harvest sentinel remains successful; unreadable sentinel, mkdir/sidecar failure, malformed later JSONL record and atomic-replace failure reach the failure terminal without downstream execution or replacement of the previous good output.
+- [ ] Syntactically valid wrong-shape records and invalid source types fail through the safe enrich boundary without traceback/raw-record output or temp leaks; null/missing source retains its existing behavior. Existing non-regular sentinel paths fail rather than masquerading as absence; checked shell conditionals preserve non-zero status.
 - [ ] Tests execute the packaged YAML states and the FSM route; `ll-loop validate` is clean; `python -m pytest scripts/tests/` passes.
 
 ## Related
@@ -111,4 +115,5 @@ Scope/dependencies amended 2026-10-05; run `/ll:confidence-check` before impleme
 
 ## Session Log
 
+- EPIC-3693 review #4 - 2026-10-05 - malformed object/source cases and non-regular sentinel added to safe atomic failure tests; misleading ban on correctly checked shell conditionals replaced with status-propagation requirement. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - artificial fixture dependency removed, ENH-3728 failure-route prerequisite wired, shell/atomic failure cases pinned; implementation not performed

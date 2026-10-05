@@ -24,7 +24,7 @@ epic: EPIC-3693
 
 # ENH-3657: Give history reader CLIs a remote-backend verdict (refuse or degrade)
 
-> **Current split (reviewed 2026-10-05):** this is **3657a, the refuse-boundary slice**: one boundary helper plus the refused CLI/MCP sites. It makes no contract change to `_connect_readonly`. **ENH-3700** owns the central guard, catch widening, narrow required harness lookups and `ll-harness` serving; **ENH-3728** owns degrade sites and CT-0; **ENH-3729** owns SFT failure routing. The universal re-raise, exhaustive caller audit and read-mode ensure/serve-behind designs were dropped on 2026-10-04. Scores remain cleared; re-run `/ll:confidence-check` after ENH-3677 lands. Pre-split plans are in git history.
+> **Current split (reviewed 2026-10-05, review #4):** this is **3657a, the refuse-boundary slice**: one boundary helper plus the refused CLI/MCP sites. It also owns the small local-target setup/provenance fix required by its selected-root tests; `_connect_readonly`'s error contract stays unchanged. **ENH-3700** owns the central guard, catch widening, narrow required harness lookups and `ll-harness` serving; **ENH-3728** owns degrade sites and CT-0; **ENH-3729** owns SFT failure routing. The universal re-raise, exhaustive caller audit and read-mode ensure/serve-behind designs were dropped on 2026-10-04. Scores remain cleared; re-run `/ll:confidence-check` after ENH-3677 lands. Pre-split plans are in git history.
 
 ## Summary
 
@@ -46,7 +46,7 @@ These sites pre-resolve through `resolve_history_db()` and raise `HistoryBackend
 |---|---|---|
 | `history analyze`, `activity`, `rework`, `quality`, `audit-issue-collisions`, `sessions`, `root` | **refuse** | boundary helper turns the pre-resolve's `HistoryBackendNotLocal` into `<prog> <sub>: <safe reason>`, exit 1 |
 | `logs` `_cmd_diff`, `_cmd_eval_export`, `_cmd_stats`, `_cmd_dead_skills` | **refuse** | keep the literal `"No history.db found"` warning for local-missing (the digest loop greps it); the refusal is a separate line |
-| `ctx_stats` | **refuse** | explicit `--db` skips the pre-resolve and still runs locally; no extra guard needed |
+| `ctx_stats` | **refuse** | explicit `--db` skips the pre-resolve and still runs locally, including relative/absolute default-shaped paths; anchor the explicit relative path before the strict opener |
 | `ll-messages --sft-format --reader db` | **refuse** | preflight against the selected `--cwd` root before discovery/empty-message returns; `reader=auto` degrade is ENH-3728 |
 | MCP `history_search` | **refuse** as a structured `is_error` naming the operation | its pre-resolve already takes `root=project_root`; verify the message names the operation |
 
@@ -68,7 +68,7 @@ Remote-backend users hit an unhandled traceback from `ll-history`, `ll-logs` and
 
 ## Scope Boundaries
 
-- **In scope**: the boundary helper, the refuse sites in the table (including `logs` `_cmd_stats`/`_cmd_dead_skills`, deferred here by ENH-3658), epilog and skill exit-code wording, the single support table in `CONFIGURATION.md`, the parametrized refusal test.
+- **In scope**: the boundary helper, the refuse sites in the table (including `logs` `_cmd_stats`/`_cmd_dead_skills`, deferred here by ENH-3658), selected-local provenance through conversation reads and SQLite reader setup, epilog and skill exit-code wording, the single support table in `CONFIGURATION.md`, the parametrized refusal test.
 - **Out of scope**: the central guard and `ll-harness` serve (ENH-3700); all degrade sites, CT-0 and the `sft-corpus` reader flag (ENH-3728); `sft-corpus` failure routing (ENH-3729); startup/write-path sites (BUG-3652, done); artifact hand-built paths (ENH-3658); `context-monitor.sh` (ENH-3680 cancelled, documented no-op); remote read serving for `ll-history` subcommands/MCP (ENH-3668/3684/3685, deferred indefinitely); `ll-session search --fts` (passes the caller's own `--db`; confirm no unhandled `HistoryBackendNotLocal` path); `ll-doctor` (already handles `HistoryError`; confirm); writers/runtime callers of `resolve_history_db` (`cli/parallel.py`, `fsm/*`, `hooks/*`).
 
 ## Proposed Solution
@@ -86,10 +86,21 @@ Every default read uses the root selected by the command: thread `root=project_r
 
 For explicit messages DB mode, classification precedes both the no-handles error and the `not messages and not commands` success branch. A remote refusal must not depend on finding transcripts. Thread an optional owning `root` into `extract_conversation_turns`' DB resolution so local selected-project reads also use the right store; ENH-3728 reuses this parameter for auto fallback. Automatic callers that omit it keep their current cwd resolution. These changes do not alter `_resolve_once` or the reader opener contract.
 
+### Local-target setup must land with the boundary slice
+
+**Review #4 evidence:** a local owning root resolved from a foreign remote cwd still fails through `open_history_readonly(..., ensure=True)` with `HistoryBackendNotLocal`. Applying only a temporary typed-local `SqliteBackend.ensure_schema` fix made that same probe succeed. The setup fix was previously assigned to ENH-3700, which is blocked by this issue; leaving it there makes this slice's foreign-cwd local tests impossible to satisfy independently.
+
+Move the narrow setup fix here: after validating the local path, `SqliteBackend.ensure_schema` calls `schema.ensure_db(LocalTarget(path))`, so SQLite setup cannot resolve an already-selected local store again against ambient config. Ordinary `schema.connect`/`ensure_db` callers and writer/hook precedence are unchanged. This supplies ENH-3700's prerequisite; do not add a reverse dependency.
+
+When `extract_conversation_turns` resolves a local DB against its owning root, pass that selected result as `LocalTarget` through `history_reader.sessions.conversation_turns` and `_connect_readonly`. Keep a separate Path for `exists()` and forward the typed target to the opener; do not strip intent with `Path(target)`. Widen only these reached annotations/handling, retaining the existing fallback/error contracts. ENH-3728 separately owns local provenance through the summary/decisions parsing helpers that use `schema.connect` directly.
+
+For `ll-ctx-stats --db`, a relative `.ll/history.db` currently reaches the strict opener's default resolver and selects remote despite the explicit flag. Anchor the explicitly supplied Path at the invocation cwd before passing it to the existing filesystem/strict-read helpers; an absolute Path already has that local contract. Test actual content through both default-shaped forms, rather than accepting a fallback report as evidence that the override was read.
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/cli/history.py`, `cli/logs.py`, `cli/ctx_stats.py`, `cli/messages.py`, `user_messages.py` (optional owning-root argument), `mcp_server/tools.py`, the shared boundary helper module, `skills/analyze-history/SKILL.md`, `skills/create-eval-from-issues/SKILL.md` (+ regenerated mirrors).
+- `scripts/little_loops/session_store/backend.py` (`SqliteBackend.ensure_schema` only), `history_reader/sessions.py` (`conversation_turns` local-target forwarding) and `history_reader/_base.py` (target annotation/forwarding only). ENH-3682 may independently add best-effort handling to the same opener; preserve its parameters when integrating. ENH-3700 consumes this setup fix rather than implementing it later.
 - Anchors drift: re-grep every `resolve_history_db(` site before editing (`cli/history.py` ~`:501–797`, `cli/logs.py` ~`:1718/1962`, `cli/ctx_stats.py` ~`:1188`, `mcp_server/tools.py:172`).
 
 ### Loop / digest invariants
@@ -100,6 +111,7 @@ For explicit messages DB mode, classification precedes both the no-handles error
 - New: one **parametrized** refusal test over the refused sites, including `main_messages` under `--sft-format --reader db` (exit 1, `<prog> <sub>:` prefix, `libsql` in stderr, `"Traceback" not in err`, no reader requests) plus a local twin. Disable CLI analytics capture for the request-count assertion (`LL_ANALYTICS_CAPTURE=0`), or separate reader requests from legitimate remote `cli_events` writes. `_cmd_stats`/`_cmd_dead_skills` refuse without creating a local `.ll/history.db` (assert absence). Where a CLI defines `--db` (`ll-ctx-stats`), that explicit path stays local; `LL_HISTORY_DB` keeps its local override. MCP refusal names the operation and resolves config against `project_root` (remote config at `project_root` + foreign cwd).
 - Use the hoisted `remote` fixture from ENH-3677 (must `delenv("LL_HISTORY_DB")` to override the autouse `conftest._isolate_history_db`). Test the public boundary: `main_history()`, `main_logs()` and `main_messages()` take no `argv`, so monkeypatch `sys.argv`; `main_ctx_stats(argv=None)` accepts a list. Cover seeded and empty transcripts for eval-export/explicit SFT so a refusal is named in both cases. Exercise the registered MCP `handle_call_tool`, not only `_tool_history_search`.
 - Add mixed local/remote discovery tests for logs stats/dead-skills from a local foreign cwd, all-local twins with custom `history.db_path`, and an `LL_HISTORY_DB` alias case proving one file is counted once. Workspace activity gets a local owning root plus remote member case. No selected remote path is probed or opened, including a pre-existing shadow DB.
+- Prove the local selected messages root returns seeded DB conversation windows from a foreign remote cwd through the real ensure/read chain; no JSONL fallback may hide failure. Prove relative and absolute default-shaped `ll-ctx-stats --db` return seeded local metrics with zero reader requests to the remote stub. Keep explicit absolute-path precedence and ordinary writer/hook resolution tests green.
 - Keep green: `test_enh3549_codex_stored_ctx_stats.py` (`err == ""`), `test_enh3656_stored_cache_rate.py`, `test_libsql_backend.py::test_resolve_history_db_raises_for_the_remote_target` (fix stays at call sites, not `resolve_history_db`), `test_history_store_chokepoint_gate.py` (no raw `sqlite3.connect`), `test_feat3410_workspace_quality.py`/`test_feat3445_workspace_activity.py` (literal `"history.db not found"`), `test_ll_logs.py` index-sensitive stderr tests, `test_cli_messages.py`, `test_bug_3216_telemetry_digest_invocations.py`, `test_adapt_skills_for_codex.py`, `test_verify_skill_prose.py`, `test_enh494_skill_companions.py`.
 
 ### Documentation
@@ -116,6 +128,9 @@ For explicit messages DB mode, classification precedes both the no-handles error
 - `history_error_verdict(exc: HistoryUnsupported, *, program: str, operation: str | None = None) -> int` — planned shared helper; print the fixed safe reason and return 1. Use the caller's fixed operation label, never arbitrary exception text.
 - `main_history() -> int`, `main_logs() -> int`, `main_messages() -> int` are zero-argument boundaries; `main_ctx_stats(argv=None) -> int` accepts argv. Messages and ctx-stats have no subcommand: their prefixes are `ll-messages:` and `ll-ctx-stats:`; name the SFT operation in the reason without inventing a CLI subcommand.
 - `extract_conversation_turns(..., reader: str = "auto", *, root: Path | None = None) -> list[list[tuple[str, str]]]` — add the optional root to the existing signature without changing other argument calling conventions; only DB resolution consumes it.
+- `conversation_turns(db_path: Path | str | LocalTarget, since=None, context_window=3)` — retain its existing calling convention and empty fallback; unwrap only for filesystem probes and preserve the typed argument for the reader opener.
+- `_connect_readonly(db_path: Path | LocalTarget, ...)` — target forwarding/annotation change only; preserve ENH-3682's best-effort keyword if it has landed. The guard/required/error-contract changes remain ENH-3700.
+- `SqliteBackend.ensure_schema(target: Path | HistoryTarget) -> None` — existing signature; pass validated local intent to `schema.ensure_db` rather than a plain default-shaped Path.
 
 ### Call Path
 
@@ -134,7 +149,7 @@ For explicit messages DB mode, classification precedes both the no-handles error
 Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 
 1. Add the boundary helper; wire it into `main_history`, `main_logs`, `main_ctx_stats`, `main_messages`.
-2. Convert the refuse sites (respect `ll-ctx-stats --db`); make `_cmd_stats`/`_cmd_dead_skills` refuse before the hand-built path; confirm MCP `is_error` wording.
+2. Convert the refuse sites (anchor explicit `ll-ctx-stats --db`); make `_cmd_stats`/`_cmd_dead_skills` refuse before the hand-built path; confirm MCP `is_error` wording. Land the narrow typed-local SQLite setup fix and selected conversation-target forwarding here so foreign-cwd local tests pass before ENH-3700.
 3. Epilog exit-code text, skill wording, `ll-adapt` mirrors, support table and docs.
 4. Tests per the Integration Map. Run `python -m pytest scripts/tests/`, `ruff check`, `mypy` (scope `ruff format` to changed files).
 
@@ -154,6 +169,7 @@ Prerequisite: ENH-3677 landed (hoisted `remote` fixture). BUG-3652 is done.
 - [ ] `ll-history --config`, logs eval-export's selected project and messages `--cwd` use their owning root with a foreign cwd in both directions; local-provider config overrides and applicable env/explicit overrides are preserved. Explicit messages DB mode refuses even with empty transcripts, and no foreign `.ll/history.db` is created.
 - [ ] Mixed-project logs stats/dead-skills and workspace activity refuse before aggregation when a selected default target is remote; all-local discovery retains totals, and multiple roots redirected to one env-override file count it once. Stale shadow files are not read.
 - [ ] Where a CLI defines `--db`, that explicit path remains local; `LL_HISTORY_DB` keeps its local override at applicable sites.
+- [ ] Seeded local conversation data survives the actual ensure/read chain from a foreign remote cwd, with selected `LocalTarget` retained through `conversation_turns` and SQLite setup. Relative/absolute default-shaped explicit `ll-ctx-stats --db` read seeded metrics without reader requests to remote; existing writer/hook precedence is unchanged. This passes without ENH-3700's guard or required-read changes.
 - [ ] The support table exists in `CONFIGURATION.md`, refused rows read "not supported with a remote backend" (no follow-up promised), and it includes "context-pressure and handoff rows are not recorded under a remote backend"; epilog exit codes and the two skills describe the refusal exit 1; mirrors regenerated.
 - [ ] With the default local store `python -m pytest scripts/tests/` passes unchanged.
 
@@ -178,6 +194,7 @@ _Cleared 2026-10-02 after the split into 3657a (this issue) and ENH-3700 (3657b)
 **Ownership:** epilog and CLI.md "Exit codes" edits here cover `ll-ctx-stats` and `ll-history` only. ENH-3700 owns `ll-harness` serving and its existing fail-closed retry/baseline validation behavior; this issue adds no remote-backend refusal there.
 
 ## Session Log
+- EPIC-3693 review #4 - 2026-10-05 - typed-local reader setup moved here from ENH-3700 to remove an impossible prerequisite ordering; conversation-target forwarding and explicit relative ctx-stats override tests pinned. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - current split, selected messages/log roots, multi-project preflight, override precedence and executable design signatures corrected; implementation not performed
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:26 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - root propagation, public-boundary tests and safe MCP refusal amended; implementation not performed

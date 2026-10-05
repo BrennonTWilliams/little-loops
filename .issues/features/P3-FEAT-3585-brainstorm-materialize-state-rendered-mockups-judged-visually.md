@@ -37,11 +37,11 @@ The core visual preset changes axes/lenses/rubric but judges text. It cannot com
 - materialize_render is one packaged inline node state, resolving Playwright via the existing LL_PLAYWRIGHT_ROOT / NODE_PATH / global npm convention. It checks source presence, size and in-run path before rendering. Fixed viewport, device scale, screenshot readiness and per-file deadline make results comparable and bound the state. Close pages/browser in finally.
 - Missing/empty/oversized/unsafe mockup **source** is an artifact failure: exclude that candidate from both image and HTML judging and record a reason. A source-valid candidate with failed PNG capture may still be judged as HTML.
 - Image mode requires at least two successfully rendered PNGs and a successful canary. With those prerequisites, select rendered candidates and drop source-valid render failures. If fewer than two PNGs exist, Playwright/node/browser is unavailable, or the canary fails, judge **all source-valid candidates** from HTML; restore source-valid render failures to eligibility, but never restore invalid/missing source. Fewer than two source-valid candidates fails pre_tournament floors, before any judge or sink. Compute this final set in one deterministic materialize-check operation; do not incrementally drop/restore IDs according to loop order.
-- The renderer produces a control PNG with a random code. visual_canary is one Read-only prompt call reading that PNG; expected code is absent from its prompt. Renderer unavailability or absent control bypasses the canary and goes directly to materialize_check. Canary host error/timeout or mismatch also reaches materialize_check for HTML fallback. Malformed artifact results can degrade; a deterministic engine/I/O failure fails the run.
-- Stamp each **captured PNG** with its own random code after rendering (renderer-controlled overlay; no code in authored HTML). Image verdicts echo both codes in presentation order as seen:[codeA,codeB]. record-round validates against materialize.json; missing/wrong proof is an abstention. Engine blocks expose selected asset paths and idea data, **never expected codes**. Judges/canary are instructed to read only the selected image/source files, never materialize.json, logs or code metadata. Codes are a capability sanity signal, not proof of design quality or a security boundary.
+- The renderer produces a control PNG with a random code. visual_canary is one Read-only prompt call reading that PNG; expected code is absent from its prompt and durable metadata stores only its SHA-256 digest. Renderer unavailability or absent control bypasses the canary and goes directly to materialize_check. Canary host error/timeout or mismatch also reaches materialize_check for HTML fallback. Malformed artifact results can degrade; a deterministic engine/I/O failure fails the run.
+- Stamp each captured PNG after rendering by compositing in Playwright: screenshot the authored JS-disabled page, then setContent of a renderer-generated static wrapper in a fresh JS-disabled context (data-URI image of that capture plus a positioned text overlay) and capture the final PNG at the same viewport/device scale. The wrapper lives in memory and is never an authored HTML file; use escaped renderer-owned text, allow only inline/data resources, and do not log its code or markup. This uses the existing Playwright dependency and needs learning evidence for dimensions, visible stamp and JS-disabled behavior. Image verdicts echo both codes in presentation order as seen:[codeA,codeB]. record-round hashes echoed codes and compares with materialize.json code_sha256; missing/wrong proof is an abstention. Engine blocks expose selected asset paths and idea data, **never expected codes**. Judges/canary are instructed to read only the selected image/source files, never materialize.json, logs or code metadata. Digest-only expected metadata prevents a direct plaintext-metadata echo, but captured model answers can still reveal echoed codes and Read tools do not isolate artifact paths. Codes remain a capability sanity signal, not proof of design quality or an adversarial security boundary.
 - Rendering uses a browser context with authored JavaScript disabled. Permit only the selected mockup document; abort network requests and other file: subrequests (inline CSS/SVG/data content is allowed). Verify document paths resolve inside the mockups directory, including symlinks. The prior blanket allowance of every file: request is insufficient. The loop does not depend on .loops/probes/ or machine-specific package paths.
 - Round/probe prompts switch on finalists.json judge_mode and explicitly Read PNGs (image) or HTML paths (html), without inlining source into argv. Presentation order, batched rounds, reversed probe, scores and abstention thresholds remain the core tournament contract. Wrong codes never trigger a schedule restart.
-- finalists.json judge_mode remains **text|image|html**. materialize.json has {judge_mode, degradation_reasons:[str], assets:{id:{html,png?,rendered,code?}}, canary:{expected?,passed?}}; reasons distinguish no_playwright, canary_failed, canary_error and render_floor. Do not substitute html_no_playwright into the canonical judge_mode enum. Paths must be validated against the run dir; judges see a redacted projection, not this code-bearing record.
+- finalists.json judge_mode remains **text|image|html**. materialize.json is the committed manifest: {input_digest, judge_mode, degradation_reasons:[str], assets:{id:{html,png?,status,source_sha256?,png_sha256?,code_sha256?}}, canary:{expected_sha256?,passed?}}; status is source_invalid|render_failed|rendered, and reasons distinguish no_playwright, canary_failed, canary_error and render_floor. Persist no plaintext expected code in manifest, filenames, generated wrapper files or logs; raw model answers are untrusted echoes, not expected metadata. Do not substitute html_no_playwright into the canonical judge_mode enum. Paths must be validated against the run dir; judges see a redacted asset projection, without digest/control metadata.
 - The deterministic render-report command adds a gallery and degradation notes. A successful HTML-only run shows source links and honestly states there are no images for the missing PNGs.
 
 ## Use Case
@@ -54,28 +54,32 @@ Render validity, visual capability and idea quality are different checks. A capa
 
 ## Proposed Solution
 
-Four additional parent states: materialize_author -> materialize_render -> visual_canary (when available) -> materialize_check. All artifact validation, canary comparison, fallback selection and finalist-file rewrites live in brainstorm_engine; only browser capture stays JS in a packaged loop action. The two existing floor states are already counted and are not additional materialize visits. If reference authoring truncates at eight candidates, record the failure and deliberately change to two batches with the corresponding step/call/time update; do not add an unbounded retry loop.
+Four additional parent states: materialize_author -> materialize_render -> visual_canary (when available) -> materialize_check. The existing generation-floor shell command creates/verifies materialize_input.json after its checks and before printing its routing token; no prompt state is asked to run deterministic setup. A committed manifest emits the added materialize_check token, explicitly routed straight to that existing state to verify/replay the finalist projection, bypassing author/render/canary with no extra gate state. All artifact validation, canary comparison, fallback selection and finalist-file rewrites live in brainstorm_engine; only browser capture/compositing stays JS in a packaged loop action. The two existing floor states are already counted and are not additional materialize visits. If reference authoring truncates at eight candidates, record the failure and deliberately change to two batches with the corresponding step/call/time update; do not add an unbounded retry loop.
 
 ## Program Design
 
 ### Types
 
 - MockupResult: {idea_id: str, html_path: str, png_path: str | null, source_valid: bool, rendered: bool, reason: str | null}.
-- MaterializeResult: {judge_mode: "image" | "html", degradation_reasons: list[str], assets: dict, canary: dict}; expected codes remain engine/renderer metadata.
+- MaterializeResult: {input_digest: str, judge_mode: "image" | "html", degradation_reasons: list[str], assets: dict, canary: dict}; only SHA-256 expected-code digests remain engine/renderer metadata.
 
 ### Signatures
 
-- check_visual_canary(expected: str, answer: str) -> bool — deterministic comparison.
+- check_visual_canary(expected_sha256: str, answer: str) -> bool — hash the stripped echoed answer and compare digests deterministically.
 - apply_materialize(finalists: FinalistsFile, results: list[MockupResult], canary_passed: bool) -> FinalistsFile — deterministic whole-set eligibility/fallback decision.
 - validate_mockup_path(path: Path, run_dir: Path) -> bool — in-run source validation, including symlinks.
 
-CLI materialize-check --run-dir DIR --render-file F --canary-file F [--canary-error REASON] reads finalists/ideas/profile and probe results, atomically writes finalists.json/materialize.json; exit 0 for a completed fallback/selection, exit 2 for engine failure. Source-count insufficiency is recorded and the existing pre_tournament floor fails it. Missing files caused by host author/render errors are classified explicitly, never mistaken for corrupt successful JSON. Use the real LL_PYTHON invocation in YAML.
+CLI materialize-check --run-dir DIR --render-file F --canary-file F [--canary-error REASON] reads materialize_input/ideas/profile and staging results, commits materialize.json before its atomic finalists.json projection; exit 0 for a completed fallback/selection, exit 2 for engine failure. Source-count insufficiency is recorded and the existing pre_tournament floor fails it. Missing files caused by host author/render errors are classified explicitly, never mistaken for corrupt successful JSON. Use the real LL_PYTHON invocation in YAML.
 
 ### Call Path
 
 shortlist_apply -> check_floors (generation) -> materialize_author -> materialize_render -> [visual_canary] -> materialize_check -> check_floors_pre_tournament -> tournament -> portfolio -> render_report -> validate_portfolio
 
-Author error routes to materialize_check with available sources and error status; render error bypasses canary; canary error reaches materialize_check. A restart reconstructs artifacts for the same surviving set without reintroducing grounded-false or already-rejected candidates.
+Author error routes to materialize_check with available sources and error status; render error bypasses canary; canary error reaches materialize_check. Fewer than two valid sources still fails pre_tournament floors; do not silently switch to text judging or let an unauthored candidate win.
+
+Before authoring, persist materialize_input.json containing the original shortlist's ordered finalists, prior dropped IDs and an input digest. This is the candidate universe for the entire operation, never the already-filtered finalists.json. Whole-set selection distinguishes source_invalid (ineligible in both modes) from render_failed (source valid, eligible only in HTML fallback). Grounded-false and prior shortlist-dropped IDs cannot enter this snapshot. Compute the final set before publishing it; the existing no-promotion v1 contract stays intact.
+
+materialize-check commits materialize.json once, then atomically projects its selected eligible IDs/assets into finalists.json. If interrupted between these replacements, replay verifies the snapshot/manifest and source/PNG hashes and regenerates only the missing finalist projection. A completed manifest is reused without authoring, rendering or canary calls, so codes and judging inputs cannot change under committed verdicts. Changed input/source/image hashes fail explicitly; they do not silently re-render or degrade. An interrupted operation with no committed manifest or verdicts may regenerate its staging artifacts. The core judging-input digest includes the committed manifest and asset hashes (FEAT-3667); next-round/probe-plan/record-round verify them. Separate replacements are not a multi-file transaction.
 
 ## Integration Map
 
@@ -102,7 +106,7 @@ Author error routes to materialize_check with available sources and error status
 
 ### Tests
 - Ordinary pytest uses stubbed browser/canary outputs and direct-import selection/proof tests; it launches no browser.
-- Extend the on-demand Playwright learning evidence for selected-document file confinement, disabled JavaScript, fixed viewport and screenshot deadlines before enabling the preset. Existing screenshot/network-abort claims are already proven and need not be repeated without a changed mechanism.
+- Extend the on-demand Playwright learning evidence for selected-document file confinement, disabled JavaScript, fixed viewport, screenshot deadlines and the static-wrapper stamped PNG (unchanged dimensions and readable overlay, no authored script execution or external requests) before enabling the preset. Existing screenshot/network-abort claims are already proven and need not be repeated without a changed mechanism.
 
 ### Documentation
 - scripts/little_loops/loops/README.md, docs/guides/LOOPS_GUIDE.md, docs/guides/LOOPS_REFERENCE.md — visual gallery, source/image fallbacks, prerequisites and signal limitations.
@@ -128,12 +132,14 @@ Author error routes to materialize_check with available sources and error status
 - Stubbed tests cover missing/empty/oversized source, >=2 rendered PNGs, one/zero PNGs with >=2 valid sources, <2 valid sources, missing browser, canary mismatch/error/timeout, and render-error routing bypassing the canary.
 - No candidate without valid authored HTML is judged or reaches sinks; partial image failure selects the entire final eligible set deterministically; pre_tournament floors run after it.
 - Canonical judge_mode is text|image|html; degradation reasons remain separate and visible in the report.
-- Reversed image verdict code order is checked correctly; malformed/missing proof contributes to the core abstention rate, with no mid-tournament restart.
+- Reversed image verdict code order is hash-checked correctly; expected codes are absent from durable metadata/blocks. Malformed/missing proof contributes to the core abstention rate, with no mid-tournament restart. Fixtures cover interrupted manifest/finalist publication, HTML restoration of render_failed sources, reuse after committed verdicts without new author/render/canary calls, and changed source/PNG hashes causing explicit failure.
 - Screenshot action confines the document/files, blocks network, disables authored JavaScript and has fixed viewport/deadlines, supported by on-demand learning evidence. Ordinary pytest has no Playwright dependency.
 - Enablement/preset flip/profile-token wiring and exact step/time bump land together; ENH-3734 owns cumulative combinations. Author/canary states add no hidden evaluator calls or unbounded rate-limit waits.
 - This issue records its own reference run, at least three rendered finalists, ranked gallery, import origin and actual cost/latency. FEAT-3596 does not gate or own that run.
 
 ## Review History
+
+_2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ accepted static-wrapper compositing, digest-only expected-code metadata, a stable input snapshot/committed manifest and replay fixtures. Retained the existing <2-valid-source failure: the advisor's new text-only fallback would allow unauthored candidates and is unnecessary because the floor already handles this path. Code echoes remain an instruction-scoped sanity signal; hashing is not claimed as read isolation. Browser/stamp learning proof and real visual evidence remain pending implementation.
 
 Historical rationale only; the reconciled directive sections above define current scope (2026-10-05).
 
@@ -165,6 +171,7 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 
 
 ## Session Log
+- Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:27 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T17:15:17 - `f2fe6fc2-4dc3-4f38-a10c-f2bd8be05a0c.jsonl`

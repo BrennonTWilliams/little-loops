@@ -61,6 +61,14 @@ Default connections remain lazily verified. Do not set `config=None`, populate g
 
 Read-marker completion belongs to the entire advisory read: open/verification failure is handled at the opener, query/fetch failure is handled by each prepatch reader. Mark read-unreachable only for transport/unavailable/deadline failures (not policy/schema/query failures), and clear the read marker after a successful query/fetch, including a legitimate empty result. Every path closes the opened connection; no retry or second connection is created. Active-marker suppression precedes any verification request. Use a fresh process or explicitly cleared process cache when proving the warm **file-cache** request count; a warm `_VERIFIED` alone does not test this hole.
 
+### Cache/marker state is advisory, including malformed state
+
+**Review #4 evidence:** existing `remote_telemetry.unreachable_active` casts `float(data.get("at", 0))` outside a decoding guard. Probes with `at="bad"`, `null` and `{}` returned `ValueError`/`TypeError`; `Infinity` remained active indefinitely. `load_verified` similarly casts its timestamp before the guarded schema-version conversion. This new branch consults both existing helpers, so hardening only the new read-marker decoder would leave exceptions/suppression outside the promised never-raises contract.
+
+Validate timestamps at the reached shared decoding seam: malformed/missing/nonfinite/future/expired state is a cache miss or inactive marker. Use the existing TTLs; invalid state cannot authorize access, permanently suppress reads, or populate `_VERIFIED`. With an invalid verified-cache entry, perform normal deadline-bound verification on the same client. Treat expected cache/marker filesystem failures as bookkeeping failure rather than read failure: a successful query still returns its real result if clearing the read marker fails, and a failed query still returns `None` if writing its marker fails. Diagnostics stay fixed and safe. Do not add locking/replay or redesign writer suppression; existing well-formed state keeps its behavior.
+
+The local branch has a reached setup exception outside the current `HistoryError` taxonomy: a regular file used as the DB's parent makes `read_base_sha` escape `FileExistsError` from `ensure_db`. Preserve normal local setup, but in explicit best-effort mode normalize/catch expected `OSError` setup failures as well as `HistoryError`/SQLite failures and return `None` without setting a remote marker. Use narrow catches around the named operations, not blanket suppression of process-control exceptions or unrelated programming errors. A missing endpoint/configuration is unavailable configuration, not proof of an unreachable endpoint; marker handling must not call a failing `cfg.endpoint()` again from its exception path.
+
 ## Motivation
 
 Base-SHA/dirty-state history is advisory to prepatch. A slow remote store should not delay an FSM step twice when the same step can continue using its existing branch/merge-base fallback, and a slow advisory read must not cost the user their telemetry writes.
@@ -71,7 +79,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 
 ## Scope Boundaries
 
-- **In scope:** `read_base_sha` and `read_base_dirty`, the best-effort readonly seam and connection-scoped verification completion, the read-scoped marker, sanitized `_connect_readonly`/`_log_query_failure` remote text, timeout/marker tests and API docs.
+- **In scope:** `read_base_sha` and `read_base_dirty`, the best-effort readonly seam and connection-scoped verification completion, the read-scoped marker plus the reached existing marker/file-cache decoding helpers, expected setup/bookkeeping failure fallbacks, sanitized `_connect_readonly`/`_log_query_failure` remote text, timeout/marker tests and API docs.
 - **Out of scope:** ENH-3720's deadline primitive, socket enforcement and stub controls (landed); typed-target propagation to user-facing reader CLIs/MCP (ENH-3668); all other reader timeouts, remote migrations, new retries, changes to prepatch fallback decisions; the central guard and catch widening (ENH-3700).
 
 ## Integration Map
@@ -80,7 +88,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 
 - `scripts/little_loops/session_store/backend.py` — best-effort branch in `open_history_readonly`; preserve the local and ordinary-reader branches.
 - `scripts/little_loops/session_store/libsql.py` — connection-scoped best-effort verification completion and `_guard`'s narrow verified-connection branch; keep ordinary `connect_readonly` defaults, read-only denial, config and deadline enforcement.
-- `scripts/little_loops/session_store/remote_telemetry.py` — read-scoped marker kind and helpers.
+- `scripts/little_loops/session_store/remote_telemetry.py` — read-scoped marker kind/helpers and narrow timestamp validation in the reached existing `unreachable_active`/`load_verified` paths; expected bookkeeping I/O failures stay advisory.
 - `scripts/little_loops/history_reader/_base.py` — narrow best-effort parameter, open-error fallback, sanitized remote warning.
 - `scripts/little_loops/history_reader/runs.py` — opt in only `read_base_sha`/`read_base_dirty`; query/fetch fallback separate from opening fallback; sanitize the remote branch of `_log_query_failure`.
 - `scripts/tests/test_remote_callers_bug3652.py` and `scripts/tests/test_remote_ingestion_telemetry.py` — focused prepatch deadline/marker/mode tests, using ENH-3677's shared fixture and ENH-3720's stub fault controls.
@@ -99,7 +107,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 ### Signatures
 
 - `open_history_readonly(target=None, *, ensure: bool = False, best_effort: bool = False)` — keeps default standard read behavior.
-- `_connect_readonly(db_path, *, best_effort: bool = False)` — forwards the mode, preserves the existing `db_path` handling (ENH-3700 later widens it to `Path | LocalTarget`), and catches open failures only.
+- `_connect_readonly(db_path, *, best_effort: bool = False)` — forwards the mode, preserves selected local intent if ENH-3657's annotation/forwarding has landed, and catches open/setup failures only. ENH-3657 and this issue remain independently eligible after ENH-3677; integrate their separate changes without dropping target support or this keyword.
 - `LibsqlConnection._verify_best_effort_access() -> None` — planned private connection method: deadline check, exact-version/stamp `check_access(write=True, persist=True)` on its own client, then set connection-scoped verification completion; defaults never call it. Naming may follow local conventions, but completion cannot precede successful verification.
 - `remote_telemetry.mark_read_unreachable(endpoint: str) -> None` / `read_unreachable_active(endpoint: str) -> bool` — read-scoped marker (names indicative).
 
@@ -110,7 +118,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 ## Implementation Steps
 
 1. After ENH-3677, add the read-marker helpers and the best-effort branch (one `Deadline`, marker check, skip `ensure_schema`, single verification on the opened connection, connection-scoped completion, same-client query).
-2. Enable it at only the two prepatch reads; keep the `None` fallback on open and mid-query errors; sanitize the remote warnings.
+2. Enable it at only the two prepatch reads; keep the `None` fallback on open/setup and mid-query errors; harden reached marker/cache decoding and bookkeeping failure paths; sanitize the remote warnings.
 3. Test with a socket that accepts but never replies and ENH-3720's `delays` / `stall_body` / `trickle` controls, plus a local twin; update API docs and run the suite.
 
 ## Impact
@@ -131,6 +139,7 @@ Add `open_history_readonly(..., best_effort: bool = False)`. For `RemoteTarget` 
 - [ ] Both readers still return actual remote data through a reachable `HranaStub`; local SQLite and standard reader timeouts remain unchanged. Default remote reads create no shadow DB.
 - [ ] Separate open-error and query/fetch-error tests preserve each reader's never-raises/`None` fallback.
 - [ ] Verification/query timeout sets the read marker; second-reader/fresh-process suppression sends zero requests; TTL expiry (and a later success) permits recovery. Empty rows and policy/query errors do not mark the endpoint down, and ordinary explicit reads ignore the marker. Captured logs/stderr contain no raw exception/endpoint/token/SQL canaries (`_connect_readonly` and `runs._log_query_failure`).
+- [ ] Malformed/missing/nonfinite/future/expired timestamps in either unreachable-marker kind and the verified cache never raise or suppress permanently. Invalid verified state triggers normal bounded verification, without process-cache contamination. Inject marker write/clear failure and assert failed reads still return `None`, while healthy reads return their actual data; expected local setup `OSError` returns `None` without a remote marker. Missing endpoint configuration does not cause a second exception from attempted marker creation.
 - [ ] `python -m pytest scripts/tests/` passes; the new API behavior is documented.
 
 ## Related
@@ -156,6 +165,7 @@ Prior scores were cleared (the plan changed: read-scoped marker, single same-cli
 Revised 2026-10-04 (twice). First pass consumed ENH-3720's shared deadline rather than duplicating transport work. Second pass (Opus): ENH-3720 landed so the `blocked_by` was removed and the proposed `connect_readonly_telemetry` replaced by existing `connect_readonly(deadline=)`; deadline expiry is isolated to a read-scoped marker so it cannot suppress telemetry writes; the "behind/ahead readable" and "either merge order" text was dropped because ENH-3700 no longer changes read-mode policy or re-raises; sanitization of `_connect_readonly` is owned here only.
 
 ## Session Log
+- EPIC-3693 review #4 - 2026-10-05 - malformed/nonfinite marker/cache timestamps and expected setup/bookkeeping failures added to the never-raises contract; selected-local forwarding integration synchronized with ENH-3657. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - real connection-scoped verification seam, cold-process/file-cache gate and query/fetch marker completion specified; write=True policy retained after confirming metadata-only SELECTs; implementation not performed
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:26 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - EPIC-3693 review #2 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.78) - 2026-10-04 - ENH-3720 dependency removed (landed); read-scoped marker, no-ensure_schema/single-verification and sanitization ownership pinned; implementation not performed

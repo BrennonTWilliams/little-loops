@@ -48,6 +48,8 @@ The `relates_to` link to ENH-3719 records the evaluation sequence; the deferred 
 
 ## Proposed Solution
 
+If implemented, preserve completed BUG-3724's authoritative contribution branch: price/fallback each valid contribution using its own model, batch mode and effective pricing date, then mark the affected state and run approximate if any contribution used an approximation. A present invalid/empty envelope cannot fall back to the parent model; only the absent-key legacy branch uses the aggregate model. Extend the proposed approximate result with the existing `as_of` pricing-date input. Test both directions of parent/contribution disagreement and an earlier approximate contribution followed by a priced last model. This handoff does not approve the deferred fallback decision.
+
 Only after the decision, add a separate approximate estimator/result used by `CostReport` while keeping `estimate_cost_usd` exact-only. Use segment boundaries (`model == key` or `model.startswith(key + "-")`) and the longest eligible prefix; explicit version policy prevents crossing a major version. Propagate an approximate flag/reason through state and total costs and JSON loading/writing. Cost ceilings use the unknown-cost path with reason approximate price.
 
 ## Program Design
@@ -58,7 +60,7 @@ Only after the decision, add a separate approximate estimator/result used by `Co
 
 ### Signatures
 
-- `estimate_cost_usd_approx(model: str, *, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None, cache_creation_tokens: int | None, is_batch: bool = False) -> ApproximateCost` — proposed, if the fallback is approved.
+- `estimate_cost_usd_approx(model: str, *, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None, cache_creation_tokens: int | None, is_batch: bool = False, as_of: date | None = None) -> ApproximateCost` — proposed, if the fallback is approved.
 - Existing `CostReport.from_usage_jsonl`, `CostReport.read_json`, and `_compute_totals` preserve the chosen metadata contract.
 
 ### Call Path
@@ -105,6 +107,7 @@ Only after the decision, add a separate approximate estimator/result used by `Co
 - [ ] Implement/cancel decision is recorded after footer evaluation. It does not block other EPIC-3562 implementation; before epic closure, finish the approved work or cancel it with a rationale, unless the epic's scope is explicitly revised.
 - [ ] If implemented, exact IDs win; segment-boundary longest-prefix and permitted version/family policy reject unsafe guesses. No family fallback replaces a verified exact Sonnet 5.5 price.
 - [ ] If implemented, every affected state and run total is visibly approximate; metadata round-trips and exact-only `to_dict` output is unchanged.
+- [ ] If implemented, fallback follows authoritative model/batch/date contributions; an earlier approximate contribution cannot be hidden by a priced final model, and invalid/empty contribution envelopes cannot use aggregate fallback. Exact-only legacy behavior is preserved.
 - [ ] If implemented, incomplete/unpriced contributions remain unavailable as appropriate, stored `usage_events.cost_usd` remains exact-only, and approximate figures produce `cost_ceiling_unknown` rather than enforcing a guessed cost.
 - [ ] If implemented, reporter/history labels and docs match the selected policy, and `python -m pytest scripts/tests/` exits 0.
 
@@ -134,5 +137,7 @@ Only after the decision, add a separate approximate estimator/result used by `Co
 **Deferred** | Created: 2026-10-02 | Priority: P4
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Carried completed BUG-3724's authoritative contribution/model/batch/date accounting into the optional fallback design. Kept the human-deferred footer-first decision and exact-only store/ceiling boundaries; no approximation is approved.
 
 - Pre-implementation epic review - 2026-10-04 - Aligned the body status with the existing human-deferred frontmatter. Retained the optional footer-first implement/cancel decision; no fallback or scope change is approved.

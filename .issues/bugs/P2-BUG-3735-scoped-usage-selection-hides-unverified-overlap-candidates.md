@@ -37,7 +37,9 @@ A temporary-database probe on 2026-10-05 inserted a synthetic complete measured 
 
 ## Expected Behavior
 
-Compute ambiguity over the declared acquisition population before host/session output narrowing and before `since`/run filters. A missing/unverified host or session cannot establish that a possible opposite-channel counterpart lies outside the requested session. Returned audit/selected rows still contain only the requested verified host/session; wildcard evidence influences coverage without leaking into that session's totals. An ID-only call remains rejected. An explicitly declared logical `channel=` acquisition scope, once ENH-3731 adds it, is applied before ambiguity; it is a population choice, not proof of cross-channel disjointness.
+Compute ambiguity over the declared acquisition population before host/session output narrowing and before `since`/run filters. A missing/unverified host or session cannot establish that a possible opposite-channel counterpart lies outside the requested session. A host/session pair returns only rows with that verified pair; wildcard evidence influences coverage without leaking into that session's totals. Host-only output retains the existing host-attributed audit population (including unverified rows), rather than silently dropping completeness contributors. An ID-only call remains rejected. An explicitly declared logical `channel=` acquisition scope, once ENH-3731 adds it, is applied before ambiguity; it is a population choice, not proof of cross-channel disjointness.
+
+Resolve logical channels with `row_channel` for both acquisition and verified-pair output checks. A replay row with a session ID, `host_basis='handle'`, and a NULL/absent raw channel is a logical transcript, so it must not be discarded by the current SQL `channel IS NOT NULL` predicate. This establishes output identity only; its NULL/unknown provenance remains audit-only under ENH-3731. Do not infer a verified host when the required attribution columns are absent; preserve the existing fail-closed legacy-schema diagnostics.
 
 Keep the existing conservative ambiguity policy for this repair. Do not infer disjointness from counts, timestamps, configured host strings or equal token values. Any narrower domain policy belongs to ENH-3730. Qualified historical/as-of values remain retained; a newly unresolved canonical rate becomes unavailable with a coverage reason rather than deleting observations or fabricating zero.
 
@@ -71,6 +73,7 @@ Host/session selection must not certify usage by hiding an unidentified possible
 - A counterpart outside `since` or lacking a run ID still influences scoped coverage.
 - Logical transcript-only acquisition (when ENH-3731 lands) excludes live/rollout as declared, without altering default cross-channel behavior.
 - Scoped audit rows/counts never include a different host/session's usage merely because it influenced coverage.
+- Legacy NULL/absent-channel replay with verified handle attribution survives pair output as a logical transcript; missing identity/host columns keep the existing unknown diagnostics. Host-only output keeps unverified audit contributors and cannot certify a complete subset by dropping them.
 
 ### Documentation
 
@@ -111,6 +114,7 @@ Stored usage → `select_usage_coverage` acquisition candidates (logical channel
 
 - [ ] Sessionless same-host and unknown-host opposite-channel candidates cannot be hidden by host/session selection; unresolved coverage and bounded reasons reach the real stored reader.
 - [ ] Host/session arguments constrain returned rows and attribution, not the completeness of cross-channel evidence; identity-only calls still fail and unverified attributed rows cannot enter a verified session's totals.
+- [ ] Pair output uses logical channel identity for verified legacy NULL/absent-channel transcripts; absent attribution columns fail closed. Host-only output retains unverified host-attributed audit contributors; legacy/unknown provenance is never promoted by the identity repair.
 - [ ] Coverage is computed before host/session output narrowing and report-window/run filters; an ENH-3731 logical channel acquisition scope remains a distinct earlier population choice.
 - [ ] Fully verified disjoint controls, same-session unresolved controls, audit subtotals, source/snapshot parity, historical retention and text/JSON unavailable-vs-zero behavior pass.
 - [ ] No live/replay join, provenance promotion, price change, source re-derive or ENH-3730 availability optimization is introduced.

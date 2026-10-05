@@ -10,6 +10,7 @@ captured_at: '2026-10-04T01:29:51Z'
 parent: EPIC-3710
 blocked_by:
 - FEAT-3561
+- BUG-3737
 blocks:
 - FEAT-3711
 - FEAT-3713
@@ -26,7 +27,7 @@ Add one injected, **local-SQLite-only** (v1) read-only `HistorySnapshot` reader 
 
 ## Current Behavior
 
-No ll-next history reader exists. Existing readers either create/migrate stores or use write-capable telemetry helpers.
+No ll-next history reader exists. Existing high-level readers either create/migrate stores or use write-capable telemetry helpers. The strict `SqliteBackend.connect_readonly` primitive exists, but both its ordinary and deadline branches interpolate an unescaped filesystem path into a SQLite URI. A temporary-store reproduction on 2026-10-05 showed `hash#name.db` and `query?name.db` opened newly created truncated-path files instead of the intended DB; `percent%23name.db` failed to open. BUG-3737 owns the independent literal-path repair for existing readers and supplies the safe primitive this slice requires.
 
 ## Expected Behavior
 
@@ -35,6 +36,7 @@ No ll-next history reader exists. Existing readers either create/migrate stores 
 - Finite **visited-row** budgets, not just returned-match limits. If a cap or deadline prevents proving the newest qualified activity, return `partial` with observed coverage and leave the exact recency axis unknown. Missing tables are independent of a source's exhausted budget.
 - Missing file/table, old schema, suppressed backend or lock timeout yields unavailable data, not an exception or guessed negative evidence. A missing `recommendation_events` table cannot erase valid `cli_events` data when that later request is added.
 - No application-created cache/marker files, telemetry, schema/main-DB mutation or directory creation; no `connect_telemetry`. SQLite `mode=ro` can create `-wal`/`-shm` coordination files for an existing WAL-mode DB, even with `query_only`. Document that narrow SQLite-managed exception to the filesystem no-write wording in reader/feedback/explain modes; do not use `immutable=1` to suppress it because that ignores live WAL/concurrency. Tests compare main-DB content and application files and explicitly account for possible WAL sidecars. This does not permit application writes or a writable history connection.
+- Treat a resolved local target as a literal filesystem path, never caller-supplied URI syntax. Reuse BUG-3737's corrected backend and shared percent-encoded absolute file-URI builder; do not duplicate URI construction here. Preserve the already-resolved target and timeout/deadline behavior; literal `#`, `?`, `%`, spaces and Unicode must identify the intended file. A missing special-character path must fail without creating either that file or a truncated/decoded alias. FEAT-3711 reuses that builder for its existing-file `mode=rw` seam.
 
 ## Proposed Solution
 
@@ -51,13 +53,13 @@ This slice reads only `cli_events` for FEAT-3713 sprint-recency evidence. FEAT-3
 
 ## Integration Map
 
-- New reader/request/availability types under the FEAT-3561 arena modules, using `session_store/db.py` target resolution and `session_store/backend.py` strict read-only connect/error seams.
+- New reader/request/availability types under the FEAT-3561 arena modules, using `session_store/db.py` target resolution and `session_store/backend.py` strict read-only connect/error seams. BUG-3737 supplies the literal file-URI repair independently; FEAT-3711 owns the no-ensure writable seam.
 - FEAT-3713 requests only recent sprint CLI evidence; FEAT-3711 requests one project-scoped recommendation identity. Neither performs live SQL inside pure generators/feedback lookup. Recommendation request/schema integration is owned by FEAT-3711.
 - Focused read-only, query-plan/work-budget, transaction-consistency and degradation tests; `docs/reference/API.md` documents the request and partial-coverage contracts. No schema/manifest change in this slice.
 
 ## Scope Boundaries
 
-- **In scope:** the reader, typed requests/availability/diagnostics and bounded CLI primary-key walks; tests for absent/compatible-old/incompatible/suppressed/locked/row-budget-saturated states.
+- **In scope:** the reader, typed requests/availability/diagnostics and bounded CLI primary-key walks; integration with BUG-3737's corrected literal-path primitive; tests for absent/compatible-old/incompatible/suppressed/locked/row-budget-saturated states.
 - **Out of scope:** recommendation point-lookup/readiness requests, schema migration and events (FEAT-3711), producer/acceptance attribution and pressure (FEAT-3722, deferred), new deadline machinery, write deadlines and remote activation (reuse completed ENH-3720 for local reads).
 
 ## Program Design
@@ -77,7 +79,7 @@ Existing `session_store.db.resolve_history_target(..., root=project_root)` → n
 
 ## Implementation Steps
 
-1. Pin the request, per-source coverage and compatible-column contracts; make remote rejection precede opening.
+1. Implement after BUG-3737 and FEAT-3561. Pin the request, per-source coverage and compatible-column contracts; make remote rejection precede opening. Verify the corrected literal-path primitive through the new reader rather than repairing it again.
 2. Implement explicit short-timeout connection, consistent transaction and bounded CLI ID paging; preserve independent source failures and reject unscoped shared-store recency.
 3. Keep point-query/schema-readiness extension ownership in FEAT-3711; test independent request errors, empty-request no-open behavior and as-of/observation boundaries using only the existing CLI source here.
 4. Add no-write, lock, out-of-order timestamp, mid-fetch error, redirected-store and concurrent-writer fixtures; document the API and limits.
@@ -85,6 +87,7 @@ Existing `session_store.db.resolve_history_target(..., root=project_root)` → n
 ## Acceptance Criteria
 
 - [ ] Read-only; never creates/migrates the main store or application cache/marker files; a WAL-mode fixture documents SQLite-managed sidecars without main-DB mutation or immutable reads; honors `LL_HISTORY_DB`, root-aware target resolution and typed-target pass-through without cwd re-resolution.
+- [ ] BUG-3737 is landed; reader-level existing/missing special-character path fixtures prove DB identity and no truncated/decoded aliases through the corrected backend. Primitive ordinary/deadline branch tests belong to BUG-3737; no second URI implementation is added.
 - [ ] Per-source availability with tested absent/compatible-old/incompatible/suppressed/locked/remote-unsupported degradation; row-budget saturation cannot yield false exact results. Remote rejection performs no network/access/cache operation.
 - [ ] Explicit 250 ms per-lock cap, one shared 1-second ENH-3720 deadline, finite visited-row budgets and one consistent read transaction are tested, including expiry between probes/pages and during fetching/decoding, concurrent writers and connection cleanup. Default backend behavior is unchanged; documented nonpreemptive limits and cross-source/as-of boundaries remain explicit.
 - [ ] Tests assert primary-key query plans and finite visited-row counts for the unindexed CLI source; out-of-order ingestion/timestamps cannot yield false newest evidence. No unbounded full-store scan/sort or index migration.
@@ -108,6 +111,8 @@ A ready sprint can be recommended while its recent history is partial or unavail
 - 2026-10-04: Code/schema audit and Opus critique (0.78) found `cli_events` and `skill_events` have no time/binary indexes, read-only connections default to a five-second lock wait, and CLI rows have no project identity. Replaced the impossible index promise with bounded primary-key walks, explicit local lock/work bounds, consistent snapshots and request-specific feedback lookups; removed unused history sources and rejected unscoped shared-store recency. Backend-wide deadlines and the events migration remain outside this slice.
 
 - 2026-10-05: Opus review (0.72) plus source audit moved table-specific point-lookup/probe ownership to FEAT-3711, adopted the now-landed ENH-3720 deadline, specified empty-request/no-open and cross-source observation boundaries, and qualified filesystem write claims after a temp-DB reproduction showed strict mode=ro creates WAL/SHM sidecars. Kept the consumed sprint reader and local-only scope.
+
+- 2026-10-05 (additional review): A temporary-store reproduction confirmed that unescaped SQLite URI paths can create/open truncated aliases before query-only protection. Opus (0.76) corroborated the defect. Added independent prerequisite BUG-3737, which repairs existing literal-path opens without waiting for the core; this child reuses the corrected primitive and owns only reader-level integration fixtures. Ordinary/deadline primitive regressions and the shared encoded URI helper belong to the bug.
 
 ## Status
 

@@ -30,7 +30,7 @@ In scope: the three capabilities, each one's safe enablement/preset flip/routing
 
 ## Ordering and Ownership
 
-FEAT-3584/3585/3586 depend on FEAT-3667 -> FEAT-3582 -> FEAT-3583 and remain independent of one another. Each change widens BUILT_CAPABILITIES, flips only its own target preset knobs, adds explicit routes, updates exact step/time/guard values for its cost, and records its own reference run. The first optional child replaces a literal max_steps==60 assertion with one derived from the built paths; later children extend it. Engine/YAML constants must change together, including the post-tournament tail when pre-mortem is enabled.
+FEAT-3584/3585/3586 depend on FEAT-3667 -> FEAT-3582 -> FEAT-3583 and remain independent of one another. Each change widens BUILT_CAPABILITIES, flips only its own target preset knobs, adds explicit routes, updates exact step/time/guard values for its cost, and records its own reference run. Grounding owns bounded discovery/probes and a whole-operation deadline before shortlisting. Materialize owns an original-shortlist snapshot, digest-only expected-code metadata, static-wrapper PNG compositing and a committed manifest reused on replay; its asset digests extend the core judging-input fingerprint. The first optional child replaces a literal max_steps==60 assertion with one derived from the built paths; later children extend it. Engine/YAML constants must change together, including the post-tournament tail when pre-mortem is enabled.
 
 ENH-3734 runs after all three capabilities plus FEAT-3596's core evidence. It owns the eight-combination matrix, targeted filtering/fallback/skip failures, one mixed reference run and final cumulative budget. It has no reverse dependency on the core epic. No v1 reserve-promotion fixture is required while web grounding remains unbuilt.
 
@@ -44,8 +44,8 @@ ENH-3734 runs after all three capabilities plus FEAT-3596's core evidence. It ow
 ## Success Metrics
 
 - Each feature enables its capability/preset/routes in the same change; no shipped profile names an unbuilt feature.
-- Codebase false anchors are excluded before shortlist; unknown stays visible and eligible. Valid new paths are not penalized for being new.
-- Visual runs never judge unauthored candidates; degraded judging uses valid sources, records image/html mode separately from its cause, and checks finalist floors before judging.
+- Codebase false anchors are excluded before shortlist; unknown (including non-Git discovery and deadline exhaustion) stays visible and eligible. Symbols mentioned only in issue/runtime prose do not validate. Valid new paths are not penalized for being new.
+- Visual runs never judge unauthored candidates; degraded judging uses valid sources, records image/html mode separately from its cause, and checks finalist floors before judging. A completed render manifest replays without new codes/calls; changed source/PNG inputs fail rather than corrupting committed verdicts. Digest-only code metadata improves the sanity check without claiming read isolation.
 - Pre-mortem data/host failure/timeout preserves bodies, ranking, slots and sink content, flags a skip and continues. Successful annotations remain risks/kill criteria, with fatal flags visible but non-gating.
 - Three individual reference runs plus ENH-3734's mixed run/actual usage/import origin are recorded; deterministic combination fixtures require no live browser/LLM.
 - Cumulative step/time guards include bounded retry behavior, browser deadlines, salvage, two post-tournament calls, every sink and finalization. Both loops validate and the local suite passes.
@@ -74,9 +74,14 @@ ENH-3734 runs after all three capabilities plus FEAT-3596's core evidence. It ow
 - **Risk**: Medium — browser and timeout/fallback interactions need measured evidence.
 - **Breaking Change**: No.
 
+## Review Notes
+
+_2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ accepted bounded/non-Git grounding, source/manifest replay and a specified stamp mechanism. Kept the existing fewer-than-two-source failure rather than the advisor's proposed text fallback; unauthored candidates remain ineligible. Grounding's deadline belongs to pre-tournament cost, and stamped-PNG/browser learning proof remains required. No new live evidence or changes to annotate-only pre-mortem were necessary.
+
 ## Status
 
 **Open** | Created: 2026-09-30 | Priority: P3
 ## Session Log
+- Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:29 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

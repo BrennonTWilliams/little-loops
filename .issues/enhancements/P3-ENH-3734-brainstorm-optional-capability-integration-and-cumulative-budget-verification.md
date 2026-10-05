@@ -30,10 +30,10 @@ The pre-review EPIC-3687 Scope Boundary promised cross-capability fixtures and t
 
 ## Expected Behavior
 
-- Deterministic executor fixtures exercise all eight combinations of the three built capability knobs, including explicit mixed-mode overrides. No fixture requires a live LLM or Playwright.
+- Deterministic executor fixtures exercise all eight combinations of the three built capability knobs, including explicit mixed-mode overrides. Add interrupted materialize publication and tournament restart after committed image verdicts: reuse the manifest/probe plan without new calls; changed assets/inputs must fail without overwriting results. No fixture requires a live LLM or Playwright.
 - Grounding runs before shortlisting; materialize only receives surviving finalists; the pre-tournament floor prevents judging an empty or one-player field. Candidates without valid mockup source never enter HTML fallback judging.
 - Pre-mortem malformed output, host error, and timeout preserve idea bodies, ranking, slots and winners.md, mark the skip, and continue to render/validate/sinks. A deterministic engine I/O error remains a run failure.
-- The cumulative parent step/time budget includes the auto classifier, the maximum nine lenses, materialize's preparation/render bounds, bounded retries, tournament salvage, both pre-mortem calls, every sink branch, and finalization. Engine time-guard values agree with shipped YAML.
+- The cumulative parent step/time budget includes the auto classifier, the maximum nine lenses with bounded ingestion, grounding's complete 60 s deadline/publication/state-timeout cost before shortlisting, materialize's preparation/render/compositing bounds, bounded retries, tournament salvage, both pre-mortem calls, every sink branch, and finalization. Grounding belongs to pre-tournament work rather than the post-tournament tail; its timeout may not consume the later reporting reserve. Engine time-guard values agree with shipped YAML.
 - A documented mixed-capability reference run proves the interaction; record actual calls (including retries), input/output/cache tokens, elapsed time, selected judge mode, degradation reasons and import origin. This is separate from the individual capability runs owned by FEAT-3584/3585/3586.
 - Web grounding, reserve promotion, and reframe remain deferred and do not gate closure.
 
@@ -105,7 +105,7 @@ Owns optional-capability combinations and cumulative step/time verification only
 ## Acceptance Criteria
 
 - All eight knob combinations and mixed-mode overrides have deterministic passing fixtures; ground-false ideas never reach materialize or judging.
-- Targeted fixtures cover grounding reducing eligible ideas below the generation floor, materialize reducing valid-source finalists below two, HTML fallback with at least two valid sources, and pre-mortem error/timeout preserving ranked results and sink bodies.
+- Targeted fixtures cover grounding reducing eligible ideas below the generation floor, non-Git/deadline unknown evidence remaining eligible, materialize reducing valid-source finalists below two, HTML fallback restoring only source-valid render failures, interrupted manifest publication, image-tournament replay/asset conflict, and pre-mortem error/timeout preserving ranked results and sink bodies.
 - The longest success and salvage paths fit the cumulative max_steps/timeout values with the required tail reserve; engine/YAML budget agreement is asserted.
 - One mixed-capability reference run and its actual resource usage/import origin are recorded; it does not replace the individual feature runs.
 - python -m pytest scripts/tests/ exits 0 and both brainstorm loops validate.
@@ -114,6 +114,10 @@ Owns optional-capability combinations and cumulative step/time verification only
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Review Notes
+
+_2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ added manifest/verdict restart and grounding-deadline combinations. Count grounding in pre-tournament elapsed time, not the post-tournament tail suggested by the advisor. No new live measurements; scope/ownership and deferred capabilities are unchanged.
 
 ## Status
 

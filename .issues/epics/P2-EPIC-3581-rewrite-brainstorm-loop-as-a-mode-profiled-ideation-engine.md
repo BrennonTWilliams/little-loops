@@ -40,8 +40,8 @@ Out of scope: reframe, unjudged hybrid synthesis, web evidence/reserve promotion
 
 - FEAT-3667 owns engine types, CLI/evaluator contracts, the four preset files, resolver validation/preflight, crash-safe publication and deterministic report. FEAT-3582 owns YAML orchestration/tournament and its merge gate; FEAT-3583 owns classifier/override plumbing and bounded preset tuning; FEAT-3596 owns core integration/closeout.
 - Order: completed FEAT-3686 -> FEAT-3667 -> FEAT-3582 -> FEAT-3583 -> FEAT-3596. Optional children can proceed after FEAT-3583 independently of one another; they do not block this epic.
-- IDs are reserved before publication, never reused, and ideas persist lens_index from an immutable lenses.json ledger. Separate file replacements are not a transaction. Schedule/round/probe replay does not double-count or silently replace mismatched inputs.
-- Explicit inputs fail preflight before the classifier/generation. BUILT_CAPABILITIES prohibits missing-state tokens. Profiles choose base values; nonempty explicit knobs override; empty inherits; false/none disables. reframe and synthesize=true remain unavailable in v1.
+- IDs are reserved before publication, never reused, and ideas persist lens_index from an immutable lenses.json ledger. Init is non-destructive on re-entry, and one writer per run is supported. Separate replacements are not a transaction. Committed round/probe batches are write-once; a judging-input digest pins bodies/cells/profile/assets as well as IDs, and a stable probe plan pins its committed main verdicts. Conflicting replay fails without replacing results.
+- Generation is bounded to 1–10 ideas per lens (at most nine lenses/90 current rows), with typed/nonempty bounded title/body/extra fields and visible rejection counts. Valid blind re-tags recompute off_grid eligibility; invalid ones preserve it. Explicit inputs fail preflight before the classifier/generation. BUILT_CAPABILITIES prohibits missing-state tokens. Profiles choose base values; nonempty explicit knobs override; empty inherits; false/none disables. reframe and synthesize=true remain unavailable in v1.
 - Canonical portfolio slots are distinct eligible tournament finalists; reserve/dropped IDs cannot leak to sinks. Reports are deterministic; successful validation precedes every sink. Generation diversity and surviving finalist coverage are separate metrics; post-filter finalist floor is two.
 - Main tournament and reversed probe batches are atomic; the rate definitions and thresholds are pinned in FEAT-3667. Odd-finalist partial rounds do not guarantee equal games, so salvage is low-confidence. Child failures have explicit failure terminals and all failure routes reach salvage.
 - Budgets come from actual executor paths, including captured blocks, empty queue pop, classifier, sink/finalization, retries and backoffs. Disable six-hour rate-limit defaults; preserve the child/judge/core tail plus retry-sleep reserve. Optional children own their own step/time increments; ENH-3734 verifies their cumulative values.
@@ -97,7 +97,7 @@ Out of scope: reframe, unjudged hybrid synthesis, web evidence/reserve promotion
 
 ## Review History
 
-Historical design evolution; the reconciled scope/contracts above are authoritative. No new measurements were made in the 2026-10-05 review; the attempted Opus consult was blocked by the existing advisor task budget.
+Historical design evolution; the reconciled scope/contracts above are authoritative. No new live measurements or human A/B judgments were made in either 2026-10-05 review. The earlier consult was budget-blocked; the follow-up consult with claude-opus-5-5 succeeded (confidence 0.72). Its accepted changes are reflected in active directives/children: write-once verdicts/judging fingerprints, bounded generation, re-tag eligibility, non-destructive init and enforcement of the matched token cap before the YAML rewrite reaches main. No new children or dependency reversal were needed. Expanded live classifier calibration and concurrent-writer/exactly-once-sink mechanisms were left outside this review.
 
 ### Earlier cross-child reviews
 - **Data contract** (stable IDs, common fields incl. top-level optional `grounded`, enumerated axis bins, canonical `portfolio.json`, generation vs. finalist floors) is specified in FEAT-3582 and implemented by FEAT-3667; other children extend it only.
@@ -116,7 +116,7 @@ Historical design evolution; the reconciled scope/contracts above are authoritat
 
 - **Third pre-implementation review** (2026-09-29, `/ll:advise` with Opus; nothing measured) — applied across all children:
   - **Tournament failure routing**: the parent `tournament` state routes `on_yes` → `portfolio` and `on_no`/`on_error`/`on_timeout` → `salvage_tournament` (a judge-call error otherwise discards every completed round). Judge states carry `timeout: 300`; the time guard is `TOURNAMENT_TIMEOUT_S + JUDGE_CALL_TIMEOUT_S + TAIL_S`. Confirm the action-timeout path with a `MockActionRunner` test before writing the routing (FEAT-3582).
-  - **Report owner**: a deterministic `render-report` engine command and a `render_report` state (after `portfolio`/`premortem` and **before** `validate_portfolio`, which requires a non-empty `brainstorm.md`; corrected 2026-09-30) are the only writers of `brainstorm.md`; `init` still empties it (FEAT-3667/3582).
+  - **Report owner**: a deterministic `render-report` engine command and a `render_report` state (after `portfolio`/`premortem` and **before** `validate_portfolio`, which requires a non-empty `brainstorm.md`; corrected 2026-09-30) are the only writers of `brainstorm.md`; `init` originally emptied it; the follow-up now requires create-if-absent without truncation (FEAT-3667/3582).
   - **Clock**: the time guard takes `--elapsed-ms ${loop.elapsed_ms}` (active time incl. resume offset), never wall-clock `run_started_epoch`.
   - **Routing safety**: every classify-routed engine command prints a `fail` token on exit 1; happy tokens are listed explicitly; every classify state sets `_: finalize_failed`.
   - **Idempotent appends**: `record-round` (keyed by round+pair), `next-round` (skips recorded rounds), `ingest` (replaces by lens index; `lenses.txt` holds indices) so a re-run never double-counts; framings are sanitized of `|` and newlines.
@@ -151,6 +151,7 @@ Historical design evolution; the reconciled scope/contracts above are authoritat
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:24 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:27 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

@@ -32,13 +32,14 @@ The shipped loop does not verify anchors. The core engine from FEAT-3667/3582 pr
 ## Expected Behavior
 
 - When ground=codebase, collapse routes to ground_codebase before shortlist_block. The single shell state calls the packaged engine, verifies all ideas, writes top-level grounded and extra.evidence, then continues to shortlist_block. No LLM call or separate gate state.
-- Grounding resolves the repository from the consuming project's working directory with git rev-parse, not from the installed package path or run_dir. Supply --repo-root explicitly to the engine state and use that cwd for subprocesses.
-- Anchor strings have explicit prefixes: file:<relative path>, symbol:<literal symbol>, issue:<validated ID>. Diverge's profile block documents this syntax. File anchors must be git-tracked and present; symbol checks use git grep -F -e <symbol> -- (literal occurrence, not definition proof); issue checks use ll-issues show only when the issue store/tool exists.
+- Grounding discovers the repository once in a bounded engine helper using git rev-parse from the consuming project's working directory, not the installed package path or run_dir. Pass --project-dir explicitly; an optional --repo-root uses the same helper validation. Failed/non-Git discovery produces unknown evidence (repo_unavailable), succeeds without git probes, and leaves otherwise-valid ideas eligible; lexical/schema validation still rejects definitely invalid anchor data. Do not let a failing shell command substitution abort before recording this result. Repo-summary uses the same discovery rule and emits an unavailable marker when needed.
+- Anchor strings have explicit prefixes: file:<relative path>, symbol:<literal symbol>, issue:<validated ID>. Diverge's profile block documents this syntax. File anchors must be git-tracked and present; normalize repo-relative paths and reject absolute paths/NUL/traversal escapes just as for creates. This existence-only probe does not read file contents or certify symlink targets; an in-repo tracked symlink is reported as a symlink rather than semantic support. Symbol checks use git grep -q -F -e <symbol> -- with explicit pathspec exclusions for the configured issues.base_dir, .ll/ and .loops/ (literal occurrence in the remaining tracked files, not definition proof). A symbol appearing only in issue/runtime prose is not found; explicit issue: and file: anchors remain available for those artifacts. Issue checks use ll-issues show only when the store/tool exists, distinguishing its exit-1 not-found from tool failure.
 - extra.creates contains repo-relative new paths. Reject absolute/traversal/symlink escapes; reject existing destinations (including untracked files and dangling symlinks). The in-root parent directory must exist. A new file is not rejected merely because it is new.
 - A verified missing/invalid anchor or create-path collision gives false; all available required probes passing gives true; no touchpoints or an unavailable optional issue store/tool gives unknown. False dominates unknown when both occur. A failed git command/tool timeout is unknown with a recorded reason, not a fictitious missing anchor; unexpected engine/I/O exceptions fail the state.
 - Zero-touchpoint ideas remain unknown (no_anchors) unless creates has a definite violation, which makes them false. Unknown ideas remain eligible and are flagged. False ideas are excluded before shortlisting and the generation floor; no reserve promotion occurs in codebase v1.
 - A bounded tracked-file summary (at most 200 lines and 16 KB, with truncation indicated) reaches the existing diverge prompt-block when codebase grounding is enabled. This informs generation without adding a separate context-gathering state; do not claim full semantic repository analysis.
-- LLM strings are subprocess argv values, never shell code. Probes have finite timeouts and memoize repeated anchors within the run; the reference run records the complete state's elapsed time.
+- LLM strings are subprocess argv values, never shell code. Per idea, touchpoints and creates are lists of at most eight nonempty strings each; each value is <=512 UTF-8 bytes with no NUL/newline. Bad type, oversized list or invalid string is false (invalid_anchor_data), not silently truncated into passing evidence. Diverge's extra-field instructions state these limits; the core extra-object cap still applies.
+- Each external probe/discovery has a timeout <=5 s, and ground-codebase has a 60 s whole-operation monotonic deadline including discovery. Cache repeated probes within that invocation; retries recheck repository state rather than trusting an unspecified stale cross-run cache. At the deadline stop dispatching; unresolved valid probes become unknown/probe_deadline, while previously established false remains false. Non-Git discovery makes repository-dependent checks unknown, not missing. Persist evidence atomically after the deadline; give the shell state timeout >=75 s for bounded publication overhead and include its actual configured timeout/retries in the feature budget. Unexpected engine/I/O errors remain failures. The reference run records elapsed time, deadline exhaustion and the discovered root.
 
 ## Use Case
 
@@ -65,7 +66,7 @@ Add ground-codebase/probe-anchor engine commands, typed probe results, and a bou
 - ground_idea(idea: IdeaRecord, repo_root: Path) -> IdeaRecord — false-dominant aggregation; preserve canonical idea data.
 - repo_summary(repo_root: Path, max_lines: int = 200, max_bytes: int = 16384) -> str — bounded inventory with truncation marker.
 
-CLI: ground-codebase --run-dir DIR --repo-root ROOT reads ideas/profile and atomically updates ideas/evidence; exit 0 for completed probing (including false/unknown ideas), exit 2 for an engine failure. probe-anchor --repo-root ROOT --anchor VALUE emits a typed result with the same distinction. YAML uses $${LL_PYTHON:-python3} -m little_loops.brainstorm_engine.
+CLI: ground-codebase --run-dir DIR --project-dir DIR [--repo-root ROOT] reads ideas/profile and atomically updates ideas/evidence; exit 0 for completed probing (including false/unknown/deadline outcomes), exit 2 for an engine failure. probe-anchor --repo-root ROOT --anchor VALUE emits a typed result with the same distinction. The inventory path also receives --project-dir through prompt-block when grounding is enabled. YAML uses $${LL_PYTHON:-python3} -m little_loops.brainstorm_engine.
 
 ### Call Path
 
@@ -111,8 +112,8 @@ FSMExecutor.run -> collapse -> ground_codebase -> shortlist_block -> shortlist -
 
 ## Acceptance Criteria
 
-- Direct-import tests cover tracked-present/missing/untracked file anchors, literal symbol occurrence/missing symbol, found/missing/unavailable issue IDs, create collisions/missing parents, zero anchors, and false-dominates-unknown aggregation.
-- Absolute paths, traversal, symlink escapes and dangling-symlink collisions are rejected; unusual symbol/path characters are argv data and never shell execution.
+- Direct-import tests cover tracked-present/missing/untracked file anchors, lexical file-path rejection and tracked symlink reporting, literal symbol occurrence/missing symbol, symbol found only in excluded/custom issue directories, found/missing/unavailable issue IDs, create collisions/missing parents, zero anchors, non-Git discovery, invalid/over-limit anchor lists and false-dominates-unknown aggregation. Fake-clock deadline tests stop dispatches, preserve established false and mark unresolved probes unknown; pytest never sleeps.
+- Absolute paths and traversal are rejected for file/create paths; create-path symlink escapes and dangling-symlink collisions are rejected; unusual symbol/path characters are argv data and never shell execution.
 - Git/probe failure and tool absence remain distinguishable from verified absence; evidence/reasons and top-level grounded are persisted atomically.
 - Bounded repo inventory reaches diverge before generation without another parent state or LLM call.
 - False ideas never reach shortlist/judging; floor failure after grounding happens before any judge or sink. Unknown ideas stay eligible with report flags.
@@ -125,6 +126,8 @@ FSMExecutor.run -> collapse -> ground_codebase -> shortlist_block -> shortlist -
 Web grounding would require a separate issue and measurements for source retrieval, network/quote verification, tri-state errors and same-cell reserve promotion after shortlist. No such implementation or evidence is needed to close this issue or EPIC-3687's v1 scope.
 
 ## Review History
+
+_2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ accepted graceful non-Git discovery, lexical file-anchor validation, runtime/issue-prose exclusions for symbol search, bounded anchor lists and a whole-operation deadline. Kept existence-only scope: no file-content or symlink-target certification and no new semantic analyzer. Caps/deadline are design bounds, not new measurements.
 
 Historical rationale only; the reconciled directive sections above define current scope (2026-10-05).
 
@@ -154,6 +157,7 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 
 
 ## Session Log
+- Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:33 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T17:15:17 - `f2fe6fc2-4dc3-4f38-a10c-f2bd8be05a0c.jsonl`
