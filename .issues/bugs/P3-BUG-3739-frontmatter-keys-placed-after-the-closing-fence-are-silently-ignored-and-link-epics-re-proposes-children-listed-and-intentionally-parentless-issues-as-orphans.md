@@ -247,7 +247,9 @@ No setting, third-party dependency, model call, or broad issue-schema migration.
 
 ## Review Notes
 
-2026-10-05: Reconciled refine/wire/verification findings, removed the obsolete lint command reference, bounded the key vocabulary, and resolved marker/status/output/repair decisions. Temporary reproductions confirmed ignored post-fence parent metadata and unsafe fenced/partial-ID matches in the existing child parser. The shared surrounding regression suites passed **235 tests**; proposed behavior still requires implementation and the new tests above.
+**Review verdict: CORRECTED — ready for implementation.** Format, concrete program design, and unresolved-decision gates pass. No open dependency is required between these issues.
+
+2026-10-05: Reconciled refine/wire/verification findings, removed the obsolete lint command reference, bounded the key vocabulary, and resolved marker/status/output/repair decisions. Temporary reproductions confirmed ignored post-fence parent metadata and unsafe fenced/partial-ID matches in the existing child parser. The shared surrounding regression suites passed **235 tests**; proposed behavior still requires implementation and the new tests above. A review scan of **3,644 local issue files** found no immediate post-fence parenting-key runs and no existing intentional-parentless frontmatter markers. This supports introducing the bounded convention without a local metadata migration; consuming projects still require their own hit review.
 
 Used `/ll:advise --signal user_requested --host claude-code --model opus` for critique (confidence **0.76**). Adopted its last-block boundary, malformed-candidate exclusion, explicit-false marker precedence, all-status claimant reporting, and disjoint always-present counters. Kept the requested repair with a stricter all-or-nothing/absent-key contract. Advisor dissent concerned splitting the repair, introducing a dependency on BUG-3738, and output compatibility: retain this bounded repair and use existing parser/block utilities so either issue can land independently. Do not adopt numeric-ID equivalence or automatic deletion of colliding keys.
 

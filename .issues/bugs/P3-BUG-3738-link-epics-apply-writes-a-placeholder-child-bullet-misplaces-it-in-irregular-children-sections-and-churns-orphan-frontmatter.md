@@ -175,6 +175,8 @@ No new setting, dependency, or host invocation.
 
 ## Review Notes
 
+**Review verdict: CORRECTED — ready for implementation.** Format, concrete program design, and unresolved-decision gates pass. No open dependency is required between these issues.
+
 2026-10-05: Reconciled the earlier refine/wire/decision findings into one directive specification. Verified on `main`; temporary-file reproductions confirmed misplaced placeholders, lost flow style/comments, prose-mention suppression, and lowest-score overwrite. They did not confirm the reported wrapped-bullet split. Existing relevant suites passed: **235 tests** across link-epics, create, scaffold, consistency, frontmatter, and skill tests. These establish a baseline, not proof that the proposed fix exists.
 
 Used `/ll:advise --signal user_requested --host claude-code --model opus` for critique (confidence **0.76**). Adopted its prose-separation, merged-result validation, scalar-only safety, and partial-write tests. Kept the selected missing-heading skip and bounded single-winner fix. Advisor dissent concerned ties, CRLF scope, and whether the other issue should depend on this one: retain deterministic existing tie order, preserve bytes at these write sites, and keep the two issues independently implementable. Numeric-ID normalization and a broad per-proposal outcome enum are outside this change.

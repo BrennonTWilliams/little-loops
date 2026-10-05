@@ -25,6 +25,12 @@ relates_to:
 - ENH-3675
 - ENH-3676
 size: Large
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3731: Shared usage qualification core, transcript channel scope, and source readers
@@ -318,10 +324,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Historical `/ll:confidence-check` result from 2026-10-04. The 2026-10-05 review changed the contract; stale scores were removed from frontmatter and the configured confidence gate must be rerun before implementation. Opus's critique confidence is not a readiness score._
+_Re-scored by `/ll:confidence-check` on 2026-10-05 against the revised contract (supersedes the 2026-10-04 result). Opus's critique confidence is not a readiness score._
 
 **Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 63/100 → MODERATE
+**Outcome Confidence**: 63/100 → MODERATE (below `outcome_threshold` 65)
 
 ### Concerns
 - ~~Waste admission is stated two ways~~ — **resolved 2026-10-04**: reading B, one per-loop qualification (see Decision Rules → Waste).
@@ -329,12 +335,13 @@ _Historical `/ll:confidence-check` result from 2026-10-04. The 2026-10-05 review
 - `ctx_stats._compute_cache_rate_from_jsonl` is a separate non-stored cache-rate path that shares the `_render` eligible-subset footer; removing that wording for the stored path must not change its rendering.
 
 ### Outcome Risk Factors
-- Moderate per-site complexity: row-level admission is a contract change across `ObservationGroup`, `aggregate_usage`, `cost_attribution`, `waste_attribution` and `ctx_stats` (shared state, cross-module), not a mechanical edit.
+- Moderate per-site complexity (Complexity 10/25): row-level admission is a contract change across `ObservationGroup`, `aggregate_usage`, `cost_attribution`, `waste_attribution` and `ctx_stats` (shared state, cross-module), not a mechanical edit.
 - Broad change surface: ~6 selector/subtotal callers plus ~8 existing test files whose NULL-provenance fixtures flip to unavailable; adding `channel=None` preserves the immediate baseline's coverage policy/population for the out-of-scope `agent_quality` and snapshot consumers. BUG-3735's scoped acquisition/output correction is intentional; qualification changes belong to their respective child issues.
 - New bounded reason vocabulary and independent token/cost/rate metadata require the specified precedence, population, count and permutation controls. Keep coverage diagnostics separate; do not let read-time qualification trigger data recovery.
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T20:20:41 - `ae6dd8ed-dfaf-4c44-8d2a-2461e60f636e.jsonl`
 - Pre-implementation review - 2026-10-05 - Inspected `main`; `/ll:advise` with `claude-opus-5-5` (confidence 0.80) and direct helper probes identified incorrect stored-cache pointer coverage, ambiguous waste-ratio evidence counts and order-dependent float totals/overflow. Tightened measured-only result reuse, actual coverage propagation, pair/count semantics, metadata grouping, visible figure-reason footnotes and stable cost finalization. Retained labeled audit-dollar subtotals and the separate shared/cache-compatibility reason vocabularies; contrary advisor suggestions would change the settled audit/handoff contract. The 64 focused provenance/coverage/cache/chokepoint baseline tests and issue format/design/whitespace checks passed. This is issue refinement only; rerun the configured confidence gate before implementation.
 - `/ll:ready-issue` - 2026-10-05T19:24:26 - `f4e99cab-51d3-4bd1-81f2-929d6e6d61e8.jsonl`
 - Pre-implementation review - 2026-10-05 - Inspected `main`; `/ll:advise` with `claude-opus-5-5` recommended contract corrections (confidence 0.78). Added independent token/cost and ratio reasons, full annotated-audit cache population, truthful missing/invalid/rejected counts, immutable result fields, bounded order-independent coverage codes, exact cache compatibility mapping, channel validation, zero/overflow controls and explicit recovery semantics. Did not adopt a mandatory duplicate audit object because existing provenance composition already provides labeled audit detail; cost remains composite with token admission under the settled parent decision. Temporary probes reproduced invalid-value source-reader crashes and preserved legacy unknown through replay/tail refresh; verified-source re-ingestion recovered measured evidence and was stable on repeat. Focused baseline: 64 provenance/coverage/cache/chokepoint tests plus 17 incremental/source-refresh tests passed (81 total); issue format/design checks passed. No implementation or new readiness score is claimed; stale score fields were removed and the configured confidence gate must be rerun.
