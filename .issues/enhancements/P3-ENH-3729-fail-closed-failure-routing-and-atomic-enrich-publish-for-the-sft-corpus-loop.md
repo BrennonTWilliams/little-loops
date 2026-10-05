@@ -13,6 +13,12 @@ blocks:
 relates_to:
 - ENH-3728
 - ENH-3700
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3729: Fail-closed failure routing and atomic enrich publish for the sft-corpus loop
@@ -115,5 +121,6 @@ Scope/dependencies amended 2026-10-05; run `/ll:confidence-check` before impleme
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T18:33:45 - `af0cc2df-1eb5-430f-a8c4-2e0bd187887f.jsonl`
 - EPIC-3693 review #4 - 2026-10-05 - malformed object/source cases and non-regular sentinel added to safe atomic failure tests; misleading ban on correctly checked shell conditionals replaced with status-propagation requirement. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - artificial fixture dependency removed, ENH-3728 failure-route prerequisite wired, shell/atomic failure cases pinned; implementation not performed
