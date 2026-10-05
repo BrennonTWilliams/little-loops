@@ -21,252 +21,170 @@ relates_to:
 
 ## Summary
 
-`ll-issues link-epics --mode assign --apply` (`apply_assignment()` in `scripts/little_loops/cli/issues/link_epics.py`) writes a malformed EPIC-side `## Children` entry and places it by a rule that breaks on any non-flat Children section. It also rewrites untouched frontmatter formatting on the orphan.
+`ll-issues link-epics --mode assign --apply` writes placeholder Children bullets in the wrong part of irregular EPIC sections and reserializes unrelated orphan metadata. Its broad duplicate check also mistakes a prose mention for an existing child. Make assignment writes precise, consistent with `create --parent`, and harmless on reapply.
+
+The apply path must also maintain the existing single-parent model: keep all scored alternatives in proposal output, but apply at most the highest-ranked proposal for each orphan. Applying every alternative currently creates contradictory EPIC lists and leaves the lowest-scoring match in the orphan's frontmatter.
 
 ## Current Behavior
 
-Observed in a real run on a downstream project's issue tree:
+Verified on branch `main` on 2026-10-05:
 
-1. **Placeholder instead of the child's title.** The bullet is hard-coded as `- **ENH-NNN** — (added by link-epics --apply)`, so every applied link leaves a line that a person has to fix by hand. `create.py`'s `_append_child_to_epic_children()` already writes `- **ID** — <title> (open)`.
-2. **Extra blank line.** `stripped + sep + "\n" + bullet` puts a blank line between the last existing child and the new bullet, which splits the list in two.
-3. **Wrong insertion point in irregular sections.** `_section_bounds()` ends the section at the next `## ` heading only, so the bullet goes at the very end of everything under `## Children`. That includes `### ` subsections (for example a "Spoke follow-through" note), dependency-note bullets, and wrapped multi-line bullets. In a manual run using the same "end of section" rule, the new line landed in the middle of a wrapped bullet, and the bullet's continuation line ended up hanging under the new child.
-4. **Stray `## Children` at end of file.** When an EPIC has no `## Children` heading (some EPICs track children through `parent:` frontmatter only), apply adds a new `## Children` section after `## Status` / `## Session Log`.
-5. **Frontmatter churn.** `update_frontmatter()` re-dumps the whole block: `goals: [2]` becomes a block list and long `title:` values get line-wrapped, even though only `parent:`/`epic:` changed.
+1. `apply_assignment()` in `scripts/little_loops/cli/issues/link_epics.py` emits `- **ID** — (added by link-epics --apply)` instead of a title.
+2. Its section-end append introduces an extra blank line and places the bullet below `### Notes` or other trailing prose. A temporary-file reproduction preserved the existing wrapped note intact; the earlier claim that this implementation splits a wrapped bullet was not reproduced and is not a required fix.
+3. A missing exact `## Children` heading causes a new section at EOF, including after Status or Session Log. The create helper instead skips the EPIC body write.
+4. The orphan is YAML-dumped before the EPIC duplicate check. Flow lists, comments, quoting, Unicode representation, and long titles can change even on reapply.
+5. A word-boundary ID search across the whole EPIC suppresses insertion when the ID appears only in frontmatter, prose, another section, or a fenced example.
+6. Proposals are sorted by descending score and all are applied. In a reproduction with scores `1.0` and `0.667`, both EPICs received the child and the orphan ended with the `0.667` EPIC as parent.
+7. Universal-newline reads convert CRLF to LF. Default `atomic_write()` replaces existing modes with `0600`; its `shared_mode=True` option preserves a regular file's mode.
 
 ## Expected Behavior
 
-- The bullet carries the child's title (taken from its `# ID: title` H1, or from frontmatter `title:`) in the same `- **ID** — title (open)` shape that `ll-issues create --parent` writes.
-- No blank line between the new bullet and the previous child.
-- The insertion point is right after the last top-level child bullet (`^- \*\*(BUG|FEAT|ENH)-\d+\*\*`) and any indented continuation lines it has, and before any `###` subsection or prose.
-- If the EPIC has no `## Children` section, either skip the body write (the frontmatter link alone is enough, as with `create.py`) or add the section before `## Status`. Never add it at the end of the file.
-- Only the `parent:` and `epic:` lines change in the orphan's frontmatter.
-
-## Proposed Solution
-
-Move `_append_child_to_epic_children()` into a shared helper and make it aware of child bullets and continuation lines. Have both `create --parent` and `link-epics --apply` call it. For the orphan side, use a line-level frontmatter insert (for example, add `parent:`/`epic:` before the closing fence) rather than `update_frontmatter()`'s re-dump.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
-
-**Option A**: When the EPIC has no `## Children` heading, skip the EPIC-side body write and rely on the orphan's `parent:`/`epic:` frontmatter (the `create.py` contract: `_append_child_to_epic_children()` returns `None` and callers skip silently, pinned by `test_ll_issues_create.py:115`). Caveat found in research: `epic_consistency.compute_drift()` (`epic_consistency.py:190`) treats a missing heading as an empty body, so such an EPIC is flagged `missing_from_body` for every `parent:` child and `ll-issues ec --fix` then appends its own EOF `## Children` with a placeholder — the same stray-section defect, relocated.
-> **Selected:** Option A — matches the `create --parent`/`scaffold-epic` `None`-means-skip contract (pinned by `test_ll_issues_create.py:115`) and avoids adding body sections to EPICs that track children via `parent:` only.
-
-**Option B**: When the EPIC has no `## Children` heading, insert a new `## Children` section before `## Status` (falling back to EOF only when `## Status` is also absent). `arm_proposal_revision._append_marker` (`arm_proposal_revision.py:72`) and `dependency_mapper._add_to_section` (`operations.py:66`) already insert a missing section before `## Status`. This keeps `ll-issues ec` quiet but adds a body section to EPICs that deliberately track children through `parent:` frontmatter only.
-
-**Recommended**: Option A — it matches the existing `create --parent` contract, keeps the fix inside the issue's stated first alternative, and leaves the `epic-consistency` EOF behavior as a separately-scoped defect rather than widening this change; re-evaluate if the `ec` drift report on such EPICs proves noisy.
-
-### Decision Rationale
-
-Decided by `/ll:decide-issue` on 2026-10-05.
-
-**Selected**: Option A
-
-**Reasoning**: Option A reuses the existing `_append_child_to_epic_children()` skip contract (`create.py:168-182`, callers at `create.py:634-637` and `scaffold_epic.py:131-133`), needs no new insertion code, and does not add a redundant body section to the ~12 heading-less EPICs (e.g. EPIC-2412, EPIC-3127 track children via `parent:`; EPIC-2700 uses `## Child Issues`, where Option B would add a second children section). Option B's "keeps `ec` quiet" benefit only holds per linked child, and it would leave `fix_epic` writing to EOF, so the two writers would still disagree. Option A's residual — `compute_drift()`/`fix_epic()` (`epic_consistency.py:190,243`) re-adding an EOF `## Children` — is the sibling defect and stays separately scoped.
-
-#### Scoring Summary
-
-| Option | Consistency | Simplicity | Testability | Risk | Total |
-|--------|-------------|------------|-------------|------|-------|
-| Option A | 3/3 | 3/3 | 3/3 | 2/3 | 11/12 |
-| Option B | 2/3 | 2/3 | 2/3 | 1/3 | 7/12 |
-
-**Key evidence**:
-For the selected approach, the `None`-means-skip contract exists in two callers and is test-pinned; the missing-heading branch (`link_epics.py:563-564`) is a single site. Caveat: `ec --fix` relocates the stray-section defect (`epic_consistency.py:243-247`).
-
-For the rejected approach, two precedents insert before `## Status`, but with divergent anchors (`^## Status\b` vs `^## Status\s*$`; EPIC-3127's `## Status: what shipped…` sits mid-document), and `fix_epic` would still disagree.
-
-## Integration Map
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
-
-**Files to Modify**
-- `scripts/little_loops/cli/issues/link_epics.py` — `apply_assignment()` (:536) owns the placeholder bullet (:561), the local `_section_bounds()` (:525, ends only at the next `^##\s`), the stray-`## Children` EOF fallback (:564), and the orphan write through `update_frontmatter()` (:552). `EpicProposal` (:115) has only `orphan_id`, `epic_id`, `score`, `tier` — no title — and `apply_assignment(proposal, *, orphan_path, epic_path)` receives none.
-- `scripts/little_loops/cli/issues/create.py` — `_append_child_to_epic_children(content, child_id, child_title) -> str | None` (:168) is the existing `- **ID** — <title> (open)` writer; it returns `None` when `## Children` is absent.
-- `scripts/little_loops/frontmatter.py` — `update_frontmatter()` (:439) re-dumps via `yaml.dump(default_flow_style=False)`, which is the source of the `goals: [2]` and wrapped-`title:` churn. `remove_frontmatter_keys()` (:474) is the only byte-preserving helper, and it is delete-only; no line-level upsert exists in this module.
-
-**Dependent Files (Callers/Importers)**
-- `scripts/little_loops/cli/issues/link_epics.py:664` — `cmd_link_epics()` is the only production caller of `apply_assignment()`. It already holds `IssueInfo` objects (`by_id`, :660) whose `.title` is frontmatter `title:` first, then the `# ID: title` H1, then the filename stem (`issue_parser.py:4288`).
-- `scripts/little_loops/cli/issues/create.py:634` (`create_issue`) and `scripts/little_loops/cli/issues/scaffold_epic.py:131` — the only callers of `_append_child_to_epic_children()`; `scaffold_epic.py:23` imports it by private name. Both treat `None` as "skip silently". `create_issue` writes with `write_text`, `apply_assignment` with `atomic_write`.
-- `scripts/little_loops/cli/issues/epic_consistency.py:98,190,243` — a second, different `_section_bounds(content, heading: str)` plus `fix_epic()` (:227), which is a third independent `## Children` appender with its own placeholder `(added by epic-consistency --fix)` (:239), the same `stripped + sep + "\n" + bullets` blank-line shape, and the same EOF-heading fallback.
-- `update_frontmatter()` has ~40 production callers repo-wide; its behavior must not change for them.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/mcp_server/tools.py` — local import of `create_issue` (:268) in the MCP create tool; reaches `_append_child_to_epic_children` whenever a parent is set, so a shared-helper change to placement/trailing-newline also changes MCP-created children [Agent 1 finding]
-- `scripts/little_loops/cli/issues/__init__.py` — lazy-imports `add_link_epics_parser, cmd_link_epics` and routes `args.command == "link-epics"`; no signature change needed unless `cmd_link_epics`'s import surface changes (e.g. a new `link_epics` → `create` import) [Agent 1 finding]
-- `scripts/little_loops/cli/issues/epic_consistency.py:_BODY_BULLET_RE` (`^\s*[-*]\s+\*{0,2}([A-Z]+-\d+)`) and `compute_drift()` — read the new `- **ID** — title (open)` bullet exactly as the placeholder form, and `compute_drift()`'s `_section_bounds(content, "Children")` window still contains a bullet inserted after the last top-level child (before `###`), so `missing_from_body`/`body_without_parent` stay correct [Agent 2 finding]
-- `scripts/little_loops/issues/prose_deps.py:extract_prose_deps` (`_SCOPE_BOUNDARY_RE`, `_scope_subject`) — scans EPIC `## Children` bullets and attributes a dependency phrase to the last issue ID in a list item; a child title containing "depends on …" would now be attributed to that child [Agent 2 finding]
-- `scripts/little_loops/cli/issues/link_epics.py:cmd_link_epics` — prints `"Applied {n} proposal(s)."` and builds `applied` from `proposal.to_dict()` even when the EPIC body write is skipped (Option A no-heading path), so the count still includes heading-less EPICs [Agent 2 finding]
-- `scripts/little_loops/frontmatter.py:_canonical_frontmatter_block` (:224) and `_iter_frontmatter_blocks` (:161) — a line-level upsert should use these (as `update_frontmatter` does at :466) to inherit BUG-2955 multi-block safety; `remove_frontmatter_keys` (:474) does not use the canonical-block rule [Agent 2 finding]
-
-**Conventions in Force**
-- No shared Children-section helper exists: three separate writers (`create.py`, `link_epics.py`, `epic_consistency.py`) disagree on section end (`startswith("## ")` vs `^##\s`), bullet shape, no-heading behavior (skip vs EOF append) and blank-line handling. Evidence: the three function bodies above.
-- There is no common helper module under `cli/issues/`; helpers live in the module that first needed them and are imported across modules by private `_name`, often inside the function body. Evidence: `scaffold_epic.py:19-27` importing from `create.py`; `show._resolve_issue_id` imported by `create.py:629`. `link_epics.py` defers `little_loops.*` imports into function bodies and does not import `create.py` today.
-- A fence-aware section locator exists: `issue_parser._section_body_with_offset(content, heading)` (`issue_parser.py:450`) and `text_utils.fence_spans`/`in_fence` (:64/:97). `arm_proposal_revision._append_marker` (`arm_proposal_revision.py:72`) already inserts after the last list item of a section through it. Neither Children writer is fence-aware today.
-- Line-level frontmatter insert precedent: `cli/migrate.py:_set_fields` (:20) and `cli/migrate_labels.py:_set_labels_frontmatter` (:26) replace `^key:.*$` or insert before the second `^---\s*$` match, with no YAML round-trip. Both scan the whole file rather than the `FrontmatterBlock` spans from `frontmatter._iter_frontmatter_blocks()` (:161), so they are not multi-block-safe (BUG-2955) and neither has tests.
-- Byte-preservation tests in this repo use `read_bytes()` before/after equality (`test_cli_doctor_install_checks.py:602-606`); source-text pins are per-module (`Path(mod.__file__).read_text()` then `assert "…" not in src`, e.g. `test_git_operations.py:306`). No frontmatter flow-style/long-title preservation test exists.
-
-**Tests**
-- `scripts/tests/test_link_epics_cli.py` — `TestApplyAssignment` (:152; `test_writes_parent_and_epic_fields`, `test_idempotent_reapply`) and `TestLinkEpicsCLI.test_apply_writes_frontmatter` (:243). None asserts bullet text, blank lines, or byte equality of the orphan; the only EPIC-body assertions are `"FEAT-1" in text` and `.count("FEAT-1") == 1`, so no existing test pins the placeholder string. Fixture EPICs there are the bare `...## Children\n` shape and some orphans have a title-less `# FEAT-1` H1 (:310) — the title fallback must tolerate that.
-- `scripts/tests/test_ll_issues_create.py:107` (`test_parent_wiring_appends_epic_children_bullet`) pins `- **{id}** — Child thing (open)`; `:115` (`test_parent_wiring_skipped_silently_for_non_epic_parent`) pins the `None`/skip contract. Both must keep passing if the helper is shared.
-- `scripts/tests/test_ll_issues_scaffold_epic.py` (`TestScaffoldEpic`) asserts `- **{id}**` presence only. `scripts/tests/test_epic_consistency.py` (`TestEpicConsistencyFix`, :364) asserts by substring and never pins the `epic-consistency --fix` placeholder.
-- `scripts/tests/test_link_epics_skill.py:86` (`TestUpdateFrontmatterRoundTrip`) covers `update_frontmatter` itself and must stay green.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_link_epics_cli.py` — `TestApplyAssignment.test_writes_parent_and_epic_fields` and `test_idempotent_reapply` call `apply_assignment(proposal, orphan_path=, epic_path=)` and build `EpicProposal` with four keywords; a required new `title=` kwarg or required `EpicProposal` field breaks both, so any new parameter needs a default (or update both). `test_idempotent_reapply` asserts `.count("FEAT-1") == 1` — the bullet title must not contain the orphan ID (its H1 is `# FEAT-1: Orphan`, so `Orphan` is safe) [Agent 3 finding]
-- `scripts/tests/test_link_epics_cli.py` (new tests in `TestApplyAssignment`) — no test covers a missing `## Children` heading today (every EPIC fixture ends `## Children\n`), so nothing pins the current EOF-append and Option A inverts nothing; write: title bullet shape, title-less `# FEAT-1` H1, flat list with no blank line, `###` subsection after list, wrapped last bullet, missing heading leaves EPIC bytes unchanged, empty/prose-only `## Children`, trailing-newline preserved, prose mention of orphan ID, idempotent reapply leaves orphan bytes unchanged, orphan byte-identity outside `parent:`/`epic:` (flow `goals: [2]` + long `title:`), null-valued and already-set `parent:`/`epic:`, plus the source-text pin on `(added by link-epics --apply)` [Agent 3 finding]
-- `scripts/tests/test_frontmatter.py` — new class (e.g. `TestUpsertFrontmatterLines`) beside `TestUpdateFrontmatter` (:399) if the line-level upsert lands in `frontmatter.py`: absent key inserted before closing fence, existing key replaced in place, null-valued key replaced, `_DOUBLE_BLOCK` (`TestMultiFrontmatterBlocks`, :570) writes only the canonical block (template: `test_update_writes_canonical_block_only`, :634), no-frontmatter and CRLF input. No `remove_frontmatter_keys` unit test exists there either [Agent 3 finding]
-- `scripts/tests/test_ll_issues_create.py` — add direct tests of `_append_child_to_epic_children` if it is shared/changed: returns `None` without a heading (`:115` only asserts `parent` is written and nothing raises, it does not pin `None`), continuation-line and `###` placement, trailing-newline preservation (current `"\n".join(splitlines())` rejoin drops the final newline) [Agent 3 finding]
-- `scripts/tests/test_ll_issues_scaffold_epic.py` — `TestScaffoldEpic.test_creates_epic_and_children_both_directions_wired` (:59) asserts only `- **{child.id}**` presence; add a multi-child placement case if the shared helper changes output shape [Agent 3 finding]
-- `scripts/tests/test_epic_consistency.py` — `TestEpicConsistencyFix.test_fix_adds_missing_category_a_children` (:367) uses `_write_epic(..., children_section="")` (no heading) and asserts `"FEAT-060" in updated`, i.e. it relies on `fix_epic()`'s EOF-heading creation; it breaks only if the sibling `fix_epic` is brought into scope. Option A as selected leaves it green [Agent 3 finding]
-- `scripts/tests/test_link_epics_skill.py` — `TestLinkEpicsSkillExists.test_children_section_documented` (:62) requires `"## Children"` and `test_apply_flag` (:17) requires the `--apply` text to remain in `skills/link-epics/SKILL.md`; any SKILL.md prose edit must keep both [Agent 3 finding]
-- `scripts/tests/test_issue_parser.py:1635` — hard-codes the `"epic_consistency:274"` key; only matters if `epic_consistency.py` edits shift it (not expected under Option A) [Agent 1 finding]
-- `scripts/tests/test_prose_deps.py::TestSubjectAttribution.test_epic_children_list_attributes_to_the_child` (:168) — ready-made wrapped-bullet `## Children` fixture shape for the new continuation-line tests [Agent 3 finding]
-
-**Documentation**
-- `docs/reference/API.md:1556-1562` (`apply_assignment` description), `docs/reference/CLI.md:3222-3246` (`ll-issues link-epics`), `docs/reference/COMMANDS.md:460-469` (`/ll:link-epics`), `skills/link-epics/SKILL.md:82,93,97,228` (describes `--apply` as appending to `## Children`, idempotent). `skills/link-epics/` and `README.md` edits trip the mirror gates (`ll-adapt`, README sync) per project memory.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/API.md` — `little_loops.cli.issues.link_epics` > `class EpicProposal` block (restates the four fields and the `to_dict` comment) and `### apply_assignment` Parameters table (lists only `proposal`, `orphan_path`, `epic_path`): update both if a title field/kwarg is added; also the `little_loops.frontmatter` section (`update_frontmatter`/`remove_frontmatter_keys` entries, one-line table row at :41) needs a row and a short section if a new line-level upsert helper is added (model on the `remove_frontmatter_keys` "does not round-trip the block through YAML" text). No docs gate fails for a new function (`doc_counts.verify_coverage` checks entry points/hooks/counts only), so this is manual [Agent 2 + 3 finding]
-- `docs/reference/CLI.md` — `#### ll-issues link-epics` `--apply` flag row ("`parent:`/`epic:` frontmatter + EPIC `## Children` append") and trailing paragraph ("`--apply` is idempotent — re-running is a no-op on any pair already applied"); reword for title bullet, skip-on-no-heading, and byte-preserving orphan write. Also `ll-issues create` section ("appends a wired bullet there too") if the shared helper's placement changes [Agent 2 finding]
-- `docs/reference/COMMANDS.md` — `### /ll:link-epics` "**Output:**" paragraph (:460-469) and the `/ll:create` (`--parent`)/scaffold-epic Output descriptions of `## Children` wiring [Agent 2 finding]
-- `skills/link-epics/SKILL.md` — "A1" documents the proposals JSON shape `{orphan_id, epic_id, score, tier}` (keep any title field out of `EpicProposal.to_dict()` or update this line); "A2: Present" and "A3: Apply Assignments" describe `--apply` ("appends to the target EPIC's `## Children` section"); "S4" step 4 has the LLM write `parent:`/`epic:` directly (synthesize mode never calls `apply_assignment`, so a new helper does not reach it) [Agent 2 finding]
-- `skills/capture-issue/SKILL.md` — "#### 2. Append child to `## Children` section" (:370-381) tells the LLM to append at the end of `## Children` and, if absent, insert a section before `## Status`; this manual path conflicts with the new placement rule and Option A. Out of scope to rewrite here but must be consciously left or aligned (editing `skills/` trips the `ll-adapt` mirror gates) [Agent 1 + 2 finding]
-- `skills/scope-epic/SKILL.md` — three `## Children` passages assert `--parent`/`scaffold-epic` "already guarantee" the EPIC bullet and a post-write consistency check keys on bullet presence; unaffected by Option A for EPICs that have the heading, but heading-less EPICs now never get a bullet [Agent 2 finding]
-- `.issues/epics/P3-EPIC-3493-policy-builder-router-execution.md:38-46` — five existing `(added by link-epics --apply)` bullets (already noted under Live Data); a separate data fix, not covered by the source change [Agent 2 finding]
-
-**Live Data**
-- `.issues/epics/P3-EPIC-3493-policy-builder-router-execution.md:38-46` already carries five `(added by link-epics --apply)` bullets (ENH-3511, ENH-3513, ENH-3514, ENH-3510, BUG-3516). A code fix does not repair them, and "the placeholder string is gone from the codebase" can only be true for source, not for these existing issue files.
-
-_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
-
-- **Additional dependents/docs not previously mapped** (gap-analysis pass; `docs/reference/API.md` shifted since the last refine — current anchors: `class EpicProposal` :1483, `### apply_assignment` :1557, `remove_frontmatter_keys` :7424):
-  - `scripts/little_loops/cli/issues/epic_progress.py:107` — a fourth place that formats a `- **ID** — title (status)` line, but render-only (never writes an EPIC). Not a writer; no change implied.
-  - `scripts/little_loops/templates/epic-sections.json` (`"Children"` at :107, :174) — defines the Children section's intended shape ("member issue IDs with short titles"); the title-bearing bullet is consistent with it.
-  - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:178` (EPIC `## Children` wiring prose) and `CONTRIBUTING.md:522` (`body ## Children list`) — describe the same wiring; re-read if placement or the no-heading skip is documented as user-visible behavior.
-  - `scripts/tests/test_scope_epic_skill.py:69` — asserts `skills/scope-epic` still mentions `Children`; must stay green on any SKILL.md prose edit.
-  - `skills/link-epics/agents/openai.yaml:3` — Codex mirror metadata for the skill; regenerated by `ll-adapt`, not hand-edited.
-  - `scripts/little_loops/config-schema.json:168` / `config/features.py:154` (`LinkEpicsConfig`) — threshold config only; unaffected.
-- **Related open issue**: BUG-3739 touches the same `is_orphan()`/`link-epics` assign path (frontmatter keys placed after the closing fence are not seen). It does not change whether this issue's mechanism works, so it is `relates_to`, not a blocker. The line-level upsert here must insert inside the closing fence, which is also the placement BUG-3739 says tools fail to see when it is misplaced.
-
-**Conventions in Force (additions)**
-- **Four different "end of Children section" rules coexist**: `create.py` (`startswith("## ")`), `link_epics`/`epic_consistency` local `_section_bounds` (`^##\s`), `issue_parser._section_body_with_offset` (fence-aware, **last** match wins), and `fold_research_findings.find_subsections` (stops at a heading of level ≤ 3, the only H3-aware one; its docstring pins "end of slice / after last H3 / before first H3" as distinct outcomes). Evidence: those four anchors.
-- **First-vs-last heading match disagree**: `_CHILDREN_HEADING_RE.search` and `create.py` take the first `## Children`; `_section_body_with_offset` takes the last. An EPIC with two Children-like headings resolves differently per writer — a shared helper must pick one on purpose.
-- **Child-bullet recognizers disagree**: the issue's Decision Rules use `^- \*\*(BUG|FEAT|ENH)-\d+\*\*`, whereas `epic_consistency._BODY_BULLET_RE` (:34) accepts `-`/`*` bullets, optional bold, and any `[A-Z]+-\d+` (including `EPIC-`), and `_BODY_HEADING_RE` (:41) counts `### ID —` per-child prose headings as child entries. So a list the consistency checker reads as children can read as "no qualifying bullet" to the new placement rule, and a `###` the new rule treats as the end of the list can itself be a child entry.
-- **Section-append precedent for "no section → where"**: `arm_proposal_revision._append_marker` and `dependency_mapper._add_to_section` insert before `## Status` (anchors diverge: `^## Status\b` vs `^## Status\s*$`); `create.py` returns `None`. Relevant only to the already-rejected Option B.
-- **Promoting a private helper**: when helpers move to a shared home in this repo they land in a lower layer (`little_loops/*.py` or `little_loops/issues/`), drop the leading underscore, and sometimes leave a re-export at the old site (`git_operations.porcelain_paths`, `paths.find_project_root`); `dependency_mapper` instead keeps `_remove_from_section` private and re-exports it. `scaffold_epic.py:23` imports `_append_child_to_epic_children` by private name today. Both conventions exist.
-- **Test shapes available**: `test_fold_research_findings.py` (`TestFoldCreate`, `TestFoldAppend`, `TestFoldOnTouchCollapse`) is the in-repo precedent for asserting H3-sibling/next-H2 placement; `test_arm_proposal_revision.py` uses a `_doc(...)` builder plus `parametrize(ids=[...])`; the source-text-pin assertions in `test_git_operations.py` sit at :314-320 (the issue's `:306` cites the enclosing test).
-
-## Impact
-
-- **Priority**: P3 - Maintenance tooling defect: every applied link leaves a hand-fix bullet and may churn orphan frontmatter, but nothing breaks and the work is recoverable
-- **Effort**: Medium - shared child-bullet helper used by `create --parent` and `link-epics --apply`, a line-level frontmatter insert, and tests across several writers
-- **Risk**: Low - confined to `ll-issues` EPIC/orphan file writers, covered by existing CLI tests plus new byte-level assertions
-- **Breaking Change**: No
+- Each actual insertion has the shape `- **ID** — <child title> (open)`, using the parsed title's normal precedence. A title may legitimately contain its own issue ID.
+- Children are inserted into the existing child-list area, before trailing prose or subsections, without separating adjacent child bullets or disturbing wrapped content.
+- A missing exact Children heading leaves the EPIC byte-identical; parent/epic frontmatter still carries the assignment.
+- Only the orphan's parent/epic entries change. Unrelated content, line endings, final-newline state, and existing file modes survive.
+- Reapplying the same pair changes neither file and performs no write when the content is already correct.
+- One apply run selects at most one EPIC per orphan. A conflicting existing parent/epic is reported and never silently overwritten.
 
 ## Steps to Reproduce
 
-1. Make an EPIC whose `## Children` list is followed by a `### Notes` subsection that contains a wrapped `- ...` bullet.
-2. Make an orphan ENH with `goals: [2]` in flow style.
-3. Run `ll-issues link-epics --mode assign --apply --threshold 0`.
-4. The new bullet lands under `### Notes`, after a blank line, with the placeholder title, and the orphan's `goals:` has been reformatted.
+1. In a temporary issue tree, create an open EPIC with `## Children`, an existing child with an indented continuation, a following `### Notes` subsection, and `## Status`.
+2. Create an orphan with matching title words, flow-style `goals: [2]`, and a YAML comment.
+3. Run `ll-issues link-epics --mode assign --apply --threshold 0` with only that EPIC eligible.
+4. Observe a placeholder below Notes, extra list spacing, and rewritten goals/comment formatting.
+5. Repeat with the orphan ID mentioned only in EPIC prose: the orphan gets a parent but no Children bullet.
+6. Repeat with two matching EPICs: both gain a bullet and the last, lower-scoring EPIC wins the frontmatter.
 
 ## Root Cause
 
-`apply_assignment()` builds its own bullet and its own section bounds instead of reusing `create.py`'s child-wiring helper, and it writes through a full YAML re-dump.
+- **File**: `scripts/little_loops/cli/issues/link_epics.py`; **anchors**: `apply_assignment`, `_section_bounds`, `cmd_link_epics`, `propose_assignments`. The writer implements its own placeholder and section append, searches the entire document for duplicates, and unconditionally writes every scored pair.
+- **File**: `scripts/little_loops/cli/issues/create.py`; **anchor**: `_append_child_to_epic_children`. Reusing it unchanged fixes only title/spacing: it also appends after subsections and rebuilds text with `splitlines()`/join.
+- **File**: `scripts/little_loops/frontmatter.py`; **anchor**: `update_frontmatter`. It intentionally re-dumps a whole mapping. Change the assignment caller to a narrow preserving helper rather than altering this widely used API.
 
-### Codebase Research Findings
+## Proposed Solution
 
-_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+Improve the existing `_append_child_to_epic_children()` helper and reuse it from `apply_assignment()` through a deferred import. Its current callers in create and scaffold already share it, and create has no import of link_epics. A new generic Markdown framework or a rewrite of the consistency fixer is unnecessary.
 
-- **Reuse alone does not fix symptom 3.** `create.py:_append_child_to_epic_children()` (:168) has the same irregular-section defect: it ends the section at the first `startswith("## ")` line, so a `### ` subsection, prose, or a wrapped last bullet is treated as part of the list and the bullet lands after it. It has no child-bullet regex and no continuation-line handling. The "reuse create.py's helper" framing therefore fixes symptoms 1 and 2 (title, blank line) for `link-epics` but must also gain bullet/continuation awareness, and doing so changes `create --parent` and `scaffold-epic` too (`create.py:634`, `scaffold_epic.py:131`).
-- **Title is not reachable from `apply_assignment()` today.** `EpicProposal` carries no title and the function signature takes only paths; the title is available one frame up in `cmd_link_epics()` (`by_id[...]` → `IssueInfo.title`, `link_epics.py:660`). Whatever supplies it must tolerate the title-less `# FEAT-1` H1 fixtures in `test_link_epics_cli.py:310` (the `IssueInfo` fallback ends at the filename stem).
-- **Heading matchers disagree.** `link_epics._CHILDREN_HEADING_RE` is `^##\s+Children\s*$` (accepts `##  Children` and trailing spaces); `create.py` matches `line.strip() == "## Children"` (rejects `##  Children`, accepts an indented heading). A shared helper must pick one rule knowingly. Neither is fence-aware.
-- **Rejoin changes file endings.** `create.py` rebuilds with `"\n".join(lines)` after `splitlines()`, which drops the original trailing newline unless the insertion point was EOF; `apply_assignment` preserves the trailing newline. The new bullet must not flip a file's final-newline state.
-- **Orphan write is not conditional on the EPIC write.** `apply_assignment()` rewrites the orphan (`atomic_write`, :555) *before* the `\bORPHAN_ID\b` already-listed check (:558). That check matches the ID anywhere in the EPIC — frontmatter `relates_to`, prose, another section — not just `## Children`, so an EPIC that mentions the ID in prose silently gets no bullet while the orphan is still rewritten. Idempotent reapply is therefore a frontmatter rewrite each time, which is churn even when nothing semantic changes.
-- **One orphan can be applied to several EPICs.** `propose_assignments()` (:170-204) returns every orphan×EPIC pair at or above the threshold, not one best EPIC per orphan, and the `--apply` loop (`cmd_link_epics`, :655-665) applies them all: the orphan's `parent:`/`epic:` end up holding the last-applied EPIC while every matching EPIC gains a bullet. Whatever frontmatter write replaces `update_frontmatter()` has to define behavior when `parent:`/`epic:` already hold a value from an earlier proposal in the same run.
-- **`is_orphan()` (:164) means `parent is None and epic is None`**, which covers both an absent key and an explicit `parent:` / `parent: null` key. A line-level write must replace an existing null-valued line rather than append a duplicate key (a duplicate key is a YAML error and `update_frontmatter` currently overwrites in place).
-- **Sibling instance outside this issue's scope line.** `epic_consistency.fix_epic()` (:227) has the identical placeholder, blank-line and EOF-heading defects with its own string `(added by epic-consistency --fix)` (:239). The acceptance criterion "the placeholder string is gone from the codebase" is satisfied by removing `(added by link-epics --apply)` (single non-issue-file occurrence: `link_epics.py:561`); whether the sibling is in scope is a scoping decision, not a consequence of this fix.
+Add a scalar-only frontmatter upsert in `frontmatter.py` for assignment metadata. Bound edits to the canonical identity block, or the first block when no block has an ID, using the existing block-selection contract. Preserve source spans rather than reserializing unrelated YAML. Keep `update_frontmatter()` unchanged.
 
-_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+Keep proposal scoring/output unchanged, and deduplicate the ordered proposals by orphan ID only when applying. Pre-read and validate both files and construct both updated texts before the first write. Use preserving atomic writes only for changed content. This is preflight validation, not a claim of an atomic transaction across two files; surface write failures, and same-pair reapply must repair a missing side.
 
-Gap-analysis additions (verified by reading the code this pass):
+### Decision Rationale
 
-- **`_CHILDREN_HEADING_RE` (`link_epics.py:30`) returns a `start` offset that can sit on a blank line, not at the end of the heading line**: its trailing `\s*$` can consume newlines then backtrack, so `_section_bounds` (:525) yields `start` at the first position where `$` holds. For `## Children` at EOF, `start == len(content)`. Any new insertion logic must not assume `start` is the line after the heading.
-- **A heading with trailing text does not match** (`## Children (…)`), so `apply_assignment` appends a second `## Children` at EOF even though an irregular one exists; this is the same stray-section symptom (4) via a different trigger. Under Option A this case would also skip silently, which changes behavior for EPICs that do carry a suffixed Children heading.
-- **Neither writer is fence-aware**: a fenced `## Children` or fenced `## ` line earlier in the EPIC can be matched first or end the section early. `create.py` already imports `text_utils.fence_spans`/`in_fence` elsewhere in the module (`_is_full_body`, :207) but not in this writer.
-- **`atomic_write` creates the rewritten file mode `0600`** unless `shared_mode=True` (`file_utils.py:19`); the default path does not preserve an existing file's mode. Both `apply_assignment` writes use the default, so every applied orphan and EPIC is rewritten with a possibly different mode than it had. `create_issue` uses `write_text`, which keeps the mode. This is a pre-existing side effect of the orphan-side rewrite that the byte-preservation criterion (contents) does not cover.
-- **Multi-EPIC ordering is deterministic**: proposals are sorted `(-score, orphan_id, epic_id)` and applied in that order, so the EPIC left in the orphan's `parent:`/`epic:` is the **lowest-scoring** above-threshold match, not the best. `applied` gets one entry per proposal (including ones where the EPIC write was skipped as already-listed) and the summary prints that count, so a skipped body write is still counted as applied. A proposal whose orphan or EPIC is missing from `by_id` is dropped silently (`continue`).
-- **`update_frontmatter` churn is wider than `goals`/`title`**: it round-trips the whole block through `yaml.safe_load`/`yaml.dump`, so comments are lost, non-ASCII is escaped (`allow_unicode=False`), ISO timestamps such as `captured_at` re-render differently, and quoting is normalized. The byte-identity criterion applies to every line outside `parent:`/`epic:`, not just the two named in the issue.
-- **Newlines**: both writers read with `Path.read_text` (universal newlines) and write `\n`, so a CRLF file is converted to LF on rewrite. `frontmatter._iter_frontmatter_blocks` does not recognize a `---\r` fence if `\r` survives to it, and `FrontmatterBlock.body_span` excludes the newline before the closing fence (`close_marker.start()-1`), so an insert at the end of the body needs its own leading newline.
-- **Value form on read/write**: `parse_frontmatter` uses `yaml.BaseLoader` (strings), so bare and quoted `parent: EPIC-123` both parse; `null`, `~`, and an empty value normalize to `None` (`is_orphan()` treats all as orphan). In-repo `parent:`/`epic:` values are written bare (`parent: EPIC-NNNN`) and the null form is `parent: null`; PyYAML accepts duplicate keys with last-wins, so an appended duplicate would silently win rather than error.
+The earlier `/ll:decide-issue` selection, **Option A**, remains binding: no exact Children heading means skip the EPIC body write. It matches the existing create/scaffold contract and avoids synthesizing sections on EPICs that use frontmatter-only children or `## Child Issues`. The separate EOF/placeholder behavior in `epic_consistency.fix_epic()` remains outside this issue.
+
+### Behavior Parity
+
+Keep all alternatives, scores, tiers, and `EpicProposal.to_dict()` fields in proposal output; synthesis behavior is unchanged. Preserve the create/scaffold no-heading skip contract and standard `(open)` bullet format. The intentional behavior change is that apply chooses one winner per orphan instead of writing contradictory memberships.
 
 ## Program Design
 
 ### Types
-- `EpicProposal` (dataclass: `orphan_id: str`, `epic_id: str`, `score: float`, `tier: str`) — has no title field; whether the title travels on it or as a separate argument is open.
-- `IssueInfo.title: str` — already populated by `IssueParser` (frontmatter `title:`, then `# ID: title` H1, then filename stem) and held by `cmd_link_epics` in `by_id`.
+
+Existing `EpicProposal` and `IssueInfo` need no new fields. The optional title value is:
+
+```python
+child_title: str | None
+```
 
 ### Signatures
-- `apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path) -> None` — current signature in `link_epics.py`; takes no title.
-- `_append_child_to_epic_children(content: str, child_id: str, child_title: str) -> str | None` — current signature in `create.py`; `None` means no `## Children` heading.
-- `update_frontmatter(content: str, updates: dict[str, Any]) -> str` — YAML re-dump writer in `frontmatter.py`, the source of the orphan-side churn.
-- `remove_frontmatter_keys(content: str, keys: Iterable[str]) -> str` — the existing byte-preserving frontmatter writer in `frontmatter.py` (delete-only), the shape a line-level upsert has to match.
-- `_section_bounds(content: str, heading_re: re.Pattern[str]) -> tuple[int, int] | None` — local to `link_epics.py`; ends a section only at the next `^##\s`.
+
+Proposed signatures for implementation (documentation notation):
+
+```python
+apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path, child_title: str | None = None) -> None
+_append_child_to_epic_children(content: str, child_id: str, child_title: str) -> str | None
+upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str
+```
+
+`cmd_link_epics` passes `IssueInfo.title`. Existing direct apply calls remain supported by an optional title argument; fallback reads frontmatter title, then an H1 title, then filename stem. In particular, a title-less `# FEAT-1` H1 is valid input, not an exception. Collapse title whitespace to one line so a wrapped frontmatter title cannot inject another bullet or heading.
 
 ### Call Path
-`cmd_link_epics` -> `apply_assignment` -> `update_frontmatter` (orphan) and the Children-bullet writer (EPIC); `create_issue` -> `_append_child_to_epic_children` and `scaffold_epic` -> `_append_child_to_epic_children` share the EPIC-side writer today.
+
+`cmd_link_epics` → `propose_assignments` → first proposal per orphan → `apply_assignment` → preserving scalar upsert + shared Children helper → changed-file atomic writes.
+
+`create_issue` and scaffold retain their calls to `_append_child_to_epic_children`.
 
 ### Decision Rules
-- A top-level child bullet is a line matching `^- \*\*(BUG|FEAT|ENH)-\d+\*\*` inside the `## Children` section.
-- A continuation line of such a bullet is any directly following non-blank line that begins with whitespace; the bullet ends at the first blank line, next top-level bullet, `###`+ heading, or `## ` heading.
-- The new bullet goes immediately after the last top-level child bullet and its continuation lines, with no blank line inserted between them, and always before any `###`+ subsection or trailing prose in the section.
-- No qualifying bullet in an existing `## Children` section (empty or prose-only): the placement is unspecified by the issue and must be pinned by the implementer with a test.
-- No `## Children` heading: skip the EPIC-side body write (Option A, selected); the orphan's `parent:`/`epic:` frontmatter alone carries the link, and no section is ever appended at end of file.
-- Orphan frontmatter: only the `parent:` and `epic:` lines may differ byte-for-byte after apply; an existing `parent:`/`epic:` line (including null-valued) is replaced in place, an absent one is added inside the canonical block's closing fence.
 
-### Codebase Research Findings
+- **Section selection**: choose the first non-fenced, unindented H2 whose text is exactly `Children`, allowing horizontal whitespace between `##` and the name and after it. Stop at the next non-fenced H1/H2. Do not treat whitespace as permission to consume another physical line. Other Children headings, aliases, and suffixed headings are left alone; no matching heading means skip.
+- **Placement**: before the first non-fenced H3+ heading, find the last eligible top-level `-`/`*` child bullet, with optional bold wrappers and a whole BUG/FEAT/ENH/EPIC ID. Introductory prose and loose-list spacing may precede it. Insert after that bullet and its complete continuations, before its trailing separator blanks. Continuations are lines indented by at least two spaces or a tab, including nested items and blank lines followed by another indented continuation; stop at an unindented nonblank line or heading. Do not split an existing item, including a lazy continuation paragraph: if its extent is ambiguous, reject the pair before writing rather than guessing. If there are no eligible bullets before H3, insert at the beginning of the section before existing prose/H3 content.
+- **Spacing**: no new blank line between adjacent child bullets; preserve existing separation from trailing notes/headings, adding one blank line if necessary to keep following prose/headings from becoming a lazy continuation of the new item. Never insert inside a fenced block or between a bullet and its continuation. Preserve LF/CRLF and whether the file ends with a newline. Match backtick and tilde fences by character and closing length using the existing fence utilities.
+- **Duplicate detection**: only an actual whole-ID child entry inside the selected Children section counts, including recognized bullet or per-child H3–H6 forms. Ignore fenced examples and mentions elsewhere. A prefix such as `FEAT-1` inside `FEAT-10` or `FEAT-1suffix` does not count.
+- **Winner selection**: preserve the existing `(-score, orphan_id, epic_id)` ordering and apply the first pair for each orphan. Equal-score ties therefore follow the existing EPIC-ID order. `applied` lists only selected successful pairs; proposal output still lists every alternative.
+- **Existing relationship**: absent/null parent or epic may be filled; a value already equal to the selected EPIC is retained in its original representation. Any non-null conflicting parent/epic rejects that pair before either file changes, names the orphan and conflicting field, and causes a nonzero command result. Do not implicitly reparent. Do not fall through to a lower-ranked alternative after a rejected winner.
+- **Frontmatter safety**: the new helper supports only single-line scalar assignment entries, including null/empty values. Reject multiline/block/collection values and duplicate assignment keys rather than changing only their first line. A same-value reapply preserves the original quote/comment representation. No frontmatter means prepend a minimal block while preserving the body. Unterminated/malformed blocks or conflicts reject the pair before writing. Re-parse the proposed text using the existing merged semantics and require both parent and epic to equal the selected ID; a later block containing null can shadow an update just as a different parent can. Keep exact issue-ID identity rather than silently equating padded IDs, and do not rely on YAML's last-key-wins behavior.
+- **Writes**: read without universal-newline conversion; use `atomic_write(..., shared_mode=True)` for changed existing files. Compute/validate both texts first; unchanged texts produce no write. Preserve raw newline offsets in the narrow helper without changing general parser precedence. Write orphan then EPIC; if the second write fails, report a nonzero error naming the partial pair. Reapply must repair a missing EPIC bullet even when both frontmatter values were already correct.
 
-_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+## Integration Map
 
-- **Decision-rule recognizer scope is contested**: the Decision Rules' child-bullet pattern (`^- \*\*(BUG|FEAT|ENH)-\d+\*\*`) is narrower than `epic_consistency._BODY_BULLET_RE`/`_BODY_HEADING_RE` (`epic_consistency.py:34,41`), which also accept `*` bullets, unbolded IDs, `EPIC-` IDs, and `### ID` per-child headings. The implementer must decide knowingly whether the placement rule follows the narrow pattern or the consistency checker's, and pin the choice with a test using a non-conforming list (e.g. an unbolded or `EPIC-` child) since the "no qualifying bullet" placement is already flagged as unspecified.
-- **Heading-match rule is open**: first-match (`_CHILDREN_HEADING_RE.search`, `create.py`) vs last-match and fence-aware (`issue_parser._section_body_with_offset`, `issue_parser.py:450`) change which `## Children` receives the bullet when a document has more than one; the rule chosen applies to `create --parent` and `scaffold-epic` too if the helper is shared.
-- **Sharing location**: `apply_assignment` imports lazily inside its body (`link_epics.py` convention) and `create.py` is not imported there today; whichever module owns the shared writer, the import direction must not make `create.py` ↔ `link_epics.py` circular (`scaffold_epic.py` already imports from `create.py`).
+### Files to Modify
+
+- `scripts/little_loops/cli/issues/link_epics.py` — title plumbing, scoped duplicate handling, preflight/conditional writes, and one-winner apply bookkeeping.
+- `scripts/little_loops/cli/issues/create.py` — shared Children helper's placement, fence awareness, entry recognition, and source preservation.
+- `scripts/little_loops/frontmatter.py` — add scalar upsert; reuse `_iter_frontmatter_blocks` and `_canonical_frontmatter_block` selection semantics without changing general YAML-dump behavior.
+
+### Dependent Files
+
+- `scripts/little_loops/cli/issues/scaffold_epic.py` imports the create helper; retain its signature and skip behavior.
+- `scripts/little_loops/mcp_server/tools.py` reaches the helper through `create_issue`; no MCP API change.
+- `scripts/little_loops/cli/issues/epic_consistency.py` reads the resulting bullet format. Its `fix_epic` writer and missing-heading behavior stay out of scope.
+- `scripts/little_loops/issues/prose_deps.py` scans child titles/continuations; keep existing title-based subject attribution working.
+- BUG-3739 changes upstream candidate filtering and payload reporting in the same command. Coordinate edits and test the combined output; neither fix requires the other to land first.
+
+### Tests
+
+- `scripts/tests/test_link_epics_cli.py` — actual bullet content, body mentions versus membership, first-winner/tie behavior, existing-parent conflicts, missing heading, exact-ID/fence cases, and repeated apply with no writes. Replace whole-file ID-count assertions with assertions on actual child entries; valid titles may repeat an ID.
+- `scripts/tests/test_ll_issues_create.py` and `scripts/tests/test_ll_issues_scaffold_epic.py` — shared-helper placement, intro prose before bullets, loose lists, nested/paragraph continuations, ambiguous lazy continuations, prose-only separation, no-heading skip, multi-child creation, and final-newline preservation.
+- `scripts/tests/test_frontmatter.py` — absent/null/existing scalar keys, same-value representation, comments/flow lists/wrapped titles/Unicode, multi-block precedence (including later-block null shadowing), multiline/collection/malformed/duplicate metadata rejection, no-frontmatter, and LF/CRLF cases. Apply tests also cover a failed second write and recovery by reapplying the pair.
+- `scripts/tests/test_epic_consistency.py`, `scripts/tests/test_link_epics_skill.py`, and `scripts/tests/test_prose_deps.py` — consumer regression coverage. Assert observable output; a source-text ban on the placeholder is unnecessary.
+
+### Documentation
+
+Update `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/COMMANDS.md`, and `skills/link-epics/SKILL.md` for one-winner apply, title bullets, no-heading skip, and conflict/reapply behavior. The skill currently promises every above-threshold pair is applied; revise that promise. Do not claim a score threshold can represent an arbitrary user-selected subset. Keep this issue to truthful documentation of the existing CLI; adding pair-selection flags is separate work.
+
+Check child-wiring instructions in `skills/capture-issue/SKILL.md` for agreement with the selected skip/placement contract. Regenerate affected host mirrors with `ll-adapt` when skill text changes; use the repository's mirror gates. Add API documentation for the new scalar helper.
+
+### Configuration
+
+No new setting, dependency, or host invocation.
 
 ## Implementation Steps
 
-1. `link-epics --apply` writes `- **ID** — <title> (open)`, with the title from the orphan's `IssueInfo`, and `(added by link-epics --apply)` no longer appears under `scripts/`. Verified by a test that reads the EPIC after `apply_assignment()`/the CLI `--apply` path, plus a source-text pin on `link_epics.py` in the style of `test_git_operations.py:306`.
-2. Child-bullet placement honors the Decision Rules for: a `###` subsection after the list, a wrapped multi-line last bullet, an existing flat list (no blank line added), and a missing `## Children` heading. Each shape has its own case beside `TestApplyAssignment` (`test_link_epics_cli.py:152`).
-3. If the EPIC-side writer is shared with `create --parent` and `scaffold-epic`, `test_ll_issues_create.py:107`/`:115` and `test_ll_issues_scaffold_epic.py` keep passing and the trailing-newline state of the EPIC file is unchanged.
-4. Orphan frontmatter is byte-identical outside `parent:`/`epic:` (flow-style `goals: [2]` and a long wrapped `title:` asserted via before/after `read_text()`/`read_bytes()` comparison), including when the orphan's `parent:`/`epic:` keys are absent, null-valued, or already set by an earlier proposal in the same run.
-5. `python -m pytest scripts/tests/test_link_epics_cli.py scripts/tests/test_ll_issues_create.py scripts/tests/test_ll_issues_scaffold_epic.py scripts/tests/test_epic_consistency.py scripts/tests/test_frontmatter.py scripts/tests/test_link_epics_skill.py` passes, followed by the full `python -m pytest scripts/tests/`; `docs/reference/API.md:1556`, `skills/link-epics/SKILL.md:97`, and `docs/reference/COMMANDS.md:469` still describe the final behavior (re-run the mirror gates if `skills/` or `README.md` change).
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `scripts/tests/test_link_epics_cli.py` — give any new `apply_assignment`/`EpicProposal` parameter a default so `TestApplyAssignment.test_writes_parent_and_epic_fields` and `test_idempotent_reapply` keep passing; keep the bullet title free of the orphan ID (`.count("FEAT-1") == 1`)
-- Add `TestUpsertFrontmatterLines` (or equivalent) to `scripts/tests/test_frontmatter.py` — line-level upsert via `_iter_frontmatter_blocks`/`_canonical_frontmatter_block`, covering absent, existing, null-valued, multi-block (`_DOUBLE_BLOCK`), no-frontmatter and CRLF inputs
-- Add direct `_append_child_to_epic_children` tests to `scripts/tests/test_ll_issues_create.py` (returns `None` without heading, `###`/continuation placement, trailing newline) — the shared helper also reaches MCP `create_issue` (`mcp_server/tools.py:268`), so run `ll-issues create --parent` and scaffold-epic tests together with the link-epics suite
-- Keep `EpicProposal.to_dict()` at `{orphan_id, epic_id, score, tier}` (or update `skills/link-epics/SKILL.md` "A1" and `docs/reference/API.md` `EpicProposal` block); update `apply_assignment` Parameters table in `docs/reference/API.md` if the signature changes
-- Update `docs/reference/CLI.md` (`ll-issues link-epics` `--apply` row and idempotency paragraph), `docs/reference/COMMANDS.md` (`/ll:link-epics` Output), `skills/link-epics/SKILL.md` ("A2"/"A3") for title bullets, skip-on-no-heading, and byte-preserving orphan write; re-run `ll-adapt --host <gemini|kimi-code|qwen> --apply` if `skills/` changes
-- Decide knowingly on `skills/capture-issue/SKILL.md` "#### 2. Append child to `## Children` section" (end-of-section append / insert-before-the-footer-section — the latter is rejected Option B's placement, already present in that skill's existing manual path), which conflicts with the new placement rule and Option A
-- Leave `epic_consistency.fix_epic` and `test_epic_consistency.py:367` untouched (sibling defect, separately scoped); if pulled in, that test must be rewritten
+1. Add temporary-tree regressions for the observed placement/churn/duplicate defects and two-EPIC contradictory assignment.
+2. Improve the existing shared Children helper according to the Decision Rules and wire apply's title/duplicate behavior to it.
+3. Add preserving scalar upsert and preflight both sides; reject conflicting metadata, preserve modes/newlines, and skip identical writes.
+4. Keep all proposed alternatives but apply only the first ranked pair per orphan. Update result bookkeeping and user-facing contracts.
+5. Run the focused tests above, then the authoritative `python -m pytest scripts/tests/`, lint and type checks for changed Python, and mirror checks when skill text changes.
 
 ## Acceptance Criteria
 
-- [ ] Applied bullets carry the child title; the placeholder string is gone from the codebase.
-- [ ] Tests in `test_link_epics_cli.py` for: a `###` subsection after the list, a wrapped multi-line last bullet, a missing `## Children` heading, and an existing child list (no blank line added).
-- [ ] An orphan with flow-style `goals:` and a long `title:` keeps both lines byte-identical after apply.
+- [ ] Applied bullets use the actual title in the standard `(open)` form; no placeholder is emitted. Frontmatter/H1/filename fallbacks and a title containing its own ID are covered.
+- [ ] Flat, empty, prose-only, wrapped/multi-paragraph, subsection, noncanonical bullet, sub-EPIC, fenced example, duplicate-heading, and absent-heading shapes obey the specified placement/skip rules without disturbing existing content.
+- [ ] Exact child entries suppress duplicates; prose/frontmatter/other-section mentions and partial IDs do not. Reapply leaves both files byte-identical and invokes no writer for unchanged content.
+- [ ] Orphan bytes outside updated parent/epic entries, LF/CRLF style, final newline, and existing file modes are preserved. Null, missing, already-correct, malformed, duplicate-key, and multi-block inputs have explicit tests.
+- [ ] With multiple matches, only the highest-ranked EPIC is applied/listed for each orphan; ties are deterministic and all alternatives remain in `proposals`. Existing conflicting relationships cause no writes for the rejected pair and a visible nonzero result.
+- [ ] Create/scaffold/MCP child wiring retains the no-heading contract; the focused regression suites and full local test suite pass, with docs and skill mirrors describing the final behavior.
+
+## Impact
+
+- **Priority**: P3 — normal issue organization is affected; metadata churn and contradictory parent links make repeated automated application unreliable.
+- **Effort**: Medium — two preserving text transforms plus command-level selection and consumer tests; no new framework is needed.
+- **Risk**: Medium — a shared writer affects create/scaffold, and apply's parent selection changes. Explicit parity rules and end-to-end fixtures bound those risks.
+- **Breaking Change**: Yes, limited to defective apply behavior: multiple alternatives no longer all write, and existing conflicting relationships are rejected. Proposal payload fields and scoring stay compatible.
+
+## Review Notes
+
+2026-10-05: Reconciled the earlier refine/wire/decision findings into one directive specification. Verified on `main`; temporary-file reproductions confirmed misplaced placeholders, lost flow style/comments, prose-mention suppression, and lowest-score overwrite. They did not confirm the reported wrapped-bullet split. Existing relevant suites passed: **235 tests** across link-epics, create, scaffold, consistency, frontmatter, and skill tests. These establish a baseline, not proof that the proposed fix exists.
+
+Used `/ll:advise --signal user_requested --host claude-code --model opus` for critique (confidence **0.76**). Adopted its prose-separation, merged-result validation, scalar-only safety, and partial-write tests. Kept the selected missing-heading skip and bounded single-winner fix. Advisor dissent concerned ties, CRLF scope, and whether the other issue should depend on this one: retain deterministic existing tie order, preserve bytes at these write sites, and keep the two issues independently implementable. Numeric-ID normalization and a broad per-proposal outcome enum are outside this change.
 
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
 
-
 ## Session Log
+- `/ll:ready-issue` - 2026-10-05T20:18:56 - `3e2de759-3a68-4bde-a95a-631efbd7d020.jsonl`
 - `/ll:verify-issues` - 2026-10-05T20:12:03 - `a57c7663-4e50-4ae2-b421-f80e0bc409b6.jsonl`
 - `/ll:verify-issues` - 2026-10-05T19:31:15 - `c39a9b88-efc2-4837-8447-c4c6f8c5acb5.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-05T19:28:04 - `2e17f620-0f9e-4bd7-92e3-c417d5338f4a.jsonl`

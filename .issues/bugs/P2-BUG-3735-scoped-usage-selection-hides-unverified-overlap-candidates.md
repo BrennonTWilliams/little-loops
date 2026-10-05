@@ -20,6 +20,7 @@ blocks:
 - ENH-3675
 - ENH-3676
 relates_to:
+- BUG-3736
 - ENH-3730
 - ENH-3731
 - ENH-3732
@@ -40,6 +41,8 @@ A second review reproduced both cases and found that the pair SQL also disagrees
 
 A mixed-failure synthetic control also returned aggregate `overlap_unresolved` with reason `codex_live_scope_unknown`: the reason came from the first unknown group although another group's overlap won the status. Output narrowing must preserve a truthful reason from the winning visible status.
 
+The NULL-channel admission repair also exposes a consumer mismatch: `_compute_cache_rate_from_usage` builds `channels` with `row["channel"] or "unknown"`, while its `ObservationGroup` subtotals already use `row_channel`. Once a verified NULL-channel transcript reaches this reader, those two fields would disagree. Normalize that existing channel metadata as part of the compatibility control.
+
 ## Steps to Reproduce
 
 1. Create a temporary history database through `ensure_db`, then insert two synthetic complete measured observations: a Claude transcript with verified source host and session `session-a`, and a same-host live observation with no session identity. Use input/output/cache-read/cache-creation values 10/2/4/0 on each.
@@ -51,6 +54,8 @@ A mixed-failure synthetic control also returned aggregate `overlap_unresolved` w
 Compute ambiguity over the declared acquisition population before host/session output narrowing and before `since`/run filters. A missing/unverified host or session cannot establish that a possible opposite-channel counterpart lies outside the requested session. A host/session pair returns only rows with that verified pair; wildcard evidence influences coverage without leaking into that session's totals. Host-only output retains the existing host-attributed audit population (including unverified rows), rather than silently dropping completeness contributors. An ID-only call remains rejected. An explicitly declared logical `channel=` acquisition scope, once ENH-3731 adds it, is applied before ambiguity; it is a population choice, not proof of cross-channel disjointness.
 
 Resolve logical channels with `row_channel` for both acquisition and verified-pair output checks, and reuse `_verified_usage_identity` for pair admission after the existing schema gate. Live and rollout rows require `identity_basis='host_observed'`; transcript replay requires the verified source handle and session. A replay row with a session ID, `host_basis='handle'`, and a NULL channel value is a logical transcript, so it must not be discarded by the current SQL `channel IS NOT NULL` predicate. Identity admission does not qualify numeric provenance or waive Codex request/scope prerequisites; NULL/unknown provenance remains unqualified under the existing stored reader and ENH-3731.
+
+Existing stored-session `channels` metadata and `channel_subtotals` must agree on that logical transcript channel; preserve the stored NULL value rather than rewriting history. BUG-3736's retained-source ingestion check remains a separate admission check: it must not introduce a source-path acquisition filter here or hide retained wildcard overlap evidence. Neither bug requires the other to land first; use a directly inserted retained-evidence fixture for this selector's independent regression, and add the production lifecycle/reader integration control once both repairs are present.
 
 Make the legacy schema rule explicit: pair selection preserves the current schema gate requiring `host`, `host_basis`, `session_id`, `channel` and `identity_basis` columns; an absent column keeps `unknown/no_verified_identity_columns`. Once that gate passes, NULL channel values resolve through `row_channel`; a NULL `identity_basis` prevents live/rollout admission but does not reject a handle-attributed transcript. Host-only selection without a `host` column keeps `unknown/no_host_column`. Optional-column NULL projection remains available to unscoped/host-only acquisition. Session-ID-only calls still raise `ValueError`. Supporting older pair schemas is a separate compatibility change, not part of this repair.
 
@@ -67,13 +72,13 @@ Host/session selection must not certify usage by hiding an unidentified possible
 ### Files to Modify
 
 - `scripts/little_loops/history_reader/usage.py` — separate acquisition and output narrowing; preserve identity verification and annotations.
+- `scripts/little_loops/cli/ctx_stats.py` — normalize existing stored-session channel metadata with the helper from `token_provenance.py` so NULL-channel compatibility matches the shared selector/subtotals.
 - `scripts/tests/test_enh3543_usage_coverage.py` — sessionless same-host live and unknown-host wildcard controls; filter-order tests.
 - `scripts/tests/test_enh3656_stored_cache_rate.py`, `scripts/tests/test_enh3549_codex_stored_ctx_stats.py` — drive actual session readers where the existing fixture helpers apply; retain text/JSON as-of behavior and empty-vs-zero distinctions.
 - `docs/reference/API.md`, `docs/reference/CLI.md` — clarify that host/session selection does not hide possible overlap and may make previously displayed rates unavailable.
 
 ### Dependent Files
 
-- `scripts/little_loops/cli/ctx_stats.py` — stored reader consumes annotations and existing bounded coverage reasons.
 - `scripts/little_loops/session_store/queries.py` — snapshot remains on the shared selector.
 
 ### Similar Patterns
@@ -90,9 +95,11 @@ Host/session selection must not certify usage by hiding an unidentified possible
 - Logical transcript-only acquisition (when ENH-3731 lands) excludes live/rollout as declared, without altering default cross-channel behavior.
 - Scoped audit rows/counts never include a different host/session's usage merely because it influenced coverage.
 - Legacy NULL-channel replay with verified handle attribution survives pair output as a logical transcript; absent required schema columns keep the existing unknown diagnostics. Host-only output keeps unverified audit contributors and cannot certify a complete subset by dropping them.
+- Drive that NULL-channel row through the real stored-session reader and assert `channels=["transcript"]` agrees with the transcript subtotal; a NULL provenance control still has no qualified numeric rate.
 - Test absent `channel` and absent `identity_basis` separately and together, as well as NULL values on the current schema. Absent schema columns fail closed; live/rollout lacking host-observed identity never enter pair output. Verified rollout identity with an invalid request/turn remains audit-only under the existing classifier.
 - Default global conservatism is deliberate: an unverified acquired row can keep an otherwise verified scoped group unresolved even outside that host/session. Fully verified different-session controls remain independent; restoring availability with verified-host wildcard domains belongs to ENH-3730.
 - Validate returned `CoverageGroup` rows, annotations and per-channel event/component counts, not just the flattened row count. Empty selections, mixed visible failure statuses, repeated calls and insertion-order permutations preserve status/reason semantics without leaking hidden audit rows.
+- Retained unverified opposite-channel evidence still taints scoped coverage without leaking its hidden row/count/subtotal into the selected session. Insert retained usage without raw directly for this independent selector regression; once BUG-3736 lands, exercise production pruning and retained-reader admission too. Neither raw-source absence nor that admission check may remove stored ambiguity evidence.
 
 ### Documentation
 
@@ -120,7 +127,7 @@ Stored usage → `select_usage_coverage` acquisition candidates (logical channel
 
 1. Reproduce both synthetic scoped-certification cases, the rollout/helper disagreement, and NULL-channel/absent-schema controls in selector tests.
 2. Separate acquisition, coverage classification and output selection; reuse the identity helpers after the existing schema gate, and preserve the declared channel scope in either landing order with ENH-3731.
-3. Exercise stored-session readers and source/snapshot controls, including scoped group counts and empty output; document the conservative availability change.
+3. Exercise stored-session readers and source/snapshot controls, including logical channel metadata, scoped group counts and empty output; document the conservative availability change. Keep BUG-3736's source admission separate from this selector's acquisition population.
 4. Run `python -m pytest scripts/tests/`.
 
 ## Impact
@@ -140,7 +147,7 @@ Stored usage → `select_usage_coverage` acquisition candidates (logical channel
 
 - [ ] Sessionless same-host and unknown-host opposite-channel candidates cannot be hidden by host/session selection; unresolved coverage and bounded reasons reach the real stored reader.
 - [ ] Host/session arguments constrain returned rows and attribution, not the completeness of cross-channel evidence; identity-only calls still fail and unverified attributed rows cannot enter a verified session's totals.
-- [ ] Pair output uses logical channel identity for verified legacy NULL-channel transcripts; absent required schema columns keep the existing fail-closed diagnostics. Host-only output retains unverified host-attributed audit contributors; legacy/unknown provenance is never promoted by the identity repair.
+- [ ] Pair output uses logical channel identity for verified legacy NULL-channel transcripts, and real stored-session channel labels/subtotals agree; absent required schema columns keep the existing fail-closed diagnostics. Host-only output retains unverified host-attributed audit contributors; legacy/unknown provenance is never promoted by the identity repair.
 - [ ] After the existing five-column schema gate, pair admission agrees with `_verified_usage_identity` for every logical channel: live/rollout require host-observed identity, transcript permits NULL `channel`/`identity_basis` values, and request/scope qualification remains separate.
 - [ ] Coverage is computed before host/session output narrowing and report-window/run filters; an ENH-3731 logical channel acquisition scope remains a distinct earlier population choice.
 - [ ] Fully verified disjoint controls, same-session unresolved controls, scoped group subtotals/counts, empty output, matching status/reason, source/snapshot parity, historical retention and text/JSON unavailable-vs-zero behavior pass without insertion-order-dependent results.
@@ -166,3 +173,4 @@ Stored usage → `select_usage_coverage` acquisition candidates (logical channel
 - `/ll:capture-issue` - 2026-10-05T17:36:12 - `b20687c5-3662-40c9-ac0d-0a4ae5fef8fe.jsonl`
 - Pre-implementation epic review - 2026-10-05 - Captured the scoped overlap defect after Opus critique (confidence 0.74) and synthetic same-host/sessionless and no-host probe reproduction. Full selection is unresolved while host/session output narrowing falsely certifies it; ENH-3730 remains separate availability work.
 - Pre-implementation issue review - 2026-10-05 - Reproduced both scoped-certification defects in temporary databases; confirmed pair SQL admits an identity-unverified rollout to audit output and excludes verified logical transcripts with NULL channel. A mixed-failure control also paired overlap status with an unrelated unknown reason. Added shared-helper admission after the existing schema gate, scoped group/count and deterministic status/reason controls, and the six declared delivery-blocking edges. Opus consult (`/ll:advise`, `claude-opus-5-5`, confidence 0.78) clarified NULL-value versus absent-schema scope; older pair-schema support is deferred. Existing focused reader/selector/lifecycle/version tests passed (86 tests); the new cases remain implementation regression requirements.
+- Follow-up implementation-readiness review - 2026-10-05 - Kept the already specified conservative global ambiguity policy; Opus (`/ll:advise`, `claude-opus-5-5`, confidence 0.72) found no blocking design gap. Added the latent stored-reader channel-label mismatch exposed by NULL-channel admission, a retained-evidence integration control with BUG-3736, and explicit separation of retained-source admission from overlap acquisition. Existing focused selector/reader/refresh tests passed (38 tests); no implementation or new regression-test coverage is claimed.
