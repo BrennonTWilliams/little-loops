@@ -8,6 +8,11 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T01:33:28Z'
 parent: EPIC-3693
+blocked_by:
+- ENH-3677
+relates_to:
+- ENH-3728
+- ENH-3700
 ---
 
 # ENH-3729: Fail-closed failure routing and atomic enrich publish for the sft-corpus loop
@@ -30,7 +35,7 @@ In `scripts/little_loops/loops/sft-corpus.yaml`, `stage` masks failure with `2>/
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+A masked failure in `sft-corpus` silently yields an empty or partially enriched training corpus that downstream states treat as success; failing closed makes the loop's result trustworthy and keeps the previous good `enriched.jsonl`.
 
 ## Proposed Solution
 
@@ -48,7 +53,9 @@ Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shel
 ## Program Design
 
 ### Signatures
-- `stage` / `enrich` states in `sft-corpus.yaml` gain `on_error: corpus_failed`; new `corpus_failed` terminal failure state.
+- `stage(output: Path) -> Path` — `sft-corpus.yaml` state; non-zero `ll-messages` status routes via `on_error: corpus_failed`.
+- `enrich(raw: Path) -> Path` — `sft-corpus.yaml` state; publishes `enriched.jsonl` atomically, `on_error: corpus_failed`.
+- `corpus_failed() -> None` — new terminal failure state (`terminal: true, failure: true`).
 
 ### Call Path
 - `stage` -> `ll-messages --sft-format` -> `enrich` -> filter -> publish; any non-zero status -> `corpus_failed`.

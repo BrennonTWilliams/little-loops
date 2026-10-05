@@ -8,6 +8,13 @@ discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T01:33:28Z'
 parent: EPIC-3693
+blocked_by:
+- ENH-3677
+- ENH-3657
+relates_to:
+- ENH-3729
+- ENH-3700
+- ENH-3658
 ---
 
 # ENH-3728: Degrade verdicts for history readers under a remote backend
@@ -55,8 +62,8 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/history.py` (`summary`), `decisions.py` / `cli/decisions.py`, `user_messages.py` / `cli/messages.py`, `skills/improve-claude-md/SKILL.md` (+ mirrors), `scripts/little_loops/loops/sft-corpus.yaml`.
-- Anchors drift: re-grep every `resolve_history_db(` site (`decisions.py:596`, `user_messages.py` ~`:1227`).
+- `scripts/little_loops/cli/history.py` (`summary`), `scripts/little_loops/decisions.py` / `scripts/little_loops/cli/issues/decisions.py`, `user_messages.py` / `cli/messages.py`, `skills/improve-claude-md/SKILL.md` (+ mirrors), `scripts/little_loops/loops/sft-corpus.yaml`.
+- Anchors drift: re-grep every `resolve_history_db(` site (`scripts/little_loops/decisions.py:596`, `user_messages.py` ~`:1227`).
 
 ### Tests
 - Degrade tests keep stdout unchanged with exactly one `note:` line and no token; default-`auto` JSONL fallback; `ll-messages` default-`auto` regression (`extract_conversation_turns` currently reaches the remote pre-resolve); `"No history.db found"` invariant (`test_bug_3216_telemetry_digest_invocations.py`); `sft-corpus` `stage` reader flag (`test_loops_sft_corpus.py`).
