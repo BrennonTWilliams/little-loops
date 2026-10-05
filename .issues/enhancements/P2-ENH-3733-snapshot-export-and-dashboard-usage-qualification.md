@@ -16,6 +16,7 @@ relates_to:
 - ENH-3543
 - ENH-3730
 - BUG-3735
+- ENH-3748
 verify_verdict: VALID
 confidence_score: 70
 outcome_confidence: 71
@@ -276,13 +277,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Scope Boundaries
 
-- **Out of scope:** qualification core, selectors and source readers (ENH-3731), quality (ENH-3732), a source-history migration, rewriting custom SQL, ENH-3730's gate redesign.
+- **Out of scope:** qualification core and source readers (ENH-3731), selector `channel=` scope (ENH-3748), quality (ENH-3732), a source-history migration, rewriting custom SQL, ENH-3730's gate redesign.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
-- ENH-3731 is open and `qualify_usage` / `UsageQualification` are absent from `scripts/`. It leaves `queries.py` edits to this issue; adding `channel=None` preserves the immediate baseline's coverage policy/population, allowing BUG-3735's intentional scoped-filter correction. The shared `ObservationGroup.channel_subtotals()` shape gains no `cost_usd`; snapshot costs use their own totals and qualification, so there is no shared-subtotal schema dependency to invent. This issue intentionally adds the chosen qualification columns and audit-table policy version. `test_usage_selection_chokepoint_gate.py` constrains SQL string constants naming token/cost columns beside `FROM usage_events`.
+- ENH-3731 is open and `qualify_usage` / `UsageQualification` are absent from `scripts/`. It leaves `queries.py` edits to this issue; ENH-3748's default `channel=None` preserves the immediate baseline's coverage policy/population, allowing BUG-3735's intentional scoped-filter correction. The shared `ObservationGroup.channel_subtotals()` shape gains no `cost_usd`; snapshot costs use their own totals and qualification, so there is no shared-subtotal schema dependency to invent. This issue intentionally adds the chosen qualification columns and audit-table policy version. `test_usage_selection_chokepoint_gate.py` constrains SQL string constants naming token/cost columns beside `FROM usage_events`.
 - Conventions in force (evidence, not templates): reason codes are plain lowercase snake_case literals with no shared enum or prefix (`history_reader/usage.py:_classify_coverage`, `token_provenance.py`); a retained export carries versions only as page stamps, never as an in-DB `meta` row (`cli/artifact/dashboard.py:schema_version_warning`); source-DB schema changes are append-only `_MIGRATIONS` entries paired with `SCHEMA_VERSION` (currently 58) and `schema_manifest.json`, guarded by `TestSchemaManifest` — computed snapshot columns need none of this. Two fixtures disagree: `test_enh3543_snapshot_usage.py::_source_db` uses real `ensure_db()` migrations and seeds native-ID sentinels; `test_feat3304_artifact_dashboard.py::_build_history_db` uses hand-written DDL without `source_path`/`identity_basis` — only the former can exercise the leak case.
 
 ## Confidence Check Notes

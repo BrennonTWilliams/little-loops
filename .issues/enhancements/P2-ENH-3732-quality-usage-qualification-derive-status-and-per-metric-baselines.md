@@ -14,6 +14,7 @@ blocked_by:
 - BUG-3736
 - ENH-3744
 - ENH-3745
+- ENH-3748
 relates_to:
 - ENH-3733
 - ENH-3730
@@ -45,7 +46,7 @@ Decomposed from ENH-3723: Canonical usage qualification across source and snapsh
 
 ## Expected Behavior
 
-- **Transcript scope:** quality requests `channel="transcript"` from the selectors (added in ENH-3731). Excluded live/rollout counterparts cannot change values, qualification or model-composition inputs. Within scope, unknown/partial/unresolved contributors stay as completeness contributors and the same coverage/qualification rules apply. Text/JSON and metric definitions state the transcript-only numerator, that Codex rollout/live work is excluded, and that the closed-issue denominator is unchanged.
+- **Transcript scope:** quality requests `channel="transcript"` from the selectors (added in ENH-3748). Excluded live/rollout counterparts cannot change values, qualification or model-composition inputs. Within scope, unknown/partial/unresolved contributors stay as completeness contributors and the same coverage/qualification rules apply. Text/JSON and metric definitions state the transcript-only numerator, that Codex rollout/live work is excluded, and that the closed-issue denominator is unchanged.
 - **Derive completeness:** `select_session_derive_status(conn, session_ids) -> dict[str, SessionDeriveStatus]` in `history_reader/usage.py`, read-only over committed `raw_events` and the member's `meta.usage_derive_version`/`usage_derive_raw_id`. It never stats source files, calls `usage_source_freshness`, requires source cursors or re-derives; it reuses the deriver's version constant. Every requested session gets a status (missing proof cannot omit a key). Dispositions:
 
   | Attributed-session evidence | Disposition |
@@ -262,7 +263,7 @@ _Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
 
 ## Scope Boundaries
 
-- **Out of scope:** qualification core and selectors (ENH-3731), snapshot/dashboard (ENH-3733), source-to-raw freshness, derive-algorithm changes and pruning/replay preservation (BUG-3736), re-deriving unknown transcript rows (promotion is forbidden), ENH-3730's gate redesign.
+- **Out of scope:** qualification core (ENH-3731), selector `channel=` scope (ENH-3748), snapshot/dashboard (ENH-3733), source-to-raw freshness, derive-algorithm changes and pruning/replay preservation (BUG-3736), re-deriving unknown transcript rows (promotion is forbidden), ENH-3730's gate redesign.
 
 ## Implementation Steps
 
@@ -304,7 +305,7 @@ _Added by `/ll:confidence-check` on 2026-10-04 (re-verified 2026-10-04: ENH-3731
 ### Concerns
 - Architecture: `derive_status: Mapping[...] | None` as an authoritative, fail-closed injected map has no precedent in `history_reader/`, `issue_history/` or `session_store/`; `SessionDeriveStatus` straddles the frozen/mutable result-type conventions.
 - Host diagnostic scope is resolved: retain and label the all-raw population per **Resolved review handoffs**; it cannot certify transcript usage. Earlier “decide whether” wording is historical, not an outstanding decision.
-- ENH-3731 is a required implementation prerequisite for `qualify_usage`/`channel=`. Keep the hard edge; the earlier wording about nullable numerators has been clarified so it cannot be mistaken for a scheduling exception.
+- ENH-3731 is a required implementation prerequisite for `qualify_usage`, and ENH-3748 for `channel=`. Keep the hard edge; the earlier wording about nullable numerators has been clarified so it cannot be mistaken for a scheduling exception.
 
 ### Gaps to Address
 - `blocked_by` ENH-3731 is `open`: `qualify_usage`, `UsageQualification` and the `channel=` selector scope do not exist in source (verified by grep of `history_reader/usage.py` and `issue_history/`). BUG-3736 additionally owns the reproduced prune/replay loss and pending-candidate retention. Complete both prerequisites before this reader's retained-history/derive-status integration; no new score is claimed.

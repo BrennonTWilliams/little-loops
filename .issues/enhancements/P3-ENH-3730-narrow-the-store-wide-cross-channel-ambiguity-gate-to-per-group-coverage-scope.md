@@ -17,6 +17,7 @@ relates_to:
 - ENH-3733
 - ENH-3543
 - BUG-3735
+- ENH-3748
 ---
 
 # ENH-3730: Narrow the store-wide cross-channel ambiguity gate to per-group coverage scope
@@ -37,7 +38,7 @@ BUG-3735 reproduced a distinct correctness defect: host/session SQL filtering dr
 
 Narrow ambiguity only where retained evidence proves that observations cannot overlap. Unresolved contributors remain in completeness accounting and blank any full aggregate containing them; selected-group subtotals are audit figures, not a full-store canonical total. No counts, timestamps, order, configured-host names or equal values establish native identity.
 
-Preserve the declared ENH-3731 logical `channel=` acquisition scope. Determine overlap from that population before host/session output selection and report filters (`since`, run attribution). The quality report's transcript-only acquisition is separate from a claim that transcript/live channels are disjoint.
+Preserve the declared ENH-3748 logical `channel=` acquisition scope. Determine overlap from that population before host/session output selection and report filters (`since`, run attribution). The quality report's transcript-only acquisition is separate from a claim that transcript/live channels are disjoint.
 
 ## Decision Needed
 
@@ -61,7 +62,7 @@ The only admissible narrowing policy is conservative potential-overlap domains:
 
 ### Signatures
 
-- `select_usage_coverage(conn, *, since=None, require_run_id=False, host=None, session_id=None, channel=None) -> CoverageSelection` — the `channel` argument is ENH-3731's planned acquisition scope; keep its semantics in either landing order. Refine only ambiguity classification after the decision.
+- `select_usage_coverage(conn, *, since=None, require_run_id=False, host=None, session_id=None, channel=None) -> CoverageSelection` — the `channel` argument is ENH-3748's planned acquisition scope; keep its semantics in either landing order. Refine only ambiguity classification after the decision.
 - `_verified_usage_identity`, `_coverage_key`, `_classify_coverage` in `history_reader/usage.py` — reuse existing verification and unknown/unresolved prerequisites; do not treat key separation as proof against wildcard rows.
 
 ### Call Path
@@ -103,7 +104,7 @@ The only admissible narrowing policy is conservative potential-overlap domains:
 ## Implementation Steps
 
 1. Record the implement/defer/cancel decision using the current distribution and a representative recovered-group fixture; specify which aggregate actually benefits.
-2. If approved, implement conservative summaries and compose with BUG-3735/ENH-3731 filter order in either landing order.
+2. If approved, implement conservative summaries and compose with BUG-3735/ENH-3748 filter order in either landing order.
 3. Drive source/snapshot/session consumers through wildcard, verified-disjoint, unresolved and filtered populations; document expected remaining blanks.
 4. Run `python -m pytest scripts/tests/`.
 

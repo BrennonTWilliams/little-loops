@@ -35,6 +35,12 @@ relates_to:
 - ENH-3745
 - ENH-3746
 - ENH-3747
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # BUG-3736: Rebuild erases replay usage after raw retention pruning
@@ -200,8 +206,24 @@ Reuse stored usage observations, source/raw links, logical observation keys and 
 
 **Open** | Created: 2026-10-05 | Priority: P1
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-05_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Concerns
+- Marker shape is still an open Step 1 choice (keyed row vs. reuse of `meta`/usage link columns); `SCHEMA_VERSION` is 58 today, so confirm no other in-flight issue claims the next bump before landing the migration.
+
+### Outcome Risk Factors
+- Deep, cross-module change: transactional `prune` rewrite, schema migration with three legacy-seeding rules, and guards in four destructive paths (`rebuild`, both `_derive_usage_incremental_conn` deletes, `refresh_raw_events`). Land in the Step order (reproductions and marker shape first) and keep each guard its own commit.
+- Wide blast radius: 11 issues are `blocks`-ed on this, `rebuild` has ~13 production call sites, and `prune` ~30 references; a held-source regression would silently stall every local-editable project. Run the full `python -m pytest scripts/tests/` plus the rebuild fingerprint gate after each guard.
+- Over-holding trades storage for safety; verify the dry-run/apply parity and "held rows counted once" controls early.
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-05T20:36:15 - `7ae7d567-c248-415c-a7a3-57496874466d.jsonl`
 - `/ll:advise` - 2026-10-05 - Opus (`claude-opus-5-5`, confidence 0.75) scope review: bundled three defects (usage loss, freshness, reader admission). Rewritten as Stage 1 (whole-source hold, four-path guard, atomic prune, legacy seeding, no usage-version bump); split ENH-3744..3747; made ENH-3671-3676 `blocked_by` this issue; removed ENH-3732 from `relates_to`. Dropped as moot: Codex supporting-context strategy, allocation-vs-chronology rules, accepted path spellings. Confidence scores reset; rerun `/ll:confidence-check`.
 - `/ll:confidence-check` - 2026-10-05T20:19:00 - `3e2de759-3a68-4bde-a95a-631efbd7d020.jsonl`
 - `/ll:capture-issue` - 2026-10-05T18:25:26 - `e0d3fb45-7fc3-4e7a-a2c8-9ad8bfdb517e.jsonl`
