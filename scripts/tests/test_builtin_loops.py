@@ -3138,7 +3138,7 @@ class TestRefineToReadyDispatch:
         "VERIFY:CLAIMS_OUTDATED": "check_claim_correction_budget",
         "VERIFY:other": "check_gate_refine_limit",
         "HEDGES": "check_hedge_attempts",
-        "PLACEHOLDERS": "check_gate_refine_limit",
+        "PLACEHOLDERS": "check_placeholder_format_fallback",
         "ACCEPTANCE_CRITERIA": "check_reconcile_limit",
         "DESIGN": "check_gate_refine_limit",
         "_": "mark_evidence_absent_infra",

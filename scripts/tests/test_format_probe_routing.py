@@ -56,3 +56,40 @@ def test_no_gaps_emits_zero(tmp_path: Path, state: str) -> None:
 def test_probe_failure_fails_open(tmp_path: Path, state: str) -> None:
     out, _err, _ctr = _run(state, tmp_path, "not json", "0")
     assert out == "0"
+
+
+class TestPlaceholderFormatFallback:
+    """BUG-3740: PLACEHOLDERS spends the one shared format-issue fallback first."""
+
+    STATE = "check_placeholder_format_fallback"
+
+    def _states(self) -> dict:
+        return yaml.safe_load((LOOPS / "refine-to-ready-issue.yaml").read_text())["states"]
+
+    def test_counter_unspent_arms_and_emits_one(self, tmp_path: Path) -> None:
+        out, _err, ctr = _run(self.STATE, tmp_path, "", "0")
+        assert out == "1"
+        assert ctr == "1"
+
+    def test_counter_missing_is_unspent(self, tmp_path: Path) -> None:
+        out, _err, ctr = _run(self.STATE, tmp_path, "", None)
+        assert out == "1"
+        assert ctr == "1"
+
+    def test_counter_spent_emits_zero_and_leaves_counter(self, tmp_path: Path) -> None:
+        out, _err, ctr = _run(self.STATE, tmp_path, "", "1")
+        assert out == "0"
+        assert ctr == "1"
+
+    def test_garbage_counter_fails_closed(self, tmp_path: Path) -> None:
+        out, _err, _ctr = _run(self.STATE, tmp_path, "", "oops")
+        assert out == "0"
+
+    def test_routes(self) -> None:
+        state = self._states()[self.STATE]
+        assert state["on_yes"] == "format_issue_post"
+        assert state["on_no"] == "check_gate_refine_limit"
+        assert state["on_error"] == "check_gate_refine_limit"
+
+    def test_format_issue_post_rejoins_gate_band(self) -> None:
+        assert self._states()["format_issue_post"]["next"] == "clear_verify_verdict"

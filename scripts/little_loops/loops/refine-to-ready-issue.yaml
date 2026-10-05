@@ -27,7 +27,9 @@ category: issue-management
 #       check_gate_refine_limit, since refine_followup cannot fix a stale claim)
 #       → correct_claims (/ll:verify-issues --auto --from-evidence) → normalize_structure
 #     HEDGES                     → check_hedge_attempts
-#     PLACEHOLDERS, DESIGN       → check_gate_refine_limit (BUG-3551)
+#     PLACEHOLDERS               → check_placeholder_format_fallback (BUG-3740: the one shared
+#       /ll:format-issue fallback fills template placeholders; spent → check_gate_refine_limit)
+#     DESIGN                     → check_gate_refine_limit (BUG-3551)
 #     ACCEPTANCE_CRITERIA        → check_reconcile_limit (ENH-3248)
 #     _ / _error (selector exit 2) → mark_evidence_absent_infra
 #     BUG-3574 proposal revision: check_proposal_revision_budget (1/run) → arm_proposal_revision
@@ -144,6 +146,10 @@ scope:
 # check_advise_ready_enabled -> run_advise_ready -> write_done_record (or
 # record_advisor_veto -> failed on VETO). Off by default; the +3 states only
 # execute when the flag is set, so this is headroom, not a recurring cycle.
+# BUG-3740: check_placeholder_format_fallback adds one cycle (check ->
+# format_issue_post -> clear_verify_verdict -> verify_issue -> route, ~5 steps),
+# bounded at one per run by the shared format-fallback counter; absorbed by the
+# existing headroom, so 113 is kept.
 max_steps: 113
 # Step-cap fall-through: the executor runs the named state exactly once at the
 # cap; its `next:` is never followed and terminated_by stays "max_steps".
@@ -593,7 +599,7 @@ states:
       "VERIFY:CLAIMS_OUTDATED": check_claim_correction_budget  # BUG-3637
       "VERIFY:other": check_gate_refine_limit
       HEDGES: check_hedge_attempts
-      PLACEHOLDERS: check_gate_refine_limit  # BUG-3551
+      PLACEHOLDERS: check_placeholder_format_fallback  # BUG-3740 (was check_gate_refine_limit, BUG-3551)
       ACCEPTANCE_CRITERIA: check_reconcile_limit  # ENH-3248: ACs are inside reconcile's scope
       DESIGN: check_gate_refine_limit  # BUG-3551 (shared 1-loopback-per-run budget)
       _: mark_evidence_absent_infra
@@ -1230,6 +1236,37 @@ states:
     on_yes: refine_followup
     on_no: record_gate_unmet
     on_error: diagnose
+
+  check_placeholder_format_fallback:
+    # BUG-3740: the PLACEHOLDERS gate had no repair path. refine_followup is
+    # additive (--gap-analysis) and never fills an existing template placeholder,
+    # and the format fallbacks (precheck_format / normalize_structure) only fire on
+    # format-check `directive_gaps`, which does not include `template_placeholders`.
+    # So a stub `## Impact` burned the shared 1-loopback refine budget on a no-op
+    # refine and then ended [GATE_UNMET]. /ll:format-issue is the state that fills
+    # them: spend the same one-shot counter the format probes use
+    # (refine-to-ready-format-fallback, seeded 0 by resolve_issue). Counter 0 ->
+    # set it and run format_issue_post (which rejoins the gate band via
+    # clear_verify_verdict); counter >= 1 -> fallback already spent, so fall through
+    # to check_gate_refine_limit exactly as before. Fail-closed to that same state.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-format-fallback"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      case "$N" in ''|*[!0-9]*) N=1 ;; esac
+      if [ "$N" -ge 1 ]; then
+        echo 0
+      else
+        printf '1' > "$FILE"
+        echo 1
+      fi
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: gt
+      target: 0
+    on_yes: format_issue_post
+    on_no: check_gate_refine_limit
+    on_error: check_gate_refine_limit
 
   check_hedge_refine_limit:
     # BUG-3551: hedge-scan twin of check_gate_refine_limit (same shared
