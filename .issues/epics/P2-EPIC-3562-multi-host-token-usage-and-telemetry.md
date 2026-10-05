@@ -14,7 +14,7 @@ relates_to: []
 
 ## Summary
 
-Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 35 children: 18 done and 17 unresolved (10 open, six blocked host delivery issues, and one deferred optional pricing decision). The remaining work includes six native evidence contracts, six host deliveries, shared canonical qualification, the separate coverage-scope enhancement, and the alias/footer pricing lane; shared ENH-3534, BUG-3696 and BUG-3724 are done. Standalone ENH-3649 is also done. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
+Coordinate token usage ingestion, observation provenance, context-occupancy labeling/correctness, and runtime telemetry across the eight production hosts (Claude Code, Codex, OpenCode, Pi, Qwen, Gemini, OMP, Kimi Code). The epic has 36 direct children and three nested qualification children (39 descendants): 20 terminal records and 19 unresolved (12 open, six blocked host delivery issues, and one deferred optional pricing decision). ENH-3723 is terminal because it was decomposed, not implemented; its open ENH-3731/3732/3733 children still own the qualification gate. The remaining work includes six native evidence contracts, six host deliveries, those three shared qualification stages, the scoped-selection correctness repair, the separate coverage-scope enhancement, and the footer pricing lane; ENH-3534, BUG-3696, BUG-3701 and BUG-3724 are done. Standalone ENH-3649 is also done. Native availability, ingestion support, observation provenance, coverage, and occupancy are separate contracts.
 
 ## Goal
 
@@ -27,7 +27,7 @@ Every canonical token-consumption figure for a production host comes from stored
 
 ## Composition Review
 
-The 35 children cover the epic's named contracts and the explicitly retained optional pricing decision. Claude and Codex have completed stored paths; the six remaining hosts each have a separate evidence issue and delivery issue. ENH-3534 (done 2026-09-30) owned only shared replay/refresh infrastructure:
+The 36 direct and three nested children cover the epic's named contracts and the explicitly retained optional pricing decision. Claude and Codex have completed stored paths; the six remaining hosts each have a separate evidence issue and delivery issue. ENH-3534 (done 2026-09-30) owned only shared replay/refresh infrastructure:
 
 | Contract | Children | Remaining evidence or handoff |
 |----------|----------|-------------------------------|
@@ -36,12 +36,13 @@ The 35 children cover the epic's named contracts and the explicitly retained opt
 | Stored usage freshness and consumers | ENH-3651, ENH-3656, ENH-3549 | Done for Claude/Codex; remaining hosts need their own triggers and readers |
 | Remaining production hosts | ENH-3648, ENH-3534, ENH-3544, ENH-3660–3665, ENH-3671–3676 | Evidence issues prove native contracts; matching delivery issues own producer → trigger → reader |
 | Context occupancy | BUG-3587, ENH-3545 | Done; general reader isolation is standalone ENH-3649 |
-| Shared canonical qualification | ENH-3723 | Recorded policy; implementation/source/snapshot/quality/reader parity gate before remaining-host cutover |
-| Store-wide coverage scope | ENH-3730 | Separate coverage-contract design; ENH-3723's transcript-only quality scope does not depend on it |
-| Pricing and action accounting | BUG-3696, BUG-3701, ENH-3719, BUG-3724 | Exact rate and mixed-model/batch repairs done; alias/rank and footer remain open |
+| Shared canonical qualification | ENH-3723 → ENH-3731/3732/3733 | Parent closed by decomposition; all three open implementations form the publication/source/snapshot/quality/reader parity gate |
+| Scoped overlap correctness | BUG-3735 | Probed defect: output narrowing must not hide sessionless/unknown-host possible counterparts |
+| Store-wide coverage scope | ENH-3730 | Separate coverage-contract design; the ENH-3731/3732 transcript-only quality scope does not depend on it |
+| Pricing and action accounting | BUG-3696, BUG-3701, ENH-3719, BUG-3724 | Exact rate, alias/rank and mixed-model/batch repairs done; footer remains open |
 | Optional pricing fallback decision | ENH-3703 | Deferred child; evaluate the footer before deciding implement/cancel; other implementation may proceed |
 
-Each delivery issue has only its matching host evidence issue as a hard blocker, not other hosts' access. ENH-3723 is a related shared contract and a production-usage-publication/reader-cutover/closeout gate; native capture, adapter development and raw retention may proceed while its recorded eligibility policy is implemented. Existing reports automatically see newly derived `usage_events`, so delaying only reader cutover is insufficient. A host with unknown native evidence or no proven stored trigger stays explicitly unavailable; it is not counted as completed eight-host coverage.
+Each delivery issue has only its matching host evidence issue as a hard blocker, not other hosts' access. ENH-3723 preserves the recorded policy; ENH-3731/3732/3733 and BUG-3735 together form the production-usage-publication/reader-cutover/closeout gate; native capture, adapter development and raw retention may proceed while its recorded eligibility policy is implemented. Existing reports automatically see newly derived `usage_events`, so delaying only reader cutover is insufficient. A host with unknown native evidence or no proven stored trigger stays explicitly unavailable; it is not counted as completed eight-host coverage.
 
 ## Eight-host completion ledger
 
@@ -68,17 +69,17 @@ The fixture README records provider, version, evidence tier, inclusivity, omissi
 
 Record reasoning inclusion in the README and the `output_tokens` note; an unresolved output/reasoning relation prevents a measured normalized output figure. The first of ENH-3660/3665 to prepare a closing change adds one shared, parameterized README-to-map evidence test and table format; ENH-3665 owns it if both proceed together. The test covers only the six remaining hosts with a structured table, and each later evidence issue adds its host's rows. Claude/Codex and not-yet-captured hosts retain their existing verification until their tables exist. A nonzero-cache capture is required to claim a supported cache component's measured semantics when cache behavior affects a canonical figure or rate. It is not required for an evidence-backed unsupported cache component.
 
-Before closing the epic, replace each owner entry with an evidence-backed verdict: implemented with a stored producer, actual after-usage trigger, and freshness-qualified reader for every supported in-scope metric; or explicitly unavailable where native absence is proved. Failed authentication, absent CLI installation, and zero-only samples are `unknown`, never evidence-backed no-source verdicts. Partial native support is recorded per metric/channel. Supported components may be stored with missing components null as audit observations. Under the current row-level provenance contract, a row missing a required canonical component remains `unknown`, even if its present fields are proved; dependent canonical totals and rates remain unavailable. A partial-host delivery issue may close after it stores proved components with replay and freshness qualification and emits an explicit unavailable diagnostic for dependent canonical figures, with the ledger explaining that audit-only disposition. A host delivery issue may propose a separately tested component-level qualification contract if it needs a measured component figure from such a row. A missing trigger for a supported current-session path, an in-scope `unknown`, or an open/deferred host child keeps the epic open. Each host delivery issue owns retiring its direct transcript fallback after a proved stored cutover or replacing it with an explicit unavailable diagnostic after a proved native absence or evidence-backed partial support. Close the epic only when all retained children, including shared qualification, pricing/accounting and ENH-3703's optional decision, are `done` or `cancelled`, with no unresolved in-scope verdict; a cancellation requires the ledger to explain why no work remains. If intended scope shrinks, revise this goal and ledger explicitly.
+Before closing the epic, replace each owner entry with an evidence-backed verdict: implemented with a stored producer, actual after-usage trigger, and freshness-qualified reader for every supported in-scope metric; or explicitly unavailable where native absence is proved. Failed authentication, absent CLI installation, and zero-only samples are `unknown`, never evidence-backed no-source verdicts. Partial native support is recorded per metric/channel. Supported components may be stored with missing components null as audit observations. Under the current row-level provenance contract, a row missing a required canonical component remains `unknown`, even if its present fields are proved; dependent canonical totals and rates remain unavailable. A partial-host delivery issue may close after it stores proved components with replay and freshness qualification and emits an explicit unavailable diagnostic for dependent canonical figures, with the ledger explaining that audit-only disposition. A host delivery issue may propose a separately tested component-level qualification contract if it needs a measured component figure from such a row. A missing trigger for a supported current-session path, an in-scope `unknown`, or an open/deferred host child keeps the epic open. Each host delivery issue owns retiring its direct transcript fallback after a proved stored cutover or replacing it with an explicit unavailable diagnostic after a proved native absence or evidence-backed partial support. Close the epic only when all retained descendants, including scoped-overlap correctness, shared qualification, pricing/accounting and ENH-3703's optional decision, are `done` or `cancelled`, with no unresolved in-scope verdict; a cancellation requires the ledger to explain why no work remains. If intended scope shrinks, revise this goal and ledger explicitly.
 
 ## Impact
 
 - **Priority**: P2 — six production hosts still lack proved stored usage paths; silent accounting errors remain possible if native duplicates or partial fields are guessed.
-- **Effort**: Large — 18 unresolved children span native evidence/delivery, shared qualification, pricing/accounting and one optional decision; shared replay is done.
+- **Effort**: Large — 19 unresolved descendants span native evidence/delivery, shared qualification, pricing/accounting and one optional decision; shared replay is done.
 - **Risk**: Medium — accounting errors are silent; mitigated by fixture-backed contracts and conservative unresolved defaults.
 
 ## Children
 
-**Done (18)**
+**Terminal direct children (20)**
 
 - **ENH-3528** — Label token provenance per observation in ll-ctx-stats and exports
 - **BUG-3542** — Attribute raw-event backfill to each verified source host
@@ -98,6 +99,8 @@ Before closing the epic, replace each owner entry with an evidence-backed verdic
 - **ENH-3534** — Shared infrastructure for remaining-host token usage ingestion
 - **BUG-3696** — Exact Sonnet 5.5 pricing and alias/rank/price coverage
 - **BUG-3724** — Mixed-model/batch action attribution and exact cost accounting
+- **BUG-3701** — Sonnet 5.5 default alias/rank correction
+- **ENH-3723** — Closed by decomposition into ENH-3731/3732/3733; qualification implementation remains open
 
 **Open evidence children (6)**
 
@@ -117,26 +120,30 @@ Before closing the epic, replace each owner entry with an evidence-backed verdic
 - **ENH-3675** — Implement OMP stored token usage (hard blocker ENH-3664)
 - **ENH-3676** — Implement Kimi Code stored token usage (hard blocker ENH-3665)
 
-All six link ENH-3723 through `relates_to` and require its shared qualification gate before enabling production derivation of their new usage observations and before reader cutover/closeout. No whole-issue scheduling edge holds their adapter/raw-retention work behind it.
+All six link ENH-3723 and its actual owners ENH-3731/3732/3733 plus BUG-3735 through `relates_to` and require those consumer and scoped-coverage repairs before enabling production derivation of their new usage observations and before reader cutover/closeout. No whole-issue scheduling edge holds their adapter/raw-retention work behind it.
 
-**Open shared qualification, coverage and pricing (4)**
+**Open shared qualification, coverage and pricing (6, including three nested children)**
 
-- **ENH-3723** — Canonical usage qualification across source and snapshot consumers
-- **ENH-3730** — Narrow the store-wide cross-channel ambiguity gate to per-group coverage scope
-- **BUG-3701** — Sonnet 5.5 default alias/rank correction (depends on BUG-3696)
-- **ENH-3719** — Unpriced-model footer and cost-table documentation (depends on BUG-3696)
+- **ENH-3731** — Shared qualification core, transcript acquisition scope and source readers (parent ENH-3723)
+- **ENH-3732** — Quality qualification, member-local derive proof and per-metric baselines (parent ENH-3723; blocked by ENH-3731)
+- **ENH-3733** — Snapshot/dashboard qualification and retained policy metadata (parent ENH-3723; blocked by ENH-3731)
+- **BUG-3735** — Preserve wildcard overlap evidence before host/session output narrowing
+- **ENH-3730** — Decision needed: narrow ambiguity only with proved domains and useful availability benefit
+- **ENH-3719** — Contribution-aware unpriced-model footer and cost-table documentation; exact pricing/accounting prerequisites have landed
 
 **Deferred optional decision (1)**
 
 - **ENH-3703** — Evaluate optional family-prefix approximate pricing after ENH-3719; implement or cancel with a rationale before epic closure, unless scope is explicitly revised
 
 Standalone ENH-3649 (reader isolation and diagnostics) is done. Standalone ENH-3725 (Sonnet 5.5 cacheable-prefix minimum) relates to the completed EPIC-2456 and does not reopen it. Neither is included in this epic's child count.
+- **BUG-3735** — Scoped usage selection hides unverified overlap candidates (open)
+
 
 
 ## Implementation Order and Readiness
 
-1. **Shared baseline and policy:** ENH-3534's replay/refresh baseline is done. Implement ENH-3723's recorded legacy-NULL and estimated/mixed qualification policy and land source/snapshot/quality/reader parity before enabling production derivation of remaining-host usage observations. Its transcript-scoped coverage, member-local derive completeness and baseline contracts are defined in that issue; ENH-3730's store-wide coverage redesign is independent. Rerun ENH-3723's configured confidence gate for the revised specification. This does not block native capture, adapter work, raw retention or isolated-fixture derivation.
-2. **Independent pricing lane:** BUG-3696's exact Sonnet 5.5 price/coverage change and BUG-3724's mixed-model/batch accounting repair are done. BUG-3701's alias/rank correction and ENH-3719's footer/docs can follow independently of native evidence; preserve the completed contribution-accounting contract. Keep ENH-3703 deferred until footer evaluation supports an implement/cancel decision; it does not block other implementation.
+1. **Shared baseline and policy:** ENH-3534's replay/refresh baseline is done. Implement ENH-3731, then ENH-3732 and ENH-3733, consuming ENH-3723's recorded legacy-NULL and estimated/mixed policy, and land source/snapshot/quality/reader parity plus BUG-3735’s scoped-overlap repair before enabling production derivation of remaining-host usage observations. The three children own transcript-scoped coverage, member-local derive completeness and baseline/export contracts; ENH-3730's coverage redesign is independent and has a value/design decision gate; it is not a publication prerequisite. Rerun each revised child's configured confidence gate. ENH-3731's inherited outcome confidence is 63, below the configured 65 threshold; no readiness pass is claimed by this review. This does not block native capture, adapter work, raw retention or isolated-fixture derivation.
+2. **Independent pricing lane:** BUG-3696's exact Sonnet 5.5 price/coverage change and BUG-3724's mixed-model/batch accounting repair are done. BUG-3701's alias/rank correction is also done. ENH-3719's contribution-aware footer/docs can proceed independently of native evidence; preserve the completed contribution-accounting contract. Keep ENH-3703 deferred until footer evaluation supports an implement/cancel decision; it does not block other implementation.
 3. **Host evidence:** ENH-3660–3665 prove native metric, grain, identity, provider/version qualification and canonical source/no-source disposition, plus a candidate after-usage trigger and source-write timing. OpenCode and Kimi proceed first with their partial real captures. Pi, Qwen, Gemini and OMP retain unsatisfied external access gates; failed access remains unknown, never unsupported.
 4. **Host delivery:** when its matching evidence contract is sufficient, each ENH-3671–3676 issue develops its real native adapter, ingest-time qualification, replay/update handling, trigger and freshness proof. Other hosts' evidence does not block it. OpenCode needs real-tree partial/final/revised/add/replacement and source-loss tests and recovery; Gemini needs changed-token repeated-ID replacement-versus-new-request tests and recovery. Source disappearance retains historical usage and cannot certify a fresh zero; invalidation requires an evidenced authoritative retraction. Coordinate shared seams under the ownership rule below.
 5. **Production publication and reader cutover:** add the host's qualified/partial/mismatch cases to ENH-3723's source/snapshot/quality/session-reader matrix and prove full/incremental/repeated-refresh parity before enabling its new production usage derivation, stored cutover or closeout. A mismatch or absent runtime provider/version remains audit-only/unavailable, not measured from a broad host capability.
@@ -144,7 +151,7 @@ Standalone ENH-3649 (reader isolation and diagnostics) is done. Standalone ENH-3
 
 ## Shared Delivery Ownership
 
-For ENH-3671–3676, the first delivery issue to land a required shared `refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, `usage_stop.handle`/`_run_usage_trigger` dispatch or shared-test extension owns that change. Later hosts extend host-keyed dispatch, add their cases and rebase; they do not duplicate the shared seam. Each delivery owns its native adapter, integration and end-to-end proof. ENH-3723 owns shared canonical eligibility; the host evidence issues own provider/version-scoped native contracts. The separate ENH-3660/3665 rule continues to govern the common README-to-typed-map evidence test.
+For ENH-3671–3676, the first delivery issue to land a required shared `refresh_usage_source`, `_derive_usage_incremental_conn`, `usage_source_freshness`, `usage_stop.handle`/`_run_usage_trigger` dispatch or shared-test extension owns that change. Later hosts extend host-keyed dispatch, add their cases and rebase; they do not duplicate the shared seam. Each delivery owns its native adapter, integration and end-to-end proof. ENH-3731 owns shared canonical eligibility, with ENH-3732/3733 owning quality and snapshot integration; the host evidence issues own provider/version-scoped native contracts. The separate ENH-3660/3665 rule continues to govern the common README-to-typed-map evidence test.
 
 **Ingress routing:** that first-lander ownership also covers host-keyed contract resolution for historical `_backfill_raw_events`, current `refresh_usage_source`/host equivalent, parser-upgrade `usage_refresh.refresh_raw_events` and direct `_iter_usage_replay_records`. Test matching qualification across supported routes and explicit rejection of unsupported layouts. Preserve unchanged ingest-time markers on parser refresh; later contract/parser changes do not silently requalify old unknowns. Failed derive/rebuild cannot become fresh merely because a later source read is unchanged.
 
@@ -162,16 +169,18 @@ For ENH-3671–3676, the first delivery issue to land a required shared `refresh
 
 ## Shared-consumer notes
 
-- `quality_regressions.py` and `agent_quality.py` remain channel-pinned so newly identified Codex rows do not silently change existing aggregates. ENH-3723 owns their recorded qualification, transcript-scoped coverage, member-local raw-to-usage completeness and per-metric measured trend contracts, including observed-zero baselines. Its specification is authoritative; original-source freshness and ENH-3730's store-wide ambiguity redesign remain separate.
+- `quality_regressions.py` and `agent_quality.py` remain channel-pinned so newly identified Codex rows do not silently change existing aggregates. ENH-3731/3732 own their recorded qualification, transcript-scoped coverage, member-local raw-to-usage completeness and per-metric measured trend contracts, including observed-zero baselines. The settled ENH-3723 policy and these children's implementation contracts are authoritative; original-source freshness and ENH-3730's store-wide ambiguity redesign remain separate.
 - `select_usage_coverage` reconciles candidates for a verified host/thread pair before report filters. `select_usage_observations` delegates to the same policy. An ID-only call is rejected.
 
 ## Cross-Issue Acceptance Criteria
 
-- [ ] ENH-3723 implements its recorded legacy-NULL/estimated/mixed policy, preserves audit subtotals and safe qualification labels, and proves source/snapshot/dashboard/quality/session-reader parity for measured, estimated, mixed, explicit unknown and legacy rows across complete/partial components and resolved/unresolved coverage. Its quality scope/completeness/baseline controls pass before enabling production derivation of new remaining-host usage rows. Existing checked ENH-3543 coverage work below is baseline evidence, not certification of this new eligibility matrix.
+- [ ] BUG-3735 prevents host/session output narrowing from hiding possible wildcard overlap, and composes with declared transcript acquisition and report filters. Its scoped-reader controls pass before any remaining-host usage publication or reader cutover.
+
+- [ ] ENH-3731/3732/3733 implement the recorded ENH-3723 legacy-NULL/estimated/mixed policy, preserve audit subtotals and safe qualification labels, and prove source/snapshot/dashboard/quality/session-reader parity for measured, estimated, mixed, explicit unknown and legacy rows across complete/partial components and resolved/unresolved coverage. Its quality scope/completeness/baseline controls pass before enabling production derivation of new remaining-host usage rows. Existing checked ENH-3543 coverage work below is baseline evidence, not certification of this new eligibility matrix.
 - [ ] Each remaining-host runtime provider/version matches a captured contract or an explicitly evidenced compatibility rule; absent/mismatched evidence and unproved identity remain audit-only/unavailable. Ingest-time qualification survives raw replay/rebuild and cannot be promoted by a later CLI/provider change.
 - [ ] OpenCode part finalization/revision/add/delete and Gemini repeated-ID token changes have ordered mutation tests, correct replacement/counting, full/incremental parity, stale/unknown failure behavior and successful recovery.
 - [ ] Exact Sonnet 5.5 pricing, required alias/rank/docs corrections and missing-price diagnostics pass their lane's checks. BUG-3724 closes with exact model/batch/pricing-date contribution accounting; an intermediate fail-closed mitigation leaves it in progress. ENH-3703 records its implement/cancel decision without blocking other implementation.
-- [x] Source usage/cost/waste and built-in snapshot/dashboard aggregates share the completed coverage-selection and audit-subtotal baseline (ENH-3543). Shared provenance qualification and quality-consumer parity remain the open ENH-3723 gate above.
+- [x] Source usage/cost/waste and built-in snapshot/dashboard aggregates share the completed coverage-selection and audit-subtotal baseline (ENH-3543). Shared provenance qualification and quality-consumer parity remain the open ENH-3731/3732/3733 gate above.
 - [x] Canonical token components, event/request identity, run/state attribution, and report-window rules remain consistent through ingest, rebuild and export (ENH-3532/3543/3647).
 - [x] Legacy/unverified producer evidence is never promoted by rebuild; missing originals/usage remain explicit rather than fabricated measurements (ENH-3546 and ENH-3534's shared refresh checkpoint).
 - [x] Adding session identity to live or rollout rows never silently changes an existing aggregate (`quality_regressions` and `agent_quality` pins; ENH-3532/3647).
@@ -185,10 +194,12 @@ For ENH-3671–3676, the first delivery issue to land a required shared `refresh
 - [x] A selected session is qualified by verified host plus thread ID; same-ID rows from another host or unverified host attribution cannot enter its cache-rate figure (ENH-3543/3549).
 - [x] Context consumption and occupancy have separate semantics (done in BUG-3587); baseline freshness survives estimate updates and fallback output exposes it (ENH-3545).
 - [ ] ENH-3660–3665 select each host's canonical source or prove no native source, classify possible duplicate channels in the ledger, then record per-metric/channel native verdicts and replay identity with versioned evidence. Failed authentication, absent CLI access, or zero-only samples remain `unknown`, never `unsupported`. Source-only evidence stays a provisional README tier and typed-map `unknown`; no evidence issue closes with an unresolved in-scope canonical-path verdict. One shared README-to-map evidence test covers all six hosts.
-- [ ] For each supported remaining-host path, its matching ENH-3671–3676 issue proves discovery of the real native source layout → stored qualified observation → actual current-session trigger → incremental derive → host/session-selected, freshness-qualified reader; replay and duplicate sources do not inflate canonical totals. Each delivery owns its native integration and regression tests under Shared Delivery Ownership; shared canonical eligibility belongs to ENH-3723.
+- [ ] For each supported remaining-host path, its matching ENH-3671–3676 issue proves discovery of the real native source layout → stored qualified observation → actual current-session trigger → incremental derive → host/session-selected, freshness-qualified reader; replay and duplicate sources do not inflate canonical totals. Each delivery owns its native integration and regression tests under Shared Delivery Ownership; shared canonical eligibility belongs to ENH-3731, with ENH-3732/3733 consumer integration.
 - [ ] Every production host has an evidence-backed terminal ledger verdict, including partial-component and direct-fallback disposition; in-scope unknown capability, absent trigger, or open/deferred per-host child leaves the epic open.
 
 ## Review Notes
+
+Pre-implementation review 2026-10-05, `/ll:advise` with `claude-opus-5-5` (confidence 0.74): reviewed all 18 previously unresolved descendants and captured BUG-3735 after synthetic same-host/sessionless and unknown-host probes reproduced scoped false certification. Updated all six deliveries to require ENH-3731/3732/3733 plus that repair before publication, keeping native capture/adapters/raw work independent. Added shared numeric validity, policy-version/result and safe-reason handoffs; resolved snapshot scope/bucketing/label/cost and rate-scope questions; clarified logical derive gaps and workspace diagnostics without changing the documented member-additive population. Reconciled ENH-3719 with completed contribution accounting. ENH-3730 now has a conservative domain/value decision: current read-only live distribution is 33 host-wildcard and 262 verified-host/unproved-session rows, so restored all-history availability is not promised. Opus’s cross-member quarantine and empty-snapshot stamping suggestions were not adopted because they change existing population/version decisions; labeled additive scope and empty-no-figures controls address their risks. Current inventory is 39 descendants, 20 terminal records and 19 unresolved. No implementation or fresh confidence pass is claimed. Verification: all 14 touched issue files pass structural formatting and private-reference checks; all dependency IDs resolve; design checks pass for BUG-3735 and ENH-3730/3731/3732/3733. Existing focused coverage/snapshot/Claude-Codex stored-reader/cost/workspace baseline: 49 passed. ENH-3731 readiness still exits 1 with persisted outcome confidence 63 below 65; rerun its confidence gate for the revised contract.
 
 ENH-3723 review 2026-10-04, `/ll:advise` with `claude-opus-5-5` (confidence 0.72): carried the settled policy and channel decision into its implementation contract, specified member-local stored derive proof for quality/workspace reports, and replaced zero-as-missing baseline semantics with explicit eligibility. Source freshness remains separate. Focused baseline suite: 101 passed; specification changes only, with a fresh confidence gate still required. Linked independent ENH-3730 and reconciled the current child inventory (35 total, 18 done); BUG-3696/3724 are already done. Full qualification rules remain in ENH-3723.
 
@@ -233,4 +244,6 @@ Review follow-up 2026-09-29: added Claude numeric-parity and transcript-identity
 ---
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-05 - Reconciled 35 direct + 3 nested children (20 terminal records, 18 unresolved). ENH-3723 was decomposed, not implemented; ENH-3731/3732/3733 jointly gate production usage publication. BUG-3701 is done. Reviewed all unresolved descendants; no off-theme child or >14-day inactivity stall was found. Native access gates and the human-deferred optional pricing decision remain unchanged.
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:31 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`
