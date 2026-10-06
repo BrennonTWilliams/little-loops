@@ -4,8 +4,9 @@ title: Persist named risk factors in confidence-check scores and report deltas o
   re-score
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-10-05'
+completed_at: '2026-10-06T20:10:45Z'
 labels:
 - verification
 - confidence-check
@@ -195,12 +196,36 @@ Reviewed on 2026-10-06 on `main` against the writer, raw frontmatter targeting, 
 
 An Opus `/ll:advise` consult supported these corrections (confidence 0.80). Its dissent was that pinning the exact template might be overly prescriptive; retained because leaking raw baseline labels into ordinary findings can create flags. Remaining implementation risks are model adherence/ID stability and the documented latest-Notes effect on automation. The focused baseline passed all 486 tests; format/design checks passed, no required decision rules conflicted, and no proof requirement or hard blocker is declared. Cached scores/verdict remain absent; run a fresh confidence assessment before automated implementation. No implementation edits were made.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-10-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/issues/set_scores.py`: locked, mode-preserving atomic scalar writer; `clear_scores(path, *, base_dir)`; `--risk-factors-file`/`--json`; `RiskFactor` dataclasses, `parse_risk_factors`, `diff_risk_factors`, raw-YAML baseline classification (`absent`/`present`/`malformed`).
+- `scripts/little_loops/cli/issues/__init__.py`, `scripts/little_loops/preparation_policy.py`: parser registration; configured base passed to the clear precondition.
+- `scripts/little_loops/cli/issues/set_flags.py`: fence-aware exclusion of exact `### Risk Factor Delta` subsections before phrase matching and co-deliverable suppression.
+- `skills/confidence-check/{SKILL.md,rubric.md,reference.md}` plus regenerated gemini/kimi-code/qwen mirrors: Phase 3.5 collection, Phase 4 persistence/repair/fallback, Phase 4.5 delta-only Notes gate, pinned IDs-only delta grammar; advisor paragraph extracted to `reference.md` (SKILL.md now 498 lines).
+- `docs/reference/CLI.md`, `ISSUE_TEMPLATE.md`, `COMMANDS.md`: CLI contract, `risk_factors` metadata, skill behavior.
+- Tests: new `test_set_scores_risk_factors.py`; extended `test_set_flags_cli.py`, `test_bug3150_issue_mutator_atomicity.py`, `test_preparation_policy_writers.py`, `test_issue_parser_unresolved.py`, `test_ll_issues_advise_consult.py`, `test_confidence_check_skill.py`.
+
+### Verification Results
+- Tests: PASS (29032 passed, 310 skipped; 8 `test_libsql_integration.py::TestLive` errors from an expired live-endpoint JWT, unrelated to this change)
+- Lint: PASS
+- Types: PASS
+- Run: SKIP (not configured)
+- Integration: PASS
+- Not done: the bounded live skill assessment/re-assessment proving model ID stability (needs a real `/ll:confidence-check` run); writer-side behavior is covered by tests.
+
 ## Status
 
-**Open** | Reviewed: 2026-10-06 | Priority: P3
+**Completed** | Reviewed: 2026-10-06 | Priority: P3
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-06T20:10:45 - `02c5f6f8-3ae8-4092-8c18-82a54b43e518.jsonl`
+- `/ll:ready-issue` - 2026-10-06T19:54:09 - `d539ae54-686f-4379-900b-30163c1cd33f.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:12:05 - `29fac8c6-a710-46f3-a018-797c39cd9a98.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:21:33 - `225d913b-150f-4f37-9e25-fcb3cb3d0b0e.jsonl`
 - `/ll:confidence-check` - 2026-10-06T10:30:37 - `b5d4e644-cd2f-4e8d-a10e-c42db195622e.jsonl`

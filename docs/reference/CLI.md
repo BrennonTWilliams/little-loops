@@ -3173,16 +3173,32 @@ Write `confidence_score`, `outcome_confidence`, and the four per-dimension score
 | `--score-test-coverage N` | `None` | Test-coverage dimension score (0–25) |
 | `--score-ambiguity N` | `None` | Ambiguity dimension score (0–25) |
 | `--score-change-surface N` | `None` | Change-surface dimension score (0–25) |
-| `--clear` | `false` | Remove all six score keys (no-op when absent); errors if combined with a score argument |
+| `--risk-factors-file PATH` | `None` | JSON array of the **complete** current risk factors (`-` reads stdin; `[]` records an explicitly empty set). Replaces the stored `risk_factors` list and compares it against the previous one |
+| `--json`, `-j` | `false` | Print the resolved issue ID and the risk-factor result as JSON |
+| `--clear` | `false` | Remove all six score keys (no-op when absent); preserves `risk_factors`; errors if combined with a score or factor argument |
+
+**Risk factors.** Each record has exactly four string fields: `id` (unique per issue, lowercase slug `[a-z0-9][a-z0-9-]{0,47}`), `domain` (`readiness` or `outcome`), `criterion` (label such as `test_coverage`), and `description` (non-blank single line, at most 200 characters). Factor-only calls are allowed. The list is stored sorted by ID, so a re-score can show changed risk composition even when the score totals are identical.
+
+With `--json`, the `risk_factors` object reports `recorded` and `baseline`. A factor-bearing success also reports `factors` plus `added`, `removed` and `retained` entries (sorted by ID; retained entries carry `changed_fields`, a subset of `domain`, `criterion`, `description`). `baseline` is:
+
+- `present` — a valid previous list existed (including an explicit `[]`); comparison fields are arrays.
+- `absent` — no previous list; comparison fields are `null` rather than fabricated additions.
+- `malformed` — the stored key could not be parsed as a valid list; it is replaced, comparison fields are `null`, and stderr gets `Warning: stored risk_factors baseline malformed; replaced` after the write succeeds.
+
+Without a factor option the stored list is preserved and the object reports `recorded: false` with the key's presence as `baseline`. A "removed" factor means it is no longer reported for the issue, not that its risk was independently verified resolved. The baseline is the last assessment that recorded factors; it survives `--clear` and scores-only updates and is never freshness or gating evidence.
+
+Invalid factor input exits 1 with empty stdout, stderr beginning `Error: invalid risk factors:`, and the issue file untouched (no scalar scores are written either). Operational failures (unresolvable issue, unparseable or unterminated frontmatter, lock or write failure) also exit 1 without that prefix. All writes take the issue-tree lock and are atomic, preserving the file mode.
 
 **Examples:**
 ```bash
 ll-issues set-scores BUG-1307 --clear
 ll-issues set-scores BUG-1307 --confidence 95 --outcome 80
+ll-issues set-scores BUG-1307 --confidence 85 --outcome 64 --risk-factors-file factors.json --json
+echo '[]' | ll-issues set-scores BUG-1307 --risk-factors-file -
 ll-issues ss FEAT-518 --confidence 88 --outcome 72 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
 ```
 
-**Used by**: `/ll:confidence-check` Phase 4 to persist scores deterministically instead of a free-form `Edit` call.
+**Used by**: `/ll:confidence-check` Phase 4 to persist scores and risk factors deterministically instead of a free-form `Edit` call.
 
 ---
 

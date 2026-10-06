@@ -419,3 +419,31 @@ class TestCmdAdviseConsultCrashGuard:
         ):
             assert cmd_advise_consult(config, _args("ENH-9999", run_dir)) == 0
         assert capsys.readouterr().out.strip() == "SKIPPED"
+
+
+class TestTrimConsultContextRiskFactorDelta:
+    """ENH-3742: characterize the accepted effect of a ``### Risk Factor Delta`` subsection.
+
+    Trimming a ``## Confidence Check Notes`` section stops at the next H1-H3
+    heading, so the IDs-only delta (an H3) survives into the consult context
+    while the ordinary findings before it are dropped. The fixed grammar keeps
+    descriptions, criterion values and filenames out of that surviving text.
+    """
+
+    ISSUE = (
+        "# ENH-1: T\n\n## Summary\n\ns\n\n## Confidence Check Notes\n\n"
+        "- finding mentioning scripts/foo.py and an open question\n\n"
+        "### Risk Factor Delta\n\n- Added: `a-one`\n- Baseline: none recorded\n\n"
+        "## Proposed Solution\n\nreal\n"
+    )
+
+    def test_delta_ids_survive_findings_dropped(self) -> None:
+        trimmed = trim_consult_context(self.ISSUE)
+        assert "- Added: `a-one`" in trimmed
+        assert "scripts/foo.py" not in trimmed
+        assert "open question" not in trimmed
+        assert "real" in trimmed
+
+    def test_membership_change_changes_trimmed_text(self) -> None:
+        other = self.ISSUE.replace("`a-one`", "`b-two`")
+        assert trim_consult_context(self.ISSUE) != trim_consult_context(other)

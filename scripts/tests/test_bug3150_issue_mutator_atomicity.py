@@ -161,6 +161,40 @@ class TestAtomicWrites:
         assert _run_issues("set-status", "BUG-002", "done", "--config", str(temp_project_dir)) == 0
         assert list(issue.parent.glob("*.tmp")) == []
 
+    def test_set_scores_and_clear_write_via_os_replace(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """ENH-3742: the score writer and clear are atomic and keep the file mode."""
+        import stat
+
+        _write_config(temp_project_dir, sample_config)
+        issue = issues_dir / "bugs" / "P0-BUG-001-crash.md"
+        issue.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+        os.chmod(issue, 0o664)
+
+        replaced: list[Path] = []
+        original = os.replace
+
+        def capture(src, dst):  # noqa: ANN001
+            replaced.append(Path(dst).resolve())
+            original(src, dst)
+
+        with patch("os.replace", side_effect=capture):
+            assert (
+                _run_issues(
+                    "set-scores", "BUG-001", "--confidence", "9", "--config", str(temp_project_dir)
+                )
+                == 0
+            )
+            assert replaced.count(issue.resolve()) == 1
+            assert (
+                _run_issues("set-scores", "BUG-001", "--clear", "--config", str(temp_project_dir))
+                == 0
+            )
+            assert replaced.count(issue.resolve()) == 2
+        assert stat.S_IMODE(issue.stat().st_mode) == 0o664
+        assert list(issue.parent.glob("*.tmp")) == []
+
 
 class TestLockIsTaken:
     """AC 2/3: each mutator holds the tree lock across its read-modify-write."""
@@ -186,6 +220,28 @@ class TestLockIsTaken:
 
         assert rc == 0
         assert issue_lock_path(issue) in seen
+
+    def test_set_scores_and_clear_acquire_the_configured_lock_once(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """ENH-3742: scalar update and clear take the tree lock exactly once (no nesting)."""
+        _write_config(temp_project_dir, sample_config)
+        issue = issues_dir / "bugs" / "P0-BUG-001-crash.md"
+        issue.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001: Crash\n")
+        from little_loops import file_utils
+
+        original = file_utils.acquire_lock
+        for argv in (("--confidence", "9"), ("--clear",)):
+            seen: list[Path] = []
+
+            def spy(path, timeout=10.0, _seen=seen):  # noqa: ANN001
+                _seen.append(Path(path))
+                return original(path, timeout)
+
+            with patch("little_loops.file_utils.acquire_lock", side_effect=spy):
+                rc = _run_issues("set-scores", "BUG-001", *argv, "--config", str(temp_project_dir))
+            assert rc == 0
+            assert seen == [issue_lock_path(issue)]
 
     def test_link_holds_a_single_lock_across_source_and_reciprocal(
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
@@ -322,6 +378,7 @@ class TestNoBareWriteTextRemains:
         [
             "little_loops/cli/issues/set_status.py",
             "little_loops/cli/issues/link.py",
+            "little_loops/cli/issues/set_scores.py",
             "little_loops/session_log.py",
         ],
     )

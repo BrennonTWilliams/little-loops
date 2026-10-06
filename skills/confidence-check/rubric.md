@@ -646,7 +646,16 @@ _(omit this subsection if no gaps)_
 ### Outcome Risk Factors
 - [risk 1 — phrase by dominant axis: "deep per-site complexity" for low-Depth issues, "broad enumeration across N sites" for high-Breadth issues]
 _(omit this subsection if no risk factors)_
+
+### Risk Factor Delta
+- Added: `[id]`, `[id]`
+- No longer reported: `[id]`
+- Retained: `[id]`
+- Changed fields: `[id]` — domain, criterion
 ```
+
+`### Risk Factor Delta` is always the **last** subsection, after any ordinary findings.
+See § Risk Factors for the fixed grammar.
 
 ## Resolved Concerns
 
@@ -658,3 +667,66 @@ re-raise a listed concern unless there is new evidence. Keep the section
 intact when writing new Confidence Check Notes: insert the new Notes section
 before it (or before `## Session Log`), never over it, and never add a second
 `## Resolved Concerns` heading.
+
+## Risk Factors
+
+Named risk factors let a re-score show a change in risk composition even when the
+bucket totals do not move (ENH-3742). `ll-issues set-scores --risk-factors-file`
+persists the complete list in the issue's `risk_factors` frontmatter key and returns
+the comparison against the previous recorded list; the skill assesses and renders it,
+never recomputing the comparison.
+
+**Record** (exactly four string fields): `id` — unique per issue, exact matching key,
+lowercase slug `[a-z0-9][a-z0-9-]{0,47}`; `domain` — `readiness` or `outcome` (hard
+gates are readiness); `criterion` — label such as `test_coverage` or `outcome_cap`;
+`description` — non-blank single line, at most 200 characters.
+
+**Rules**:
+- One concrete, independently removable concern per ID. Two missing-test risks in one
+  bucket get two IDs; repeated mentions or several scoring effects of one concern share
+  one ID and one primary domain/criterion.
+- Reuse the ID for the same underlying risk across re-scores; a changed description,
+  criterion or domain keeps its ID. Mint new IDs for distinct concerns. No fuzzy matching.
+- Omit factors current evidence no longer supports; honor `## Resolved Concerns` but
+  require current evidence for any continuing deduction or override.
+- Collect from every readiness/outcome deduction, learning-test modifier, criterion or
+  aggregate cap, hard-gate override and applied correction, regardless of display
+  threshold. An active unproven-mechanism cap is a factor even when the dimension scores
+  are full or the raw sum is below the cap.
+- A removed factor means "no longer reported", not "independently verified resolved".
+  It never supplies freshness or gate evidence, and never auto-clears a flag.
+
+**Result fields** (`--json`, under `risk_factors`): `recorded`, `baseline`
+(`absent`/`present`/`malformed`), `factors`, and — only for a `present` baseline —
+`added`, `removed`, `retained` (each entry sorted by ID; retained entries carry
+`changed_fields` in the order `domain`, `criterion`, `description`). `absent` and
+`malformed` baselines have `null` comparisons; never fabricate empty membership.
+
+**`### Risk Factor Delta` grammar** (flat one-line bullets; IDs, fixed labels and
+changed-field names only — never descriptions, criterion values, filenames, quotes or
+questions, because the subsection is excluded from flag matching and must not feed the
+open-question and consult consumers):
+
+```markdown
+### Risk Factor Delta
+- Added: `id-a`, `id-b`
+- No longer reported: none
+- Retained: `id-c`
+- Changed fields: `id-c` — domain, description
+```
+
+- Sort comma-separated IDs; backtick each one; write the literal `none` for an empty
+  category.
+- One `Changed fields` bullet per retained ID whose fields changed, listing only
+  `domain`, `criterion`, `description` in that order; a single `- Changed fields: none`
+  when nothing changed.
+- For a `null` comparison emit only `- Baseline: none recorded` or
+  `- Baseline: malformed, replaced`.
+- Write it whenever the section is appended: with ordinary findings (always include the
+  recorded comparison, even when membership is unchanged) or alone when a `present`
+  baseline gained or lost IDs — including the final removal at unchanged totals. Clean
+  first-baseline, malformed-baseline and retained-only runs report in ordinary output
+  without an empty Notes section.
+- A fresh delta-only Notes section becomes the latest Notes section: it supersedes older
+  Notes for open-question counting, adds no question, and resolves no concern; removals
+  never create `## Resolved Concerns` entries.

@@ -242,6 +242,7 @@ Examples:
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
   %(prog)s set-scores BUG-1307 --clear
+  %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80 --risk-factors-file factors.json --json
   %(prog)s set-flags BUG-1307
   %(prog)s set-flags BUG-1307 --from-notes - --dry-run --json
   %(prog)s set-status ENH-1725 in_progress
@@ -904,7 +905,21 @@ Examples:
         ss.add_argument(
             "--clear",
             action="store_true",
-            help="Remove all six score keys (exclusive with the score arguments)",
+            help="Remove all six score keys (exclusive with the score and factor arguments)",
+        )
+        ss.add_argument(
+            "--risk-factors-file",
+            metavar="PATH",
+            default=None,
+            dest="risk_factors_file",
+            help=(
+                "JSON array of the complete current risk factors (use '-' for stdin; '[]' "
+                "records an empty set). Replaces the stored list and reports added/removed/"
+                "retained IDs against the previous one"
+            ),
+        )
+        ss.add_argument(
+            "--json", "-j", action="store_true", help="Output the resolved ID and factor comparison"
         )
         add_config_arg(ss)
 

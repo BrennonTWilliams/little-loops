@@ -202,6 +202,58 @@ def _co_deliverable_suppressor(notes: str, issue: IssueInfo) -> bool:
     return any(candidate in files_section for candidate in candidates)
 
 
+_NOTES_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)[ \t\r]*$", re.MULTILINE)
+_RISK_FACTOR_DELTA_TITLE = "Risk Factor Delta"
+
+
+def _strip_risk_factor_delta(notes: str) -> str:
+    """Drop every exact ``### Risk Factor Delta`` subsection from *notes* (ENH-3742).
+
+    The delta lists risk-factor IDs, which are free-form slugs and can contain
+    flag phrases as substrings (``absent``, ``test-first``, ...). Excluding the
+    subsection before phrase matching and co-deliverable suppression keeps that
+    history from activating or suppressing flags. A subsection runs to the next
+    real H1/H2/H3 heading or EOF; H4+ headings stay inside it. Headings inside
+    closed code fences neither begin nor end it. An unterminated fence opener
+    inside the subsection is uncertain, so the text from that opener onward is
+    retained rather than swallowing later active findings.
+    """
+    from little_loops.text_utils import _LINE_FENCE_DELIMITER_RE, fence_spans, in_fence
+
+    if _RISK_FACTOR_DELTA_TITLE not in notes:
+        return notes
+    spans = fence_spans(notes)
+    markers = list(_LINE_FENCE_DELIMITER_RE.finditer(notes))
+    unpaired_start = markers[-1].start() if len(markers) % 2 else None
+
+    kept: list[str] = []
+    pos = 0
+    excluded_from: int | None = None
+
+    def _close(end: int) -> int:
+        """Return where kept text resumes after an exclusion spanning to *end*."""
+        assert excluded_from is not None
+        if unpaired_start is not None and excluded_from <= unpaired_start < end:
+            return unpaired_start
+        return end
+
+    for match in _NOTES_HEADING_RE.finditer(notes):
+        if in_fence(match.start(), match.end(), spans):
+            continue
+        level = len(match.group(1))
+        if excluded_from is not None and level <= 3:
+            pos = _close(match.start())
+            excluded_from = None
+        if excluded_from is None and level == 3 and match.group(2) == _RISK_FACTOR_DELTA_TITLE:
+            kept.append(notes[pos : match.start()])
+            excluded_from = match.start()
+    if excluded_from is None:
+        kept.append(notes[pos:])
+    else:
+        kept.append(notes[_close(len(notes)) :])
+    return "".join(kept)
+
+
 def _rules_for_threshold(threshold: int) -> tuple[FlagRule, ...]:
     """Build the four rules with *threshold* as the shared outcome-risk precondition.
 
@@ -290,6 +342,7 @@ def apply_flags_from_notes(
 
     if notes is None:
         notes = _section_body(content, "Confidence Check Notes") or ""
+    notes = _strip_risk_factor_delta(notes)
 
     threshold = _resolve_outcome_threshold(config)
     rules = (

@@ -613,3 +613,134 @@ class TestOutcomeThresholdResolution:
         result = apply_flags_from_notes(config, "BUG-001", "an open decision", dry_run=True)
 
         assert result.set_flags["decision_needed"] is True
+
+
+class TestRiskFactorDeltaExclusion:
+    """ENH-3742: ``### Risk Factor Delta`` is excluded from phrase matching and
+    co-deliverable suppression on both note-input paths."""
+
+    DELTA_IDS = "- Added: `absent`, `co-deliverable`, `submit-tests-absent`, `test-first`, `unprecedented`\n"
+
+    @staticmethod
+    def _setup(temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path, **kw: Any):
+        from little_loops.config import BRConfig
+
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        _write_issue(issue_file, outcome_confidence=50, **kw)
+        return issue_file, BRConfig(temp_project_dir)
+
+    def _both_paths(self, config, issue_file: Path, notes: str, **kw: Any):
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+
+        explicit = apply_flags_from_notes(config, "BUG-001", notes, dry_run=True)
+        text = issue_file.read_text()
+        issue_file.write_text(
+            text.split("\n## Confidence Check Notes")[0]
+            + f"\n## Confidence Check Notes\n\n{notes}\n"
+        )
+        default = apply_flags_from_notes(config, "BUG-001", None, dry_run=True)
+        assert explicit.set_flags == default.set_flags
+        assert explicit.suppressed == default.suppressed
+        return explicit
+
+    def test_phrase_bearing_ids_inside_delta_fire_nothing(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        issue_file, config = self._setup(
+            temp_project_dir, sample_config, issues_dir, score_test_coverage=5
+        )
+        notes = f"- clean prose\n\n### Risk Factor Delta\n\n{self.DELTA_IDS}- Retained: `x`\n"
+        result = self._both_paths(config, issue_file, notes)
+        assert not any(result.set_flags.values())
+        assert all(not v for v in result.matched_phrases.values())
+
+    def test_same_phrases_outside_delta_still_fire(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        issue_file, config = self._setup(
+            temp_project_dir, sample_config, issues_dir, score_test_coverage=5
+        )
+        notes = (
+            "- tests are absent and unprecedented; test-first needed\n\n"
+            f"### Risk Factor Delta\n\n{self.DELTA_IDS}"
+        )
+        result = self._both_paths(config, issue_file, notes)
+        assert result.set_flags["missing_artifacts"] is True
+        assert result.set_flags["implementation_order_risk"] is True
+        assert result.set_flags["spike_needed"] is True
+
+    def test_filenames_in_delta_do_not_suppress_missing_artifacts(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        issue_file, config = self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            body_extra="\n## Integration Map\n\n### Files to Create\n\n- scripts/new_mod.py\n",
+        )
+        notes = (
+            "- scripts/other.py does not exist\n\n### Risk Factor Delta\n\n"
+            "- Changed fields: description (scripts/new_mod.py)\n"
+        )
+        result = self._both_paths(config, issue_file, notes)
+        assert result.set_flags["missing_artifacts"] is True
+        assert not result.suppressed
+
+    def test_direct_frontmatter_trigger_and_set_only_preserved(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        issue_file, config = self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            extra_frontmatter="unproven_mechanism: true\nmissing_artifacts: true\n",
+        )
+        notes = "### Risk Factor Delta\n\n- Added: `x`\n"
+        result = self._both_paths(config, issue_file, notes)
+        assert result.set_flags["spike_needed"] is True
+        assert result.set_flags["missing_artifacts"] is True  # existing true never cleared
+
+
+class TestStripRiskFactorDelta:
+    @staticmethod
+    def _strip(text: str) -> str:
+        from little_loops.cli.issues.set_flags import _strip_risk_factor_delta
+
+        return _strip_risk_factor_delta(text)
+
+    def test_no_subsection_is_identity(self) -> None:
+        assert self._strip("a\n### Other\nb\n") == "a\n### Other\nb\n"
+
+    def test_ends_at_next_h3_h2_h1_or_eof(self) -> None:
+        d = "### Risk Factor Delta\n- x\n"
+        assert self._strip(f"a\n{d}### Next\nb\n") == "a\n### Next\nb\n"
+        assert self._strip(f"a\n{d}## Next\nb\n") == "a\n## Next\nb\n"
+        assert self._strip(f"a\n{d}# Next\nb\n") == "a\n# Next\nb\n"
+        assert self._strip(f"a\n{d}") == "a\n"
+
+    def test_h4_stays_excluded(self) -> None:
+        assert self._strip("a\n### Risk Factor Delta\n#### sub\n- x\n### Next\nb\n") == (
+            "a\n### Next\nb\n"
+        )
+
+    def test_repeated_subsections_all_excluded(self) -> None:
+        text = "a\n### Risk Factor Delta\n- x\n### Mid\nm\n### Risk Factor Delta\n- y\n"
+        assert self._strip(text) == "a\n### Mid\nm\n"
+
+    def test_only_exact_title_is_excluded(self) -> None:
+        for title in ("Risk Factor Delta (old)", "risk factor delta", "Risk Factor Deltas"):
+            text = f"a\n### {title}\n- x\n"
+            assert self._strip(text) == text
+        text = "a\n#### Risk Factor Delta\n- x\n"
+        assert self._strip(text) == text
+
+    def test_closed_fence_heading_neither_starts_nor_ends(self) -> None:
+        fenced_start = "a\n```\n### Risk Factor Delta\n- absent\n```\nreal\n"
+        assert self._strip(fenced_start) == fenced_start
+        in_span = "### Risk Factor Delta\n```\n### Next\n```\n- x\n### After\nb\n"
+        assert self._strip(in_span) == "### After\nb\n"
+
+    def test_unterminated_fence_retained_not_swallowed(self) -> None:
+        text = "a\n### Risk Factor Delta\n- x\n```\nactive open decision\n"
+        assert self._strip(text) == "a\n```\nactive open decision\n"

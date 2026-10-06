@@ -1017,7 +1017,7 @@ def _run_preconditions(config: BRConfig, issue_id: str, run_dir: Path, pre: Sequ
         elif p == "clear_scores":
             from little_loops.cli.issues.set_scores import clear_scores
 
-            clear_scores(_resolve_or_raise(config, issue_id))
+            clear_scores(_resolve_or_raise(config, issue_id), base_dir=config.issues.base_dir)
         elif p == "defer_oversized_atomic":
             path = _resolve_or_raise(config, issue_id)
             _set_status_checked(

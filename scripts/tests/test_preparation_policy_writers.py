@@ -266,6 +266,49 @@ class TestRescorePrecondition:
         assert "preconditions" not in retry.payload
 
 
+class TestClearScoresPrecondition:
+    """ENH-3742: the clear-before-rescore precondition keeps the risk-factor baseline
+    and takes the configured issue-tree lock, not the default ``.issues`` one."""
+
+    def test_clear_preserves_factors_and_uses_configured_base_lock(self, tmp_path: Path) -> None:
+        import json
+        from unittest.mock import patch
+
+        from little_loops import file_utils
+        from little_loops.file_utils import issue_lock_path
+        from little_loops.preparation_policy import _run_preconditions
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"project": {"name": "t"}, "issues": {"base_dir": "tickets"}})
+        )
+        path = tmp_path / "tickets" / "enhancements" / f"P3-{ID}-test.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            f"---\nid: {ID}\nstatus: open\nconfidence_score: 70\noutcome_confidence: 80\n"
+            "risk_factors:\n- id: keep-me\n  domain: outcome\n  criterion: test_coverage\n"
+            "  description: d\n---\n\n# T\n"
+        )
+        config = BRConfig(tmp_path)
+        assert config.issues.base_dir == "tickets"
+
+        seen: list[Path] = []
+        original = file_utils.acquire_lock
+
+        def spy(lock_path, timeout=10.0):  # noqa: ANN001
+            seen.append(Path(lock_path))
+            return original(lock_path, timeout)
+
+        with patch("little_loops.file_utils.acquire_lock", side_effect=spy):
+            _run_preconditions(config, ID, tmp_path / "run", ["clear_scores"])
+
+        text = path.read_text()
+        assert "confidence_score" not in text and "outcome_confidence" not in text
+        assert "id: keep-me" in text
+        assert seen == [issue_lock_path(path, "tickets")]
+        assert seen[0].parent.name == "tickets"
+
+
 class TestPrepApplyDeferredWritesStatus:
     def _oversized_atomic_facts(self, run_dir: Path) -> None:
         """Hand-craft a pass whose open intent is a STOP:oversized_atomic (no waiver).

@@ -37,3 +37,14 @@ Breadth × Depth walkthroughs, and the CLI usage patterns.
 - [rubric.md](rubric.md) — full scoring rubric tables (Phase 2 readiness
   criteria, Phase 2b outcome criteria, Phase 3 score-to-recommendation tables),
   the single-issue and `--all` output-format templates, and worked examples.
+
+## Advisor Consult on Sub-Threshold ll-auto Runs
+
+FEAT-3117: when `ll-auto` hits this
+same readiness score below `commands.confidence_gate.readiness_threshold` in its own
+pre-Phase-1 gate (`issue_manager.py`, independent of this skill's interactive run), and
+`advisor.enabled: true` with `confidence_gate` listed in `advisor.triggers`, it now
+auto-fires one advisor consult carrying the gap analysis (current confidence vs.
+threshold) alongside the existing `CONFIDENCE_GATE_BLOCKED` block. The consult is
+fail-soft and purely informational — it never changes the block itself, and is skipped
+entirely when the trigger isn't armed or the per-task consult budget is exhausted.

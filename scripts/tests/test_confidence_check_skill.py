@@ -910,3 +910,78 @@ class TestDocumentedOutcomeThresholdDefault:
         match = re.search(r"\| `--outcome-threshold N` \| `(\d+)` \|", content[start:end])
         assert match is not None, "next-action must document --outcome-threshold default"
         assert int(match.group(1)) == schema_default(self._KEY)
+
+
+class TestRiskFactorPersistenceContract:
+    """ENH-3742: the skill collects, persists and renders named risk factors."""
+
+    @staticmethod
+    def _section(heading: str, content: str | None = None) -> str:
+        content = SKILL_FILE.read_text() if content is None else content
+        start = content.index(heading)
+        nxt = content.find("\n### ", start + 1)
+        return content[start : nxt if nxt != -1 else len(content)]
+
+    def test_line_limit_respected(self) -> None:
+        assert len(SKILL_FILE.read_text().splitlines()) <= 500
+
+    def test_collection_is_threshold_independent_and_check_skipped(self) -> None:
+        text = self._section("### Phase 3.5: Collect Risk Factors")
+        assert "Skip in `CHECK_MODE`" in text
+        assert "independent of display thresholds" in text
+        assert "unproven-mechanism cap" in text and "full dimension scores" in text
+        assert "`[]`" in text
+
+    def test_phase_4_passes_complete_factors_via_stdin_with_json(self) -> None:
+        text = self._section("### Phase 4: Update Frontmatter")
+        assert "--risk-factors-file -" in text and "--json" in text
+
+    def test_phase_4_bounded_repair_versus_operational_failure(self) -> None:
+        text = self._section("### Phase 4: Update Frontmatter")
+        assert "Error: invalid risk factors:" in text
+        assert "retry once" in text
+        assert "risk factors not recorded; delta unavailable" in text
+        assert "only if that call succeeds" in text
+        assert "On any other failure" in text
+        assert "Never claim a delta" in text
+
+    def test_phase_4_renders_writer_comparison_without_recomputing(self) -> None:
+        text = self._section("### Phase 4: Update Frontmatter")
+        assert "without recomputing it" in text
+
+    def test_phase_4_5_delta_only_notes_gate(self) -> None:
+        text = self._section("### Phase 4.5: Findings Write-Back")
+        assert "DELTA_NOTES" in text and "baseline: present" in text
+        assert "HAS_FINDINGS" in text
+
+    def test_check_mode_still_performs_no_writes(self) -> None:
+        text = SKILL_FILE.read_text()
+        assert "without writing to issue frontmatter" in text
+        assert "**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode)." in text
+
+    def test_rubric_pins_delta_template_and_grammar(self) -> None:
+        rubric = RUBRIC_FILE.read_text()
+        template = rubric[
+            rubric.index("## Confidence Check Notes template") : rubric.index(
+                "## Resolved Concerns"
+            )
+        ]
+        assert template.rfind("### Risk Factor Delta") > template.rfind("### Outcome Risk Factors")
+        section = rubric[rubric.index("## Risk Factors") :]
+        for label in ("Added", "No longer reported", "Retained", "Changed fields"):
+            assert f"- {label}:" in section
+        assert "- Baseline: none recorded" in section
+        assert "- Baseline: malformed, replaced" in section
+        assert "literal `none`" in section
+        assert "never descriptions, criterion values, filenames" in section
+
+    def test_delta_grammar_has_no_filenames_or_question_signals(self) -> None:
+        import re
+
+        rubric = RUBRIC_FILE.read_text()
+        grammar = rubric[rubric.index("**`### Risk Factor Delta` grammar**") :]
+        block = re.search(r"```markdown\n(.*?)```", grammar, re.S)
+        assert block is not None
+        text = block.group(1)
+        assert not re.search(r"\w\.\w{1,4}\b", text), "delta example must carry no filename tokens"
+        assert "?" not in text and "open question" not in text.lower()

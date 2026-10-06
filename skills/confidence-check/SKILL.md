@@ -390,9 +390,13 @@ sites + `verification grep` + automated completeness test).
 
 Sum all readiness and outcome criterion scores (max 100 each). See [rubric.md](rubric.md) for the score-to-recommendation tables and recommendation tiers. The readiness score drives the go/no-go recommendation; outcome confidence is informational.
 
+### Phase 3.5: Collect Risk Factors (ENH-3742)
+
+Skip in `CHECK_MODE`. List every concrete, independently removable concern behind a readiness/outcome deduction, learning-test modifier, cap, hard-gate override, or applied correction — independent of display thresholds; an active unproven-mechanism cap is a factor even at full dimension scores, and a full-score criterion with no cap/override has none. Read the issue's prior `risk_factors` IDs, reuse an ID only for the same underlying risk, mint new IDs for distinct concerns, omit unsupported ones, and honor Resolved Concerns. The list must be complete (`[]` if none). Schema, ID rules, and the Notes grammar: [rubric.md](rubric.md) § Risk Factors.
+
 ### Phase 4: Update Frontmatter
 
-After scoring, persist both aggregate scores and the four per-dimension scores from Phase 2b into the issue file's YAML frontmatter via the CLI. Use `Bash` to run:
+After scoring, persist both aggregate scores, the four per-dimension scores from Phase 2b, and the complete Phase 3.5 risk-factor list via the CLI. Use `Bash` to run:
 
 ```bash
 ll-issues set-scores [ISSUE-ID] \
@@ -401,18 +405,17 @@ ll-issues set-scores [ISSUE-ID] \
   --score-complexity [score_A] \
   --score-test-coverage [score_B] \
   --score-ambiguity [score_C] \
-  --score-change-surface [score_D]
+  --score-change-surface [score_D] \
+  --risk-factors-file - --json <<'EOF'
+[{"id": "[slug]", "domain": "readiness|outcome", "criterion": "[label]", "description": "[one line]"}]
+EOF
 ```
 
-Replace `[ISSUE-ID]` with the actual issue identifier (e.g., `BUG-1307`) and the bracketed placeholders with the integer values from Phase 2b and Phase 3. `[outcome_confidence]` is the **post-cap** value (Phase 2b's Unproven Mechanism Cap, ENH-3350) — persisting it here, before Phase 4.5/4.6 run, is what lets `set-flags` fire `spike_needed` on this same pass.
+Replace `[ISSUE-ID]` with the actual issue identifier (e.g., `BUG-1307`) and the bracketed placeholders with the integer values from Phase 2b and Phase 3. `[outcome_confidence]` is the **post-cap** value (Phase 2b's Unproven Mechanism Cap, ENH-3350) — persisting it here, before Phase 4.5/4.6 run, is what lets `set-flags` fire `spike_needed` on this same pass. The four `score_*` values are the per-criterion integers (0–25 each): `--score-complexity` A, `--score-test-coverage` B, `--score-ambiguity` C, `--score-change-surface` D.
 
-The four `score_*` values are the per-criterion integer scores (0–25 each):
-- `--score-complexity` — Criterion A score
-- `--score-test-coverage` — Criterion B score
-- `--score-ambiguity` — Criterion C score
-- `--score-change-surface` — Criterion D score
+The CLI writes idempotently, preserves unrelated frontmatter, and creates missing frontmatter. Do **not** use the `Edit` tool to write these fields — the CLI is the single source of truth for score persistence.
 
-The CLI writes idempotently: existing fields are overwritten, unrelated frontmatter fields are preserved, and missing frontmatter is created from scratch. Do **not** use the `Edit` tool to write these fields — the CLI is the single source of truth for score persistence and is much harder to accidentally skip.
+**Risk-factor result**: render the JSON `risk_factors` comparison (`added`, `removed`, `retained` with `changed_fields`) in the ordinary output without recomputing it; `baseline` `absent`/`malformed` means no comparison. If stderr begins `Error: invalid risk factors:`, repair the payload and retry once. If still rejected, make a separate `set-scores` call with the same scores and no factor option, and report `risk factors not recorded; delta unavailable` only if that call succeeds. On any other failure, report the persistence failure and continue other batch issues. Never claim a delta or write delta Notes after a failed factor write.
 
 ### Phase 4.5: Findings Write-Back
 
@@ -423,21 +426,17 @@ After presenting the output, determine whether there are findings to write back.
 - **Gaps to Address** (present when readiness score < 70)
 - **Outcome Risk Factors** (present when outcome confidence < config.commands.confidence_gate.outcome_threshold, default: 65)
 
-**Advisor consult on sub-threshold ll-auto runs (FEAT-3117)**: when `ll-auto` hits this
-same readiness score below `commands.confidence_gate.readiness_threshold` in its own
-pre-Phase-1 gate (`issue_manager.py`, independent of this skill's interactive run), and
-`advisor.enabled: true` with `confidence_gate` listed in `advisor.triggers`, it now
-auto-fires one advisor consult carrying the gap analysis (current confidence vs.
-threshold) alongside the existing `CONFIDENCE_GATE_BLOCKED` block. The consult is
-fail-soft and purely informational — it never changes the block itself, and is skipped
-entirely when the trigger isn't armed or the per-task consult budget is exhausted.
+Advisor consult on sub-threshold `ll-auto` runs (FEAT-3117): see [reference.md](reference.md).
 
-If `HAS_FINDINGS` is false: skip (clean bill of health — no update needed).
+Also set `DELTA_NOTES=true` when Phase 4 recorded a comparison with `baseline: present` and any `added`/`removed` ID (even at unchanged totals, or with `HAS_FINDINGS` false).
 
-If `HAS_FINDINGS` is true, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):
+If neither `HAS_FINDINGS` nor `DELTA_NOTES`: skip (clean first/malformed-baseline and retained-only runs report in ordinary output only).
+
+If `HAS_FINDINGS` or `DELTA_NOTES` is true, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):
 
 See [rubric.md](rubric.md) § Confidence Check Notes template for the exact
-section to append, and § Resolved Concerns for honoring `/ll:reconcile-issue` output.
+section to append (it ends with the IDs-only `### Risk Factor Delta`), and § Resolved Concerns
+for honoring `/ll:reconcile-issue` output.
 
 After appending findings (or skipping if no findings), stage the updated issue file:
 

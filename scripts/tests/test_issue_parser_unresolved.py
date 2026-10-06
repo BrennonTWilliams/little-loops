@@ -1652,3 +1652,38 @@ class TestDecisionGroups:
             "**Option C**: do a third thing\n"
         )
         assert locate_unresolved_options(content) == (2, "Proposed Solution")
+
+
+class TestRiskFactorDeltaNotesCharacterization:
+    """ENH-3742: a fresh delta-only Notes section is the latest Notes section.
+
+    Accepted consequence: it supersedes older Notes for open-question counting,
+    adds no question of its own, and does not touch other scanned sections.
+    """
+
+    DELTA = (
+        "## Confidence Check Notes\n\n### Risk Factor Delta\n\n"
+        "- Added: none\n- No longer reported: `submit-tests-absent`\n"
+        "- Retained: `transport`\n- Changed fields: none\n"
+    )
+    OLDER = (
+        "## Confidence Check Notes\n\n"
+        '- `confidence-check` flagged: "open question: retry policy" — decision needed.\n'
+    )
+
+    def test_older_question_notes_then_delta_only_counts_zero(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        assert count_open_questions_in_sections(self.OLDER) == 1
+        assert count_open_questions_in_sections(self.OLDER + "\n" + self.DELTA) == 0
+
+    def test_delta_alone_adds_no_question(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        assert count_open_questions_in_sections(self.DELTA) == 0
+
+    def test_question_in_other_scanned_section_still_counts(self) -> None:
+        from little_loops.issue_parser import count_open_questions_in_sections
+
+        content = "## Open Questions\n\n- Worth confirming whether this belongs here?\n\n"
+        assert count_open_questions_in_sections(self.OLDER + "\n" + content + self.DELTA) == 1
