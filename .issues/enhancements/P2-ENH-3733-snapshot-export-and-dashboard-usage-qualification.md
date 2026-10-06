@@ -151,8 +151,21 @@ No qualification-core change, new source-history migration, quality/derive-statu
 
 Historical missing-core checks in the log are superseded: ENH-3731/3748 exist on `main`. This review consolidates the active contract and sets size to Large instead of the stale Very Large estimate. Export/template/privacy integration remains unimplemented; re-run confidence for this contract before implementation. No new score is claimed.
 
+## Verification Notes
+
+Verdict at time of check: **VALID** (2026-10-06; no corrections were needed, so nothing was edited beyond this note).
+
+- Current-behavior claims hold on `main`: the snapshot selector builds per-channel totals from selected rows without calling `qualify_usage`, the totals class accepts any numeric cost (no finite check), `read_schema_version` runs before the export transaction begins, and the source schema version is 60.
+- Referenced API exists: `UsageQualification` (with `counts`, `policy_version`, `rejected_contributors`, `component_counts`), `qualify_usage`, `USAGE_QUALIFICATION_REASONS`, `UNKNOWN_MODEL_BUCKET` and `row_channel` in the token-provenance module.
+- Allowlist pins hold: allowlist version 3 with a lockstep test class pinning version and hash; the dashboard template's predefined query already reads the audit table; the Node gate honors `LL_REQUIRE_NODE`.
+- Dependencies: ENH-3731, ENH-3748, BUG-3735, ENH-3543 and parent ENH-3723 are done; ENH-3732 and ENH-3730 (relates_to only) are open. The single `blocked_by` edge is satisfied.
+- Evidence-quote check clean; format-check reported no gaps; no required decision rules exist.
+- Graph provider: codegraph, freshness fresh (not needed to decide any verdict).
+- Proposal-vs-code check: no refuted mechanism found; every Integration Map entry maps to a criterion or step.
+
 ## Session Log
 
+- `/ll:verify-issues` - 2026-10-06T23:03:22 - `2c57054f-2b3f-496f-821f-b71d405d9036.jsonl`
 - Pre-implementation handoff review - 2026-10-06 - Reproduced a valid `2**63` source subtotal crashing SQLite snapshot binding. Added a bounded export-only representability guard, model-wide token taint with independent cost, range/permutation tests and exact unavailable-versus-empty semantics. Opus confidence 0.74 supported the overflow guard; its empty-channel zero proposal was rejected because no observation cannot certify zero. Targeted existing policy/lifecycle/reader/quality/workspace/dashboard/chokepoint suites: 293 passed. No implementation or readiness score claimed.
 
 - Pre-implementation review - 2026-10-06 - Rechecked `main`, consolidated obsolete option/research/wiring questions, corrected schema drift and the actual Node gate behavior, pinned four model-scoped metadata columns, strengthened reason allowlisting and added real predefined-SQL/read-snapshot tests. Retained Option C and approved existing identity columns; no rates or payload changes. Opus consult confidence 0.72; existing related suites: 188 passed. No implementation or readiness score claimed.
