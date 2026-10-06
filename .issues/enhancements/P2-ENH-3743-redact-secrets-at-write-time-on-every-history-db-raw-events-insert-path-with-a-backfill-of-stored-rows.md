@@ -5,7 +5,20 @@ type: ENH
 priority: P2
 status: open
 discovered_date: '2026-10-05'
-labels: [security, privacy, history]
+labels:
+- security
+- privacy
+- history
+learning_tests_required:
+- hypothesis
+verify_verdict: VALID
+confidence_score: 85
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
+decision_needed: true
 ---
 
 ## Summary
@@ -119,6 +132,18 @@ def redact_raw_events(
 - `scripts/little_loops/session_store/__init__.py` — export the new maintenance API consistently with `recompress_raw_events()`.
 - `scripts/little_loops/cli/session.py` — parser, dispatch, reports, and help.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/lifecycle.py:1467` — `json.loads(_unpack_payload(row[6])) != event.payload` followed by `RuntimeError("Codex stored source differs from current rollout")`, in `_refresh_codex_usage_source()`; canonicalize both sides here (the first-cursor certification site) [Agent 1 finding]
+- `scripts/little_loops/session_store/usage_refresh.py:203` — `stored == expected and all(_unpack_payload(row[8]) == _unpack_payload(row[7]) ...)` "unchanged" short-circuit compares the two payload columns to each other, in `refresh_raw_events()`; both columns must carry the same sanitized representation or legacy rows with divergent columns never reach `unchanged` [Agent 1 finding]
+- `scripts/little_loops/session_store/usage_refresh.py:246` — post-insert `_stored_signatures(replaced) != expected` check in `refresh_raw_events()`; without canonicalized signatures every redacted row reports `parser_changed_during_refresh` and rolls back [Agent 2 finding]
+- `scripts/little_loops/session_store/lifecycle.py:960` — `refuse_on_remote(db, "recompress")`, `SELECT id, raw_line, parsed_json` (~968) and `UPDATE raw_events SET raw_line = ?, parsed_json = ?` (~984) in `recompress_raw_events()`; local-maintenance template only (it must keep refusing remote; `redact_raw_events` must not call `refuse_on_remote`) [Agent 1 finding]
+- `scripts/little_loops/cli/session.py:754` — `refuse_on_remote(args.db, "refresh_raw_events")` + `resolve_history_db(args.db)` (~755) in `main_session()` `refresh` branch; the new `redact` branch must resolve through `resolve_history_target` (not `resolve_history_db`, which raises `HistoryBackendNotLocal` on a remote target) and wrap the call in `try/except HistoryError` as `refresh` does [Agent 2 finding]
+- `scripts/little_loops/cli/session.py` — `main_session()` wraps every command in `cli_event_context(...)`, so each `redact` run (remote included) writes a `cli_events` row outside the raw-only guarantee; disclose in the command output/docs [Agent 2 finding]
+- `scripts/little_loops/cli/session.py` — new `redact` touches the same four places as `recompress` in `_build_parser()`: module docstring "Subcommands:" list, epilog `Examples:` block, subparser registration block, and the `main_session()` dispatch branch; add `redact_raw_events` to the `from little_loops.session_store import (...)` block (tests patch `little_loops.cli.session.redact_raw_events`). For the "positive batch sizes" requirement reuse `_positive_int` in `cli/history.py` / `positive_int` in `cli/issues/next_id.py` as the argparse `type=` rather than the plain `type=int` `recompress` uses [Agent 2 finding]
+- `scripts/little_loops/pii.py` — module docstring ("for SFT corpus filtering") goes stale once the history policy lives here; keep the new history rule table separate from `CREDENTIAL_RULES` (adding bearer/URI/credential-field families to `CREDENTIAL_RULES` breaks `test_has_one_rule_per_expected_name`, changes `credential_rules_sha()`, and flows into SFT and the evidence bundle) [Agent 2 finding]
+- `scripts/little_loops/__init__.py` — `from little_loops.pii import (...)` block (line 64) and `__all__` `# pii` group; decide explicitly whether `redact_history_text`/`sanitize_history_payload` join the package surface (`detect_pii`/`redact_pii`/`apply_pii_action` must stay exported — pinned by `test_extension.py`) [Agent 1 finding]
+- Stale comments/docstrings that contradict "payloads are sanitized" — update text only, no function-body edits: `lifecycle.py` `_backfill_raw_events()` docstring ("JSON-equal to the parser's own output", ~828), `usage_refresh.py` module docstring ("``raw_events`` stores normalized payloads"), `session_store/qwen.py` module docstring ("``raw_events`` keeps the verbatim source line", ~28), the `# raw_events payload compression` comment block above `_pack_payload()` in `session_store/writers.py` (~154), and the `raw_line`/`parsed_json` DDL comment in `session_store/schema.py` (comment-only; `_schema_manifest` is PRAGMA-derived) [Agent 2 finding]
+
 ### Dependent Files and Similar Patterns
 
 - `session_store/writers.py` → `_pack_payload()`, `_unpack_payload()`, `_iter_events_with_host()` and replay/usage consumers; preserve their contracts.
@@ -126,6 +151,14 @@ def redact_raw_events(
 - `session_store/libsql.py` → `LibsqlConnection.executemany()` and `session_store/hrana.py` → `HranaClient.execute_many()` provide bounded atomic remote batches; no new backend required.
 - `lifecycle.py` → `recompress_raw_events()` provides local maintenance structure, not a remote implementation to copy verbatim.
 - `cli/logs.py`, `cli/loop/evidence.py`, SFT filtering, and package exports depend on existing PII/scanner behavior.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/backfill_worker.py` — `_refresh_usage_source()` calls `refresh_usage_source`, and `main()` calls `backfill_incremental`; the hook-spawned worker is a live ingest path that inherits sanitization with no edit. Both `_run_usage_trigger()` (`print(f"backfill_worker: usage refresh failed: {exc}", ...)`, line 120) and `main()` (`print(f"backfill_worker: {exc}", ...)`, line 231) echo exception text to stderr, so the sanitizer's error type must carry a content-free message [Agent 1 + 2 finding]
+- `scripts/little_loops/loops/sft-corpus.yaml` — shell action imports `apply_pii_action` (line 331); consumes the shared `CREDENTIAL_RULES`, so it is affected only if shared scan semantics change (hence the separate history rule table). No edit needed [Agent 1 finding]
+- `scripts/little_loops/session_store/backend.py` — `_REMOTE_REFUSALS` / `refuse_on_remote()`; `redact` must stay out of this table (supported remotely by decision). Note `refresh_usage_source`, `refresh_raw_events`, and `backfill_usage_incremental` all call `refuse_on_remote`, so the Claude refresh insert, `refresh_raw_events`, and Codex certification are **SQLite-only today**: the remote-capable ingest path is `backfill_raw_events` / `backfill_incremental` (SessionStart worker, `backfill --since`) [Agent 2 finding]
+- `scripts/little_loops/session_store/libsql.py` / `hrana.py` — `HranaClient.execute_many()` runs one SQL with many parameter sets and returns only the **summed** `affected_row_count`; `LibsqlConnection.executemany()` forwards that sum as `rowcount`. A guarded remote `UPDATE ... WHERE id=? AND raw_line=? AND parsed_json=?` batch therefore cannot attribute conflicts per row: either compare the summed count to the batch size and re-read the batch on mismatch, or use `HranaClient.batch` with explicit `BatchStep`s (per-step results) [Agent 2 finding]
+- `scripts/little_loops/session_store/rebuild_fingerprint.json` — hashes every function reachable from `lifecycle.rebuild`, including `writers._unpack_payload`, `_iter_events`, `_iter_events_with_host`, and the `writers._backfill_*` writers. Placing the sanitizer in or calling it from those functions requires a `REBUILD_DERIVE_VERSION` bump + fingerprint regeneration; `_backfill_raw_events`, `refresh_*`, and `recompress_raw_events` are outside the closure [Agent 2 + 3 finding]
+- Derived-table consequence to disclose: `rebuild` after `redact` re-derives `tool_events` (args hash via `writers._hash_args`), `message_events`, FTS, and summaries from placeholders, so hashes recomputed from placeholder text differ from earlier ones [Agent 2 finding]
 
 ### Tests
 
@@ -136,12 +169,61 @@ def redact_raw_events(
 - `scripts/tests/test_session_store_usage_refresh.py` / `test_ll_session_refresh.py` — sanitized field preservation and repeat refresh.
 - `scripts/tests/test_ll_session.py` — `redact` CLI, dry-run, reports, target routing, and nonzero incomplete results.
 
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Existing tests that may break**
+- `scripts/tests/test_pii.py` — `TestCredentialRules::test_has_one_rule_per_expected_name` asserts `{r.name for r in CREDENTIAL_RULES} == set(_RULE_FIXTURES)`; breaks if new families go into `CREDENTIAL_RULES`. Also `TestCredentialRulesSha` and `TestScanText::test_rejects_near_miss_fixture` (pinned to the header-only `private_key_pem`) break if the shared pattern is widened [Agent 3 finding]
+- `scripts/tests/test_feat3182_evidence_bundle.py` — `TestCredentialScan` asserts `credential_scan.version/rules_sha/hit_count/hits`; breaks if `CREDENTIAL_RULES` or `CREDENTIAL_SCANNER_VERSION` change without matching updates [Agent 3 finding]
+- `scripts/tests/test_remote_operation_matrix.py` — `_REJECTED` / `TestRejectedOperations` (`("recompress", ...)`): `redact` must stay absent; add a positive remote case in `TestSupportedOperations` [Agent 2 + 3 finding]
+- `scripts/tests/test_remote_callers_bug3652.py` — `TestResolveHistoryDbCallerGate::test_allowlist_has_no_stale_entries` requires `main_session` to still call `resolve_history_db` (satisfied by the `refresh` branch); `_CALLER_ALLOWLIST` reason string for `("cli/session.py", "main_session")` says it "already refuses via refuse_on_remote" — reword if the `redact` branch changes the justification [Agent 2 + 3 finding]
+- `scripts/tests/test_enh3678_rebuild_derive_gate.py` — `TestDeriveFingerprint::test_digest_matches_snapshot` and `test_resolved_function_set_matches_snapshot` trip if any `rebuild`-reachable function (e.g. `writers._unpack_payload`) is edited, including by the comment/docstring updates in Files to Modify; run it after those edits [Agent 2 + 3 finding]
+- `scripts/tests/test_session_store_schema.py` — `TestPackageReexportSurface::test_all_and_required_private_names_resolve` fails if `redact_raw_events` is in `__all__` but not imported in `session_store/__init__.py` [Agent 2 + 3 finding]
+- `scripts/tests/test_session_store_usage_refresh.py` — `test_failed_reingestion_rolls_back_existing_rows` monkeypatches `lifecycle._backfill_raw_events` with a `*_args` function (keep the module attribute name and positional call shape); `test_refresh_refuses_parser_output_that_drops_existing_fields` (`existing_payload_not_preserved`) must keep refusing real field loss [Agent 3 finding]
+- `scripts/tests/test_enh_omp_normalizer.py` — `test_raw_line_and_parsed_json_are_normalized_form` asserts `parsed == raw` after unpacking both columns; holds only if both columns get the same sanitized payload [Agent 3 finding]
+- `scripts/tests/test_enh3532_codex_rollout_usage.py` — `test_direct_and_stored_replay_agree_and_copy_is_idempotent` compares stored replay payloads to the file's; green only while the fixture has no redactable text [Agent 3 finding]
+- `scripts/tests/fixtures/codex/rollout-interactive.jsonl` — two lines carry an email address that becomes `[EMAIL]` in stored rows; read by `test_session_store_lifecycle.py::TestBackfillCodexHandlesD4`, `test_session_discovery.py::TestBackfillRawEventsCodexHandleD3`, and parser-only `test_enh_3433_codex_normalizer.py`. None asserts the email text today [Agent 2 + 3 finding]
+- `scripts/tests/test_extension.py` — smoke imports of `detect_pii`, `redact_pii`, `apply_pii_action`, `CREDENTIAL_RULES` from `little_loops`; keep them exported [Agent 1 + 3 finding]
+- `scripts/tests/test_remote_ingestion_telemetry.py` — `TestRemoteIngestion::test_inserts_are_batched_not_one_round_trip_per_event` asserts `len(remote.requests) - before < 20` for 450 events; sanitization must stay in-process (no per-event round trip) [Agent 3 finding]
+
+**New tests to write (with closest template)**
+- `scripts/tests/test_pii.py` — history-policy fixture table parallel to `_RULE_FIXTURES` (positive + near-miss per family) and a `TestNoLeak`-style check; first Hypothesis tests in this file (shape: `test_config_properties.py::TestBRConfigProperties::test_to_dict_idempotent`, `@st.composite` in `test_issue_parser_fuzz.py`; use `fuzz_max_examples` from `tests/helpers.py`). Multi-MB/scaling tests must stay well under the suite's 120s thread timeout (or carry `@pytest.mark.timeout(N)`/`slow`); no tree-wide wall-clock scaling helper exists [Agent 3 finding]
+- `scripts/tests/test_session_store_lifecycle.py` — `redact_raw_events` local cases modeled on `TestRawEventsPayloadCompression::test_recompress_converts_legacy_rows_and_preserves_rebuild` / `test_recompress_is_idempotent`; ingest sanitization modeled on `test_backfill_stores_compressed_blobs` [Agent 3 finding]
+- `scripts/tests/test_remote_ingestion_telemetry.py` — outbound compressed payload inspection via `TestRemoteIngestion` + `_transcript(...)`; `HranaStub` stores raw request bodies as text, so decode JSON → base64 blob → `_unpack_payload`. Remote refresh/certification cannot be tested remotely (they `refuse_on_remote`); remote outbound coverage goes through `backfill_raw_events` only [Agent 2 + 3 finding]
+- `scripts/tests/test_libsql_backend.py` — guarded-update batch atomicity (template: `TestConnection::test_executemany_is_atomic`); ambiguous commit via `HranaStub` fault hooks (`fail_next`, `delays`, `stall_body`) [Agent 3 finding]
+- `scripts/tests/test_remote_schema.py` (~lines 244-269) — template for a remote `ll-session redact` CLI test (`monkeypatch.setattr(sys, "argv", [...])` then `main_session()` against the stub) [Agent 3 finding]
+- `scripts/tests/test_ll_session.py` — `TestRecompressSubcommand` is the template (parse test, defaults, `patch("little_loops.cli.session.<name>")` invoke test); add a `--batch 0` rejection test (no existing equivalent) [Agent 3 finding]
+- `scripts/tests/test_wiring_reference_docs.py` — add a `DOC_STRINGS_PRESENT` row for `ll-session redact` in `docs/reference/CLI.md` alongside `("docs/reference/CLI.md", "ll-session migrate", "FEAT-3535")` [Agent 3 finding]
+- Ingest → rebuild → usage totals/identity parity with vs. without redaction (no existing test; closest `test_enh3532_codex_rollout_usage.py::test_direct_and_stored_replay_agree_and_copy_is_idempotent`) [Agent 3 finding]
+- Other Claude/Codex refresh callers to regression-run: `test_enh3731_usage_qualification.py`, `test_enh3656_stored_cache_rate.py`, `test_enh3549_codex_stored_ctx_stats.py`, `test_bug3736_usage_replay_holds.py` (hand-seeded legacy rows — realistic scrub inputs) [Agent 3 finding]
+- Secret fixtures are assembled from fragments (gitleaks pre-commit); use `/nonexistent/...` rather than `/home/<user>/` paths (private-refs hook) [Agent 2 + 3 finding]
+
 ### Documentation and Configuration
 
 - `docs/reference/CLI.md` — command usage and scope/physical-erasure limits.
 - `docs/reference/API.md` — new helpers/maintenance report and changed raw payload semantics.
 - `docs/reference/CONFIGURATION.md` — default-on capture policy and remote maintenance scope.
 - Configuration/schema: no opt-out, new dependency, or schema migration required for the proposed design.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `### ll-session`: add a `redact` subcommand-table row, a `**\`redact\` flags:**` table + prose paragraph (beside `**\`recompress\` flags:**`), and example lines after `ll-session recompress --batch 5000`; the paragraph "**Under a remote history backend** these subcommands are refused…" needs an explicit `redact` exception; the `refresh` row ("Replace verified stored raw rows from available original session files") must say re-ingestion re-applies redaction (not a restore of original text); the `recompress` "byte-lossless" wording sits next to a lossy sibling [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md` — `#### Remote history backend`, in the "Not supported remotely." bullet (`rebuild`, `backfill`, `prune`, `compact`, `recompress`, … "a remote store has no retention path"): add `redact` as an explicitly supported remote maintenance operation; the `Ingestion` bullet is the place for "default-on payload redaction on ingest". Keep the strings pinned by `test_wiring_reference_docs.py` (`Remote history backend`, `history.backend.provider`, `history.backend.project_id`) [Agent 1 + 2 finding]
+- `docs/reference/API.md` — `## little_loops.pii` section (intro repeats "for SFT corpus filtering") and its module-table row (lists only `detect_pii, redact_pii, apply_pii_action`); the `### raw_events / rebuild / compact` section sentence "re-serialized `raw_line` (JSON-equal to the parser's own output …)" is no longer true for matched spans; neither `recompress_raw_events` nor `refresh_raw_events` is in the `from little_loops.session_store import (...)` listing, so there is no precedent entry to extend [Agent 1 + 2 finding]
+- `docs/guides/HISTORY_SESSION_GUIDE.md` (user-facing; `test_docs_audience_gate.py` applies — dotted module names only, no `scripts/…` paths) — the `raw_events` row in "What Gets Recorded" needs a redaction note; the "Getting Started: Backfill" blockquote on `rebuild` should state that `redact` does not scrub derived/FTS/summary rows and `rebuild` re-derives from placeholders; "Retention & Pruning" says pruning "removes the verbatim source records" (conflicts with the new semantics); add a Table of Contents entry if a "Redacting stored payloads" section is added [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — the `**Ingest to history.db**` bullet describing `_backfill_raw_events` consuming `iter_events` ("sanitized before serialization") [Agent 1 + 2 finding]
+- `docs/reference/loops.md` — documents `pii_action` / `[PRIVATE_KEY_PEM]` via `little_loops.pii.CREDENTIAL_RULES`; edit only if the shared `private_key_pem` pattern semantics change [Agent 2 finding]
+- No `README.md`/`scripts/README.md`, `skills/`, `commands/`, `hooks/`, or `loops/` listing of `ll-session` subcommands exists, so the ll-adapt mirror gates and README copy step are not triggered unless those files are touched; `.claude/CLAUDE.md` needs no entry; CHANGELOG is release-prep only [Agent 2 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-05 — based on codebase analysis:_
+
+- **Conventions in force — maintenance shape**: lifecycle maintenance functions return plain `dict[str, Any]` reports and page by a self-clearing `WHERE`+`LIMIT` predicate with per-batch commit (`lifecycle.py:recompress_raw_events`, `prune`, `compact`); reports built as dataclasses exist only on the refresh path (`usage_refresh.py` `SourceRefresh`/`RefreshResult`, converted to dicts for `--json`). The issue's `RawRedactionReport` dataclass and `MAX(id)` keyset paging are therefore a deliberate departure — `id > ?` paging exists only in the usage-derive checkpoint (`_derive_usage_incremental_conn`).
+- **Conventions in force — CLI surface**: `--dry-run` (`store_true`) and `--batch N` (`type=int`, default 2000) appear on separate subcommands (`prune`, `recompress`), each with `add_json_arg`; `_build_parser()` in `cli/session.py` registers subparsers inline (no helper), and a new subcommand touches four places: parser, `main_session` dispatch branch, module docstring list, epilog examples. `--json` branches first via `print_json`; skips are reported as machine-readable `reason` codes plus path only, never content, and exit non-zero (`refresh`).
+- **Conventions in force — exports**: maintenance APIs are re-exported in both the import block and `__all__` of `session_store/__init__.py` (`prune`, `compact`, `recompress_raw_events`); `refresh_raw_events` is the exception (imported directly from `usage_refresh`).
+- **Contested convention — remote maintenance**: every other maintenance operation calls `refuse_on_remote(db, "<op>")` (`session_store/backend.py:107`, reasons in `_REMOTE_REFUSALS`, `backend.py:97`), is asserted by `test_remote_operation_matrix.py::_REJECTED` (expects `HistoryUnsupported.operation` and zero stub requests), and is listed as refused in `docs/reference/CLI.md` and `docs/reference/CONFIGURATION.md`. This issue's explicit decision to support remote (see Review Notes) breaks that rule: `redact` must stay out of `_REMOTE_REFUSALS`/`_REJECTED`, and the CLI/CONFIGURATION docs' "maintenance is refused remotely" wording needs a stated exception. Local-vs-remote branching inside ingest uses `remote = not hasattr(conn, "create_function")` with `_REMOTE_RAW_INSERT` + `executemany` in `_REMOTE_INSERT_CHUNK = 200` chunks (`lifecycle.py:778`).
+- **Conventions in force — pii.py**: patterns are module-level compiled regexes; placeholders derive as `f"[{name.upper()}]"` from `PII_PATTERNS` then `CREDENTIAL_RULES` (frozen `CredentialRule(name, pattern, rationale)`); `credential_rules_sha()` hashes name/pattern/flags; `CREDENTIAL_SCANNER_VERSION` bumps only on scan-semantic change; `CredentialFinding` carries a short fingerprint and no excerpt. No JSON-recursive redactor exists today (`apply_pii_action` handles top-level strings only; other recursive walkers such as `_preserves_fields` are not redaction-specific).
+- **Conventions in force — tests**: secret fixtures are assembled from fragments (e.g. `"AKIA" + "I" * 16`) so the gitleaks pre-commit hook does not flag the test file; `test_pii.py` pairs each rule with a positive and a near-miss in `_RULE_FIXTURES` and has a `TestNoLeak` class asserting matched text never appears in finding reprs. Hypothesis is configured (`conftest.py` `ll-dev`/`ll-full` profiles, `LL_FUZZ=full`; `@settings(max_examples=fuzz_max_examples(N), deadline=None)` with `fuzz_max_examples` from `tests/helpers.py:38`) but is not yet used in `test_pii.py`. CLI tests follow `test_ll_session.py::TestRecompressSubcommand` (argv parse, defaults, patched-function `main_session()` call with `json.loads(capsys...)`); remote tests use a per-module `HranaStub` `remote` fixture setting `LL_HISTORY_URL`/`LL_HISTORY_AUTH_TOKEN` and asserting on `stub.db.execute(...)` and `len(stub.requests)`. `HranaClient._scrub` already masks the auth token in remote errors.
+- **Docs convention**: a subcommand is documented in `docs/reference/CLI.md` in three places (table row, a `**\`<cmd>\` flags:**` table plus prose paragraph, example lines); `docs/reference/API.md` does not currently list `recompress_raw_events`.
 
 ## Implementation Steps
 
@@ -150,6 +232,22 @@ def redact_raw_events(
 3. Implement bounded local/libSQL raw scrubbing and safe reports, including dry-run, guarded updates, incomplete-row handling, and rerun semantics.
 4. Add CLI/export wiring and focused ingest/refresh/replay/maintenance regression tests.
 5. Document policy coverage, legacy cleanup steps, and excluded stores/copies; run the authoritative local test suite.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Keep the history rule table separate from `CREDENTIAL_RULES` in `scripts/little_loops/pii.py`; update the module docstring; leave `credential_rules_sha()` / `CREDENTIAL_SCANNER_VERSION` untouched unless shared semantics deliberately change (then update `test_pii.py::TestCredentialRulesSha` and `test_feat3182_evidence_bundle.py::TestCredentialScan`)
+- Update `scripts/little_loops/session_store/lifecycle.py:_refresh_codex_usage_source()` (~1467) and `scripts/little_loops/session_store/usage_refresh.py:refresh_raw_events()` (~203 column-parity short-circuit, ~246 post-insert signature check) to compare canonicalized payloads; keep `_preserves_fields()` active
+- Keep `lifecycle._backfill_raw_events` as a module attribute with its positional call shape (monkeypatched by `test_failed_reingestion_rolls_back_existing_rows`)
+- Add the `redact` branch in `cli/session.py:main_session()` via `resolve_history_target` + `try/except HistoryError`; touch the module docstring list, epilog examples, subparser block, and import block; use a positive-int `type=` for `--batch`; do not add `redact` to `session_store/backend.py:_REMOTE_REFUSALS` or `test_remote_operation_matrix.py:_REJECTED`
+- Export `redact_raw_events` in both the import block and `__all__` of `scripts/little_loops/session_store/__init__.py` (gate: `TestPackageReexportSurface`); decide on `little_loops/__init__.py` pii re-exports
+- Design the guarded remote UPDATE around `HranaClient.execute_many()` returning only a summed row count (compare to batch size and re-read, or use `HranaClient.batch` per-step results)
+- Ensure sanitizer exceptions carry content-free messages — `cli/backfill_worker.py` prints `{exc}` to stderr in `_run_usage_trigger()` and `main()`
+- Keep sanitizer code out of `rebuild`-reachable functions (`writers._unpack_payload`, `_iter_events*`, `_backfill_*`) or bump `REBUILD_DERIVE_VERSION` and regenerate `rebuild_fingerprint.json`; run `test_enh3678_rebuild_derive_gate.py` after the comment/docstring edits in `writers.py`
+- Update stale "verbatim"/"JSON-equal" comments in `lifecycle.py`, `usage_refresh.py`, `qwen.py`, `writers.py`, `schema.py` (text only)
+- Update tests: see Tests → "Existing tests that may break" and "New tests to write" above (notably `test_has_one_rule_per_expected_name`, `test_remote_operation_matrix.py`, `test_wiring_reference_docs.py` `DOC_STRINGS_PRESENT`, the Codex fixture email → `[EMAIL]`)
+- Update docs: `docs/reference/CLI.md` (row, flags, examples, remote-refusal exception, `refresh` wording), `docs/reference/CONFIGURATION.md` (remote bullet + Ingestion), `docs/reference/API.md` (pii section, raw_events section, module row), `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/ARCHITECTURE.md`
 
 ## Acceptance Criteria
 
@@ -182,7 +280,30 @@ def redact_raw_events(
 - 2026-10-05: Corrected verbatim-line claims; confirmed both compressed payload copies, full-PEM and escaped-JSON gaps, source-refresh dependencies, and remote transaction differences. Added concrete design, bounded cleanup/reporting, compatibility coverage, and explicit cleanup limits. Review changes only; implementation remains pending.
 - `/ll:advise` with `claude-code` / `opus`, signal `user_requested`: confidence 0.74. Accepted its JSON-aware/canonicalized comparisons, context-bound detection, PEM completeness, compare-and-set maintenance, performance coverage, and no-rebuild remediation advice. It also recommended expanding new-write protection to every live/derived sink and making PII opt-in. Retain the explicitly bounded raw-payload issue and original default PII intent: wider sink/legacy-derived remediation is separate work, and the raw command must disclose that exposure. Do not adopt a remote refusal because the current backend already supports parameterized updates, affected-row counts, and atomic batches. Do not add checkpoint/VACUUM as a claimed secure-erasure guarantee. Its dissent favored remote/export protection over lossy local capture; Impact and Scope Boundaries document that tradeoff.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Concerns
+- `ll-issues format-check` flags `ll-session redact (no such subcommand)` as `stale_cli_flag`. It is the forward-looking new subcommand, not a stale claim, so it is advisory only, but it caps Criterion 4 at 10.
+- Remote `redact` breaks the repo-wide `refuse_on_remote` maintenance convention (Review Notes record this as a deliberate decision). `test_remote_operation_matrix.py`, `docs/reference/CLI.md`, and `docs/reference/CONFIGURATION.md` all need an explicit exception.
+- The guarded remote `UPDATE` design is left as an either/or: `HranaClient.execute_many()` returns only a summed row count. Pick "compare to batch size and re-read" or per-step `HranaClient.batch` before coding.
+- Sanitizer placement matters: any edit to `rebuild`-reachable functions (`writers._unpack_payload`, `_iter_events*`, `_backfill_*`) trips `test_enh3678_rebuild_derive_gate.py` and needs a `REBUILD_DERIVE_VERSION` bump.
+- Open judgment calls: whether `redact_history_text`/`sanitize_history_payload` join the `little_loops/__init__.py` exports, and exact bearer/URI-userinfo match boundaries (to be settled by adversarial fixtures).
+
+### Outcome Risk Factors
+- Deep per-site complexity: shared canonicalization must stay consistent across the insert branches, Codex certification, and the `refresh_raw_events` signature, field-preservation, and column-parity checks. A mismatch rolls back every refresh.
+- Broad blast radius: every raw payload consumer (replay, usage qualification, rebuild, dedup keys) sees changed payload content. A false positive can corrupt identity or usage attribution.
+- Roughly 6-15 change sites across source, tests, and five docs files, with 15+ existing tests that may break.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T00:11:33 - `cba8250f-da78-4dc9-9001-f8bed2e5e7b0.jsonl`
+- `/ll:verify-issues` - 2026-10-06T00:09:56 - `23214518-2834-45d1-9a9e-5041b278fc6e.jsonl`
+- `/ll:wire-issue` - 2026-10-06T00:08:03 - `b249786e-08d6-4f68-83f0-5c270f528ab9.jsonl`
+- `/ll:refine-issue` - 2026-10-05T23:54:08 - `bb41cd42-6536-4a59-9334-2c0ba11bd9e2.jsonl`
 - `/ll:ready-issue` - 2026-10-05T20:38:27 - `5e941467-cbb1-4a41-8ad7-cda0d6a9d0e0.jsonl`
 
 ---
