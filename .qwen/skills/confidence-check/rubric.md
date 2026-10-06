@@ -278,6 +278,8 @@ aggregate score, mirroring the Learning Test and Program Design hard overrides.
 
 ## Phase 2b — Outcome Confidence Scoring Tables (0-25 points each, max 100)
 
+**Polarity**: every outcome criterion is scored as points *toward* confidence — **higher is better** (25 = no concern, 0 = worst). A low Complexity, Ambiguity, Change Surface, or Test Coverage score is the deficient end. Criterion D's score does not by itself show whether a file inventory exists (D=0 is wide blast radius or unenumerated mechanical fanout; D=25 is isolation or well-verified enumeration), and it is not evidence that an issue should be decomposed — Pattern B's low scores call for enumeration or verification, not a split.
+
 ### Criterion A: Complexity (Breadth + Depth)
 
 Apply both sub-tables and sum Breadth + Depth for the criterion total.

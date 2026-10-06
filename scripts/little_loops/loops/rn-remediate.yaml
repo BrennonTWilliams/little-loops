@@ -68,6 +68,14 @@ context:
   # BUG-2007 Defect 2: diagnose routing thresholds, overridable so callers can
   # tune routing to match their score targets. Defaults preserve the prior
   # hardcoded literals so existing callers stay backward-compatible.
+  # BUG-3756: criterion scores (ambiguity/complexity/change_surface) are
+  # confidence POINTS (0-25, high = better). The ambiguity/complexity thresholds
+  # are MINIMUM acceptable scores: deficient is `score < threshold`, equality is
+  # acceptable. diagnose_change_surface_threshold is retained only so existing
+  # callers' with: bindings keep resolving; it has no routing effect (score-only
+  # DECOMPOSE was removed — Criterion D has two scoring patterns, so a low D does
+  # not identify which one applies). diagnose_confidence_floor is an aggregate
+  # (0-100) readiness floor; its `<` comparison is unchanged.
   diagnose_ambiguity_threshold: 15
   diagnose_complexity_threshold: 15
   diagnose_change_surface_threshold: 15
@@ -147,16 +155,29 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${context.issue_id} --auto"
     action_type: slash_command
+    # BUG-3756: capture the evaluator verdict so a rejected (`no`) assessment is
+    # still honored AFTER snapshot validation — passing aggregate scores must never
+    # promote a captured `no` through the numeric readiness gates. `no` now routes
+    # through verify_scores_persisted (band/PRE capture + score validation) and
+    # check_assess_verdict sends it on to refine_first.
+    capture: assess
     on_success: verify_scores_persisted
     on_partial: verify_scores_persisted
-    on_no: refine_first
+    on_no: verify_scores_persisted
     on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   verify_scores_persisted:
+    # BUG-3756: validates + normalizes the score snapshot before any band or
+    # routing decision. Fetch into a temp file, check the command status, validate
+    # (aggregates 0-100, criteria 0-25; integer JSON numbers or ^[0-9]+$ strings;
+    # real zero preserved, missing/null/bool/fractional/signed/padded rejected),
+    # normalize to base-10 integers, then publish with a checked atomic mv. The
+    # stable complexity band is published only after the snapshot is promoted.
     action_type: shell
     action: |
       ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${context.run_dir}"
       # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
       # type prefix or a file with no priority prefix still locates the issue.
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
@@ -170,24 +191,69 @@ states:
         echo "ERROR: confidence_score or outcome_confidence missing for $ID"
         exit 1
       fi
-      # Write pre-scores
-      ll-issues show "$ID" --json > "${context.run_dir}/pre_scores_$${ID}.json" 2>/dev/null
+      PRE="$RUN_DIR/pre_scores_$${ID}.json"
+      BAND="$RUN_DIR/complexity_band_$${ID}.txt"
+      trap 'rm -f "$PRE.raw" "$PRE.tmp" "$BAND.tmp"' EXIT
+      FILTER='
+        def pts(lo; hi):
+          if type == "number" then . == floor and . >= lo and . <= hi
+          elif type == "string" then
+            length > 0 and (explode | all(. >= 48 and . <= 57)) and (tonumber | . >= lo and . <= hi)
+          else false end;
+        if type == "object"
+           and (.confidence | pts(0; 100)) and (.outcome | pts(0; 100))
+           and (.score_complexity | pts(0; 25)) and (.score_ambiguity | pts(0; 25))
+           and (.score_change_surface | pts(0; 25))
+        then .confidence |= (tonumber | floor) | .outcome |= (tonumber | floor)
+          | .score_complexity |= (tonumber | floor) | .score_ambiguity |= (tonumber | floor)
+          | .score_change_surface |= (tonumber | floor)
+        else empty end'
+      if ! ll-issues show "$ID" --json > "$PRE.raw" 2>/dev/null; then
+        echo "ERROR: ll-issues show --json failed for $ID"
+        exit 1
+      fi
+      if ! jq -e "$FILTER" "$PRE.raw" > "$PRE.tmp" 2>/dev/null; then
+        echo "ERROR: invalid or missing confidence/outcome/criterion scores for $ID"
+        exit 1
+      fi
+      if ! mv -f "$PRE.tmp" "$PRE"; then
+        echo "ERROR: could not persist pre-scores for $ID"
+        exit 1
+      fi
       # Marker-gate: snapshot a STABLE complexity band ONCE. pre_scores_<ID>.json
       # is overwritten every pass by check_convergence (cp POST PRE), so the band
       # must be captured here — the only point with the genuine pre-remediation
       # score — into a file the gate can read without it mutating mid-run.
-      COMPLEXITY=$(jq -r '.score_complexity // 0' "${context.run_dir}/pre_scores_$${ID}.json" 2>/dev/null || echo 0)
-      if [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ]; then  # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-        echo "ABOVE_MINIMAL" > "${context.run_dir}/complexity_band_$${ID}.txt"
+      # BUG-3756: criterion scores are confidence points (high = better), so a
+      # score BELOW the minimum is the deficient (ABOVE_MINIMAL complexity) band.
+      COMPLEXITY=$(jq -r '.score_complexity' "$PRE")
+      if [ "$COMPLEXITY" -lt "${context.diagnose_complexity_threshold}" ]; then  # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        BAND_VALUE="ABOVE_MINIMAL"
       else
-        echo "MINIMAL" > "${context.run_dir}/complexity_band_$${ID}.txt"
+        BAND_VALUE="MINIMAL"
+      fi
+      if ! echo "$BAND_VALUE" > "$BAND.tmp" || ! mv -f "$BAND.tmp" "$BAND"; then
+        echo "ERROR: could not persist complexity band for $ID"
+        exit 1
       fi
       echo "Scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
     evaluate:
       type: exit_code
-    on_yes: check_readiness
+    on_yes: check_assess_verdict
     on_no: emit_scores_missing
     on_error: emit_scores_missing
+
+  check_assess_verdict:
+    # BUG-3756: post-validation verdict gate. A captured `no` from `assess` means
+    # the confidence check rejected the issue regardless of its aggregate numbers,
+    # so it still leads to refine_first (the pre-fix assess.on_no destination);
+    # yes/partial continue to the readiness gates. on_error fails toward the
+    # lighter refine rather than toward implementation.
+    fragment: shell_exit
+    action: '[ ${captured.assess.verdict:shell} = "no" ]'
+    on_yes: refine_first
+    on_no: check_readiness
+    on_error: refine_first
 
   check_readiness:
     fragment: shell_exit
@@ -204,27 +270,34 @@ states:
 
   check_complexity_pre_implement:
     # ENH-2223: issue already passed check_readiness (confidence >= 85, outcome >= 75).
-    # High complexity here does NOT imply content deficiency — route to the wire check
-    # the same as low-complexity issues. gate_implement enforces a refine+wire pass for
+    # A low complexity score here does NOT imply content deficiency — route to the wire
+    # check the same as high-score issues. gate_implement enforces a refine+wire pass for
     # above-minimal issues; --full-rewrite is not warranted for an already-ready issue.
+    # BUG-3756: complexity is a confidence-points score (high = better); deficient is
+    # `< diagnose_complexity_threshold`.
     fragment: shell_exit
     action: |
       PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      COMPLEXITY=$(jq -r '.score_complexity // 0' "$PRE" 2>/dev/null || echo 0)
+      COMPLEXITY=$(jq -r '.score_complexity' "$PRE" 2>/dev/null) || exit 1
       THRESHOLD="${context.diagnose_complexity_threshold}"  # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      [ "$COMPLEXITY" -ge "$THRESHOLD" ] && exit 0 || exit 1
+      [ "$COMPLEXITY" -lt "$THRESHOLD" ] && exit 0 || exit 1
     on_yes: check_wire_pre_implement
     on_no: check_wire_pre_implement
     on_error: check_wire_pre_implement
 
   check_wire_pre_implement:
+    # BUG-3756: wire only when no file inventory exists. integration_files (from
+    # `ll-issues show --json`) is a positive count string or null; it is independent
+    # of Criterion D (D=0 is wide blast radius or unenumerated fanout, D=25 is
+    # isolation or verified enumeration — neither proves map presence).
     fragment: shell_exit
     action: |
       PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
-      [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
+      INVENTORY=$(jq -r '.integration_files // ""' "$PRE" 2>/dev/null)
+      case "$INVENTORY" in ''|*[!0-9]*) exit 0 ;; esac
+      [ "$INVENTORY" -gt 0 ] && exit 1 || exit 0
     on_yes: wire
-    on_no: gate_implement   # BUG-2306: change_surface > 0 must enforce ENH-2163 gate
+    on_no: gate_implement   # BUG-2306: an existing inventory must enforce ENH-2163 gate
     on_error: implement
 
   check_outcome:
@@ -250,8 +323,8 @@ states:
     # the deficiency is confidence_score. diagnose's first rule (IMPLEMENT) needs
     # both thresholds — already found false by check_readiness — so the
     # diagnose → route_d_implement branch is dead from here. refine targets the
-    # confidence gap directly. check_wire_needed_outcome gates wire first when the
-    # integration map is absent (score_change_surface == 0).
+    # confidence gap directly. check_wire_needed_outcome gates wire first when no
+    # file inventory exists (BUG-3756: integration_files null/zero).
     on_yes: check_wire_needed_outcome
     on_no: check_decision_needed
     on_error: check_decision_needed
@@ -260,10 +333,11 @@ states:
     fragment: shell_exit
     action: |
       PRE="${context.run_dir}/pre_scores_${context.issue_id}.json"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      CHANGE_SURFACE=$(jq -r '.score_change_surface // 0' "$PRE" 2>/dev/null || echo 0)
-      [ "$CHANGE_SURFACE" -eq 0 ] && exit 0 || exit 1
+      INVENTORY=$(jq -r '.integration_files // ""' "$PRE" 2>/dev/null)
+      case "$INVENTORY" in ''|*[!0-9]*) exit 0 ;; esac
+      [ "$INVENTORY" -gt 0 ] && exit 1 || exit 0
     on_yes: wire
-    # ENH-2247: confidence-gap path (outcome already >= threshold, integration map
+    # ENH-2247: confidence-gap path (outcome already >= threshold, file inventory
     # present) is a score-threshold trigger, not a content diagnosis — route to the
     # lighter refine_first (--auto) rather than the destructive --full-rewrite.
     on_no: refine_first
@@ -342,31 +416,52 @@ states:
   # =========================================================================
 
   diagnose:
+    # BUG-3756: reads dimensions, aggregates, inventory and flags from ONE validated
+    # PRE snapshot (written by verify_scores_persisted / refreshed by
+    # check_convergence) — never a live refetch, so generations cannot mix and a
+    # failed read cannot invent zeros. Criterion scores are confidence points
+    # (high = better): deficient is `< threshold`. File-inventory presence comes
+    # from integration_files, independent of Criterion D.
     action_type: shell
     action: |
       ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       RUN_DIR="${context.run_dir}"
       READINESS_THRESHOLD="${context.readiness_threshold}"  # ll-lint: mr11-ok(context.readiness_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       OUTCOME_THRESHOLD="${context.outcome_threshold}"  # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      AMBIGUITY_THRESHOLD="${context.diagnose_ambiguity_threshold}"  # ll-lint: mr11-ok(context.diagnose_ambiguity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      COMPLEXITY_THRESHOLD="${context.diagnose_complexity_threshold}"  # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      CONFIDENCE_FLOOR="${context.diagnose_confidence_floor}"  # ll-lint: mr11-ok(context.diagnose_confidence_floor) ENH-3358 - ENH-3342 widening residual, tracked for conversion
 
-      # Fetch scores via ll-issues show --json
-      SCORES_JSON=$(ll-issues show "$ID" --json 2>/dev/null)
-      if [ -z "$SCORES_JSON" ]; then
-        # BUG-2003 AC5: an unresolved ID must surface as an explicit failure, not
-        # silently route to DECOMPOSE (which masks a resolution miss as a real
-        # routing decision). Exit non-zero -> on_error: emit_implement_failed.
-        echo "ERROR: ll-issues show --json returned empty for $ID (unresolved issue ID)"
-        exit 1
+      PRE="$RUN_DIR/pre_scores_$${ID}.json"
+      # A missing/unreadable/invalid snapshot is SCORES_MISSING (explicit route),
+      # not an implicit DECOMPOSE and not the generic _error fallback.
+      missing() { echo "ERROR: $1"; echo "SCORES_MISSING"; exit 0; }
+      _int() { jq -er "$2 | select(type == \"number\" and . == floor) | tostring" "$1" 2>/dev/null; }
+      [ -r "$PRE" ] || missing "pre-scores snapshot not readable: $PRE"
+
+      CONFIDENCE=$(_int "$PRE" .confidence) || missing "invalid confidence in $PRE"
+      OUTCOME=$(_int "$PRE" .outcome) || missing "invalid outcome in $PRE"
+      COMPLEXITY=$(_int "$PRE" .score_complexity) || missing "invalid score_complexity in $PRE"
+      AMBIGUITY=$(_int "$PRE" .score_ambiguity) || missing "invalid score_ambiguity in $PRE"
+      CHANGE_SURFACE=$(_int "$PRE" .score_change_surface) || missing "invalid score_change_surface in $PRE"
+      DECISION_NEEDED=$(jq -r '.decision_needed // "false"' "$PRE" 2>/dev/null) || missing "unreadable decision_needed in $PRE"
+      MISSING_ARTIFACTS=$(jq -r '.missing_artifacts // "false"' "$PRE" 2>/dev/null) || missing "unreadable missing_artifacts in $PRE"
+      INVENTORY=$(jq -r '.integration_files // ""' "$PRE" 2>/dev/null)
+
+      # File inventory: positive integration_files count. It is a heuristic for a
+      # populated `### Files to Modify` list, not proof of complete wiring. A prior
+      # wire pass (wired marker) suppresses a repeat inventory-only WIRE caused
+      # solely by the counter still returning null/zero; explicit
+      # missing_artifacts is handled separately above.
+      HAS_INVENTORY=false
+      case "$INVENTORY" in
+        ''|*[!0-9]*) ;;
+        *) [ "$INVENTORY" -gt 0 ] && HAS_INVENTORY=true ;;
+      esac
+      NEEDS_WIRE=false
+      if [ "$HAS_INVENTORY" != "true" ] && [ ! -f "$RUN_DIR/wired_$${ID}.txt" ]; then
+        NEEDS_WIRE=true
       fi
-
-      # Parse scores (use JSON keys: confidence, outcome, not frontmatter names)
-      CONFIDENCE=$(echo "$SCORES_JSON" | jq -r '.confidence // 0' 2>/dev/null)
-      OUTCOME=$(echo "$SCORES_JSON" | jq -r '.outcome // 0' 2>/dev/null)
-      COMPLEXITY=$(echo "$SCORES_JSON" | jq -r '.score_complexity // 0' 2>/dev/null)
-      AMBIGUITY=$(echo "$SCORES_JSON" | jq -r '.score_ambiguity // 0' 2>/dev/null)
-      CHANGE_SURFACE=$(echo "$SCORES_JSON" | jq -r '.score_change_surface // 0' 2>/dev/null)
-      DECISION_NEEDED=$(echo "$SCORES_JSON" | jq -r '.decision_needed // "false"' 2>/dev/null)
-      MISSING_ARTIFACTS=$(echo "$SCORES_JSON" | jq -r '.missing_artifacts // "false"' 2>/dev/null)
 
       # Log scores for diagnostics
       printf '{"id":"%s","confidence":%s,"outcome":%s,"complexity":%s,"ambiguity":%s,"change_surface":%s,"decision_needed":"%s","missing_artifacts":"%s"}\n' \
@@ -380,29 +475,25 @@ states:
         echo "DECIDE"
       elif [ "$MISSING_ARTIFACTS" = "true" ]; then
         echo "WIRE"
-      # ll-lint: mr11-ok(context.diagnose_ambiguity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ] \
-          && [ "$CHANGE_SURFACE" -eq 0 ]; then
-        # No integration map exists → wiring can fill the ambiguity gap
+      elif [ "$AMBIGUITY" -lt "$AMBIGUITY_THRESHOLD" ] && [ "$NEEDS_WIRE" = "true" ]; then
+        # No file inventory yet → wiring can fill the ambiguity gap
         echo "WIRE"
-      elif [ "$AMBIGUITY" -ge "${context.diagnose_ambiguity_threshold}" ]; then  # ll-lint: mr11-ok(context.diagnose_ambiguity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-        # Integration map exists → residual ambiguity is decision-driven; refine to resolve
+      elif [ "$AMBIGUITY" -lt "$AMBIGUITY_THRESHOLD" ]; then
+        # Inventory exists (or wiring already ran) → residual ambiguity is decision-driven; refine to resolve
         echo "REFINE"
-      # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] \
-          && [ "$CHANGE_SURFACE" -eq 0 ]; then
-        # High complexity + no integration map → wire before refining
+      elif [ "$COMPLEXITY" -lt "$COMPLEXITY_THRESHOLD" ] && [ "$NEEDS_WIRE" = "true" ]; then
+        # Low complexity score + no file inventory → wire before refining
         echo "WIRE"
-      # ll-lint: mr11-ok(context.diagnose_complexity_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      # ll-lint: mr11-ok(context.diagnose_confidence_floor) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      elif [ "$COMPLEXITY" -ge "${context.diagnose_complexity_threshold}" ] || [ "$CONFIDENCE" -lt "${context.diagnose_confidence_floor}" ] || [ "$OUTCOME" -lt "${context.outcome_threshold}" ]; then
+      elif [ "$COMPLEXITY" -lt "$COMPLEXITY_THRESHOLD" ] || [ "$CONFIDENCE" -lt "$CONFIDENCE_FLOOR" ] || [ "$OUTCOME" -lt "$OUTCOME_THRESHOLD" ]; then
         echo "REFINE"
-      elif [ "$CHANGE_SURFACE" -ge "${context.diagnose_change_surface_threshold}" ]; then  # ll-lint: mr11-ok(context.diagnose_change_surface_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-        echo "DECOMPOSE"
       else
         # ENH-2223: residual minor gaps that don't match any dimensional rule get a
         # lighter refine (--auto, no --full-rewrite) rather than the destructive default.
+        # BUG-3756: there is deliberately no score-only DECOMPOSE rule here — a low
+        # Criterion D can be Pattern A (wide blast radius) or Pattern B (unverified
+        # mechanical fanout), and only the latter wants verification, not a split.
+        # Persistent deficiency still escalates via the shared remediation budget
+        # (check_remediation_budget → emit_stalled_needs_decompose).
         echo "REFINE_LIGHT"
       fi
     evaluate:
@@ -413,7 +504,9 @@ states:
       WIRE:         wire
       REFINE:       refine
       REFINE_LIGHT: refine_light
+      # Compatibility route: diagnose no longer emits DECOMPOSE from scores.
       DECOMPOSE:    emit_needs_decompose
+      SCORES_MISSING: emit_scores_missing
       _:            emit_implement_failed
       _error:       emit_implement_failed
 
@@ -725,19 +818,28 @@ states:
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${context.issue_id} --auto"
     action_type: slash_command
+    # BUG-3756: capture the verdict so a rejected (`no`) reassessment is validated,
+    # delta-logged, counted against the shared remediation budget and PRE-refreshed
+    # like any other pass (verify_re_assess_scores → check_convergence), instead of
+    # jumping straight to refine_followup and bypassing the budget. check_convergence
+    # reads ${captured.re_assess.verdict} and emits ASSESS_REJECTED for `no`, which
+    # routes through check_rejection_budget (refine_followup while budget remains,
+    # else emit_stalled_needs_decompose) — never CONVERGED_PASS or score-based diagnose.
+    capture: re_assess
     on_success: verify_re_assess_scores
     on_partial: verify_re_assess_scores
-    # ENH-2247: a full-rewrite pass already ran this cycle; the follow-up should
-    # patch remaining gaps additively (refine_followup, --auto --gap-analysis)
-    # rather than bulldoze the first pass's improvements with another --full-rewrite.
-    on_no: refine_followup
+    on_no: verify_re_assess_scores
     on_error: emit_implement_failed
     on_rate_limit_exhausted: rate_limit_diagnostic
 
   verify_re_assess_scores:
+    # BUG-3756: same validate/normalize/atomic-publish contract as
+    # verify_scores_persisted, for the POST snapshot. A stale POST is removed up
+    # front so a failed fetch can never be consumed by check_convergence.
     action_type: shell
     action: |
       ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${context.run_dir}"
       # BUG-2003: resolve via the shared (type-prefix-tolerant) resolver so a stale
       # type prefix or a file with no priority prefix still locates the issue.
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null)
@@ -751,8 +853,35 @@ states:
         echo "ERROR: confidence_score or outcome_confidence missing for $ID after re_assess"
         exit 1
       fi
-      # Write post-scores
-      ll-issues show "$ID" --json > "${context.run_dir}/post_scores_$${ID}.json" 2>/dev/null
+      POST="$RUN_DIR/post_scores_$${ID}.json"
+      trap 'rm -f "$POST.raw" "$POST.tmp"' EXIT
+      rm -f "$POST"
+      FILTER='
+        def pts(lo; hi):
+          if type == "number" then . == floor and . >= lo and . <= hi
+          elif type == "string" then
+            length > 0 and (explode | all(. >= 48 and . <= 57)) and (tonumber | . >= lo and . <= hi)
+          else false end;
+        if type == "object"
+           and (.confidence | pts(0; 100)) and (.outcome | pts(0; 100))
+           and (.score_complexity | pts(0; 25)) and (.score_ambiguity | pts(0; 25))
+           and (.score_change_surface | pts(0; 25))
+        then .confidence |= (tonumber | floor) | .outcome |= (tonumber | floor)
+          | .score_complexity |= (tonumber | floor) | .score_ambiguity |= (tonumber | floor)
+          | .score_change_surface |= (tonumber | floor)
+        else empty end'
+      if ! ll-issues show "$ID" --json > "$POST.raw" 2>/dev/null; then
+        echo "ERROR: ll-issues show --json failed for $ID after re_assess"
+        exit 1
+      fi
+      if ! jq -e "$FILTER" "$POST.raw" > "$POST.tmp" 2>/dev/null; then
+        echo "ERROR: invalid or missing confidence/outcome/criterion scores for $ID after re_assess"
+        exit 1
+      fi
+      if ! mv -f "$POST.tmp" "$POST"; then
+        echo "ERROR: could not persist post-scores for $ID"
+        exit 1
+      fi
       echo "Post-scores persisted for $ID: confidence=$CONFIDENCE, outcome=$OUTCOME"
     evaluate:
       type: exit_code
@@ -767,38 +896,37 @@ states:
       RUN_DIR="${context.run_dir}"
       READINESS_THRESHOLD="${context.readiness_threshold}"  # ll-lint: mr11-ok(context.readiness_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       OUTCOME_THRESHOLD="${context.outcome_threshold}"  # ll-lint: mr11-ok(context.outcome_threshold) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # BUG-3756: evaluator verdict of the reassessment that just ran (yes/partial/no).
+      RE_ASSESS_VERDICT=${captured.re_assess.verdict:shell}
 
       PRE="$${RUN_DIR}/pre_scores_$${ID}.json"
       POST="$${RUN_DIR}/post_scores_$${ID}.json"
 
-      if [ ! -f "$PRE" ]; then
-        echo "ERROR: Pre-scores file not found: $PRE"
-        echo "CONVERGED_STALLED"
-        exit 0
-      fi
-      if [ ! -f "$POST" ]; then
-        echo "ERROR: Post-scores file not found: $POST"
-        echo "CONVERGED_STALLED"
-        exit 0
-      fi
+      # BUG-3756: unreadable/invalid snapshots are SCORES_MISSING (explicit route to
+      # emit_scores_missing), not a silent stall and not the generic _error fallback.
+      missing() { echo "ERROR: $1"; echo "SCORES_MISSING"; exit 0; }
+      _int() { jq -er "$2 | select(type == \"number\" and . == floor) | tostring" "$1" 2>/dev/null; }
 
-      # Parse pre/post scores (use JSON keys: confidence, outcome)
-      PRE_CONFIDENCE=$(jq -r '.confidence // 0' "$PRE" 2>/dev/null)
-      PRE_OUTCOME=$(jq -r '.outcome // 0' "$PRE" 2>/dev/null)
-      PRE_COMPLEXITY=$(jq -r '.score_complexity // 0' "$PRE" 2>/dev/null)
-      PRE_AMBIGUITY=$(jq -r '.score_ambiguity // 0' "$PRE" 2>/dev/null)
+      [ -r "$PRE" ] || missing "Pre-scores file not found: $PRE"
+      [ -r "$POST" ] || missing "Post-scores file not found: $POST"
 
-      POST_CONFIDENCE=$(jq -r '.confidence // 0' "$POST" 2>/dev/null)
-      POST_OUTCOME=$(jq -r '.outcome // 0' "$POST" 2>/dev/null)
-      POST_COMPLEXITY=$(jq -r '.score_complexity // 0' "$POST" 2>/dev/null)
-      POST_AMBIGUITY=$(jq -r '.score_ambiguity // 0' "$POST" 2>/dev/null)
+      # Parse pre/post scores (validated, normalized decimal integers)
+      PRE_CONFIDENCE=$(_int "$PRE" .confidence) || missing "invalid pre confidence"
+      PRE_OUTCOME=$(_int "$PRE" .outcome) || missing "invalid pre outcome"
+      PRE_COMPLEXITY=$(_int "$PRE" .score_complexity) || missing "invalid pre score_complexity"
+      PRE_AMBIGUITY=$(_int "$PRE" .score_ambiguity) || missing "invalid pre score_ambiguity"
 
-      # Compute deltas
+      POST_CONFIDENCE=$(_int "$POST" .confidence) || missing "invalid post confidence"
+      POST_OUTCOME=$(_int "$POST" .outcome) || missing "invalid post outcome"
+      POST_COMPLEXITY=$(_int "$POST" .score_complexity) || missing "invalid post score_complexity"
+      POST_AMBIGUITY=$(_int "$POST" .score_ambiguity) || missing "invalid post score_ambiguity"
+
+      # Compute deltas — positive = improved. Criterion scores are confidence points
+      # (high = better), so every term is post - pre (BUG-3756).
       DELTA_CONFIDENCE=$((POST_CONFIDENCE - PRE_CONFIDENCE))
       DELTA_OUTCOME=$((POST_OUTCOME - PRE_OUTCOME))
-      # For complexity/ambiguity, improvement means score went DOWN, so invert delta
-      DELTA_COMPLEXITY=$((PRE_COMPLEXITY - POST_COMPLEXITY))
-      DELTA_AMBIGUITY=$((PRE_AMBIGUITY - POST_AMBIGUITY))
+      DELTA_COMPLEXITY=$((POST_COMPLEXITY - PRE_COMPLEXITY))
+      DELTA_AMBIGUITY=$((POST_AMBIGUITY - PRE_AMBIGUITY))
 
       # Total improvement: sum of all deltas (positive = improved)
       TOTAL_DELTA=$((DELTA_CONFIDENCE + DELTA_OUTCOME + DELTA_COMPLEXITY + DELTA_AMBIGUITY))
@@ -819,10 +947,18 @@ states:
       # post-scores so the NEXT pass measures pass-over-pass delta rather than
       # cumulative session delta. Without this, a plateaued issue keeps a large
       # accumulated TOTAL_DELTA and never emits CONVERGED_STALLED.
-      cp "$POST" "$PRE"
+      # BUG-3756: checked atomic replacement; a failed refresh is SCORES_MISSING.
+      if ! cp "$POST" "$PRE.tmp" || ! mv -f "$PRE.tmp" "$PRE"; then
+        rm -f "$PRE.tmp"
+        missing "could not refresh pre-scores baseline"
+      fi
 
       # Convergence rules (first match wins)
-      if [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
+      if [ "$RE_ASSESS_VERDICT" = "no" ]; then
+        # BUG-3756: a rejected reassessment is never a PASS or a score-based retry,
+        # even with passing aggregates; it goes through the shared remediation budget.
+        echo "ASSESS_REJECTED"
+      elif [ "$POST_CONFIDENCE" -ge "$READINESS_THRESHOLD" ] && [ "$POST_OUTCOME" -ge "$OUTCOME_THRESHOLD" ]; then
         # BUG-2193: guard the pass path; a decision blocks implementation even when
         # scores meet thresholds — mirror the stall-branch check from BUG-1985.
         POST_DECISION=$(jq -r '.decision_needed // "false"' "$POST" 2>/dev/null)
@@ -854,6 +990,9 @@ states:
       CONVERGED_IMPROVED:  check_remediation_budget
       NEEDS_MANUAL_REVIEW: emit_needs_manual_review
       CONVERGED_STALLED:   check_remediation_budget
+      # BUG-3756: rejected reassessment — budget-gated retry via refine_followup.
+      ASSESS_REJECTED:     check_rejection_budget
+      SCORES_MISSING:      emit_scores_missing
       # unmatched token: treat as a retry (safe fallback)
       _:                   check_remediation_budget
       # shell non-zero exit: fail-open, same as original on_error: route_conv_pass
@@ -876,6 +1015,27 @@ states:
     # BUG-2006: remediation budget exhausted is stall-adjacent — the automated
     # moves ran out without convergence. Emit the stall token so the parent
     # defers rather than silently skipping.
+    on_no: emit_stalled_needs_decompose
+    on_error: emit_implement_failed
+
+  check_rejection_budget:
+    # BUG-3756: same shared counter/maximum as check_remediation_budget, but a
+    # rejected (`no`) reassessment retries via the additive refine_followup rather
+    # than score-based diagnose. Repeated `no` verdicts are therefore bounded by
+    # max_remediation_passes (not just max_steps) and exhaust into the existing
+    # emit_stalled_needs_decompose terminal.
+    action_type: shell
+    action: |
+      ID="${context.issue_id}"  # ll-lint: mr11-ok(context.issue_id) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      RUN_DIR="${context.run_dir}"
+      REM_COUNTER_FILE="$${RUN_DIR}/remediation_count_$${ID}.txt"
+      REM_COUNT=$(cat "$REM_COUNTER_FILE" 2>/dev/null || echo 0)
+      echo "$REM_COUNT"
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: "${context.max_remediation_passes}"
+    on_yes: refine_followup
     on_no: emit_stalled_needs_decompose
     on_error: emit_implement_failed
 
@@ -983,12 +1143,17 @@ states:
               return "0"
 
       def _score(d, *keys):
+          # BUG-3756: None (not a truthy "?" sentinel) means absent/null, so callers
+          # can fall back with `is None` and a real 0 / "0" is preserved.
           if not isinstance(d, dict):
-              return "?"
+              return None
           for k in keys:
               if k in d and d[k] is not None:
                   return d[k]
-          return "?"
+          return None
+
+      def _show(v):
+          return "?" if v is None else v
 
       pre_scores = _read_json(f"pre_scores_{ISSUE_ID}.json") or {}
       post_scores = _read_json(f"post_scores_{ISSUE_ID}.json") or {}
@@ -1045,12 +1210,18 @@ states:
       else:
           next_action = f"/ll:refine-issue {ISSUE_ID} --auto"
 
-      pre_conf = _score(pre_scores, "confidence", "confidence_score")
-      pre_outcome = _score(pre_scores, "outcome", "outcome_confidence")
-      post_conf = _score(post_scores, "confidence", "confidence_score")
-      post_outcome = _score(post_scores, "outcome", "outcome_confidence")
-      complexity = _score(post_scores, "score_complexity") or _score(pre_scores, "score_complexity")
-      ambiguity = _score(post_scores, "score_ambiguity") or _score(pre_scores, "score_ambiguity")
+      pre_conf = _show(_score(pre_scores, "confidence", "confidence_score"))
+      pre_outcome = _show(_score(pre_scores, "outcome", "outcome_confidence"))
+      post_conf = _show(_score(post_scores, "confidence", "confidence_score"))
+      post_outcome = _show(_score(post_scores, "outcome", "outcome_confidence"))
+      complexity = _score(post_scores, "score_complexity")
+      if complexity is None:
+          complexity = _score(pre_scores, "score_complexity")
+      ambiguity = _score(post_scores, "score_ambiguity")
+      if ambiguity is None:
+          ambiguity = _score(pre_scores, "score_ambiguity")
+      complexity = _show(complexity)
+      ambiguity = _show(ambiguity)
 
       if isinstance(convergence, dict):
           conv_block = (
@@ -1078,7 +1249,7 @@ states:
           f"## Diagnostic Data\n"
           f"- Pre-scores: confidence={pre_conf}, outcome={pre_outcome}\n"
           f"- Post-scores: confidence={post_conf}, outcome={post_outcome}\n"
-          f"- Complexity band: {complexity} (ambiguity={ambiguity})\n"
+          f"- Complexity score: {complexity} (ambiguity score={ambiguity})\n"
       )
 
       try:

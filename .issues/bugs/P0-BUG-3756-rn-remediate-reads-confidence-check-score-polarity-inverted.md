@@ -3,7 +3,7 @@ id: BUG-3756
 title: rn-remediate reads confidence-check criterion scores with inverted polarity
 type: BUG
 priority: P0
-status: open
+status: done
 discovered_date: '2026-10-05'
 parent: BUG-3754
 labels:
@@ -14,6 +14,7 @@ relates_to:
 - BUG-3757
 - ENH-3742
 confidence_score: 95
+completed_at: '2026-10-06T17:59:44Z'
 outcome_confidence: 59
 score_complexity: 5
 score_test_coverage: 18
@@ -33,7 +34,7 @@ Decomposed from BUG-3754. BUG-3757 owns threshold documentation and set-flags co
 
 ## Current Behavior
 
-- `scripts/little_loops/loops/rn-remediate.yaml:179` snapshots `ABOVE_MINIMAL` for A ≥ 15. `check_complexity_pre_implement` and `diagnose` also treat large A/C/D scores as bad. A=5 with passing aggregate scores currently receives the `MINIMAL` band and can skip required preparation.
+- `scripts/little_loops/loops/rn-remediate.yaml:181` snapshots `ABOVE_MINIMAL` for A ≥ 15. `check_complexity_pre_implement` and `diagnose` also treat large A/C/D scores as bad. A=5 with passing aggregate scores currently receives the `MINIMAL` band and can skip required preparation.
 - `check_wire_pre_implement`, `check_wire_needed_outcome`, and both dimensional WIRE predicates in `diagnose` treat D=0 as an absent integration map. D=0 actually means wide code blast radius (Pattern A) or unenumerated mechanical fanout (Pattern B); D=25 means isolation or well-verified enumeration. Neither value proves map presence.
 - `scripts/little_loops/cli/issues/show.py:207` already returns `integration_files`: a positive count of bullets under `### Files to Modify`, or null without a positive count. Scores and positive counts are JSON strings, not JSON numbers.
 - Initial and reassessment snapshot states only require aggregate scores. A/C/D reads use `// 0`, conflating a legitimate worst score with missing/null data. JSON errors can also be ignored before a band or delta is computed.
@@ -93,6 +94,11 @@ The reader interprets criterion names as risk magnitudes, although the rubric st
 ### Call Path
 
 `assess` (`yes`/`partial`/`no`, captured) → validated initial snapshot/band → verdict gate (`no` → `refine_first`; otherwise readiness/outcome gates) → inventory check or snapshot-based `diagnose` → one remediation action/marker → `re_assess` (`yes`/`partial`/`no`, captured) → validated POST → delta logging/counter/PRE refresh → ordinary convergence or rejected-assessment budget check. Ordinary retries retain `diagnose`; rejected reassessments retry via `refine_followup`. Both use the same pass limit and exhaustion emitter. Validation failures terminate through `emit_scores_missing`; they cannot use the gate's absent-band fallback.
+
+### Deviations
+
+- 2026-10-06: The design proposed `_run_action(state, scores, run_dir, *, thresholds)`. Implemented as a `_Sandbox` helper class in `scripts/tests/test_rn_remediate.py` (renders actions through the real `fsm.interpolation.interpolate`, stubs `ll-issues` on PATH) plus a `_walk` transition walker for stubbed-verdict paths. Same intent; the class form holds the per-test run dir, stub log and issue file.
+- 2026-10-06: Verdict gate reads `${captured.assess.verdict:shell}` / `${captured.re_assess.verdict:shell}` (the `:shell` suffix keeps MR-11 warning-free). Added `check_assess_verdict` and `check_rejection_budget` states (topology 48 → 50).
 
 ## Implementation Steps
 
@@ -184,9 +190,18 @@ Evidence from this review: full handoff-action probes reproduced numeric-zero re
 
 Earlier baseline: 287 tests passed across rn-remediate, confidence-check and set-flags; direct probes reproduced A=5 → `MINIMAL` and populated inventory/D=0 → `WIRE`. This review reran rn-remediate and confidence-check: **268 passed**. Those existing tests do not cover the new behavioral matrix. No runtime implementation was made during these reviews.
 
+## Resolution
+
+**Completed** 2026-10-06 — `/ll:manage-issue bug fix BUG-3756 --force-implement`.
+
+- `rn-remediate.yaml`: A/C deficiency is now `< threshold` (minimum-score semantics); stable band computed from the validated initial A. Both snapshot states fetch to a temp file, check status, validate/normalize (0–100 aggregates, 0–25 criteria, integer numbers or `^[0-9]+$` strings), publish atomically, and route any failure to `emit_scores_missing`. Wiring predicates use the `integration_files` inventory (plus the wired marker in `diagnose`'s two inventory-only WIRE rules); `diagnose` reads the validated PRE snapshot with no live refetch; score-only `DECOMPOSE` removed (route/emitter retained). `assess`/`re_assess` capture verdicts: initial `no` → validation → `check_assess_verdict` → `refine_first`; reassessment `no` → validation → convergence accounting → `ASSESS_REJECTED` → `check_rejection_budget` → `refine_followup` or `emit_stalled_needs_decompose`. A/C deltas are post − pre; snapshot read/refresh failures classify as `SCORES_MISSING`. Handoff `_score` returns `None` for absent/null and falls back with `is None`.
+- Rubric polarity statement added; gemini/kimi-code/qwen mirrors regenerated; `docs/guides/LOOPS_REFERENCE.md` rn-remediate section rewritten (parameters, diagnosis table, inventory vs D, snapshots, rejection budget, `≤ 0` cutoff, 50 states).
+- Tests: stale pins replaced (`TestDiagnoseAmbiguityWireDiscrimination`, assess/re_assess routing, MR11 enumeration, topology count); added rendered-action matrix (validation, band boundary, marker gate, inventory, diagnose routing/tail, convergence, handoff) and transition walks (invalid scores on every verdict, repeated-`no` budget exhaustion). Full unit suite: 27974 passed, 263 skipped; `ruff check scripts/` clean; `ll-loop validate rn-remediate` shows no new warnings.
+- Observation (not fixed, out of scope): `require_refine_and_wire: true` in the loop's YAML `context` interpolates as the string `True`, so `gate_implement`'s `!= "true"` test bypasses the gate when the loop runs standalone without a `with:` string binding (rn-implement passes `"true"`). Worth a follow-up issue.
+
 ## Status
 
-**Open** | Created: 2026-10-06 | Priority: P0
+**Done** | Created: 2026-10-06 | Completed: 2026-10-06 | Priority: P0
 
 ## Confidence Check Notes
 
@@ -226,6 +241,8 @@ _Added by `/ll:go-no-go` on 2026-10-06_ — **GO**
 Both sides agree the polarity inversion is real. `rn-remediate` is the lone inverted consumer, and it silently misroutes hard issues in tooling every local-editable project shares. The con side's objections concern scope and sequencing, and can be handled during implementation.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T17:59:44 - `1795560a-8a8e-4563-a9ca-d0c589caf3b7.jsonl`
+- `/ll:ready-issue` - 2026-10-06T17:33:58 - `3f2d40e9-12bb-4a64-9832-2d73461493ff.jsonl`
 - `/ll:go-no-go` - 2026-10-06T17:31:50 - `6f6f118e-a57b-482f-b8e5-4dc2eadf81d3.jsonl`
 - `/ll:confidence-check` - 2026-10-06T17:24:54 - `4c721804-b470-47a2-a026-f84f3bc78843.jsonl`
 - `/ll:confidence-check` - 2026-10-06T17:08:39 - `06682c99-4a6d-4e45-b7d6-4e7235d06590.jsonl`

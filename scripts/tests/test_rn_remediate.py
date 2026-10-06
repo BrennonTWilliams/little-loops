@@ -6,12 +6,17 @@ rn-implement.yaml monolith into sub-loops).
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 from pathlib import Path
+from typing import Any
 
+import pytest
 import yaml
 
 from little_loops.fsm import is_runnable_loop
+from little_loops.fsm.interpolation import InterpolationContext, interpolate
 from little_loops.fsm.validation import (
     ValidationSeverity,
     load_and_validate,
@@ -26,6 +31,149 @@ def _load_loop() -> dict:
     """Load the rn-remediate YAML file."""
     with open(RN_REMEDIATE_PATH) as f:
         return yaml.safe_load(f)
+
+
+# ---------------------------------------------------------------------------
+# Rendered-action harness (BUG-3756)
+#
+# Renders a state's shell action through the real FSM interpolator and runs it
+# under bash with a stubbed `ll-issues` on PATH, so tests assert persisted
+# artifacts and emitted tokens instead of pinning shell text.
+# ---------------------------------------------------------------------------
+
+ISSUE_ID = "BUG-9001"
+
+_STUB = """#!/bin/bash
+echo "$1" >> "$STUB_LOG"
+case "$1" in
+  path) echo "$STUB_ISSUE_FILE" ;;
+  show)
+    if [ -n "$STUB_SHOW_FAIL" ]; then cat "$STUB_SHOW_JSON"; exit 1; fi
+    cat "$STUB_SHOW_JSON" ;;
+  check-flag) exit "${STUB_FLAG_RC:-1}" ;;
+  *) exit 0 ;;
+esac
+"""
+
+
+def _scores(**over: object) -> dict[str, object]:
+    """A valid `ll-issues show --json` document (scores are JSON strings)."""
+    doc: dict[str, object] = {
+        "confidence": "95",
+        "outcome": "80",
+        "score_complexity": "25",
+        "score_ambiguity": "25",
+        "score_change_surface": "25",
+        "score_test_coverage": "18",
+        "integration_files": "2",
+        "decision_needed": "false",
+        "missing_artifacts": "false",
+    }
+    doc.update(over)
+    return doc
+
+
+class _Sandbox:
+    """Temp run dir + stubbed ll-issues + issue file for rendered-action tests."""
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.run_dir = tmp_path / "run"
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.bin = tmp_path / "bin"
+        self.bin.mkdir()
+        stub = self.bin / "ll-issues"
+        stub.write_text(_STUB)
+        stub.chmod(0o755)
+        self.cwd = tmp_path
+        self.issue_file = tmp_path / "issue.md"
+        self.issue_file.write_text(
+            "---\nid: BUG-9001\nconfidence_score: 95\noutcome_confidence: 80\n---\n"
+        )
+        self.show_json = tmp_path / "show.json"
+        self.log = tmp_path / "stub.log"
+        self.log.write_text("")
+        self.show_fail = False
+        self.flag_rc = 1
+        self.show(_scores())
+
+    def show(self, doc: object) -> None:
+        self.show_json.write_text(doc if isinstance(doc, str) else json.dumps(doc))
+
+    def write(self, name: str, doc: object) -> Path:
+        path = self.run_dir / name
+        path.write_text(doc if isinstance(doc, str) else json.dumps(doc))
+        return path
+
+    def snapshot(self, name: str, **over: object) -> Path:
+        """Write a validated (normalized-integer) snapshot, as the verify states do."""
+        doc = _scores(**over)
+        for key in (
+            "confidence",
+            "outcome",
+            "score_complexity",
+            "score_ambiguity",
+            "score_change_surface",
+        ):
+            doc[key] = int(doc[key])  # type: ignore[call-overload]
+        return self.write(name, doc)
+
+    def read_json(self, name: str) -> Any:
+        return json.loads((self.run_dir / name).read_text())
+
+    def calls(self, sub: str) -> int:
+        return self.log.read_text().split().count(sub)
+
+    def render(
+        self,
+        state: str,
+        *,
+        captured: dict[str, dict[str, Any]] | None = None,
+        **ctx_over: object,
+    ) -> str:
+        data = _load_loop()
+        context: dict[str, Any] = dict(data["context"])
+        context.update(
+            issue_id=ISSUE_ID,
+            run_dir=str(self.run_dir),
+            readiness_threshold=85,
+            outcome_threshold=65,
+            max_remediation_passes=3,
+            # the parent (rn-implement) binds this as the string "true"; a YAML bool
+            # would interpolate as "True" and bypass the gate's `!= "true"` test
+            require_refine_and_wire="true",
+        )
+        context.update(ctx_over)
+        return interpolate(
+            data["states"][state]["action"],
+            InterpolationContext(context=context, captured=captured or {}),
+        )
+
+    def run(self, state: str, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        action = self.render(state, **kwargs)
+        env = dict(os.environ)
+        env.update(
+            PATH=f"{self.bin}{os.pathsep}{env['PATH']}",
+            STUB_LOG=str(self.log),
+            STUB_ISSUE_FILE=str(self.issue_file),
+            STUB_SHOW_JSON=str(self.show_json),
+            STUB_FLAG_RC=str(self.flag_rc),
+        )
+        env.pop("STUB_SHOW_FAIL", None)
+        if self.show_fail:
+            env["STUB_SHOW_FAIL"] = "1"
+        return subprocess.run(
+            ["bash", "-c", action],
+            capture_output=True,
+            text=True,
+            cwd=self.cwd,
+            env=env,
+        )
+
+    def token(self, state: str, **kwargs: Any) -> str:
+        """Last non-empty stdout line — what a `classify` evaluator reads."""
+        res = self.run(state, **kwargs)
+        lines = [ln for ln in res.stdout.splitlines() if ln.strip()]
+        return lines[-1].strip() if lines else ""
 
 
 # ---------------------------------------------------------------------------
@@ -55,15 +203,22 @@ class TestAssessAndScorePersistence:
         assess = data["states"]["assess"]
         assert assess["on_rate_limit_exhausted"] == "rate_limit_diagnostic"
 
-    def test_assess_on_no_routes_to_refine_first(self) -> None:
-        """assess routes no → refine_first (ENH-2247).
+    def test_assess_on_no_routes_through_validation_then_refine_first(self) -> None:
+        """assess no → verify_scores_persisted → check_assess_verdict → refine_first.
 
-        First-pass scoring on an unscored issue is not a content diagnosis, so it
-        uses the lighter refine_first (--auto), not the destructive refine.
+        BUG-3756: the verdict is captured and the snapshot validated first; the
+        post-validation gate sends a captured `no` to refine_first (ENH-2247) even
+        when the aggregate scores pass.
         """
         data = _load_loop()
         assess = data["states"]["assess"]
-        assert assess["on_no"] == "refine_first"
+        assert assess["capture"] == "assess"
+        assert assess["on_no"] == "verify_scores_persisted"
+        gate = data["states"]["check_assess_verdict"]
+        assert gate["on_yes"] == "refine_first"
+        assert gate["on_no"] == "check_readiness"
+        assert gate["on_error"] == "refine_first"
+        assert data["states"]["verify_scores_persisted"]["on_yes"] == "check_assess_verdict"
 
     def test_verify_scores_persisted_uses_exit_code_evaluator(self) -> None:
         """verify_scores_persisted uses exit_code evaluator (not output_numeric)."""
@@ -398,18 +553,17 @@ class TestDiagnoseRouting:
         assert ".score_change_surface" in action
 
     def test_diagnose_outputs_all_routing_tokens(self) -> None:
-        """diagnose shell script contains all routing tokens including REFINE_LIGHT.
+        """diagnose shell script contains its routing tokens including REFINE_LIGHT.
 
-        ENH-2223: the catch-all else branch now outputs REFINE_LIGHT (lighter
-        --auto refine without --full-rewrite) instead of REFINE.
+        ENH-2223: the catch-all else branch outputs REFINE_LIGHT (lighter --auto
+        refine without --full-rewrite). BUG-3756: score-only DECOMPOSE is removed —
+        the route stays for compatibility but diagnose never emits it.
         """
         data = _load_loop()
-        diag = data["states"]["diagnose"]
-        action = diag["action"]
-        for token in ("IMPLEMENT", "DECIDE", "WIRE", "REFINE", "REFINE_LIGHT", "DECOMPOSE"):
-            assert f'echo "{token}"' in action or f'"{token}"' in action, (
-                f"diagnose must output {token}"
-            )
+        action = data["states"]["diagnose"]["action"]
+        for token in ("IMPLEMENT", "DECIDE", "WIRE", "REFINE", "REFINE_LIGHT", "SCORES_MISSING"):
+            assert f'echo "{token}"' in action, f"diagnose must output {token}"
+        assert 'echo "DECOMPOSE"' not in action
 
     def test_diagnose_has_implement_threshold_logic(self) -> None:
         """diagnose checks confidence >= readiness AND outcome >= outcome thresholds."""
@@ -444,6 +598,8 @@ class TestDiagnoseRouting:
         assert route["REFINE"] == "refine"
         assert route["REFINE_LIGHT"] == "refine_light"
         assert route["DECOMPOSE"] == "emit_needs_decompose"
+        # BUG-3756: invalid/missing PRE snapshot is an explicit route
+        assert route["SCORES_MISSING"] == "emit_scores_missing"
         # unmatched token fallback
         assert route["_"] == "emit_implement_failed"
         # shell non-zero exit arm
@@ -826,15 +982,24 @@ class TestReassessAndConvergence:
         assert reassess.get("on_partial") == "verify_re_assess_scores"
 
     def test_re_assess_has_on_no_route(self) -> None:
-        """re_assess routes no → refine_followup (MR-4 — BUG-2115; ENH-2247).
+        """re_assess routes no → verify_re_assess_scores (MR-4 — BUG-2115; BUG-3756).
 
-        ENH-2247: a full-rewrite pass already ran this cycle, so the follow-up
-        patches remaining gaps additively (refine_followup, --auto --gap-analysis)
-        rather than re-bulldozing the first pass's improvements.
+        BUG-3756: a rejected reassessment is validated, delta-logged, counted and
+        PRE-refreshed like any other pass; check_convergence then emits
+        ASSESS_REJECTED → check_rejection_budget → refine_followup (ENH-2247's
+        additive refine) or the shared-budget exhaustion emitter.
         """
         data = _load_loop()
         reassess = data["states"]["re_assess"]
-        assert reassess.get("on_no") == "refine_followup"
+        assert reassess.get("on_no") == "verify_re_assess_scores"
+        assert reassess.get("capture") == "re_assess"
+        route = data["states"]["check_convergence"]["route"]
+        assert route["ASSESS_REJECTED"] == "check_rejection_budget"
+        assert route["SCORES_MISSING"] == "emit_scores_missing"
+        crb = data["states"]["check_rejection_budget"]
+        assert crb["on_yes"] == "refine_followup"
+        assert crb["on_no"] == "emit_stalled_needs_decompose"
+        assert crb["evaluate"]["target"] == "${context.max_remediation_passes}"
 
     def test_verify_re_assess_scores_uses_exit_code_evaluator(self) -> None:
         """verify_re_assess_scores uses exit_code evaluator (not output_numeric)."""
@@ -963,8 +1128,11 @@ class TestBug2007Fixes:
         action = data["states"]["diagnose"]["action"]
         assert "${context.diagnose_ambiguity_threshold}" in action
         assert "${context.diagnose_complexity_threshold}" in action
-        assert "${context.diagnose_change_surface_threshold}" in action
         assert "${context.diagnose_confidence_floor}" in action
+        # BUG-3756: the D-only DECOMPOSE rule is gone; the retained key has no
+        # routing effect and diagnose no longer references it.
+        assert "diagnose_change_surface_threshold" not in action
+        assert "diagnose_change_surface_threshold" in data["context"]
 
     def test_diagnose_routing_has_no_bare_magic_literals(self) -> None:
         """diagnose routing comparisons no longer use bare -ge 15 / -lt 50 literals."""
@@ -1445,89 +1613,59 @@ class TestOutcomeTokenChannel:
 
 
 class TestDiagnoseAmbiguityWireDiscrimination:
-    """WIRE(ambiguity) branch must only fire when CHANGE_SURFACE == 0.
+    """WIRE(ambiguity) fires on a missing FILE INVENTORY, not on Criterion D.
 
-    When an integration map already exists (CHANGE_SURFACE > 0), high ambiguity
-    is decision-driven, not a wiring gap.  The branch must fall through to REFINE
-    so a full-rewrite pass can resolve the conditional logic.
+    ENH-2116 originally discriminated on change_surface == 0; BUG-3756 corrected
+    the polarity (scores are confidence points, high = better) and replaced the D
+    proxy with the `integration_files` inventory count from `ll-issues show`.
     """
 
-    def _routing_script(self) -> str:
-        """Extract the priority-ordered routing section with context vars substituted."""
-        data = _load_loop()
-        action = data["states"]["diagnose"]["action"]
-        start = action.find("# Priority-ordered routing")
-        if start == -1:
-            raise AssertionError("Could not locate routing section in diagnose action")
-        section = action[start:]
-        # Substitute context variables with their defaults
-        section = section.replace("${context.diagnose_ambiguity_threshold}", "15")
-        section = section.replace("${context.diagnose_complexity_threshold}", "15")
-        section = section.replace("${context.diagnose_change_surface_threshold}", "15")
-        section = section.replace("${context.diagnose_confidence_floor}", "50")
-        return section
+    def _diagnose(self, tmp_path: Path, **over: object) -> str:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", **over)
+        return sb.token("diagnose")
 
-    def _run(
-        self,
-        script: str,
-        *,
-        confidence: int,
-        outcome: int,
-        ambiguity: int,
-        complexity: int = 0,
-        change_surface: int = 0,
-        decision_needed: str = "false",
-        missing_artifacts: str = "false",
-    ) -> str:
-        env = "\n".join(
-            [
-                f"CONFIDENCE={confidence}",
-                f"OUTCOME={outcome}",
-                "READINESS_THRESHOLD=85",
-                "OUTCOME_THRESHOLD=65",
-                f"AMBIGUITY={ambiguity}",
-                f"COMPLEXITY={complexity}",
-                f"CHANGE_SURFACE={change_surface}",
-                f"DECISION_NEEDED={decision_needed}",
-                f"MISSING_ARTIFACTS={missing_artifacts}",
-            ]
+    def test_ambiguity_deficient_without_inventory_routes_to_wire(self, tmp_path: Path) -> None:
+        token = self._diagnose(
+            tmp_path, confidence="100", outcome="56", score_ambiguity="10", integration_files=None
         )
-        result = subprocess.run(
-            ["bash", "-c", env + "\n" + script],
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout.strip()
+        assert token == "WIRE"
 
-    def test_ambiguity_high_change_surface_zero_routes_to_wire(self) -> None:
-        """ambiguity=18, change_surface=0 → WIRE (integration map absent)."""
-        token = self._run(
-            self._routing_script(),
-            confidence=100,
-            outcome=56,
-            ambiguity=18,
-            change_surface=0,
+    def test_ambiguity_deficient_with_inventory_routes_to_refine(self, tmp_path: Path) -> None:
+        token = self._diagnose(
+            tmp_path, confidence="100", outcome="56", score_ambiguity="10", integration_files="5"
         )
-        assert token == "WIRE", f"Expected WIRE, got {token!r}"
+        assert token == "REFINE"
 
-    def test_ambiguity_high_change_surface_nonzero_routes_to_refine(self) -> None:
-        """ambiguity=18, change_surface=5 → REFINE (decision-driven ambiguity, ENH-2116)."""
-        token = self._run(
-            self._routing_script(),
-            confidence=100,
-            outcome=56,
-            ambiguity=18,
-            change_surface=5,
+    def test_d_zero_with_populated_inventory_is_not_wire(self, tmp_path: Path) -> None:
+        """D=0 (wide blast radius / unenumerated fanout) does not imply a missing map."""
+        token = self._diagnose(
+            tmp_path,
+            confidence="100",
+            outcome="56",
+            score_change_surface="0",
+            integration_files="2",
         )
-        assert token == "REFINE", f"Expected REFINE, got {token!r}"
+        assert token != "WIRE"
 
-    def test_wire_condition_has_change_surface_guard(self) -> None:
-        """diagnose action contains CHANGE_SURFACE -eq 0 guard on the ambiguity→WIRE branch."""
-        data = _load_loop()
-        action = data["states"]["diagnose"]["action"]
-        assert "CHANGE_SURFACE" in action and "-eq 0" in action, (
-            "diagnose action must guard the ambiguity→WIRE branch with CHANGE_SURFACE -eq 0"
+    def test_d_full_with_empty_inventory_is_wire_eligible(self, tmp_path: Path) -> None:
+        token = self._diagnose(
+            tmp_path,
+            confidence="100",
+            outcome="56",
+            score_ambiguity="10",
+            score_change_surface="25",
+            integration_files="0",
         )
+        assert token == "WIRE"
+
+    def test_wire_condition_uses_inventory_not_change_surface(self) -> None:
+        """The WIRE branches key on NEEDS_WIRE (inventory), never on CHANGE_SURFACE."""
+        action = _load_loop()["states"]["diagnose"]["action"]
+        routing = action[action.index("# Priority-ordered routing") :]
+        assert "NEEDS_WIRE" in routing
+        assert "CHANGE_SURFACE" not in routing
+        assert "integration_files" in action
 
 
 # ---------------------------------------------------------------------------
@@ -2212,3 +2350,677 @@ class TestRunCodeGate:
         assert is_runnable_loop(RN_REMEDIATE_PATH), (
             "rn-remediate must remain a runnable loop after FEAT-2552 wiring"
         )
+
+
+# ---------------------------------------------------------------------------
+# BUG-3756 behavioral matrix — rendered actions + a small transition walker
+# ---------------------------------------------------------------------------
+
+_VALID_FIELDS = (
+    "confidence",
+    "outcome",
+    "score_complexity",
+    "score_ambiguity",
+    "score_change_surface",
+)
+
+
+class TestSnapshotValidation:
+    """verify_scores_persisted / verify_re_assess_scores validate + normalize."""
+
+    STATES = {
+        "verify_scores_persisted": f"pre_scores_{ISSUE_ID}.json",
+        "verify_re_assess_scores": f"post_scores_{ISSUE_ID}.json",
+    }
+
+    @pytest.mark.parametrize("state", list(STATES))
+    @pytest.mark.parametrize(
+        "over, expected",
+        [
+            ({"score_complexity": "0"}, 0),
+            ({"score_complexity": 0}, 0),
+            ({"score_complexity": 7.0}, 7),
+            ({"score_complexity": "08"}, 8),
+            ({"score_complexity": "25"}, 25),
+        ],
+    )
+    def test_accepts_and_normalizes(
+        self, tmp_path: Path, state: str, over: dict[str, object], expected: int
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(_scores(**over))
+        res = sb.run(state)
+        assert res.returncode == 0, res.stdout
+        snap = sb.read_json(self.STATES[state])
+        assert snap["score_complexity"] == expected
+        assert isinstance(snap["score_complexity"], int)
+        # the rest of the document survives normalization
+        assert snap["integration_files"] == "2"
+        assert snap["decision_needed"] == "false"
+
+    @pytest.mark.parametrize("state", list(STATES))
+    @pytest.mark.parametrize(
+        "over",
+        [
+            {"score_ambiguity": None},
+            {"score_ambiguity": True},
+            {"score_ambiguity": {"a": 1}},
+            {"score_ambiguity": [1]},
+            {"score_ambiguity": "abc"},
+            {"score_ambiguity": "+5"},
+            {"score_ambiguity": " 5"},
+            {"score_ambiguity": "5 "},
+            {"score_ambiguity": "-1"},
+            {"score_ambiguity": -1},
+            {"score_ambiguity": 5.5},
+            {"score_ambiguity": "26"},
+            {"score_change_surface": 26},
+            {"score_complexity": ""},
+            {"confidence": "101"},
+            {"outcome": -3},
+            {"confidence": None},
+        ],
+    )
+    def test_rejects_invalid_scores(
+        self, tmp_path: Path, state: str, over: dict[str, object]
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(_scores(**over))
+        res = sb.run(state)
+        assert res.returncode != 0, res.stdout
+        assert not (sb.run_dir / self.STATES[state]).exists()
+        assert not (sb.run_dir / f"complexity_band_{ISSUE_ID}.txt").exists()
+
+    @pytest.mark.parametrize("state", list(STATES))
+    @pytest.mark.parametrize("raw", ["not json", "[1, 2]", '"x"', "", "null"])
+    def test_rejects_non_object_or_malformed_json(
+        self, tmp_path: Path, state: str, raw: str
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(raw)
+        assert sb.run(state).returncode != 0
+
+    @pytest.mark.parametrize("field", _VALID_FIELDS)
+    @pytest.mark.parametrize("state", list(STATES))
+    def test_rejects_missing_field(self, tmp_path: Path, state: str, field: str) -> None:
+        sb = _Sandbox(tmp_path)
+        doc = _scores()
+        del doc[field]
+        sb.show(doc)
+        assert sb.run(state).returncode != 0
+
+    def test_failed_fetch_with_plausible_stdout_is_rejected(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show_fail = True  # stub prints a valid document, then exits 1
+        res = sb.run("verify_scores_persisted")
+        assert res.returncode != 0
+        assert not (sb.run_dir / f"pre_scores_{ISSUE_ID}.json").exists()
+
+    def test_failed_fetch_never_replaces_stable_band(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        band = sb.write(f"complexity_band_{ISSUE_ID}.txt", "ABOVE_MINIMAL\n")
+        sb.show_fail = True
+        assert sb.run("verify_scores_persisted").returncode != 0
+        assert band.read_text() == "ABOVE_MINIMAL\n"
+        # invalid scores also leave the band alone
+        sb.show_fail = False
+        sb.show(_scores(score_complexity=None))
+        assert sb.run("verify_scores_persisted").returncode != 0
+        assert band.read_text() == "ABOVE_MINIMAL\n"
+
+    def test_failed_post_fetch_does_not_leave_stale_post(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"post_scores_{ISSUE_ID}.json")
+        sb.show_fail = True
+        assert sb.run("verify_re_assess_scores").returncode != 0
+        assert not (sb.run_dir / f"post_scores_{ISSUE_ID}.json").exists()
+
+    def test_missing_issue_file_is_rejected(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.issue_file.write_text("---\nid: BUG-9001\n---\n")
+        assert sb.run("verify_scores_persisted").returncode != 0
+
+    def test_temp_files_are_cleaned_up(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        assert sb.run("verify_scores_persisted").returncode == 0
+        assert sorted(p.name for p in sb.run_dir.iterdir()) == [
+            f"complexity_band_{ISSUE_ID}.txt",
+            f"pre_scores_{ISSUE_ID}.json",
+        ]
+        sb.show(_scores(score_ambiguity="x"))
+        assert sb.run("verify_re_assess_scores").returncode != 0
+        assert not any(p.name.endswith((".raw", ".tmp")) for p in sb.run_dir.iterdir())
+
+
+class TestComplexityBand:
+    """The initial A score alone defines the stable band (points: high = better)."""
+
+    @pytest.mark.parametrize(
+        "score, band",
+        [
+            ("0", "ABOVE_MINIMAL"),
+            ("5", "ABOVE_MINIMAL"),
+            ("14", "ABOVE_MINIMAL"),
+            ("15", "MINIMAL"),
+            ("25", "MINIMAL"),
+        ],
+    )
+    def test_default_threshold_boundary(self, tmp_path: Path, score: str, band: str) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(_scores(score_complexity=score))
+        assert sb.run("verify_scores_persisted").returncode == 0
+        assert (sb.run_dir / f"complexity_band_{ISSUE_ID}.txt").read_text().strip() == band
+
+    def test_custom_minimum_makes_eighteen_deficient(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(_scores(score_complexity="18"))
+        res = sb.run("verify_scores_persisted", diagnose_complexity_threshold=20)
+        assert res.returncode == 0
+        assert (sb.run_dir / f"complexity_band_{ISSUE_ID}.txt").read_text().strip() == (
+            "ABOVE_MINIMAL"
+        )
+
+    def test_later_improvement_does_not_erase_initial_band(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(_scores(score_complexity="10"))
+        assert sb.run("verify_scores_persisted").returncode == 0
+        sb.show(_scores(score_complexity="20"))
+        assert sb.run("verify_re_assess_scores").returncode == 0
+        assert sb.token("check_convergence", captured={"re_assess": {"verdict": "yes"}})
+        band = (sb.run_dir / f"complexity_band_{ISSUE_ID}.txt").read_text().strip()
+        assert band == "ABOVE_MINIMAL"
+
+    @pytest.mark.parametrize("score, exit_code", [("5", 0), ("14", 0), ("15", 1), ("25", 1)])
+    def test_check_complexity_pre_implement_uses_minimum_semantics(
+        self, tmp_path: Path, score: str, exit_code: int
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", score_complexity=score)
+        assert sb.run("check_complexity_pre_implement").returncode == exit_code
+
+    @pytest.mark.parametrize(
+        "band, refined, wired, expected",
+        [
+            ("ABOVE_MINIMAL", False, False, "NEED_REFINE"),
+            ("ABOVE_MINIMAL", True, False, "NEED_WIRE"),
+            ("ABOVE_MINIMAL", True, True, "IMPLEMENT"),
+            ("MINIMAL", False, False, "IMPLEMENT"),
+            (None, False, False, "IMPLEMENT"),
+        ],
+    )
+    def test_marker_gate_ladder(
+        self, tmp_path: Path, band: str | None, refined: bool, wired: bool, expected: str
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        if band:
+            sb.write(f"complexity_band_{ISSUE_ID}.txt", band + "\n")
+        if refined:
+            sb.write(f"refined_{ISSUE_ID}.txt", "1\n")
+        if wired:
+            sb.write(f"wired_{ISSUE_ID}.txt", "1\n")
+        assert sb.token("gate_implement") == expected
+
+    def test_marker_gate_bypass_flag(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.write(f"complexity_band_{ISSUE_ID}.txt", "ABOVE_MINIMAL\n")
+        assert sb.token("gate_implement", require_refine_and_wire="false") == "IMPLEMENT"
+
+
+class TestInventoryPredicate:
+    """Wiring predicates use integration_files independently of Criterion D."""
+
+    @pytest.mark.parametrize("state", ["check_wire_pre_implement", "check_wire_needed_outcome"])
+    @pytest.mark.parametrize(
+        "inventory, d, exit_code",
+        [
+            ("2", "0", 1),  # D=0 + populated inventory → no wire
+            ("2", "25", 1),
+            (None, "25", 0),  # D=25 + no inventory → eligible for wire
+            (None, "0", 0),
+            ("0", "25", 0),
+        ],
+    )
+    def test_first_pass_gates(
+        self, tmp_path: Path, state: str, inventory: str | None, d: str, exit_code: int
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(
+            f"pre_scores_{ISSUE_ID}.json", integration_files=inventory, score_change_surface=d
+        )
+        assert sb.run(state).returncode == exit_code
+
+    @pytest.mark.parametrize("state", ["check_wire_pre_implement", "check_wire_needed_outcome"])
+    def test_first_pass_gates_ignore_wired_marker(self, tmp_path: Path, state: str) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", integration_files=None)
+        sb.write(f"wired_{ISSUE_ID}.txt", "1\n")
+        assert sb.run(state).returncode == 0
+
+
+class TestDiagnoseRoutingMatrix:
+    """Complete rendered `diagnose` over a validated PRE snapshot."""
+
+    def _diag(self, tmp_path: Path, wired: bool = False, **over: object) -> str:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", **over)
+        if wired:
+            sb.write(f"wired_{ISSUE_ID}.txt", "1\n")
+        token = sb.token("diagnose")
+        assert sb.calls("show") == 0, "diagnose must not refetch live JSON"
+        return token
+
+    @pytest.mark.parametrize("a, expected", [(0, "REFINE"), (14, "REFINE"), (15, "REFINE_LIGHT")])
+    def test_ambiguity_boundary_with_inventory(self, tmp_path: Path, a: int, expected: str) -> None:
+        token = self._diag(
+            tmp_path, confidence="80", outcome="60", score_ambiguity=str(a), integration_files="3"
+        )
+        # outcome 60 < 65 also trips the generic REFINE rule, so isolate A:
+        if a >= 15:
+            assert token == "REFINE"  # generic outcome-failure rule
+        else:
+            assert token == "REFINE"
+
+    @pytest.mark.parametrize("c", [0, 5, 14])
+    def test_complexity_deficient_without_inventory_wires_once(
+        self, tmp_path: Path, c: int
+    ) -> None:
+        kw: dict[str, Any] = {
+            "confidence": "80",
+            "outcome": "60",
+            "score_complexity": str(c),
+            "integration_files": None,
+        }
+        assert self._diag(tmp_path / "a", **kw) == "WIRE"
+        # a prior wire pass suppresses the repeat inventory-only WIRE
+        assert self._diag(tmp_path / "b", wired=True, **kw) == "REFINE"
+
+    @pytest.mark.parametrize("c", [0, 5, 14])
+    def test_complexity_deficient_with_inventory_refines(self, tmp_path: Path, c: int) -> None:
+        token = self._diag(
+            tmp_path, confidence="80", outcome="60", score_complexity=str(c), integration_files="4"
+        )
+        assert token == "REFINE"
+
+    def test_missing_artifacts_wires_even_after_wired_marker(self, tmp_path: Path) -> None:
+        token = self._diag(
+            tmp_path, wired=True, confidence="80", outcome="60", missing_artifacts="true"
+        )
+        assert token == "WIRE"
+
+    def test_ambiguity_wire_rule_honors_wired_marker(self, tmp_path: Path) -> None:
+        kw: dict[str, Any] = {
+            "confidence": "80",
+            "outcome": "60",
+            "score_ambiguity": "10",
+            "integration_files": None,
+        }
+        assert self._diag(tmp_path / "a", **kw) == "WIRE"
+        assert self._diag(tmp_path / "b", wired=True, **kw) == "REFINE"
+
+    def test_decision_needed_precedes_remediation(self, tmp_path: Path) -> None:
+        assert self._diag(tmp_path, confidence="80", outcome="60", decision_needed="true") == (
+            "DECIDE"
+        )
+
+    def test_ready_snapshot_implements(self, tmp_path: Path) -> None:
+        assert self._diag(tmp_path, confidence="90", outcome="70") == "IMPLEMENT"
+
+    def test_zero_d_with_failing_outcome_never_decomposes(self, tmp_path: Path) -> None:
+        token = self._diag(
+            tmp_path, confidence="80", outcome="60", score_change_surface="0", integration_files="2"
+        )
+        assert token in {"WIRE", "REFINE"}
+
+    @pytest.mark.parametrize("d", [0, 5, 10, 15, 25])
+    @pytest.mark.parametrize("wired", [False, True])
+    def test_budget_reentry_tail_is_refine_light(self, tmp_path: Path, d: int, wired: bool) -> None:
+        """outcome >= threshold, confidence in [floor, readiness), A/C=25 → REFINE_LIGHT."""
+        token = self._diag(
+            tmp_path,
+            wired=wired,
+            confidence="80",
+            outcome="78",
+            score_complexity="25",
+            score_ambiguity="25",
+            score_change_surface=str(d),
+            integration_files="3",
+        )
+        assert token == "REFINE_LIGHT"
+
+    def test_custom_d_threshold_has_no_routing_effect(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(
+            f"pre_scores_{ISSUE_ID}.json",
+            confidence="80",
+            outcome="78",
+            score_change_surface="25",
+        )
+        assert sb.token("diagnose", diagnose_change_surface_threshold=1) == "REFINE_LIGHT"
+
+    @pytest.mark.parametrize("floor_conf, expected", [("49", "REFINE"), ("50", "REFINE_LIGHT")])
+    def test_confidence_floor_comparison_unchanged(
+        self, tmp_path: Path, floor_conf: str, expected: str
+    ) -> None:
+        token = self._diag(tmp_path, confidence=floor_conf, outcome="78", integration_files="3")
+        assert token == expected
+
+    def test_missing_snapshot_is_scores_missing(self, tmp_path: Path) -> None:
+        assert _Sandbox(tmp_path).token("diagnose") == "SCORES_MISSING"
+
+    @pytest.mark.parametrize(
+        "doc",
+        ["not json", "[]", '{"confidence": 90}', '{"confidence":"90","outcome":70}'],
+    )
+    def test_invalid_snapshot_is_scores_missing(self, tmp_path: Path, doc: str) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.write(f"pre_scores_{ISSUE_ID}.json", doc)
+        assert sb.token("diagnose") == "SCORES_MISSING"
+
+
+class TestConvergenceRendered:
+    """check_convergence deltas are post - pre for every term."""
+
+    def _conv(
+        self, tmp_path: Path, pre: dict[str, object], post: dict[str, object], verdict: str = "yes"
+    ) -> tuple[_Sandbox, str]:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", **pre)
+        sb.snapshot(f"post_scores_{ISSUE_ID}.json", **post)
+        token = sb.token("check_convergence", captured={"re_assess": {"verdict": verdict}})
+        return sb, token
+
+    @pytest.mark.parametrize(
+        "pre_a, post_a, sign",
+        [("10", "20", 1), ("20", "10", -1), ("15", "15", 0)],
+    )
+    @pytest.mark.parametrize("field, key", [("a", "ambiguity"), ("c", "complexity")])
+    def test_delta_signs(
+        self, tmp_path: Path, pre_a: str, post_a: str, sign: int, field: str, key: str
+    ) -> None:
+        name = f"score_{key}"
+        base = {"confidence": "60", "outcome": "50"}
+        sb, _ = self._conv(tmp_path, {**base, name: pre_a}, {**base, name: post_a})
+        conv = sb.read_json(f"convergence_{ISSUE_ID}.json")
+        delta = conv[f"delta_{key}"]
+        assert (delta > 0) - (delta < 0) == sign
+        assert delta == int(post_a) - int(pre_a)
+        assert conv["total_delta"] == delta  # confidence/outcome held constant
+
+    def test_total_delta_sums_four_terms(self, tmp_path: Path) -> None:
+        sb, token = self._conv(
+            tmp_path,
+            {
+                "confidence": "60",
+                "outcome": "50",
+                "score_complexity": "10",
+                "score_ambiguity": "10",
+            },
+            {
+                "confidence": "65",
+                "outcome": "52",
+                "score_complexity": "14",
+                "score_ambiguity": "11",
+            },
+        )
+        conv = sb.read_json(f"convergence_{ISSUE_ID}.json")
+        assert conv["total_delta"] == 5 + 2 + 4 + 1
+        assert token == "CONVERGED_IMPROVED"
+
+    def test_a_c_improvement_is_not_a_stall(self, tmp_path: Path) -> None:
+        _, token = self._conv(
+            tmp_path,
+            {"confidence": "60", "outcome": "50", "score_complexity": "5", "score_ambiguity": "5"},
+            {
+                "confidence": "60",
+                "outcome": "50",
+                "score_complexity": "20",
+                "score_ambiguity": "20",
+            },
+        )
+        assert token == "CONVERGED_IMPROVED"
+
+    def test_no_change_is_stalled(self, tmp_path: Path) -> None:
+        _, token = self._conv(
+            tmp_path, {"confidence": "60", "outcome": "50"}, {"confidence": "60", "outcome": "50"}
+        )
+        assert token == "CONVERGED_STALLED"
+
+    def test_pass_and_decision_precedence(self, tmp_path: Path) -> None:
+        _, token = self._conv(tmp_path, {"confidence": "60"}, {"confidence": "90", "outcome": "80"})
+        assert token == "CONVERGED_PASS"
+        _, token = self._conv(
+            tmp_path / "d",
+            {"confidence": "60"},
+            {"confidence": "90", "outcome": "80", "decision_needed": "true"},
+        )
+        assert token == "NEEDS_MANUAL_REVIEW"
+
+    def test_counter_incremented_once_and_baseline_refreshed(self, tmp_path: Path) -> None:
+        sb, _ = self._conv(
+            tmp_path,
+            {"confidence": "60", "score_complexity": "10"},
+            {"confidence": "61", "score_complexity": "20"},
+        )
+        assert (sb.run_dir / f"remediation_count_{ISSUE_ID}.txt").read_text().strip() == "1"
+        assert sb.read_json(f"pre_scores_{ISSUE_ID}.json")["score_complexity"] == 20
+        assert not (sb.run_dir / f"pre_scores_{ISSUE_ID}.json.tmp").exists()
+
+    def test_rejected_verdict_never_passes_even_with_passing_scores(self, tmp_path: Path) -> None:
+        sb, token = self._conv(
+            tmp_path, {"confidence": "60"}, {"confidence": "95", "outcome": "90"}, verdict="no"
+        )
+        assert token == "ASSESS_REJECTED"
+        # still counted exactly once, delta-logged and baseline-refreshed
+        assert (sb.run_dir / f"remediation_count_{ISSUE_ID}.txt").read_text().strip() == "1"
+        assert sb.read_json(f"convergence_{ISSUE_ID}.json")["delta_confidence"] == 35
+        assert sb.read_json(f"pre_scores_{ISSUE_ID}.json")["confidence"] == 95
+
+    def test_partial_verdict_converges_normally(self, tmp_path: Path) -> None:
+        _, token = self._conv(
+            tmp_path, {"confidence": "60"}, {"confidence": "95", "outcome": "90"}, verdict="partial"
+        )
+        assert token == "CONVERGED_PASS"
+
+    @pytest.mark.parametrize("missing", ["pre", "post"])
+    def test_missing_snapshot_is_scores_missing(self, tmp_path: Path, missing: str) -> None:
+        sb = _Sandbox(tmp_path)
+        other = "post" if missing == "pre" else "pre"
+        sb.snapshot(f"{other}_scores_{ISSUE_ID}.json")
+        token = sb.token("check_convergence", captured={"re_assess": {"verdict": "yes"}})
+        assert token == "SCORES_MISSING"
+        assert not (sb.run_dir / f"remediation_count_{ISSUE_ID}.txt").exists()
+
+    def test_unreadable_values_are_scores_missing(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json")
+        sb.write(f"post_scores_{ISSUE_ID}.json", '{"confidence": "08"}')
+        token = sb.token("check_convergence", captured={"re_assess": {"verdict": "yes"}})
+        assert token == "SCORES_MISSING"
+
+    def test_failed_baseline_refresh_is_scores_missing(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json")
+        sb.snapshot(f"post_scores_{ISSUE_ID}.json")
+        # a directory squatting on the temp name makes the checked cp fail
+        (sb.run_dir / f"pre_scores_{ISSUE_ID}.json.tmp").mkdir()
+        token = sb.token("check_convergence", captured={"re_assess": {"verdict": "yes"}})
+        assert token == "SCORES_MISSING"
+
+
+class TestHandoffScoreFallback:
+    """emit_needs_manual_review preserves 0 / "0" and falls back only on None."""
+
+    def _handoff(self, tmp_path: Path, pre: dict[str, object], post: object) -> str:
+        sb = _Sandbox(tmp_path)
+        sb.write(f"pre_scores_{ISSUE_ID}.json", pre)
+        if post is not None:
+            sb.write(f"post_scores_{ISSUE_ID}.json", post)
+        res = sb.run("emit_needs_manual_review")
+        assert "HANDOFF_WRITTEN" in res.stdout, res.stdout + res.stderr
+        text = (sb.run_dir / f"manual_review_handoff_{ISSUE_ID}.md").read_text()
+        line = next(ln for ln in text.splitlines() if ln.startswith("- Complexity score"))
+        return line
+
+    PRE = {"score_complexity": "25", "score_ambiguity": "18"}
+
+    def test_numeric_zero_is_preserved(self, tmp_path: Path) -> None:
+        line = self._handoff(tmp_path, self.PRE, {"score_complexity": 0, "score_ambiguity": 0})
+        assert line == "- Complexity score: 0 (ambiguity score=0)"
+
+    def test_string_zero_is_preserved(self, tmp_path: Path) -> None:
+        post = {"score_complexity": "0", "score_ambiguity": "0"}
+        assert self._handoff(tmp_path, self.PRE, post) == (
+            "- Complexity score: 0 (ambiguity score=0)"
+        )
+
+    @pytest.mark.parametrize("post", [None, {}, {"score_complexity": None}])
+    def test_absent_or_null_post_falls_back_to_pre(self, tmp_path: Path, post: object) -> None:
+        assert self._handoff(tmp_path, self.PRE, post) == (
+            "- Complexity score: 25 (ambiguity score=18)"
+        )
+
+    def test_both_absent_displays_question_mark(self, tmp_path: Path) -> None:
+        assert self._handoff(tmp_path, {}, None) == "- Complexity score: ? (ambiguity score=?)"
+
+
+# --- transition walker -------------------------------------------------------
+
+
+def _walk(
+    sb: _Sandbox,
+    start: str,
+    verdicts: dict[str, list[str]],
+    *,
+    stop: set[str] | None = None,
+    max_hops: int = 80,
+    **ctx: object,
+) -> list[str]:
+    """Walk declared transitions, running shell actions for real.
+
+    Slash-command states take their verdict from ``verdicts`` (stubbed judge);
+    shell states run rendered under bash. Stops at terminal states or ``stop``.
+    """
+    states = _load_loop()["states"]
+    captured: dict[str, dict[str, Any]] = {}
+    queues = {k: list(v) for k, v in verdicts.items()}
+    path: list[str] = []
+    cur = start
+    for _ in range(max_hops):
+        path.append(cur)
+        st = states[cur]
+        if st.get("terminal") or cur in (stop or set()):
+            return path
+        if st.get("action_type") == "slash_command":
+            verdict = queues[cur].pop(0) if len(queues[cur]) > 1 else queues[cur][0]
+            if st.get("capture"):
+                captured[st["capture"]] = {"output": "", "verdict": verdict}
+            key = {"yes": "on_success", "partial": "on_partial", "no": "on_no"}[verdict]
+            cur = st.get(key) or st.get("on_yes")
+            continue
+        res = sb.run(cur, captured=captured, **ctx)
+        if st.get("capture"):
+            captured[st["capture"]] = {"output": res.stdout, "verdict": ""}
+        ev = (st.get("evaluate") or {}).get("type") or (
+            "exit_code" if st.get("fragment") == "shell_exit" else None
+        )
+        if ev == "classify":
+            lines = [ln for ln in res.stdout.splitlines() if ln.strip()]
+            token = lines[-1].strip() if lines else ""
+            cur = st["route"].get(token, st["route"]["_"])
+        elif ev == "exit_code":
+            cur = st["on_yes"] if res.returncode == 0 else st.get("on_no", st["on_error"])
+            if res.returncode > 1 and "on_error" in st:
+                cur = st["on_error"]
+        elif ev == "output_numeric":
+            value = int(res.stdout.strip())
+            target = int(ctx.get("max_remediation_passes", 3))  # type: ignore[call-overload]
+            cur = st["on_yes"] if value < target else st["on_no"]
+        else:
+            cur = st["next"]
+    raise AssertionError(f"walk did not terminate: {path}")
+
+
+class TestVerdictRoutingWalks:
+    """Captured evaluator verdicts survive validation (stubbed judge)."""
+
+    INITIAL_STOP = {"refine_first", "gate_implement", "wire", "implement", "failed"}
+
+    @pytest.mark.parametrize("verdict", ["yes", "partial", "no"])
+    def test_invalid_scores_reach_scores_missing_on_every_verdict(
+        self, tmp_path: Path, verdict: str
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(_scores(score_ambiguity=None))
+        path = _walk(sb, "assess", {"assess": [verdict]}, stop=self.INITIAL_STOP)
+        assert path[-3:] == ["verify_scores_persisted", "emit_scores_missing", "failed"]
+        assert "implement" not in path and "gate_implement" not in path
+
+    @pytest.mark.parametrize("verdict", ["yes", "partial", "no"])
+    def test_invalid_reassessment_scores_fail_on_every_verdict(
+        self, tmp_path: Path, verdict: str
+    ) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.show(_scores(score_change_surface="99"))
+        path = _walk(sb, "re_assess", {"re_assess": [verdict]}, stop=self.INITIAL_STOP)
+        assert path == [
+            "re_assess",
+            "verify_re_assess_scores",
+            "emit_scores_missing",
+            "failed",
+        ]
+
+    def test_initial_no_with_passing_scores_still_refines(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        for name in ("refined", "wired"):  # both markers present, STOP-like fixture
+            sb.write(f"{name}_{ISSUE_ID}.txt", "1\n")
+        path = _walk(sb, "assess", {"assess": ["no"]}, stop=self.INITIAL_STOP)
+        assert path == ["assess", "verify_scores_persisted", "check_assess_verdict", "refine_first"]
+        # band + PRE were captured on the way through
+        assert (sb.run_dir / f"complexity_band_{ISSUE_ID}.txt").exists()
+        assert (sb.run_dir / f"pre_scores_{ISSUE_ID}.json").exists()
+
+    @pytest.mark.parametrize("verdict", ["yes", "partial"])
+    def test_initial_yes_partial_reach_readiness_gates(self, tmp_path: Path, verdict: str) -> None:
+        sb = _Sandbox(tmp_path)
+        path = _walk(sb, "assess", {"assess": [verdict]}, stop={"check_readiness"})
+        assert path[-2:] == ["check_assess_verdict", "check_readiness"]
+
+    def test_repeated_rejection_exhausts_the_shared_budget(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", confidence="60", outcome="50")
+        sb.show(_scores(confidence="95", outcome="90"))  # passing aggregates every pass
+        path = _walk(
+            sb,
+            "re_assess",
+            {"re_assess": ["no"], "refine_followup": ["yes"]},
+            max_remediation_passes=3,
+        )
+        assert path.count("re_assess") == 3
+        assert path.count("refine_followup") == 2
+        assert path[-3:] == ["check_rejection_budget", "emit_stalled_needs_decompose", "failed"]
+        assert "gate_implement" not in path and "diagnose" not in path
+        assert (sb.run_dir / f"remediation_count_{ISSUE_ID}.txt").read_text().strip() == "3"
+
+    def test_rejection_budget_honors_nondefault_maximum(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", confidence="60", outcome="50")
+        path = _walk(
+            sb,
+            "re_assess",
+            {"re_assess": ["no"], "refine_followup": ["yes"]},
+            max_remediation_passes=1,
+        )
+        assert path.count("re_assess") == 1
+        assert path[-1] == "failed" and "emit_stalled_needs_decompose" in path
+
+    def test_yes_reassessment_passing_scores_converge_to_gate(self, tmp_path: Path) -> None:
+        sb = _Sandbox(tmp_path)
+        sb.snapshot(f"pre_scores_{ISSUE_ID}.json", confidence="60", outcome="50")
+        sb.show(_scores(confidence="95", outcome="90"))
+        path = _walk(sb, "re_assess", {"re_assess": ["yes"]}, stop={"gate_implement"})
+        assert path == [
+            "re_assess",
+            "verify_re_assess_scores",
+            "check_convergence",
+            "gate_implement",
+        ]

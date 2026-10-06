@@ -613,7 +613,7 @@ snap_for_size_review  (shell: snapshot current scores and pre-review ID list)
 
 ### `rn-remediate` — Iterative Deepening Remediation Sub-Loop
 
-**Technique**: Sub-loop running a 5-phase iterative deepening remediation cycle on a single issue. (1) **Assessment Bridge** — run confidence check and gate on scores; (2) **Dimensional Diagnosis** — parse all scores via `ll-issues show --json` and emit a diagnosis token routing to the appropriate remediation action; (3) **Remediation Actions** — execute the prescribed action (implement, decide, wire, refine); (4) **Re-Assessment** — re-run confidence check; (5) **Convergence Check** — compute 4-dimension deltas from pre/post score snapshots (confidence, outcome, complexity↓, ambiguity↓) and decide whether to pass, iterate, or stall. Terminates with `done` (issue implemented) or `failed` (escalate to parent for decomposition).
+**Technique**: Sub-loop running a 5-phase iterative deepening remediation cycle on a single issue. (1) **Assessment Bridge** — run confidence check and gate on scores; (2) **Dimensional Diagnosis** — parse all scores via `ll-issues show --json` and emit a diagnosis token routing to the appropriate remediation action; (3) **Remediation Actions** — execute the prescribed action (implement, decide, wire, refine); (4) **Re-Assessment** — re-run confidence check; (5) **Convergence Check** — compute 4-dimension deltas from pre/post score snapshots (confidence, outcome, complexity, ambiguity — all post − pre, positive = improved) and decide whether to pass, iterate, or stall. Terminates with `done` (issue implemented) or `failed` (escalate to parent for decomposition).
 
 **When to use**: Standalone when you want focused iterative remediation on a single issue. Also invoked automatically by `rn-implement` for each dequeued issue.
 
@@ -638,17 +638,30 @@ ll-loop run rn-remediate --context issue_id=<ID> --context run_dir=.loops/runs/<
 | `outcome_threshold` | no | `65` | Outcome confidence threshold (int, 0–100). Seeded from `commands.confidence_gate.outcome_threshold` when not passed by the parent |
 | `max_remediation_passes` | no | `3` | Max remediation iterations before escalation to decomposition |
 | `require_refine_and_wire` | no | `true` | Enable the `gate_implement` marker-gate (see below); set `false` to skip the enforcement and proceed to `implement` unconditionally |
-| `diagnose_complexity_threshold` | no | `15` | Complexity score (0–25) above which an issue is classified as "above-minimal" and subject to the refine+wire gate |
+| `diagnose_complexity_threshold` | no | `15` | **Minimum acceptable** complexity score (0–25 confidence points, high = better). A score `< 15` is deficient: the issue is classified "above-minimal" (from its *initial* score) and subject to the refine+wire gate; `15` itself is acceptable |
+| `diagnose_ambiguity_threshold` | no | `15` | **Minimum acceptable** ambiguity score (0–25, high = better). `< 15` is deficient; equality is acceptable |
+| `diagnose_change_surface_threshold` | no | `15` | Retained for compatibility only — **no routing effect**. Criterion D has two scoring patterns, so a low D alone does not identify which one applies and the former score-only `DECOMPOSE` rule was removed |
+| `diagnose_confidence_floor` | no | `50` | Aggregate confidence (0–100) below which `diagnose` emits `REFINE`; the comparison (`<`) is unchanged — only the 0–25 criterion thresholds are minimum-score semantics |
 
-**Dimensional diagnosis routing** — the `diagnose` state parses scores and emits one of five tokens:
+**Score polarity.** The confidence check scores each outcome criterion (complexity, ambiguity, change surface, test coverage) as 0–25 *points toward confidence* — **higher is better**. `rn-remediate` reads them that way: a criterion is deficient when it is *below* its minimum. Earlier versions treated a high complexity or ambiguity score as the bad end; callers that tuned `diagnose_complexity_threshold` / `diagnose_ambiguity_threshold` against that reading should re-evaluate their values, and should start a fresh run directory rather than resume a pre-fix run (a retained `complexity_band_<ID>.txt` has the old meaning).
+
+**Score snapshots.** `verify_scores_persisted` (initial) and `verify_re_assess_scores` (after each reassessment) fetch `ll-issues show --json` into a temporary file, validate it, and only then publish `pre_scores_<ID>.json` / `post_scores_<ID>.json` atomically. Confidence and outcome must be 0–100 and the complexity / ambiguity / change-surface scores 0–25, as integer JSON numbers or digit strings (`"08"` is normalized to `8`; a real `0` is preserved). Missing, null, boolean, fractional, signed or padded values, a non-object root, and a failed or malformed fetch all terminate through `emit_scores_missing` (`SCORES_MISSING`) — never an implicit zero and never `gate_implement`. `diagnose` reads one validated snapshot (no live refetch), and the stable complexity band is published only after the initial snapshot validates.
+
+**Dimensional diagnosis routing** — the `diagnose` state reads the validated pre-scores snapshot and emits one of these tokens (first match wins):
 
 | Token | Trigger condition | Routes to | Description |
 |-------|-------------------|-----------|-------------|
-| `IMPLEMENT` | confidence ≥ readiness AND outcome ≥ outcome | `implement` | Both thresholds met; proceed to implementation |
+| `IMPLEMENT` | confidence ≥ readiness AND outcome ≥ outcome | `gate_implement` → `implement` | Both thresholds met; proceed to implementation (through the marker-gate) |
 | `DECIDE` | `decision_needed` flag is true | `resolve_decision_direct` | Issue has decision-needed; delegate to the shared `oracles/resolve-decision` sub-loop (ENH-3090), skipping the decidability probe since the classification already confirmed it |
-| `WIRE` | `ambiguity ≥ 15` | `wire` | Ambiguity too high; run `/ll:wire-issue` |
-| `REFINE` | `complexity ≥ 15` OR `confidence < 50` | `refine` | Complexity or low confidence; run `/ll:refine-issue` |
-| `DECOMPOSE` | `change_surface ≥ 15` | `failed` (falls through) | Surface area too large; escalate to parent for decomposition |
+| `WIRE` | `missing_artifacts` is true; OR `ambiguity < 15` / `complexity < 15` with **no file inventory** and no earlier wire pass | `wire` | Run `/ll:wire-issue` |
+| `REFINE` | `ambiguity < 15` with an inventory (or after a wire pass); OR `complexity < 15` / `confidence < 50` / `outcome < outcome threshold` | `refine` | Deficient ambiguity, complexity, or confidence; run `/ll:refine-issue` |
+| `REFINE_LIGHT` | none of the above matched | `refine_light` | Residual minor gaps (including a low Criterion D alone); additive `/ll:refine-issue --auto` |
+| `SCORES_MISSING` | snapshot missing, unreadable or invalid | `emit_scores_missing` | Explicit failure rather than an invented zero |
+| `DECOMPOSE` | *(no longer emitted from scores)* | `emit_needs_decompose` | Compatibility route only — see below |
+
+**File inventory vs. Criterion D.** The wiring checks key on a populated file inventory — the positive `integration_files` count (bullets under `### Files to Modify`) from `ll-issues show --json` — **not** on Criterion D. D=0 means a wide code blast radius or unenumerated mechanical fanout; D=25 means isolation or well-verified enumeration; neither proves a map exists. The count is a heuristic: placeholder bullets count, and an inventory under a different heading does not. `check_wire_pre_implement` and `check_wire_needed_outcome` (first-pass gates) use the inventory alone; `diagnose`'s two inventory-only `WIRE` rules additionally stop firing once the `wired_<ID>.txt` marker exists, so a counter that keeps returning null/zero cannot trigger repeated wiring. An explicit `missing_artifacts` flag is handled separately and is not suppressed by the marker.
+
+**Why there is no score-only `DECOMPOSE`.** A low Criterion D can be Pattern A (wide blast radius — splitting may help) or Pattern B (enumerated files lacking a verification command — it needs verification, not a split; it scores D=10 even after wiring). Diagnosis cannot tell them apart from the score, so residual D deficiencies fall through to `REFINE_LIGHT`. This tail is reachable: after `CONVERGED_IMPROVED` / `CONVERGED_STALLED`, `check_remediation_budget` re-enters `diagnose` with outcome at or above threshold and confidence between the floor and the readiness threshold, and with the corrected polarity such an issue no longer trips the generic `REFINE` rule. Persistently deficient issues still escalate: when the shared remediation budget is exhausted the loop emits `STALLED_NEEDS_DECOMPOSE`, so a genuinely broad change can consume up to `max_remediation_passes` passes before decomposition.
 
 **Convergence delta computation** — the `check_convergence` state computes four deltas from pre/post score snapshots:
 
@@ -656,19 +669,25 @@ ll-loop run rn-remediate --context issue_id=<ID> --context run_dir=.loops/runs/<
 |-------|---------|-----------|
 | `delta_confidence` | post − pre | positive = improved |
 | `delta_outcome` | post − pre | positive = improved |
-| `delta_complexity` | pre − post | inverted (lower complexity = improved) |
-| `delta_ambiguity` | pre − post | inverted (lower ambiguity = improved) |
+| `delta_complexity` | post − pre | positive = improved (criterion scores are points, high = better) |
+| `delta_ambiguity` | post − pre | positive = improved |
 
-Convergence rules (first match wins): both scores at or above thresholds → `CONVERGED_PASS` → `implement`; `total_delta ≤ 2` + `decision_needed=true` → `NEEDS_MANUAL_REVIEW` → `failed` (parent marks issue blocked); `total_delta ≤ 2` + `decision_needed=false` → `CONVERGED_STALLED` → `check_remediation_budget` (under budget → re-enter `diagnose`; exhausted → `failed`); otherwise → `CONVERGED_IMPROVED` → check remediation budget (under budget → re-enter `diagnose`; exhausted → `failed`).
+`total_delta` is the sum of the four deltas. Each validated reassessment logs the deltas, increments the shared remediation counter exactly once, and refreshes the pre-scores baseline (post → pre, atomically) so the next pass measures pass-over-pass change; the stable initial complexity band is not refreshed.
 
-**Stall vs. too-large outcome tokens (BUG-2006, ENH-2107):** the non-pass terminals emit one of two decompose tokens so the parent can tell a *stall* from a genuinely *too-large* issue. The diagnose-`DECOMPOSE` path (`diagnose route: DECOMPOSE:` key, i.e. `change_surface ≥ 15`) emits plain `NEEDS_DECOMPOSE` — a legitimate "split this" signal. The budget-exhausted stall path (`check_remediation_budget.on_no`) emits `STALLED_NEEDS_DECOMPOSE`. A `CONVERGED_STALLED` result (zero delta, no `decision_needed`) routes to `check_remediation_budget` first (ENH-2107 — budget-gated retry), so `STALLED_NEEDS_DECOMPOSE` is only emitted after all remediation passes are exhausted. Because the stall token is a superstring of `NEEDS_DECOMPOSE`, the parent's substring match still triggers a decomposition attempt; only after `rn-decompose` returns `NO_CHILDREN` does the parent's `route_dec_stalled_origin` disambiguate — a stall → `mark_deferred` (status set to `deferred`, reason logged), a too-large/atomic decline → `skip_issue`.
+Convergence rules (first match wins): a **rejected reassessment** (the confidence check's verdict was `no`) → `ASSESS_REJECTED` → `check_rejection_budget` (below); both scores at or above thresholds → `CONVERGED_PASS` → `gate_implement` (the marker-gate, then `implement`); `total_delta ≤ 0` + `decision_needed=true` → `NEEDS_MANUAL_REVIEW` → `failed` (parent marks issue blocked); `total_delta ≤ 0` + `decision_needed=false` → `CONVERGED_STALLED` → `check_remediation_budget` (under budget → re-enter `diagnose`; exhausted → `failed`); otherwise → `CONVERGED_IMPROVED` → check remediation budget (under budget → re-enter `diagnose`; exhausted → `failed`). Unreadable or invalid snapshots route to `emit_scores_missing` (`SCORES_MISSING`).
 
-**FSM flow** (abbreviated — core states across 5 phases; see `rn-remediate.yaml` for the full 48-state definition):
+**Rejected assessments.** Both assessment states capture the evaluator verdict (`${captured.assess.verdict}` / `${captured.re_assess.verdict}`), so passing aggregate scores can never promote a `no`. Initial `no` is validated and band-captured, then `check_assess_verdict` routes it to `refine_first`; `yes`/`partial` continue to the readiness gates. A reassessment `no` goes through the same validation, delta logging, counting and baseline refresh as any pass, then `check_rejection_budget` (same counter and `max_remediation_passes` as `check_remediation_budget`) routes to `refine_followup` while budget remains, otherwise to `emit_stalled_needs_decompose` — so repeated rejections are bounded by the pass limit, not just `max_steps`. The verdict comes from the generic action-success judge; a textual hard STOP in the confidence-check output is not deterministically mapped to `no`.
+
+**Stall vs. too-large outcome tokens (BUG-2006, ENH-2107):** the non-pass terminals emit one of two decompose tokens so the parent can tell a *stall* from a genuinely *too-large* issue. The `diagnose route: DECOMPOSE:` key still maps to plain `NEEDS_DECOMPOSE`, but `diagnose` no longer emits that token from scores (see above), so in practice decomposition arrives via the budget-exhaustion stall token. The budget-exhausted stall path (`check_remediation_budget.on_no`) emits `STALLED_NEEDS_DECOMPOSE`. A `CONVERGED_STALLED` result (zero delta, no `decision_needed`) routes to `check_remediation_budget` first (ENH-2107 — budget-gated retry), so `STALLED_NEEDS_DECOMPOSE` is only emitted after all remediation passes are exhausted. Because the stall token is a superstring of `NEEDS_DECOMPOSE`, the parent's substring match still triggers a decomposition attempt; only after `rn-decompose` returns `NO_CHILDREN` does the parent's `route_dec_stalled_origin` disambiguate — a stall → `mark_deferred` (status set to `deferred`, reason logged), a too-large/atomic decline → `skip_issue`.
+
+**FSM flow** (abbreviated — core states across 5 phases; see `rn-remediate.yaml` for the full 50-state definition):
 
 ```
 Phase 1 — Assessment Bridge:
-  assess → verify_scores_persisted → check_readiness → check_outcome → check_decision_needed
-    (readiness passes → implement; decision_needed → resolve_decision; otherwise → diagnose)
+  assess [captured verdict] → verify_scores_persisted → check_assess_verdict → check_readiness
+    → check_outcome → check_decision_needed
+    (verdict no → refine_first; readiness passes → wire check / gate_implement;
+     decision_needed → resolve_decision; otherwise → diagnose)
 
 Phase 1.5 — Decision Resolution (ENH-3090 — shared oracles/resolve-decision sub-loop):
   As of ENH-3090, the decidability probe, options-deposit detour, and stall gate
@@ -696,7 +715,8 @@ Phase 1.5 — Decision Resolution (ENH-3090 — shared oracles/resolve-decision 
 Phase 2 — Dimensional Diagnosis:
   diagnose [classify evaluator + route: table]
     IMPLEMENT → gate_implement | DECIDE → resolve_decision_direct | WIRE → wire | REFINE → refine
-    DECOMPOSE → emit_needs_decompose | _ → emit_implement_failed
+    REFINE_LIGHT → refine_light | SCORES_MISSING → emit_scores_missing
+    DECOMPOSE → emit_needs_decompose (compatibility; not emitted from scores) | _ → emit_implement_failed
 
 Phase 3 — Remediation Actions:
   implement (shell: ll-auto --only) → done
@@ -712,22 +732,23 @@ Phase 3 — Remediation Actions:
   wire      (slash_command: /ll:wire-issue --auto) → mark_wired (on_no → refine_first)
   refine          (slash_command: /ll:refine-issue --auto --full-rewrite)   → mark_refined → re_assess  [ONLY diagnose → REFINE]
   refine_first    (slash_command: /ll:refine-issue --auto)                   → mark_refined → re_assess  [assess/gate/wire/check_wire_needed_outcome]
-  refine_followup (slash_command: /ll:refine-issue --auto --gap-analysis)    → mark_refined → re_assess  [re_assess on_no]
+  refine_followup (slash_command: /ll:refine-issue --auto --gap-analysis)    → mark_refined → re_assess  [rejected reassessment, via check_rejection_budget]
   refine_light    (slash_command: /ll:refine-issue --auto)                   → mark_refined → re_assess  [diagnose → REFINE_LIGHT]
 
 Phase 4 — Re-Assessment:
-  re_assess → verify_re_assess_scores → check_convergence
+  re_assess [captured verdict] → verify_re_assess_scores → check_convergence
 
 Phase 5 — Convergence:
   check_convergence [classify evaluator + route: table]
     CONVERGED_PASS → gate_implement | CONVERGED_IMPROVED → check_remediation_budget
     NEEDS_MANUAL_REVIEW → emit_needs_manual_review | CONVERGED_STALLED → check_remediation_budget
-    (under budget → diagnose; exhausted → emit_stalled_needs_decompose → failed)
+    ASSESS_REJECTED → check_rejection_budget | SCORES_MISSING → emit_scores_missing
+    (under budget → diagnose / refine_followup; exhausted → emit_stalled_needs_decompose → failed)
 ```
 
-**`gate_implement` marker-gate (ENH-2163)**: Both `IMPLEMENT` (from `diagnose`) and `CONVERGED_PASS` (from `check_convergence`) route through `gate_implement` before reaching `implement`. This choke point checks whether an above-minimal-complexity issue (`score_complexity ≥ diagnose_complexity_threshold`, default 15) has been through *at least one* `/ll:refine-issue` pass **and** *at least one* `/ll:wire-issue` pass in this run. If not, it forces the missing step first — adding at most one refine detour and one wire detour per issue, bounded, not a loop. Minimal-complexity issues and callers that set `require_refine_and_wire: false` pass straight through. Fail-open: any gate error routes directly to `implement` rather than blocking. Markers (`refined_<ID>.txt` and `wired_<ID>.txt`) are written to `${context.run_dir}` by the refine-family states (`refine`, `refine_first`, `refine_followup`, `refine_light` — all via the shared `mark_refined` hop) and the `wire` state (via `mark_wired`), and persist for the duration of the run.
+**`gate_implement` marker-gate (ENH-2163)**: Both `IMPLEMENT` (from `diagnose`) and `CONVERGED_PASS` (from `check_convergence`) route through `gate_implement` before reaching `implement`. This choke point checks whether an above-minimal-complexity issue (initial `score_complexity < diagnose_complexity_threshold`, default 15 — scores are points, high = better) has been through *at least one* `/ll:refine-issue` pass **and** *at least one* `/ll:wire-issue` pass in this run. If not, it forces the missing step first — adding at most one refine detour and one wire detour per issue, bounded, not a loop. Minimal-complexity issues and callers that set `require_refine_and_wire: false` pass straight through. Fail-open: any gate error routes directly to `implement` rather than blocking. Markers (`refined_<ID>.txt` and `wired_<ID>.txt`) are written to `${context.run_dir}` by the refine-family states (`refine`, `refine_first`, `refine_followup`, `refine_light` — all via the shared `mark_refined` hop) and the `wire` state (via `mark_wired`), and persist for the duration of the run.
 
-**Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > DECOMPOSE). The `DECOMPOSE` token is a terminal diagnosis — it falls through the routing chain to `failed`, signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_steps: 100`, `timeout: 14400`, `on_handoff: spawn`. **Auth fast-fail (ENH-2353)**: `implement` exit failures are screened for auth signatures before recording `IMPLEMENT_FAILED`; on match the loop routes to `emit_env_not_ready` (writes an `ENV_NOT_READY` sidecar), and the parent orchestrator reads it via `route_rem_env_not_ready` to abort the queue.
+**Notes**: The Assessment Bridge short-circuits — if the initial `check_readiness` passes, the issue routes directly to `implement` without entering the diagnosis/remediation cycle. Dimensional diagnosis uses priority-ordered routing (IMPLEMENT > DECIDE > WIRE > REFINE > REFINE_LIGHT). Decomposition is reached through remediation-budget exhaustion (`STALLED_NEEDS_DECOMPOSE`), signaling the parent orchestrator to delegate to `rn-decompose`. No bare `PASS` token is used (compound tokens only, guarded by `test_no_bare_pass_token`). The remediation budget counter is per-issue and persists across diagnosis re-entries within the same run. `max_steps: 100`, `timeout: 14400`, `on_handoff: spawn`. **Auth fast-fail (ENH-2353)**: `implement` exit failures are screened for auth signatures before recording `IMPLEMENT_FAILED`; on match the loop routes to `emit_env_not_ready` (writes an `ENV_NOT_READY` sidecar), and the parent orchestrator reads it via `route_rem_env_not_ready` to abort the queue.
 
 ### `rn-build` — Spec-to-Project Capstone Orchestrator
 

@@ -15609,13 +15609,16 @@ class TestRnRemediateAssessRouting:
             f"assess.on_partial should be 'verify_scores_persisted', got {state.get('on_partial')!r}"
         )
 
-    def test_assess_on_no_routes_to_refine_first(self, data: dict) -> None:
-        """assess.on_no must route to refine_first (ENH-2247: first-pass scoring is not a
-        content diagnosis → lighter --auto refine, not the destructive --full-rewrite)."""
+    def test_assess_on_no_routes_through_validation_then_refine_first(self, data: dict) -> None:
+        """BUG-3756: assess.on_no validates the snapshot (captured verdict), then the
+        post-validation verdict gate sends `no` to refine_first (ENH-2247: first-pass
+        scoring is not a content diagnosis → lighter --auto refine, not --full-rewrite)."""
         state = data["states"].get("assess", {})
-        assert state.get("on_no") == "refine_first", (
-            f"assess.on_no should be 'refine_first', got {state.get('on_no')!r}"
-        )
+        assert state.get("capture") == "assess"
+        assert state.get("on_no") == "verify_scores_persisted"
+        gate = data["states"]["check_assess_verdict"]
+        assert gate["on_yes"] == "refine_first"
+        assert gate["on_no"] == "check_readiness"
 
     # ENH-3090: the inline `decide` state (BUG-2169's on_yes/on_no/on_error/
     # on_partial routing tests previously here) is deleted — /ll:decide-issue
@@ -20007,7 +20010,6 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/rn-refine.yaml", "context.synth_workers", "ENH-3358"),
     ("loops/rn-refine.yaml", "context.timeout_total", "ENH-3358"),
     ("loops/rn-remediate.yaml", "context.diagnose_ambiguity_threshold", "ENH-3358"),
-    ("loops/rn-remediate.yaml", "context.diagnose_change_surface_threshold", "ENH-3358"),
     ("loops/rn-remediate.yaml", "context.diagnose_complexity_threshold", "ENH-3358"),
     ("loops/rn-remediate.yaml", "context.diagnose_confidence_floor", "ENH-3358"),
     ("loops/rn-remediate.yaml", "context.issue_id", "ENH-3358"),

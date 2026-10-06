@@ -327,8 +327,10 @@ class TestRnRemediateSmoke:
         # deposit_options, record_options_deposited,
         # check_open_question_progress, decide (-5); added resolve_decision,
         # resolve_decision_direct, check_decide_rate_limited (+3), a net -2
-        # from the pre-conversion 50, landing at 48.
-        assert len(topo["states"]) == 48
+        # from the pre-conversion 50, landing at 48. BUG-3756 added
+        # check_assess_verdict (post-validation verdict gate) and
+        # check_rejection_budget (rejected-reassessment budget hop), +2 → 50.
+        assert len(topo["states"]) == 50
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null
