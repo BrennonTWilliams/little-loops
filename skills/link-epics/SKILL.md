@@ -50,6 +50,27 @@ relationships between issues that already declare `blocked_by`/`depends_on`.
 
 ---
 
+## Exclusion Report
+
+Both modes' JSON always include `skipped_malformed_metadata`, `skipped_intentional`,
+`skipped_children_listed`, `malformed_metadata`, and `children_listed_drift`. Orphans counted
+there were removed **before** scoring; never propose or hand-write a parent for them. When any
+counter is non-zero or a list is non-empty, show it ahead of everything else:
+
+```
+Skipped N orphan(s): X malformed metadata, Y intentionally parentless, Z already listed in an EPIC's Children
+  FEAT-1: parenting key(s) after the frontmatter fence (parent) — run `ll-issues format-check FEAT-1 --fix --apply`
+  FEAT-2: listed in EPIC-3 (open), EPIC-4 (done) — add the back-reference or fix the listing (`ll-issues epic-consistency`)
+```
+
+- `malformed_metadata[].keys` names keys only; point the user at `ll-issues format-check <ID> --fix --apply`.
+- In `children_listed_drift[].epics[]`, `blocks_proposal: false` (a `done`/`cancelled` EPIC) is
+  informational: that orphan may still appear in `proposals`/`clusters`. `excluded_reason` is
+  `null` for those.
+- An orphan with a recorded `parentless_reason` is intentional; do not suggest a parent.
+
+---
+
 ## Mode: `--mode assign` (default)
 
 ### A1: Get Proposals
@@ -58,8 +79,9 @@ relationships between issues that already declare `blocked_by`/`depends_on`.
 ll-issues link-epics --mode assign --json ${THRESHOLD:+--threshold "$THRESHOLD"}
 ```
 
-Parse `{"proposals": [{orphan_id, epic_id, score, tier}, ...], "applied": []}`. If
-`proposals` is empty, report:
+Parse `{"proposals": [{orphan_id, epic_id, score, tier}, ...], "applied": []}`. Every
+payload also carries the exclusion report — see **Exclusion Report** below — **display it
+before** any empty-result early return. If `proposals` is empty, report:
 ```
 No orphan-to-EPIC proposals found above the score threshold.
 ```
@@ -142,7 +164,7 @@ continuing with the score-based `clusters` the CLI still returned:
 ⚠ --deep skipped: {deep.count} orphans exceeds the 40-orphan cap; showing the score-based clusters only.
 ```
 
-If `clusters` is empty, report (mode-aware — `--deep` found no thematic or
+Display the **Exclusion Report** (below) before this empty-result check. If `clusters` is empty, report (mode-aware — `--deep` found no thematic or
 vocabulary-based groupings, vs. plain scoring finding no vocabulary overlap):
 ```
 No orphan clusters found above the score threshold — nothing to synthesize.          # without --deep

@@ -601,6 +601,163 @@ def upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str:
     return result.replace("\n", "\r\n") if crlf else result
 
 
+# BUG-3739: parenting keys that are easy to leave just below the closing fence.
+# Deliberately a short explicit list, not a claim to detect every YAML key.
+POST_FENCE_KEYS: tuple[str, ...] = ("parent", "epic", "parent_issue", "parentless_reason")
+_POST_FENCE_KEY_RE = re.compile(rf"({'|'.join(POST_FENCE_KEYS)}):(?:[ \t]|$)(.*)$")
+
+
+@dataclass(frozen=True)
+class PostFenceEntry:
+    """A known parenting key written after the last frontmatter closing fence (BUG-3739).
+
+    ``line`` is the 1-based physical line of the key; ``source_span`` covers the
+    whole raw entry (key line plus any indented continuation) in the text passed
+    to :func:`find_post_fence_entries`, excluding the final line terminator.
+    ``single_line_scalar`` is false for block scalars, lists, mappings, wrapped
+    or malformed values, and anything with continuation lines; such an entry is
+    reported but never moved automatically.
+    """
+
+    key: str
+    line: int
+    source_span: tuple[int, int]
+    single_line_scalar: bool
+
+
+def find_post_fence_entries(content: str) -> list[PostFenceEntry]:
+    """Find known parenting keys in the prefix right after the last frontmatter block.
+
+    Pure text analysis over LF-normalized *content*; never changes what
+    :func:`parse_frontmatter` reads. The prefix is the optional single blank
+    line plus the contiguous unindented ``known_key:`` lines that follow the last
+    recognized block. It ends at the first blank line after the keys, a heading,
+    a fence, or any other line; nothing past that point is inspected.
+    """
+    blocks = _iter_frontmatter_blocks(content)
+    if not blocks:
+        return []
+    pos = blocks[-1].span[1]
+    if pos >= len(content) or content[pos] != "\n":
+        return []
+    first_line = content.count("\n", 0, pos) + 2
+
+    lines: list[tuple[str, int]] = []
+    offset = pos + 1
+    for raw in content[offset:].split("\n"):
+        lines.append((raw, offset))
+        offset += len(raw) + 1
+
+    idx = 0
+    if lines and not lines[0][0].strip():
+        idx = 1
+    entries: list[PostFenceEntry] = []
+    while idx < len(lines):
+        text, start = lines[idx]
+        match = _POST_FENCE_KEY_RE.match(text)
+        if match is None:
+            break
+        key = match.group(1)
+        end = start + len(text)
+        scalar = True
+        try:
+            _split_scalar_comment(text[len(key) + 1 :], key)
+        except ValueError:
+            scalar = False
+        line_no = first_line + idx
+        idx += 1
+        while idx < len(lines):
+            nxt, nstart = lines[idx]
+            if not nxt.strip() or not (nxt[:1] in (" ", "\t") or nxt.startswith("- ")):
+                break
+            scalar = False
+            end = nstart + len(nxt)
+            idx += 1
+        entries.append(PostFenceEntry(key, line_no, (start, end), scalar))
+    return entries
+
+
+def move_post_fence_entries(content: str) -> str:
+    """Move a safe post-fence parenting-key run inside the single frontmatter block.
+
+    All-or-nothing: raises ``ValueError`` (message names the reason, never a
+    value) and changes nothing unless the run is a set of distinct single-line
+    scalars, the file has exactly one well-formed frontmatter mapping that does
+    not already carry any of those keys (an identical or null value is also a
+    collision), and no ``---`` marker follows the run. Raw key lines are
+    inserted unchanged just before the closing fence; every other byte,
+    LF/CRLF style, and final-newline state is preserved. The merged mapping is
+    re-parsed to confirm only the moved keys were added.
+    """
+    crlf = "\r\n" in content
+    if crlf:
+        if "\n" in content.replace("\r\n", "") or "\r" in content.replace("\r\n", ""):
+            raise ValueError("mixed line endings; refusing to move keys")
+        work = content.replace("\r\n", "\n")
+    else:
+        work = content
+
+    entries = find_post_fence_entries(work)
+    if not entries:
+        return content
+    unsafe = [e.key for e in entries if not e.single_line_scalar]
+    if unsafe:
+        raise ValueError(
+            f"{', '.join(unsafe)}: not a single-line scalar; move it into the frontmatter by hand"
+        )
+    keys = [e.key for e in entries]
+    if len(set(keys)) != len(keys):
+        raise ValueError("a key is repeated after the closing fence; resolve by hand")
+    blocks = _iter_frontmatter_blocks(work)
+    if len(blocks) != 1:
+        raise ValueError("file has more than one frontmatter block; resolve by hand")
+    block = blocks[0]
+    body_text = work[block.body_span[0] : block.body_span[1]]
+    try:
+        loaded = yaml.load(body_text, Loader=yaml.BaseLoader)
+    except yaml.YAMLError:
+        loaded = None
+    if not isinstance(loaded, dict):
+        raise ValueError("frontmatter block is not a well-formed mapping; resolve by hand")
+    for key in keys:
+        if key in block.data or re.search(rf"(?m)^{re.escape(key)}[ \t]*:", body_text):
+            raise ValueError(f"{key} already exists inside the frontmatter block; resolve by hand")
+
+    run_start, run_end = entries[0].source_span[0], entries[-1].source_span[1]
+    rest = work[run_end:]
+    after = rest.lstrip("\n")
+    if re.match(r"---[ \t]*(?:\n|$)", after):
+        raise ValueError("a `---` marker follows the keys; its role is ambiguous, resolve by hand")
+
+    raw_lines = "\n".join(work[e.source_span[0] : e.source_span[1]] for e in entries)
+    close_start = block.span[1] - len(work[: block.span[1]].rsplit("\n", 1)[-1])
+    fence_end = block.span[1]
+    if run_end == len(work):
+        # No final newline: drop everything after the fence so the file keeps ending at it.
+        trimmed = work[:fence_end]
+    else:
+        blank_before = run_start > fence_end + 1
+        blank_after = work[run_end : run_end + 2] == "\n\n"
+        cut_start = run_start - 1 if blank_before and blank_after else run_start
+        trimmed = work[:cut_start] + work[run_end + 1 :]
+    result = trimmed[:close_start] + raw_lines + "\n" + trimmed[close_start:]
+
+    new_blocks = _iter_frontmatter_blocks(result)
+    try:
+        moved = yaml.load(raw_lines, Loader=yaml.BaseLoader)
+    except yaml.YAMLError:
+        moved = None
+    if (
+        len(new_blocks) != 1
+        or not isinstance(moved, dict)
+        or set(moved) != set(keys)
+        or _merge_blocks(new_blocks)
+        != _merge_blocks(blocks) | _normalize_loaded_mapping(moved, coerce_types=False)
+    ):
+        raise ValueError("moved keys did not re-parse cleanly; resolve by hand")
+    return result.replace("\n", "\r\n") if crlf else result
+
+
 def remove_frontmatter_keys(content: str, keys: Iterable[str]) -> str:
     """Delete *keys* from every frontmatter block in *content*.
 

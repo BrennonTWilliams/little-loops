@@ -1010,3 +1010,317 @@ class TestApplyOneWinnerAndRejections:
             main_issues()
         capsys.readouterr()
         assert "FEAT-1" in epic.read_text()
+
+
+class TestOrphanExclusions:
+    """BUG-3739: malformed metadata, intentional markers and Children-listed orphans."""
+
+    _SAME = "loop automation workflow tracker"
+
+    def _run(self, temp_project_dir: Path, *cli_args: str) -> int:
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "link-epics", *cli_args, "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            return main_issues()
+
+    def _setup(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        orphans: dict[str, str],
+        epics: dict[str, tuple[str, str]] | None = None,
+    ) -> None:
+        """*orphans*: ``FEAT-n`` -> text after the opening fence; *epics*: id -> (status, body)."""
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        for seeded in [
+            *(issues_dir / "bugs").glob("*.md"),
+            *(issues_dir / "features").glob("*.md"),
+        ]:
+            seeded.unlink()  # drop the fixture's sample issues; they are orphans too
+        for issue_id, text in orphans.items():
+            _write_issue(issues_dir, "features", f"P2-{issue_id}-o.md", text)
+        for epic_id, (status, body) in (epics or {}).items():
+            _write_issue(
+                issues_dir,
+                "epics",
+                f"P2-{epic_id}-e.md",
+                f"---\nid: {epic_id}\ntitle: {self._SAME}\nstatus: {status}\n---\n"
+                f"# {epic_id}: {self._SAME}\n\n{body}",
+            )
+
+    def _orphan(self, issue_id: str, extra_fm: str = "", after_fence: str = "") -> str:
+        return (
+            f"---\nid: {issue_id}\ntitle: {self._SAME}\nstatus: open\n{extra_fm}---\n"
+            f"{after_fence}# {issue_id}: {self._SAME}\n"
+        )
+
+    def _json(self, temp_project_dir: Path, capsys: pytest.CaptureFixture[str], *args: str):
+        code = self._run(temp_project_dir, "--threshold", "0", "--json", *args)
+        captured = capsys.readouterr()
+        return code, json.loads(captured.out), captured.err
+
+    def test_control_orphan_still_proposed_with_zeroed_report(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1")},
+            {"EPIC-1": ("open", "## Children\n")},
+        )
+        code, out, _ = self._json(temp_project_dir, capsys)
+        assert code == 0
+        assert [p["orphan_id"] for p in out["proposals"]] == ["FEAT-1"]
+        assert out["skipped_malformed_metadata"] == out["skipped_intentional"] == 0
+        assert out["skipped_children_listed"] == 0
+        assert out["malformed_metadata"] == [] and out["children_listed_drift"] == []
+
+    def test_misplaced_metadata_excluded_without_any_epic_claim_and_never_applied(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys
+    ) -> None:
+        text = self._orphan("FEAT-1", after_fence="parentless_reason: private text\n\n")
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": text},
+            {"EPIC-1": ("open", "## Children\n")},
+        )
+        orphan_path = issues_dir / "features" / "P2-FEAT-1-o.md"
+        code, out, _ = self._json(temp_project_dir, capsys, "--apply")
+        assert code == 0
+        assert out["proposals"] == [] and out["applied"] == []
+        assert out["skipped_malformed_metadata"] == 1
+        assert out["malformed_metadata"] == [{"orphan_id": "FEAT-1", "keys": ["parentless_reason"]}]
+        assert "private text" not in json.dumps(out)
+        assert orphan_path.read_text() == text
+
+    @pytest.mark.parametrize(
+        ("value", "opts_out"),
+        [
+            ("Deliberately standalone", True),
+            ("'  padded reason  '", True),
+            ("''", False),
+            ("null", False),
+            ("~", False),
+            ('"   "', False),
+            ("[a, b]", False),
+            ("{a: b}", False),
+        ],
+    )
+    def test_parentless_reason_values(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys, value, opts_out
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1", extra_fm=f"parentless_reason: {value}\n")},
+            {"EPIC-1": ("open", "## Children\n")},
+        )
+        code, out, err = self._json(temp_project_dir, capsys)
+        assert code == 0
+        assert (out["skipped_intentional"] == 1) is opts_out
+        assert (out["proposals"] == []) is opts_out
+        warned = "parentless_reason must be a non-empty string" in err
+        assert warned is (value in ("[a, b]", "{a: b}"))
+
+    @pytest.mark.parametrize("style", ["- **FEAT-1** — t (open)", "- FEAT-1", "### FEAT-1 — t"])
+    def test_non_terminal_epic_claim_excludes_and_reports(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys, style
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1")},
+            {"EPIC-1": ("open", f"## Children\n\n{style}\n")},
+        )
+        code, out, _ = self._json(temp_project_dir, capsys)
+        assert code == 0
+        assert out["proposals"] == []
+        assert out["skipped_children_listed"] == 1
+        assert out["children_listed_drift"] == [
+            {
+                "orphan_id": "FEAT-1",
+                "excluded_reason": "children_listed",
+                "epics": [{"epic_id": "EPIC-1", "status": "open", "blocks_proposal": True}],
+            }
+        ]
+
+    @pytest.mark.parametrize("status", ["done", "cancelled"])
+    def test_terminal_epic_claim_reports_but_stays_proposable(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys, status
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1")},
+            {
+                "EPIC-1": ("open", "## Children\n"),
+                "EPIC-2": (status, "## Children\n\n- **FEAT-1** — t\n"),
+            },
+        )
+        _, out, _ = self._json(temp_project_dir, capsys)
+        assert [(p["orphan_id"], p["epic_id"]) for p in out["proposals"]] == [("FEAT-1", "EPIC-1")]
+        assert out["skipped_children_listed"] == 0
+        assert out["children_listed_drift"] == [
+            {
+                "orphan_id": "FEAT-1",
+                "excluded_reason": None,
+                "epics": [{"epic_id": "EPIC-2", "status": status, "blocks_proposal": False}],
+            }
+        ]
+
+    def test_terminal_claim_stays_proposable_in_synthesize_mode(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1"), "FEAT-2": self._orphan("FEAT-2")},
+            {"EPIC-9": ("cancelled", "## Children\n\n- **FEAT-1** — t\n")},
+        )
+        code = self._run(temp_project_dir, "--mode", "synthesize", "--threshold", "0.5", "--json")
+        out = json.loads(capsys.readouterr().out)
+        assert code == 0
+        assert out["clusters"][0]["member_ids"] == ["FEAT-1", "FEAT-2"]
+        assert out["children_listed_drift"][0]["epics"][0]["blocks_proposal"] is False
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "## Children\n\n```markdown\n- **FEAT-1** — fenced example\n```\n",
+            "## Children\n\n- **FEAT-1suffix** — prefix token\n",
+            "## Children\n\nSee FEAT-1 for background.\n",
+            "## Notes\n\n- **FEAT-1** — other section\n",
+        ],
+    )
+    def test_fenced_prose_and_partial_ids_do_not_count(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys, body
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1")},
+            {"EPIC-1": ("open", body)},
+        )
+        _, out, _ = self._json(temp_project_dir, capsys)
+        assert [p["orphan_id"] for p in out["proposals"]] == ["FEAT-1"]
+        assert out["children_listed_drift"] == []
+
+    def test_primary_reason_precedence_keeps_secondary_claims(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys
+    ) -> None:
+        listing = "## Children\n\n- **FEAT-1** — t\n- **FEAT-2** — t\n- **FEAT-3** — t\n"
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {
+                "FEAT-1": self._orphan("FEAT-1", after_fence="parent: EPIC-2\n\n"),
+                "FEAT-2": self._orphan("FEAT-2", extra_fm="parentless_reason: alone\n"),
+                "FEAT-3": self._orphan("FEAT-3"),
+            },
+            {"EPIC-1": ("open", listing), "EPIC-2": ("done", listing)},
+        )
+        _, out, _ = self._json(temp_project_dir, capsys)
+        assert out["proposals"] == []
+        assert (
+            out["skipped_malformed_metadata"],
+            out["skipped_intentional"],
+            out["skipped_children_listed"],
+        ) == (1, 1, 1)
+        drift = {d["orphan_id"]: d for d in out["children_listed_drift"]}
+        assert drift["FEAT-1"]["excluded_reason"] == "malformed_metadata"
+        assert drift["FEAT-2"]["excluded_reason"] == "intentional"
+        assert drift["FEAT-3"]["excluded_reason"] == "children_listed"
+        assert [e["epic_id"] for e in drift["FEAT-3"]["epics"]] == ["EPIC-1", "EPIC-2"]
+        assert [d["orphan_id"] for d in out["children_listed_drift"]] == sorted(drift)
+
+    def test_exclusion_runs_before_deep_model_call(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {
+                "FEAT-1": self._orphan("FEAT-1", extra_fm="parentless_reason: alone\n"),
+                "FEAT-2": self._orphan("FEAT-2"),
+            },
+        )
+        with patch("little_loops.cli.issues.link_epics._deep_cluster_call") as call:
+            call.return_value = []
+            self._run(temp_project_dir, "--mode", "synthesize", "--deep", "--json")
+        capsys.readouterr()
+        sent = [info.issue_id for info, _ in call.call_args.args[0]]
+        assert sent == ["FEAT-2"]
+
+    def test_text_mode_reports_counts_and_claimants(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys
+    ) -> None:
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1")},
+            {"EPIC-1": ("blocked", "## Children\n\n- **FEAT-1** — t\n")},
+        )
+        assert self._run(temp_project_dir, "--threshold", "0") == 0
+        out = capsys.readouterr().out
+        assert (
+            "Skipped 1 orphan(s): 0 malformed metadata, 0 intentionally parentless, 1 already"
+            in out
+        )
+        assert "FEAT-1: listed in EPIC-1 (blocked); children_listed" in out
+        assert "epic-consistency" in out
+
+    def test_unreadable_epic_is_a_path_specific_error_and_blocks_apply(
+        self, temp_project_dir, sample_config, issues_dir, epics_dir, capsys
+    ) -> None:
+        from pathlib import Path as _P
+
+        self._setup(
+            temp_project_dir,
+            sample_config,
+            issues_dir,
+            {"FEAT-1": self._orphan("FEAT-1")},
+            {"EPIC-1": ("open", "## Children\n")},
+        )
+        orphan = issues_dir / "features" / "P2-FEAT-1-o.md"
+        real = _P.read_text
+
+        def flaky(self: _P, *a: Any, **k: Any) -> str:
+            if self.name == "P2-EPIC-1-e.md":
+                raise PermissionError("denied")
+            return real(self, *a, **k)
+
+        before = orphan.read_text()
+        with patch.object(_P, "read_text", flaky):
+            code = self._run(temp_project_dir, "--apply", "--json")
+        captured = capsys.readouterr()
+        assert code == 1
+        assert "P2-EPIC-1-e.md" in captured.err and captured.out == ""
+        assert orphan.read_text() == before
+
+
+class TestClassifyHelpers:
+    """BUG-3739: pure helpers."""
+
+    def test_intentional_parentless_values(self) -> None:
+        from little_loops.cli.issues.link_epics import intentional_parentless
+
+        assert intentional_parentless({"parentless_reason": "x"})
+        for bad in (None, "", "  ", [], ["a"], {}, {"a": 1}, 3):
+            assert not intentional_parentless({"parentless_reason": bad})
+        assert not intentional_parentless({})

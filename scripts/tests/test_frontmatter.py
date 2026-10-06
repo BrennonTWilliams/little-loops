@@ -784,3 +784,120 @@ class TestUpsertFrontmatterScalars:
     def test_multiline_value_rejected(self) -> None:
         with pytest.raises(ValueError, match="single line"):
             self._up("---\nid: FEAT-1\n---\n", {"parent": "A\nB"})
+
+
+class TestPostFenceEntries:
+    """BUG-3739: bounded detection of parenting keys after the closing fence."""
+
+    @staticmethod
+    def _keys(content: str) -> list[tuple[str, int]]:
+        from little_loops.frontmatter import find_post_fence_entries
+
+        return [(e.key, e.line) for e in find_post_fence_entries(content)]
+
+    def test_reports_key_and_physical_line(self) -> None:
+        text = "---\nid: FEAT-1\ngoals: [3, 7]\n---\nparent: EPIC-1\nepic: EPIC-1\n\n# T\n"
+        assert self._keys(text) == [("parent", 5), ("epic", 6)]
+
+    def test_one_leading_blank_line_allowed_two_are_not(self) -> None:
+        assert self._keys("---\nid: F\n---\n\nparent: E\n") == [("parent", 5)]
+        assert self._keys("---\nid: F\n---\n\n\nparent: E\n") == []
+
+    def test_stops_at_first_blank_after_keys_and_does_not_resume(self) -> None:
+        text = "---\nid: F\n---\nparent: E\n\nepic: E\n"
+        assert self._keys(text) == [("parent", 4)]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "---\nid: F\n---\n# T\nparent: E\n",  # heading first
+            "---\nid: F\n---\nParent: E\n",  # wrong case is prose
+            "---\nid: F\n---\nnotes: x\nparent: E\n",  # unknown key/prose stops the scan
+            "---\nid: F\n---\n```yaml\nparent: E\n```\n",  # fenced example
+            "---\nid: F\nparent: E\n---\n",  # correctly placed, block ends at EOF
+            "# no frontmatter\nparent: E\n",
+        ],
+    )
+    def test_false_positives(self, text: str) -> None:
+        assert self._keys(text) == []
+
+    def test_body_horizontal_rule_is_not_a_prefix(self) -> None:
+        text = "---\nid: F\n---\n\n# T\n\n---\nparent: E\n"
+        assert self._keys(text) == []
+
+    def test_consumed_second_block_is_not_reported(self) -> None:
+        text = "---\nscore_x: 1\n---\n---\nid: F\nparent: E\n---\n\n# T\n"
+        assert self._keys(text) == []
+
+    def test_continuation_makes_entry_ineligible(self) -> None:
+        from little_loops.frontmatter import find_post_fence_entries
+
+        text = "---\nid: F\n---\nparentless_reason: >\n  because\nparent: E\n"
+        entries = find_post_fence_entries(text)
+        assert [(e.key, e.single_line_scalar) for e in entries] == [
+            ("parentless_reason", False),
+            ("parent", True),
+        ]
+
+    def test_parse_frontmatter_still_ignores_misplaced_keys(self) -> None:
+        from little_loops.frontmatter import parse_frontmatter
+
+        text = "---\nid: F\n---\nparent: E\n\n# T\n"
+        assert "parent" not in parse_frontmatter(text)
+
+
+class TestMovePostFenceEntries:
+    """BUG-3739: all-or-nothing movement of safe post-fence entries."""
+
+    @staticmethod
+    def _move(content: str) -> str:
+        from little_loops.frontmatter import move_post_fence_entries
+
+        return move_post_fence_entries(content)
+
+    def test_moves_raw_lines_before_closing_fence(self) -> None:
+        text = "---\nid: F\n---\nparent: 'E-1'  # keep\nepic: E-1\n\n# T\n"
+        assert self._move(text) == "---\nid: F\nparent: 'E-1'  # keep\nepic: E-1\n---\n\n# T\n"
+
+    def test_blank_line_before_and_after_collapses_to_one(self) -> None:
+        text = "---\nid: F\n---\n\nparent: E\n\n# T\n"
+        assert self._move(text) == "---\nid: F\nparent: E\n---\n\n# T\n"
+
+    def test_idempotent(self) -> None:
+        once = self._move("---\nid: F\n---\nparent: E\n\n# T\n")
+        assert self._move(once) == once
+
+    def test_no_entries_returns_input_unchanged(self) -> None:
+        text = "---\nid: F\n---\n# T\n"
+        assert self._move(text) == text
+
+    def test_crlf_preserved(self) -> None:
+        text = "---\r\nid: F\r\n---\r\nparent: E\r\n\r\n# T\r\n"
+        assert self._move(text) == "---\r\nid: F\r\nparent: E\r\n---\r\n\r\n# T\r\n"
+
+    def test_final_newline_state_preserved(self) -> None:
+        assert self._move("---\nid: F\n---\nparent: E") == "---\nid: F\nparent: E\n---"
+        assert self._move("---\nid: F\n---\nparent: E\n") == "---\nid: F\nparent: E\n---\n"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "---\nid: F\n---\nparent: >\n  x\n\n# T\n",  # block scalar
+            "---\nid: F\n---\nparent: [a, b]\n",  # flow list
+            "---\nid: F\n---\nparent: 'unterminated\n",  # malformed quote
+            "---\nid: F\n---\nparent: E\nparent: E\n",  # repeated key
+            "---\nid: F\nparent: E\n---\nparent: E\n",  # identical existing value
+            "---\nid: F\nparent:\n---\nparent: E\n",  # existing explicit null
+            "---\nid: F\n---\nparent: E\n\n---\n# T\n",  # following marker
+            "---\nscore_x: 1\n---\n---\nid: F\n---\nparent: E\n",  # several blocks
+            "---\r\nid: F\r\n---\nparent: E\n",  # mixed line endings
+        ],
+    )
+    def test_unsafe_shapes_raise_and_leave_input_alone(self, text: str) -> None:
+        with pytest.raises(ValueError):
+            self._move(text)
+
+    def test_error_never_echoes_values(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            self._move("---\nid: F\n---\nparentless_reason: >\n  top secret\n")
+        assert "top secret" not in str(excinfo.value)

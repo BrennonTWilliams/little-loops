@@ -384,6 +384,7 @@ class TestFormatCheckJsonOutput:
             "orphaned_session_log_entries": [],
             # ENH-3555: invisible / control characters in the raw file.
             "invisible_chars": [],
+            "post_fence_keys": [],
             # BUG-3691: advisory citation classes (report-only, never blocking).
             "advisory_stale_file_ref": [],
             "advisory_ambiguous_file_ref": [],
@@ -3708,3 +3709,101 @@ class TestFormatCheckCitationCoverage:
         _invoke(argv)
         second, _ = capsys.readouterr()
         assert first == second
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckPostFenceKeys (BUG-3739)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckPostFenceKeys:
+    """post_fence_keys is blocking; --fix --apply repairs safe single-issue shapes only."""
+
+    _MISPLACED = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9739").replace(
+        "---\n\n# BUG-9101", "---\nparent: EPIC-1\n\n# BUG-9101", 1
+    )
+
+    def _argv(self, temp_project_dir: Path, *extra: str) -> list[str]:
+        return ["ll-issues", "format-check", "BUG-9739", "--config", str(temp_project_dir), *extra]
+
+    def _write(self, format_check_dir: Path, body: str | None = None) -> Path:
+        path = format_check_dir / "bugs" / "P3-BUG-9739-test-bug.md"
+        path.write_bytes((body or self._MISPLACED).encode("utf-8"))
+        return path
+
+    def test_reports_key_line_and_file_and_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write(format_check_dir)
+        assert _invoke(self._argv(temp_project_dir)) == 1
+        out, _ = capsys.readouterr()
+        assert "post_fence_keys: parent at line 5 of P3-BUG-9739-test-bug.md" in out
+
+    def test_preview_writes_nothing(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        path = self._write(format_check_dir)
+        before = path.read_bytes()
+        assert _invoke(self._argv(temp_project_dir, "--fix")) == 1
+        assert path.read_bytes() == before
+        assert "[dry-run] would move 1 post-fence key(s)" in capsys.readouterr().out
+
+    def test_apply_moves_key_and_is_idempotent(
+        self, temp_project_dir: Path, format_check_dir: Path
+    ) -> None:
+        path = self._write(format_check_dir)
+        assert _invoke(self._argv(temp_project_dir, "--fix", "--apply")) == 0
+        text = path.read_text()
+        assert text.startswith("---\nid: BUG-9739\nstatus: open\nparent: EPIC-1\n---\n")
+        again = path.read_bytes()
+        assert _invoke(self._argv(temp_project_dir, "--fix", "--apply")) == 0
+        assert path.read_bytes() == again
+
+    def test_apply_preserves_crlf_and_mode(
+        self, temp_project_dir: Path, format_check_dir: Path
+    ) -> None:
+        path = self._write(format_check_dir, self._MISPLACED.replace("\n", "\r\n"))
+        path.chmod(0o640)
+        _invoke(self._argv(temp_project_dir, "--fix", "--apply"))
+        raw = path.read_bytes()
+        assert b"parent: EPIC-1\r\n---\r\n" in raw
+        assert raw.count(b"\n") == raw.count(b"\r\n")
+        assert path.stat().st_mode & 0o777 == 0o640
+
+    def test_unsafe_shape_stays_reported_and_unchanged(
+        self, temp_project_dir: Path, format_check_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        body = self._MISPLACED.replace("status: open\n---", "status: open\nparent: EPIC-2\n---", 1)
+        path = self._write(format_check_dir, body)
+        before = path.read_bytes()
+        assert _invoke(self._argv(temp_project_dir, "--fix", "--apply")) == 1
+        assert path.read_bytes() == before
+        assert "not repaired: parent already exists" in capsys.readouterr().out
+
+    def test_sweep_apply_skips_repair(self, temp_project_dir: Path, format_check_dir: Path) -> None:
+        path = self._write(format_check_dir)
+        before = path.read_bytes()
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "--all",
+                "--fix",
+                "--apply",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        assert path.read_bytes() == before
+
+    def test_dispatch_membership(self) -> None:
+        from little_loops.cli.issues.format_check import _REPAIR_DISPATCH, _SWEEP_SAFE_REPAIRS
+
+        assert "post_fence_keys" in _REPAIR_DISPATCH
+        assert "post_fence_keys" not in _SWEEP_SAFE_REPAIRS

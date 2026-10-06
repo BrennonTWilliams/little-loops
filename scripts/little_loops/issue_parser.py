@@ -578,6 +578,9 @@ class FormatGaps:
     # ENH-3555: invisible / control characters anywhere in the raw file. Blocking,
     # report-only (no --fix: the intended text cannot be recovered mechanically).
     invisible_chars: list[str] = field(default_factory=list)
+    # BUG-3739: a known parenting key sits just below the frontmatter closing fence,
+    # where readers never see it. Blocking; a conservative single-issue repair exists.
+    post_fence_keys: list[str] = field(default_factory=list)
     # BUG-3691: advisory citation findings (see _ADVISORY_GAP_CLASSES). Report-only,
     # no --fix. The `examined_refs` coverage metadata is deliberately *not* a field.
     advisory_stale_file_ref: list[str] = field(default_factory=list)
@@ -620,6 +623,7 @@ class FormatGaps:
             or self.duplicate_session_log
             or self.orphaned_session_log_entries
             or self.invisible_chars
+            or self.post_fence_keys
             or self.advisory_stale_file_ref
             or self.advisory_ambiguous_file_ref
             or self.advisory_stale_symbol_ref
@@ -673,6 +677,7 @@ class FormatGaps:
             "duplicate_session_log": self.duplicate_session_log,
             "orphaned_session_log_entries": self.orphaned_session_log_entries,
             "invisible_chars": self.invisible_chars,
+            "post_fence_keys": self.post_fence_keys,
             "advisory_stale_file_ref": self.advisory_stale_file_ref,
             "advisory_ambiguous_file_ref": self.advisory_ambiguous_file_ref,
             "advisory_stale_symbol_ref": self.advisory_stale_symbol_ref,
@@ -850,6 +855,12 @@ def check_format_gaps(
             scoring path, followed by the canonical ``id:``-bearing block. Read
             paths merge both blocks so no data is lost, but the shape is
             malformed and should be folded into a single block.
+        post_fence_keys: a known parenting key (``parent``, ``epic``,
+            ``parent_issue``, ``parentless_reason``) sits in the prefix right
+            after the last frontmatter block's closing fence (BUG-3739,
+            :func:`little_loops.frontmatter.find_post_fence_entries`). Readers
+            only see fenced mappings, so the value is silently ignored. Entries
+            carry the key and physical line, never the value.
         stale_file_ref: a file path reference extracted from the body
             (ENH-2983, :func:`little_loops.text_utils.classify_issue_refs`)
             classifies as ``stale`` — a ``/``-qualified path with no exact or
@@ -1076,7 +1087,19 @@ def check_format_gaps(
     except Exception:
         pass
 
-    from little_loops.frontmatter import has_multiple_frontmatter_blocks
+    from little_loops.frontmatter import find_post_fence_entries, has_multiple_frontmatter_blocks
+
+    # BUG-3739: pure-text prefix check, ahead of the template/type early returns.
+    for fence_entry in find_post_fence_entries(content):
+        remedy = (
+            "`--fix --apply` repairs safe single-issue cases"
+            if fence_entry.single_line_scalar
+            else "not a single-line scalar; move it into the frontmatter block by hand"
+        )
+        gaps.post_fence_keys.append(
+            f"{fence_entry.key} at line {fence_entry.line} of {issue_path.name} is after the frontmatter "
+            f"closing fence and ignored by readers ({remedy})"
+        )
 
     if has_multiple_frontmatter_blocks(content):
         gaps.multi_frontmatter.append(

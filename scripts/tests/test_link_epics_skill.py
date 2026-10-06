@@ -183,3 +183,26 @@ class TestJaccardScoringBuckets:
 
         assert calculate_word_overlap(set(), {"word"}) == 0.0
         assert calculate_word_overlap({"word"}, set()) == 0.0
+
+
+class TestExclusionReportContract:
+    """BUG-3739: the skill must show exclusion/drift reports before empty-result early returns."""
+
+    def test_documents_report_keys(self) -> None:
+        content = SKILL_FILE.read_text()
+        for key in (
+            "skipped_malformed_metadata",
+            "skipped_intentional",
+            "skipped_children_listed",
+            "malformed_metadata",
+            "children_listed_drift",
+            "blocks_proposal",
+            "parentless_reason",
+        ):
+            assert key in content
+
+    def test_report_displayed_before_empty_result_returns(self) -> None:
+        content = SKILL_FILE.read_text()
+        assert content.index("## Exclusion Report") < content.index("### A1: Get Proposals")
+        assert "before** any empty-result early return" in content
+        assert "before this empty-result check" in content

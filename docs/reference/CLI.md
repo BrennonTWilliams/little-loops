@@ -2908,6 +2908,20 @@ same merge `append_session_log_entry()` now runs before every insert.
 handler, since the remedy needs a human decision about where the entry
 belongs.
 
+Also reports `post_fence_keys` (BUG-3739) — a known parenting key (`parent`,
+`epic`, `parent_issue`, `parentless_reason`) written in the prefix right after
+the last frontmatter block's closing fence, where readers never see it. Only
+that bounded prefix is inspected (an optional single blank line, then
+contiguous unindented `key:` lines); normal prose, body rules, other sections,
+and fenced YAML are never flagged. Each entry names the key, physical line, and
+file — never the value — and the gap is blocking. `--fix --apply` repairs one
+issue at a time by moving the raw key lines inside the frontmatter block,
+preserving comments, quoting, line endings, and file mode. It leaves the file
+unchanged (gap still reported) for multi-line or non-scalar values, repeated
+keys, a key that already exists in the block (including an identical or null
+value), several frontmatter blocks, or a `---` line following the keys. It is
+never part of `--all --fix --apply`.
+
 Also reports five advisory citation classes (BUG-3691), so citation checks do not
 vary from pass to pass over an unchanged issue: `advisory_stale_file_ref`,
 `advisory_ambiguous_file_ref`, `advisory_stale_symbol_ref`,
@@ -2999,14 +3013,14 @@ radius reviewable.
 | `--all` / `-a` | `false` | Sweep every active issue instead of one (FEAT-2850) |
 | `--next` | `false` | Target the highest-priority active issue, no type filter (same selection as `find_highest_priority_issue`); mutually exclusive with `issue_id`/`--all`; exits 1 with "No active issues found." on an empty backlog (ENH-2946) |
 | `--format {text,json}` | `text` | Output format |
-| `--fix` | `false` | Preview repairs for `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders` (frontmatter-derivable tokens only), and `duplicate_session_log` gaps via the repair dispatch table (dry-run by default; all but `prose_dep_drift` are single-issue mode only — ENH-3247, ENH-3248, BUG-3424) |
+| `--fix` | `false` | Preview repairs for `prose_dep_drift`, `duplicate_findings_block`, `duplicate_heading`, `empty_provenance_stub`, `template_placeholders` (frontmatter-derivable tokens only), `duplicate_session_log`, and `post_fence_keys` (BUG-3739) gaps via the repair dispatch table (dry-run by default; all but `prose_dep_drift` are single-issue mode only — ENH-3247, ENH-3248, BUG-3424) |
 | `--apply` | `false` | With `--fix`, write the proposed repairs instead of previewing them |
 
 **Examples:**
 ```bash
 ll-issues format-check ENH-2426               # text report, exit 0/1
                                                # stderr: "(N other issue(s) have deprecated frontmatter keys — run `ll-issues format-check` to list)" when applicable
-ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "ambiguous_file_ref": [...], "missing_behavior_parity": [...], "soft_dep_hard_edge": [...], "malformed_dep_id": [...], "stale_symbol_ref": [...], "mislocated_symbol_ref": [...], "stale_cli_flag": [...], "duplicate_heading": [...], "empty_provenance_stub": [...], "template_placeholders": [...], "unapplied_decision": [...], "priority_drift": [...], "duplicate_session_log": [...], "orphaned_session_log_entries": [...], "advisory_stale_file_ref": [...], "advisory_ambiguous_file_ref": [...], "advisory_stale_symbol_ref": [...], "advisory_mislocated_symbol_ref": [...], "stale_line_ref": [...], "superseded_marker_count": 0, "directive_gaps": [...], "examined_refs": [...]}
+ll-issues format-check ENH-2426 --format json # {"missing": [...], "renamed": [...], "empty": [...], "boilerplate": [...], "malformed_id": [...], "prose_dep_drift": [...], "stale_prose_dep": [...], "program_design_nonspecific": [...], "deprecated_key": [...], "multi_frontmatter": [...], "testable": [...], "stale_file_ref": [...], "unmarked_superseded_directive": [...], "duplicate_findings_block": [...], "ambiguous_file_ref": [...], "missing_behavior_parity": [...], "soft_dep_hard_edge": [...], "malformed_dep_id": [...], "stale_symbol_ref": [...], "mislocated_symbol_ref": [...], "stale_cli_flag": [...], "duplicate_heading": [...], "empty_provenance_stub": [...], "template_placeholders": [...], "unapplied_decision": [...], "priority_drift": [...], "duplicate_session_log": [...], "orphaned_session_log_entries": [...], "post_fence_keys": [...], "advisory_stale_file_ref": [...], "advisory_ambiguous_file_ref": [...], "advisory_stale_symbol_ref": [...], "advisory_mislocated_symbol_ref": [...], "stale_line_ref": [...], "superseded_marker_count": 0, "directive_gaps": [...], "examined_refs": [...]}
 ll-issues format-check --all --fix            # preview blocked_by backfills for every drifting issue (dry-run)
 ll-issues format-check --all --fix --apply    # write the previewed edges via `ll-issues link`
 ll-issues format-check ENH-2426 --fix --apply # single-issue: also collapses duplicate headings/findings blocks, deletes empty provenance stubs, and fills frontmatter-derivable template placeholders
@@ -3240,8 +3254,35 @@ visualizes existing *dependency-edge* relationships, not text similarity.
 | `--threshold <N>` | Minimum score to include; default `config.issues.link_epics.min_score` |
 | `--apply` | Apply the single top-ranked `assign`-mode proposal per orphan (`parent:`/`epic:` frontmatter + EPIC `## Children` bullet `- **ID** — <title> (open)`); lower-ranked alternatives stay in `proposals` but are not written. Unsupported for `--mode synthesize` (exits 1) — EPIC creation from clusters is not implemented by this subcommand |
 | `--deep` | `--mode synthesize` only (exits 1 otherwise); adds one batched LLM-adjudicated clustering pass over the full orphan list (capped at 40), merged with the Jaccard clusters (ENH-2979). Above the cap, prints a warning and falls back to Jaccard-only output plus a `"deep": {"skipped": "too_many_orphans", "count": N}` JSON key. `--deep`-sourced clusters carry `evidence` (cited quotes, capped at 3) and `source` (`jaccard`/`deep`/`merged`) |
-| `--json` | Output as JSON: `{"proposals": [...], "applied": [...], "rejected": [...]}` (assign) or `{"clusters": [...], "applied": []}` (synthesize) |
+| `--json` | Output as JSON: `{"proposals": [...], "applied": [...], "rejected": [...]}` (assign) or `{"clusters": [...], "applied": []}` (synthesize), plus the always-present exclusion report keys below |
 | `--config` | Path to project root |
+
+**Exclusions (BUG-3739).** Before any scoring, apply, or `--deep` model call, each
+orphan is classified and at most one *primary* reason removes it from the
+candidates, checked in this order: (1) **malformed metadata** — a parenting key sits
+after the frontmatter closing fence (see `ll-issues format-check`, `post_fence_keys`);
+repair it first. (2) **Intentionally parentless** — a correctly placed
+`parentless_reason` that is a non-empty string (for example
+`parentless_reason: Deliberately standalone`) records both the decision and its reason.
+Empty, null, whitespace-only, list, and mapping values do not opt out; a non-scalar
+value prints a key-only warning on stderr. (3) **Children-listed** — the orphan appears
+as a real child entry (a `-`/`*` bullet or per-child `###`–`######` heading with a whole
+issue ID) in the `## Children` section of an EPIC with status `open`, `in_progress`,
+`blocked`, or `deferred`. Fenced examples, prose mentions, other sections, and partial IDs
+like `FEAT-1suffix` do not count. Claims from `done`/`cancelled` EPICs are reported but do
+not exclude — an open orphan left in a closed EPIC still needs a home. No parent or
+back-reference is ever inferred or written from body documentation alone.
+
+Both JSON modes keep their existing keys and always add `skipped_malformed_metadata`,
+`skipped_intentional`, `skipped_children_listed` (disjoint counts of unique orphans by
+primary reason), `malformed_metadata` (`[{"orphan_id", "keys"}]`, never values) and
+`children_listed_drift` (`[{"orphan_id", "excluded_reason", "epics": [{"epic_id", "status",
+"blocks_proposal"}]}]`, sorted by orphan then EPIC ID, listing every claimant even when
+another reason was primary; `excluded_reason` is `null` for an orphan claimed only by
+terminal EPICs, which stays in `proposals`/`clusters`). Drift rows can outnumber
+`skipped_children_listed`. Exclusions and drift alone exit 0 and write nothing; review a
+listing with `ll-issues epic-consistency`. An unreadable candidate or EPIC file is a
+path-specific error (exit 1) rather than an empty index.
 
 `--apply` is idempotent — reapplying a pair changes neither file. Only the orphan's `parent:`/`epic:`
 entries are edited (comments, quoting, and other fields are preserved); line endings and file modes

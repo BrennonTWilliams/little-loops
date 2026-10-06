@@ -7077,3 +7077,44 @@ class TestInvisibleCharDetection:
     def test_crlf_counts_once(self, tmp_path: Path) -> None:
         result = self._gaps(tmp_path, "a\r\nb\r\nc\u200b\r\n")
         assert result == ["U+200B ZERO WIDTH SPACE at line 3"]
+
+
+class TestPostFenceKeysDetection:
+    """BUG-3739: post_fence_keys gap class."""
+
+    @staticmethod
+    def _gaps(tmp_path: Path, text: str, name: str = "P3-BUG-9739-x.md"):
+        from little_loops.issue_parser import check_format_gaps
+
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        return check_format_gaps(path)
+
+    def test_reports_key_line_and_file_without_value(self, tmp_path: Path) -> None:
+        gaps = self._gaps(
+            tmp_path,
+            "---\nid: BUG-9739\n---\nparentless_reason: secret rationale\n\n# BUG-9739: t\n",
+        )
+        assert len(gaps.post_fence_keys) == 1
+        entry = gaps.post_fence_keys[0]
+        assert entry.startswith("parentless_reason at line 4 of P3-BUG-9739-x.md")
+        assert "secret rationale" not in entry
+        assert gaps.has_gaps and gaps.has_blocking_gaps
+        assert gaps.to_dict()["post_fence_keys"] == gaps.post_fence_keys
+
+    def test_fires_even_with_unresolvable_issue_type(self, tmp_path: Path) -> None:
+        gaps = self._gaps(
+            tmp_path, "---\nid: X-1\n---\nparent: EPIC-1\n", name="not-an-issue-name.md"
+        )
+        assert len(gaps.post_fence_keys) == 1
+
+    def test_unsafe_entry_names_manual_remedy(self, tmp_path: Path) -> None:
+        gaps = self._gaps(tmp_path, "---\nid: BUG-9739\n---\nparent: >\n  EPIC-1\n")
+        assert "by hand" in gaps.post_fence_keys[0]
+
+    def test_valid_placement_and_prose_are_clean(self, tmp_path: Path) -> None:
+        gaps = self._gaps(
+            tmp_path,
+            "---\nid: BUG-9739\nparent: EPIC-1\n---\n\n# BUG-9739: t\n\nParent: EPIC-1\n---\nparent: x\n",
+        )
+        assert gaps.post_fence_keys == []

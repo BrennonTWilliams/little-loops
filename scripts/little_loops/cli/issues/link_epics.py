@@ -14,6 +14,7 @@ import argparse
 import re
 import sys
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -164,6 +165,180 @@ def is_orphan(info: IssueInfo) -> bool:
     """True when *info* is an open BUG/FEAT/ENH issue with no EPIC assignment."""
     prefix = info.issue_id.split("-", 1)[0]
     return prefix in _ORPHAN_TYPE_PREFIXES and info.parent is None and info.epic is None
+
+
+_PARENTLESS_KEY = "parentless_reason"
+_TERMINAL_EPIC_STATUSES = frozenset({"done", "cancelled"})
+
+
+class OrphanClassificationError(Exception):
+    """A candidate or EPIC file could not be read, so exclusion evidence is incomplete."""
+
+
+def intentional_parentless(metadata: Mapping[str, Any]) -> bool:
+    """True when ``parentless_reason`` is a non-empty scalar string.
+
+    The key is both the opt-out and its justification; empty, null,
+    whitespace-only, list, and mapping values do not opt out.
+    """
+    value = metadata.get(_PARENTLESS_KEY)
+    return isinstance(value, str) and bool(value.strip())
+
+
+@dataclass
+class OrphanClassification:
+    """Structural orphans split into proposable candidates and disjoint exclusions.
+
+    Each excluded orphan has exactly one primary reason, checked in the order
+    malformed metadata, intentional, Children-listed. ``children_claims`` keeps
+    every claiming ``(epic_id, status)`` regardless of the primary reason.
+    """
+
+    candidates: list[IssueInfo]
+    malformed_ids: set[str] = field(default_factory=set)
+    intentional_ids: set[str] = field(default_factory=set)
+    children_listed_ids: set[str] = field(default_factory=set)
+    malformed_keys: dict[str, list[str]] = field(default_factory=dict)
+    children_claims: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+
+    def excluded_reason(self, orphan_id: str) -> str | None:
+        """Primary exclusion reason for *orphan_id*, or None when it stays proposable."""
+        if orphan_id in self.malformed_ids:
+            return "malformed_metadata"
+        if orphan_id in self.intentional_ids:
+            return "intentional"
+        if orphan_id in self.children_listed_ids:
+            return "children_listed"
+        return None
+
+    def report(self) -> dict[str, Any]:
+        """Always-present JSON report keys: skip counters plus malformed/drift details."""
+        return {
+            "skipped_malformed_metadata": len(self.malformed_ids),
+            "skipped_intentional": len(self.intentional_ids),
+            "skipped_children_listed": len(self.children_listed_ids),
+            "malformed_metadata": [
+                {"orphan_id": oid, "keys": self.malformed_keys[oid]}
+                for oid in sorted(self.malformed_keys)
+            ],
+            "children_listed_drift": [
+                {
+                    "orphan_id": oid,
+                    "excluded_reason": self.excluded_reason(oid),
+                    "epics": [
+                        {
+                            "epic_id": epic_id,
+                            "status": status,
+                            "blocks_proposal": status not in _TERMINAL_EPIC_STATUSES,
+                        }
+                        for epic_id, status in claims
+                    ],
+                }
+                for oid, claims in sorted(self.children_claims.items())
+            ],
+        }
+
+
+def _read_evidence(path: Path) -> str:
+    """Read *path* with universal newlines; failures name the path and abort the command."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise OrphanClassificationError(f"cannot read {path}: {exc}") from exc
+
+
+def _children_claims(epics: list[IssueInfo]) -> dict[str, list[tuple[str, str]]]:
+    """Reverse index ``child_id -> sorted unique (EPIC ID, status)`` from EPIC bodies."""
+    from little_loops.cli.issues.epic_consistency import (
+        _REAL_ISSUE_TYPES,
+        find_children_section,
+        iter_child_entries,
+    )
+
+    claims: dict[str, set[tuple[str, str]]] = {}
+    for epic in epics:
+        content = _read_evidence(epic.path)
+        bounds = find_children_section(content)
+        if bounds is None:
+            continue
+        for entry in iter_child_entries(content[bounds[0] : bounds[1]]):
+            if entry.issue_id.split("-", 1)[0] in _REAL_ISSUE_TYPES:
+                claims.setdefault(entry.issue_id, set()).add((epic.issue_id, epic.status))
+    return {child: sorted(pairs) for child, pairs in claims.items()}
+
+
+def classify_orphans(
+    candidates: list[IssueInfo], epics_all_statuses: list[IssueInfo]
+) -> OrphanClassification:
+    """Exclude explicit opt-outs, malformed metadata, and Children-listed orphans.
+
+    Runs before any scoring or model call. Reads candidate frontmatter and EPIC
+    ``## Children`` sections itself; nothing is written, and no parent is inferred
+    from body documentation. A claim from a non-terminal EPIC excludes the
+    candidate; claims from ``done``/``cancelled`` EPICs are reported only.
+
+    Raises:
+        OrphanClassificationError: a candidate or EPIC file is unreadable.
+    """
+    from little_loops.frontmatter import find_post_fence_entries, parse_frontmatter
+
+    claims = _children_claims(epics_all_statuses)
+    result = OrphanClassification(candidates=[])
+    for info in candidates:
+        content = _read_evidence(info.path)
+        if info.issue_id in claims:
+            result.children_claims[info.issue_id] = claims[info.issue_id]
+        entries = find_post_fence_entries(content)
+        if entries:
+            result.malformed_ids.add(info.issue_id)
+            result.malformed_keys[info.issue_id] = sorted({e.key for e in entries})
+            continue
+        metadata = parse_frontmatter(content)
+        if intentional_parentless(metadata):
+            result.intentional_ids.add(info.issue_id)
+            continue
+        reason = metadata.get(_PARENTLESS_KEY)
+        if reason is not None and not isinstance(reason, str):
+            print(
+                f"Warning: {info.path}: {_PARENTLESS_KEY} must be a non-empty string; ignoring",
+                file=sys.stderr,
+            )
+        if any(
+            status not in _TERMINAL_EPIC_STATUSES for _, status in claims.get(info.issue_id, [])
+        ):
+            result.children_listed_ids.add(info.issue_id)
+            continue
+        result.candidates.append(info)
+    return result
+
+
+def _print_exclusion_report(report: dict[str, Any]) -> None:
+    """Text-mode rendering of :meth:`OrphanClassification.report`."""
+    skipped = (
+        report["skipped_malformed_metadata"],
+        report["skipped_intentional"],
+        report["skipped_children_listed"],
+    )
+    if any(skipped):
+        print(
+            f"Skipped {sum(skipped)} orphan(s): {skipped[0]} malformed metadata, "
+            f"{skipped[1]} intentionally parentless, {skipped[2]} already listed in an EPIC's Children"
+        )
+    for entry in report["malformed_metadata"]:
+        print(
+            f"  {entry['orphan_id']}: parenting key(s) after the frontmatter fence "
+            f"({', '.join(entry['keys'])}); repair with "
+            f"`ll-issues format-check {entry['orphan_id']} --fix --apply`"
+        )
+    for entry in report["children_listed_drift"]:
+        claimants = ", ".join(f"{e['epic_id']} ({e['status']})" for e in entry["epics"])
+        outcome = entry["excluded_reason"] or "still proposable"
+        print(f"  {entry['orphan_id']}: listed in {claimants}; {outcome}")
+    if report["children_listed_drift"]:
+        print(
+            "  Review the back-reference or the listing with `ll-issues epic-consistency`; "
+            "link-epics never edits EPIC bodies it did not assign."
+        )
 
 
 def propose_assignments(
@@ -687,8 +862,17 @@ def cmd_link_epics(config: BRConfig, args: argparse.Namespace) -> int:
         print("Error: --deep is only supported for --mode synthesize", file=sys.stderr)
         return 1
 
+    from little_loops.issue_progress import _ALL_STATUSES
+
     all_issues = find_issues(config, type_prefixes=set(_ORPHAN_TYPE_PREFIXES) | {"EPIC"})
-    orphans = [i for i in all_issues if is_orphan(i)]
+    all_status_epics = find_issues(config, type_prefixes={"EPIC"}, status_filter=set(_ALL_STATUSES))
+    try:
+        classification = classify_orphans([i for i in all_issues if is_orphan(i)], all_status_epics)
+    except OrphanClassificationError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    orphans = classification.candidates
+    exclusion_report = classification.report()
 
     if mode == "assign":
         epics = [i for i in all_issues if i.issue_id.startswith("EPIC-")]
@@ -754,11 +938,13 @@ def cmd_link_epics(config: BRConfig, args: argparse.Namespace) -> int:
                     "proposals": [p.to_dict() for p in proposals],
                     "applied": applied,
                     "rejected": rejected,
+                    **exclusion_report,
                 }
             )
         else:
             for p in proposals:
                 print(f"{p.orphan_id} -> {p.epic_id}: {p.score:.3f} ({p.tier})")
+            _print_exclusion_report(exclusion_report)
             if apply:
                 for entry in applied:
                     if entry.get("children_wired") is False:
@@ -789,6 +975,7 @@ def cmd_link_epics(config: BRConfig, args: argparse.Namespace) -> int:
         payload: dict[str, Any] = {"clusters": [c.to_dict() for c in clusters], "applied": []}
         if deep_info is not None:
             payload["deep"] = deep_info
+        payload.update(exclusion_report)
         print_json(payload)
     else:
         for c in clusters:
@@ -798,4 +985,5 @@ def cmd_link_epics(config: BRConfig, args: argparse.Namespace) -> int:
                 f"(min score: {c.pairwise_min_score:.3f}, "
                 f"modal priority: {c.modal_priority}{source_suffix})"
             )
+        _print_exclusion_report(exclusion_report)
     return 0

@@ -70,7 +70,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
         "stale_cli_flag/duplicate_heading/empty_provenance_stub/"
         "template_placeholders/unapplied_decision/priority_drift/"
-        "duplicate_session_log/orphaned_session_log_entries/invisible_chars; advisory "
+        "duplicate_session_log/orphaned_session_log_entries/invisible_chars/post_fence_keys; advisory "
         "citation classes: advisory_stale_file_ref/advisory_ambiguous_file_ref/"
         "advisory_stale_symbol_ref/advisory_mislocated_symbol_ref/stale_line_ref)",
     )
@@ -108,7 +108,9 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "fold-findings`), duplicate_heading, empty_provenance_stub, "
         "template_placeholders (frontmatter-derivable tokens only), and "
         "duplicate_session_log (merge via "
-        "little_loops.session_log.merge_session_log_blocks, BUG-3424) gaps "
+        "little_loops.session_log.merge_session_log_blocks, BUG-3424), and "
+        "post_fence_keys (move safe single-line parenting keys inside the "
+        "frontmatter block, BUG-3739) gaps "
         "(dry-run by default; combine with --apply to write). All but "
         "prose_dep_drift are single-issue mode only — --all --fix --apply is "
         "restricted to the frontmatter-only prose_dep_drift repair (ENH-3247)",
@@ -389,6 +391,33 @@ def _fix_template_placeholders(
         print(f"  [dry-run] would fill {len(values)} template placeholder(s)")
 
 
+def _fix_post_fence_keys(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
+    """Move post-fence parenting keys inside the frontmatter block (BUG-3739).
+
+    All-or-nothing and single-issue only: any unsafe shape (multiline value,
+    existing key, repeated key, several blocks, a following ``---``) leaves the
+    file untouched and the gap reported.
+    """
+    from little_loops.file_utils import atomic_write
+    from little_loops.frontmatter import move_post_fence_entries
+
+    with open(path, encoding="utf-8", newline="") as f:
+        content = f.read()
+    try:
+        updated = move_post_fence_entries(content)
+    except ValueError as exc:
+        print(f"  [skip] post_fence_keys not repaired: {exc}")
+        return
+    if updated == content:
+        return
+    if apply:
+        atomic_write(path, updated, shared_mode=True)
+    else:
+        print(f"  [dry-run] would move {len(targets)} post-fence key(s) into the frontmatter")
+
+
 def _fix_missing_status(
     config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
 ) -> None:
@@ -435,12 +464,13 @@ _REPAIR_DISPATCH = {
     "template_placeholders": _fix_template_placeholders,
     "duplicate_session_log": _fix_duplicate_session_log,
     "missing": _fix_missing_status,
+    "post_fence_keys": _fix_post_fence_keys,
 }
 
 # Impact › Risk — sweep blast radius: --all --fix --apply may only run
 # repairs that write frontmatter through an existing idempotent, cycle-safe
-# command (cmd_link). The three body-rewriting repairs run in single-issue
-# mode only.
+# command (cmd_link). Every body-rewriting repair, including the raw
+# post_fence_keys mover, runs in single-issue mode only.
 _SWEEP_SAFE_REPAIRS = frozenset({"prose_dep_drift"})
 
 
@@ -559,6 +589,8 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  orphaned_session_log_entries: {entry} (report-only; no --fix)")
     for entry in gaps.invisible_chars:
         print(f"  invisible_chars: {entry} (report-only; no --fix, replace with visible text)")
+    for entry in gaps.post_fence_keys:
+        print(f"  post_fence_keys: {entry}")
     for entry in gaps.advisory_stale_file_ref:
         print(
             f"  advisory_stale_file_ref: {entry} (no tracked file matches; advisory, "
@@ -593,8 +625,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
     stale_cli_flag/duplicate_heading/empty_provenance_stub/
     template_placeholders/unapplied_decision/priority_drift/
-    duplicate_session_log/orphaned_session_log_entries/invisible_chars, plus the
-    advisory citation classes (BUG-3691) advisory_stale_file_ref/
+    duplicate_session_log/orphaned_session_log_entries/invisible_chars/
+    post_fence_keys, plus the advisory citation classes (BUG-3691) advisory_stale_file_ref/
     advisory_ambiguous_file_ref/advisory_stale_symbol_ref/
     advisory_mislocated_symbol_ref/stale_line_ref.
 

@@ -4,10 +4,11 @@ type: BUG
 title: Frontmatter keys placed after the closing fence are silently ignored, and link-epics
   re-proposes Children-listed and intentionally-parentless issues as orphans
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T18:54:03Z'
+completed_at: '2026-10-06T01:39:48Z'
 labels:
 - issues
 - link-epics
@@ -76,7 +77,7 @@ epic: EPIC-1
 - **File**: `scripts/little_loops/frontmatter.py`; **anchors**: `_iter_frontmatter_blocks`, `parse_frontmatter`. Reads are intentionally limited to fenced mappings. A misplaced line belongs to no mapping; changing this read contract would promote legitimate prose into metadata.
 - **File**: `scripts/little_loops/issue_parser.py`; **anchor**: `check_format_gaps`. No pure-text structural detector covers the post-fence prefix.
 - **File**: `scripts/little_loops/cli/issues/link_epics.py`; **anchors**: `is_orphan`, `cmd_link_epics`. Candidate construction does not check explicit opt-outs or documented membership.
-- **File**: `scripts/little_loops/cli/issues/epic_consistency.py`; **anchors**: `_section_bounds`, `_parse_children_body`. Existing recognition must gain fence/whole-ID safety before becoming an exclusion source.
+- **File**: `scripts/little_loops/cli/issues/epic_consistency.py`; **anchors**: `find_children_section`, `iter_child_entries`, `_parse_children_body`. The shared recognizer (landed by BUG-3738 in `cda52e0eb`) must be verified for fence/whole-ID safety before becoming an exclusion source.
 
 ## Proposed Solution
 
@@ -262,6 +263,24 @@ Used `/ll:advise --signal user_requested --host claude-code --model opus` for cr
 
 2026-10-05 (second pre-implementation review, with `/ll:advise --signal user_requested --host claude-code --model fable`, confidence **0.82**): the corpus scan found zero post-fence runs and zero existing markers, which drove these changes. **Adopted:** one marker convention (`parentless_reason`) with no precedence table; terminal-EPIC (`done`/`cancelled`) claims are informational and no longer exclude, with a per-claim `blocks_proposal` flag; one shared Children recognizer landed by whichever of this issue/BUG-3738 goes first, with serial landing; the interaction with BUG-3738's partial-write case is documented. **Decision (owner): the post-fence mover is kept** in this issue. The advisor's alternative was to defer the mover (and its CLI policy and docs) while keeping the detector and `FormatGaps` field, since blocking gaps without a fixer already exist (`multi_frontmatter`, `malformed_id`, `deprecated_key`) and the corpus has no hits; the dissent in favor of keeping it is that the contract is already all-or-nothing and single-issue, and a blocking gap with no fixer forces a hand edit in consuming projects. If implementation pressure appears, the mover is the first piece to cut, and the detector, exclusion, and report stay valuable on their own. Decided (owner, 2026-10-05): `deferred` EPIC claims still exclude, because deferred is non-terminal per the repository's dependency convention. The advisor questioned this. Flipping it to informational later is a one-line status-set change, so revisit only if orphans are reported stuck behind deferred EPICs. Follow-up not in scope: a parent-assignment option for `ll-issues link`, which would give children-listed drift a real remedy. Confidence/outcome scores predate these edits; re-run `/ll:confidence-check` before implementation.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-05
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/frontmatter.py`: `find_post_fence_entries()` (bounded post-fence prefix detector) and `move_post_fence_entries()` (all-or-nothing raw-line mover); `parse_frontmatter` read contract unchanged.
+- `scripts/little_loops/issue_parser.py`, `scripts/little_loops/cli/issues/format_check.py`: blocking `FormatGaps.post_fence_keys` (key/line/file, no values), render loop, and single-issue-only `post_fence_keys` repair (not in `_SWEEP_SAFE_REPAIRS`).
+- `scripts/little_loops/cli/issues/link_epics.py`: `classify_orphans()`/`intentional_parentless()`/`OrphanClassification` run before assign/synthesize/apply/deep; primary-reason precedence malformed → intentional → Children-listed; terminal-EPIC claims are informational (`blocks_proposal: false`); always-present report keys in both JSON modes plus text rendering; unreadable files exit 1.
+- Docs/skill: CLI.md, API.md, COMMANDS.md, ISSUE_TEMPLATE.md, `skills/link-epics/SKILL.md` (report shown before empty-result returns).
+- Tests: detector/mover, gap class, format-check CLI (preview/apply/idempotent/CRLF+mode/unsafe/sweep), link-epics exclusions (both modes, precedence, deep, unreadable file), skill contract.
+
+### Verification Results
+- Tests: PASS for all touched suites; full `python -m pytest scripts/tests/` = 28485 passed, 1 failed (`test_verify_evidence` corpus gate on untouched ENH-3700) and 8 errors (`test_libsql_integration` live endpoint) — both unrelated to this change
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS for touched files (repo-wide mypy has pre-existing `ruamel` stub errors)
+
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
@@ -281,6 +300,8 @@ _Added by `/ll:confidence-check` on 2026-10-05_
 - [resolved 2026-10-05 by /ll:reconcile-issue] Stale claim (`stale_symbol_ref`): `_section_bounds` in `epic_consistency.py` no longer exists; BUG-3738 landed the shared recognizer in `cda52e0eb` — the "created here if this issue lands first" wording in Files to Modify and Implementation Step 2's "check whether BUG-3738 has landed" prerequisite were out of date — rewrote Files to Modify, Dependent Files, Implementation Step 2 and the recognizer Acceptance Criterion to consume the existing public recognizer (the Root Cause bullet sits outside the rewrite scope and was left as-is).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T01:39:47 - `5f7c42ab-446e-47b2-9e17-3b5098ecdbf9.jsonl`
+- `/ll:ready-issue` - 2026-10-06T01:25:19 - `3d3dcfff-5dd7-4a32-a7b0-814ea79e2aaa.jsonl`
 - `/ll:confidence-check` - 2026-10-06T01:02:04 - `7ce14b43-677b-479f-b1f1-2aec6e7467fb.jsonl`
 - `/ll:reconcile-issue` - 2026-10-06T00:58:23 - `25f9ee70-9553-4942-b494-3226cac87846.jsonl`
 - `/ll:confidence-check` - 2026-10-06T00:13:52 - `c9f2014b-1e92-4dc8-a5a8-e4b3f5742389.jsonl`
