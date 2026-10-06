@@ -1,6 +1,6 @@
 ---
 id: BUG-3756
-title: 'rn-remediate reads confidence-check criterion scores with inverted polarity'
+title: rn-remediate reads confidence-check criterion scores with inverted polarity
 type: BUG
 priority: P0
 status: open
@@ -13,6 +13,12 @@ labels:
 relates_to:
 - BUG-3757
 - ENH-3742
+confidence_score: 95
+outcome_confidence: 59
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3756: rn-remediate reads confidence-check criterion scores with inverted polarity
@@ -182,6 +188,23 @@ Earlier baseline: 287 tests passed across rn-remediate, confidence-check and set
 
 **Open** | Created: 2026-10-06 | Priority: P0
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 59/100 → LOW
+
+### Concerns
+- Architecture (15/20): the rejected-reassessment budget hop and the initial post-validation verdict gate are new FSM routing shapes in `rn-remediate.yaml`. Precedent for rendered-action tests exists in `test_rn_implement.py`, but `test_rn_remediate.py` has no executor-walk harness yet, so the `_run_action` helper is net-new test infrastructure.
+- Cited line `rn-remediate.yaml:179` is now line 181 (`ABOVE_MINIMAL` snapshot); `:401` (DECOMPOSE rule), `:152` (`assess.on_no`) and `:1052-1053` (handoff) are accurate.
+
+### Outcome Risk Factors
+- Deep per-site complexity: the single runtime file restructures control flow (new validation states, captured-verdict gates, atomic snapshot promotion, rejection budget routing) and must ship in one commit because local-editable consumers see changes immediately.
+- Broad enumeration across 8 sites (loop YAML, tests, rubric, LOOPS_REFERENCE, 3 mirrors, test_builtin_loops), plus ~6 dependent loops/tests (rn-implement, autodev, refine-to-ready-issue, preparation-policy suites, MR11 enumeration).
+- Existing tests pin shell text rather than behavior (194 test items, none render the shell actions); the 11-row behavioral matrix is effectively all new test code, so regressions in untouched branches could go undetected until it lands.
+- Minor ambiguity: how the post-validation verdict gate reads `${captured.assess.verdict}` from a shell state is specified by contract but not by concrete state wiring; resolve while implementing.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T17:08:39 - `06682c99-4a6d-4e45-b7d6-4e7235d06590.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T06:49:38 - `cede7154-079d-47b6-bd61-dd96bcbe90b1.jsonl`
