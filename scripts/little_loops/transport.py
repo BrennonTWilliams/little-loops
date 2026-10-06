@@ -48,6 +48,8 @@ from pathlib import Path
 from queue import Empty, Full, Queue
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from little_loops.events import event_loop_name
+
 # FEAT-3323: module-level (not lazy, unlike _make_seed_callback's own import of
 # the same function) so the seed-to-live race test can
 # mock.patch.object(little_loops.transport, "list_running_loops", ...) — a
@@ -1781,14 +1783,14 @@ class OTelTransport:
     # ------------------------------------------------------------------
 
     def _handle_loop_start(self, event: dict[str, Any]) -> None:
-        loop_name = str(event.get("loop_name", "ll-loop"))
+        loop_name = event_loop_name(event) or "ll-loop"
         self._loop_span = self._tracer.start_span(loop_name)
 
     def _handle_loop_resume(self, event: dict[str, Any]) -> None:
         self._close_state_and_action()
         if self._loop_span is not None:
             self._loop_span.end()
-        loop_name = str(event.get("loop_name", "ll-loop"))
+        loop_name = event_loop_name(event) or "ll-loop"
         self._loop_span = self._tracer.start_span(loop_name)
 
     def _handle_state_enter(self, event: dict[str, Any]) -> None:

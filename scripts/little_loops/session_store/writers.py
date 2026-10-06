@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import little_loops.session_store as _pkg
+from little_loops.events import event_loop_name
 from little_loops.session_store import remote_telemetry
 from little_loops.session_store.backend import (
     HistoryError,
@@ -3084,8 +3085,12 @@ class SQLiteTransport:
         try:
             with translate_sqlite_errors(), self._lock:
                 if event_type in _LOOP_EVENT_TYPES:
-                    loop_name = str(event.get("loop_name", "")) or None
+                    loop_name = event_loop_name(event)
                     state = event.get("state")
+                    if event_type == "route" and state is None:
+                        # A route event carries the transition as from/to, not
+                        # state; keep the source state (BUG-3755).
+                        state = event.get("from")
                     if event_type == "loop_complete":
                         from little_loops.fsm.persistence import map_final_status
 
