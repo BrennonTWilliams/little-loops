@@ -1309,6 +1309,202 @@ class TestRecompressSubcommand:
         assert "60.0" in out  # saved MB
 
 
+def _redact_report(**over: object) -> object:
+    from little_loops.session_store.raw_redaction import RawRedactionReport
+
+    base: dict[str, object] = {
+        "policy_version": 1,
+        "target": {"provider": "sqlite", "path": "/x"},
+        "dry_run": False,
+        "snapshot_max_id": 3,
+        "last_scanned_id": 3,
+        "scanned": 3,
+        "updates_applied": 2,
+        "would_change": 2,
+        "counts_by_column": {"raw_line": {"email": 2}},
+        "counts_complete": True,
+        "unattributed_updates_applied": 0,
+        "reconciled": 0,
+        "failed": 0,
+        "conflicts": 0,
+        "unconfirmed": 0,
+        "problems": (),
+        "omitted_problems": 0,
+        "stop_reason": None,
+        "complete": True,
+    }
+    base.update(over)
+    return RawRedactionReport(**base)  # type: ignore[arg-type]
+
+
+def _cli_event_count() -> int:
+    import os
+    import sqlite3
+
+    path = Path(os.environ["LL_HISTORY_DB"])
+    if not path.exists():
+        return 0
+    conn = sqlite3.connect(path)
+    try:
+        return int(conn.execute("SELECT COUNT(*) FROM cli_events").fetchone()[0])
+    except sqlite3.OperationalError:
+        return 0
+    finally:
+        conn.close()
+
+
+class TestRedactSubcommand:
+    """ENH-3752: ll-session redact parsing, dispatch, one-object JSON and exit codes."""
+
+    def test_parsed_defaults_and_flags(self) -> None:
+        with patch("sys.argv", ["ll-session", "redact"]):
+            args = _parse_args()
+        assert (args.command, args.batch, args.dry_run, args.json) == ("redact", 2000, False, False)
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", "x.db", "redact", "--dry-run", "--batch", "5", "--json"],
+        ):
+            args = _parse_args()
+        assert (args.dry_run, args.batch, args.json, str(args.db)) == (True, 5, True, "x.db")
+
+    @pytest.mark.parametrize("bad", ["0", "-1", "x", "1.5"])
+    def test_invalid_batch_is_usage_error_exit_2(
+        self, bad: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-session", "redact", "--batch", bad]):
+            with pytest.raises(SystemExit) as exc:
+                main_session()
+        assert exc.value.code == 2
+        captured = capsys.readouterr()
+        assert captured.out == "" and "usage" in captured.err.lower()
+
+    def test_dispatch_passes_target_batch_and_dry_run(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        db = tmp_path / "history.db"
+        with patch(
+            "sys.argv", ["ll-session", "--db", str(db), "redact", "--dry-run", "--batch", "7"]
+        ):
+            with patch("little_loops.cli.session.redact_raw_events") as mock:
+                mock.return_value = _redact_report(dry_run=True, updates_applied=0)
+                assert main_session() == 0
+        assert mock.call_args.args == (db,)
+        assert mock.call_args.kwargs == {"batch_size": 7, "dry_run": True}
+        out = capsys.readouterr().out
+        assert "DRY RUN" in out and "Would change 2" in out and "Scope:" in out
+
+    def test_json_is_exactly_one_object(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact", "--json"]):
+            with patch("little_loops.cli.session.redact_raw_events") as mock:
+                mock.return_value = _redact_report(failed=1, complete=False)
+                assert main_session() == 1  # incomplete, not interrupted
+        data = json.loads(capsys.readouterr().out)
+        assert data["failed"] == 1 and data["complete"] is False and data["problems"] == []
+
+    def test_interrupted_report_exits_130(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact", "-j"]):
+            with patch("little_loops.cli.session.redact_raw_events") as mock:
+                mock.return_value = _redact_report(stop_reason="interrupted", complete=False)
+                assert main_session() == 130
+        assert json.loads(capsys.readouterr().out)["stop_reason"] == "interrupted"
+
+    @pytest.mark.parametrize(
+        ("reason", "guidance", "code", "needle"),
+        [
+            ("schema_mismatch", "migrate", 1, "ll-session migrate"),
+            ("schema_mismatch", "upgrade", 1, "upgrade little-loops"),
+            ("target_unavailable", None, 1, "nothing was created"),
+            ("interrupted", None, 130, "interrupted"),
+        ],
+    )
+    def test_fatal_error_is_one_json_object_with_safe_stderr(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        reason: str,
+        guidance: str | None,
+        code: int,
+        needle: str,
+    ) -> None:
+        from little_loops.session_store.raw_redaction import RawRedactionError
+
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact", "--json"]):
+            with patch(
+                "little_loops.cli.session.redact_raw_events",
+                side_effect=RawRedactionError(reason, guidance),
+            ):
+                assert main_session() == code
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == {"complete": False, "error": reason}
+        assert needle in captured.err
+
+    def test_end_to_end_preview_then_apply_without_telemetry(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import sqlite3
+
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        payload = json.dumps(
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "a@b.co"}]}}
+        )
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT INTO raw_events(ts, host, source_path, line_no, event_type, raw_line,"
+            " parsed_json) VALUES ('t', 'claude-code', 'p', 1, 'assistant', ?, ?)",
+            (payload, payload),
+        )
+        conn.commit()
+        conn.close()
+        base = ["ll-session", "--db", str(db), "redact", "--json"]
+        with patch("sys.argv", [*base, "--dry-run"]):
+            assert main_session() == 0
+        preview = json.loads(capsys.readouterr().out)
+        assert preview["would_change"] == 1 and preview["updates_applied"] == 0
+        with patch("sys.argv", base):
+            assert main_session() == 0
+        applied = json.loads(capsys.readouterr().out)
+        assert applied["updates_applied"] == 1 and applied["complete"] is True
+        conn = sqlite3.connect(db)
+        assert "[EMAIL]" in conn.execute("SELECT raw_line FROM raw_events").fetchone()[0]
+        assert conn.execute("SELECT COUNT(*) FROM cli_events").fetchone()[0] == 0
+        conn.close()
+        assert _cli_event_count() == 0  # nothing was written to the telemetry target either
+
+    def test_help_and_usage_errors_emit_no_telemetry_but_valid_commands_do(
+        self, tmp_path: Path
+    ) -> None:
+        with patch("sys.argv", ["ll-session", "--help"]):
+            with pytest.raises(SystemExit):
+                main_session()
+        with patch("sys.argv", ["ll-session", "nonsense"]):
+            with pytest.raises(SystemExit):
+                main_session()
+        assert _cli_event_count() == 0
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        with patch("sys.argv", ["ll-session", "--db", str(db), "recent", "--kind", "cli"]):
+            assert main_session() == 0
+        assert _cli_event_count() == 1
+
+    def test_outer_sanitizer_handler_never_consumes_redact_refusals(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.pii import HistorySanitizationError
+
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact"]):
+            with patch(
+                "little_loops.cli.session.redact_raw_events",
+                side_effect=HistorySanitizationError("invalid_payload"),
+            ):
+                assert main_session() == 1
+        assert "history sanitization rejected a source" in capsys.readouterr().err
+
+
 class TestSkillStatsAndNewKinds:
     """ENH-2458/2459/2460: skill-stats subcommand and commit/test_run kinds."""
 

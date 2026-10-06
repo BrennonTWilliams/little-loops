@@ -26,6 +26,7 @@ from little_loops.session_store.backend import (
     RemoteTarget,
     SqliteBackend,
     _resolve_once,
+    connect_existing_writable,
     connect_readonly,
     open_history,
     open_history_readonly,
@@ -399,3 +400,51 @@ class TestUnsupportedOperationAndCapabilities:
 
         assert CAPABILITIES == {"attach", "vacuum", "create_function", "wal", "snapshot_export"}
         assert all(SqliteBackend().supports(c) for c in CAPABILITIES)
+
+
+class TestConnectExistingWritable:
+    """ENH-3752: the non-creating writable opener for explicit-transaction maintenance."""
+
+    def test_missing_store_is_not_created(self, tmp_path) -> None:
+        missing = tmp_path / "nope.db"
+        with pytest.raises(HistoryUnavailable):
+            connect_existing_writable(missing)
+        assert not missing.exists()
+
+    def test_existing_store_is_writable_in_autocommit_and_not_migrated(self, tmp_path) -> None:
+        from little_loops.session_store.schema import _current_version, ensure_db
+
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        conn = connect_existing_writable(db)
+        try:
+            assert conn.isolation_level is None
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("INSERT INTO meta(key, value) VALUES ('probe', '1')")
+            conn.execute("COMMIT")
+            version = _current_version(conn)
+        finally:
+            conn.close()
+        ro = connect_readonly(db)
+        try:
+            assert ro.execute("SELECT value FROM meta WHERE key='probe'").fetchone()[0] == "1"
+            assert _current_version(ro) == version
+        finally:
+            ro.close()
+
+    def test_remote_target_is_unsupported(self) -> None:
+        target = RemoteTarget(BackendConfig(provider="libsql", url="http://x", project_id="p"))
+        with pytest.raises(HistoryUnsupported):
+            connect_existing_writable(target)
+
+    def test_read_only_open_still_refuses_writes(self, tmp_path) -> None:
+        from little_loops.session_store.schema import ensure_db
+
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        ro = connect_readonly(db)
+        try:
+            with pytest.raises(sqlite3.OperationalError):
+                ro.execute("INSERT INTO meta(key, value) VALUES ('x', 'y')")
+        finally:
+            ro.close()

@@ -17,6 +17,7 @@ Long-term observability for the project little-loops is installed in: what ran, 
 - [Session Log Tooling (ll-logs)](#session-log-tooling-ll-logs)
 - [Advanced: LCM Compaction](#advanced-lcm-compaction)
 - [Retention & Pruning](#retention--pruning)
+- [Scrubbing Stored Payloads](#scrubbing-stored-payloads)
 - [Configuration Reference](#configuration-reference)
 - [See Also](#see-also)
 
@@ -696,6 +697,26 @@ The raw event max age:
   }
 }
 ```
+
+---
+
+## Scrubbing Stored Payloads
+
+New events are redacted before they are stored, but rows written earlier keep their original payload text until you scrub them. `ll-session redact` does that explicitly: a bounded, rerunnable pass over the stored `raw_line` and `parsed_json` columns that removes the supported credential and personal-data matches, using the same policy as ingestion.
+
+```bash
+ll-session redact --dry-run   # preview: same validation, writes nothing
+ll-session redact             # scrub in place
+ll-session redact --json      # one machine-readable report object
+```
+
+- **Preview first.** `--dry-run` reports how many rows would change, per column and rule, without writing data, progress markers or telemetry.
+- **Safe to rerun.** Every run rescans under the current policy. A second run on a scrubbed store changes nothing. Columns that did not need changing keep their exact bytes and storage type, and IDs, timestamps, compaction links and ingest watermarks are untouched.
+- **Needs a current store.** It never creates or migrates a store; if it says the schema is behind, run `ll-session migrate` and retry. It works the same against a shared remote store (all machines' rows are scanned).
+- **Conflicts are reported, not overwritten.** A row another writer changed while the scan ran is left as found and counted under `conflicts`; rows it could not validate are counted under `failed`. Rerun after resolving them.
+- **Upgrade writers first.** Upgrade every machine that writes to the store before scrubbing, then rerun after relevant activity, since a later writer or a row added after the scan started is not covered.
+
+`complete: true` in the report means the whole snapshot was scanned with nothing failed, conflicted or unconfirmed. It is a statement about the stored raw columns only: derived and full-text tables, summaries, your original session transcripts, backups, database free pages and provider-side history are **not** cleaned, and no rebuild runs automatically (a rebuild can be destructive when retention applies). Run it deliberately afterwards if you want derived tables regenerated from the scrubbed rows.
 
 ---
 

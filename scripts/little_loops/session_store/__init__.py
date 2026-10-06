@@ -138,6 +138,11 @@ from little_loops.session_store.queries import (
     search,
 )
 from little_loops.session_store.qwen import is_raw_qwen_record, normalize_qwen_record
+from little_loops.session_store.raw_redaction import (
+    RawRedactionProblem,
+    RawRedactionReport,
+    redact_raw_events,
+)
 from little_loops.session_store.schema import (
     _BUSY_TIMEOUT_MS,
     _KIND_TABLE,
@@ -262,6 +267,9 @@ __all__ = [
     "refresh_usage_source",
     "usage_source_freshness",
     "recompress_raw_events",
+    "redact_raw_events",
+    "RawRedactionProblem",
+    "RawRedactionReport",
     "rebuild",
     "rebuild_needed",
     "rebuild_disposition",

@@ -4796,6 +4796,9 @@ ll-session prune                                # Delete old raw events and VACU
 ll-session prune --json                         # Prune result as JSON
 ll-session recompress                           # Compress legacy raw_events payloads and VACUUM (ENH-2624)
 ll-session recompress --batch 5000              # Rewrite 5000 rows per transaction
+ll-session redact --dry-run                     # Preview scrubbing stored raw_events payloads (ENH-3752)
+ll-session redact                               # Scrub stored raw_events payloads in place
+ll-session redact --json --batch 500            # One JSON report object, at most 500 rows per page
 ```
 
 **`prune` flags:**
@@ -4806,6 +4809,27 @@ ll-session recompress --batch 5000              # Rewrite 5000 rows per transact
 | `--json` | Output result summary as JSON |
 
 Pruning is dual-gated by `analytics.retention` config: both `min_project_age_days` and `min_db_size_mb` must be exceeded before any rows are deleted (defaults: 365 days, 800 MB). Only `raw_events` rows already marked `compacted=1` (by `compact`) past `raw_event_max_age_days` are deleted (ENH-2581) — issue/loop/commit/cli/file/test_run tables and uncompacted `raw_events` rows are never pruned. A source that carries replay-derived usage is deleted only whole (every row old, compacted and covered by a valid usage derive checkpoint); otherwise its rows are kept and reported as `retained` with `retention_reasons` in the text and `--json` output of `prune` and `compact --and-prune` (BUG-3736). See `analytics.retention` in [CONFIGURATION.md](CONFIGURATION.md).
+
+
+**`redact` flags** (ENH-3752):
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Run the same validation as a real run and report what would change, writing nothing (no payload, schema, progress or telemetry write, and no target creation) |
+| `--batch N` | Maximum rows per scan page (default 2000). A ceiling only: internal byte and row bounds (at most 8 value-returning rows per page) still apply |
+| `--json` | Emit exactly one JSON object on stdout, including incomplete runs and fatal errors |
+
+`redact` scrubs both stored raw payload columns (`raw_line`, `parsed_json`) of rows written before ingest sanitization existed, using the same redaction policy as ingestion. It is explicit, bounded and rerunnable: every run rescans under the current policy, a column the policy leaves unchanged keeps its exact bytes and SQL type, only payload columns are updated in place, and IDs, attribution, timestamps, compaction links, source cursors and watermarks are untouched. A row whose payload or host/event-type context cannot be validated is left unchanged and reported; the scan continues.
+
+It works against the configured local store or the remote libSQL project store (all machines' rows are scanned; remote results report only the provider and project). The store must already exist at the installed schema version: `redact` never creates or migrates a store, so run `ll-session migrate` first when told to. A global `--db` before the command selects an explicit local file.
+
+Writes are guarded by each row's original storage class, bytes and context, so a concurrent change is reported as a conflict and never overwritten. After the snapshot is captured, failures and interruption return an incomplete report instead of raising.
+
+**Report fields** (`--json`): `policy_version`, `target`, `dry_run`, `snapshot_max_id`, `last_scanned_id` (both `null` for an empty table), `scanned`, `would_change` (rows, in both modes), `updates_applied` (acknowledged committed UPDATE applications, not distinct rows), `unattributed_updates_applied` (applications without a per-rule breakdown after a short acknowledgement), `reconciled` (rows later observed already scrubbed; may overlap acknowledged work), `counts_by_column` (attributed rule counts; planned counts in preview), `counts_complete` (`false` when an ambiguous or short write acknowledgement makes the confirmed counters a lower bound), `failed`, `conflicts`, `unconfirmed`, `problems` (at most 100 entries of `row_id`, `column`, `reason`), `omitted_problems`, `stop_reason` and `complete`. `complete` means the scan reached the end of the captured `MAX(id)` with no failed, conflicted or unconfirmed row and no stop reason. `stop_reason` is `null` or one of `interrupted`, `target_unavailable`, `schema_mismatch`, `backend_failure`, `backend_invariant`, `unconfirmed`, and is independent of the problem cap. A fatal error before any scan is `{"complete": false, "error": "<reason>"}`.
+
+**Exit codes:** `0` for a complete run, `130` when interrupted, `1` for anything else, including an incomplete run. Usage errors exit `2` with no report.
+
+**Scope:** this is a supported-match, raw-column-only logical cleanup. Derived and FTS tables, summaries, live rows, original session transcripts, backups, WAL and free pages, and provider-side history are not covered, and no rebuild runs. Rows written after the snapshot (`MAX(id)` at start) are outside the run, and a concurrent writer can change a row after it was scanned, so upgrade every writer first and rerun after relevant activity. Because help and usage errors are now parsed before the telemetry wrapper, they no longer record a `cli_events` row; `redact` itself never writes telemetry.
 
 ---
 

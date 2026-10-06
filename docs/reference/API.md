@@ -8551,6 +8551,12 @@ verified paths and only when they have the expected base64 shape; adjacent plain
 is still scanned. Unknown or missing host/event type means no exemptions (generic
 JSON use is supported but carries no replay-preservation guarantee).
 
+**Context support query.** `is_replay_safe_history_context(*, host: str | None, event_type: str | None) -> bool`
+reports whether that context has replay-protecting rules in the registry: string context
+for a Claude-shaped or Kimi host, or a registered native/normalized Codex event type. Missing
+or non-string context, an unknown Codex type and an unregistered host return `False`. It is
+derived from the same registry the sanitizer uses and changes no policy, version or error code.
+
 **Errors.** `HistorySanitizationError.reason` is one of `invalid_payload`
 (non-dict root, unsupported object, non-string key, cycle, non-finite float),
 `key_collision` (a rewritten key equals another key — keys are never merged,
@@ -10453,6 +10459,63 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
 ```
 
 Dispatch helper letting the JSONL-derived `_backfill_*` functions (`_backfill_sessions`, `_backfill_tool_events`, `_backfill_usage_events`, `_backfill_messages`, `_backfill_assistant_messages`, `_backfill_skill_events`) accept either a legacy `list[Path]` (re-reads files line-by-line) or a `raw_events` cursor selecting `(raw_line, source_path, host)` — the mechanism `rebuild()` uses to replay previously-ingested lines without touching the filesystem. Since ENH-3422, ingest itself normalizes at write time (via the `sessions.py` parsers), so this replay path carries only one host-specific shim: a DB holding rows ingested before ENH-3422 may still have raw (pre-normalization) qwen wire format (`message.parts`); rows shaped that way (`qwen.py::is_raw_qwen_record`) are re-normalized via `normalize_qwen_record` on replay, everything else (including current-format qwen rows and every other host) passes through untouched.
+
+### Raw payload redaction: redact_raw_events (ENH-3752)
+
+Explicit, bounded, rerunnable maintenance that applies the history redaction policy to the
+stored `raw_line` and `parsed_json` columns of rows written before ingest sanitization. It
+works on a local store or the configured libSQL project store, never creates or migrates a
+store, and changes only those two payload columns, in place.
+
+```python
+from little_loops.session_store import (
+    redact_raw_events, RawRedactionReport, RawRedactionProblem,
+)
+
+def redact_raw_events(
+    db: Path | str | HistoryTarget = DEFAULT_DB_PATH,
+    *, batch_size: int = 2000, dry_run: bool = False,
+) -> RawRedactionReport
+
+@dataclass(frozen=True)
+class RawRedactionProblem:
+    row_id: int | None   # None for an operation-level diagnostic
+    column: str | None   # "raw_line" / "parsed_json" / None
+    reason: str          # fixed code, never content
+```
+
+`RawRedactionReport` carries `policy_version`, `target` (local path or remote provider/project
+only), `dry_run`, `snapshot_max_id` and `last_scanned_id` (both `None` for an empty table),
+`scanned`, `would_change` (candidate rows, both modes), `updates_applied` (acknowledged
+committed UPDATE applications), `unattributed_updates_applied`, `reconciled`,
+`counts_by_column`, `counts_complete`, `failed`, `conflicts`, `unconfirmed`, `problems` (at most
+100), `omitted_problems`, `stop_reason` and `complete`. `0 <= unattributed_updates_applied <=
+updates_applied`; applications plus `reconciled` is not a distinct-row partition.
+`counts_complete` is `False` when a short or lost acknowledgement leaves the confirmed counters a
+lower bound.
+
+**Behavior.** The target resolves once with the usual local/remote precedence. Rows are scanned
+by `id` up to a `MAX(id)` captured at the start (zero and negative IDs included), each
+payload column is decoded under byte, decompression and JSON bounds, and a column the policy
+leaves unchanged keeps its exact bytes and SQL type. A row whose payload or host/event-type
+context cannot be validated is left unchanged and reported with a fixed reason code. Writes are
+guarded by each row's original storage class, bytes and context, so a concurrent change is a
+conflict and is never overwritten; short or lost acknowledgements are reconciled by bounded
+re-reads and at most one guarded retry per row. `batch_size` is a row ceiling per page; internal
+bounds (at most 8 value-returning rows per page, 1 MiB stored and 4 MiB decoded per column, 8 MiB
+per remote write request) still apply.
+
+**Errors.** `batch_size` must be a positive `int` (`ValueError`). Before a snapshot exists an
+expected failure raises `RawRedactionError` (a `HistoryError`) whose `reason` is one of
+`target_unavailable`, `schema_mismatch` (with `guidance` of `"migrate"` or `"upgrade"` for a
+behind/unstamped or ahead store), `backend_failure` or `interrupted`; its text is the code alone.
+After the snapshot, failures and `KeyboardInterrupt` return an incomplete report whose
+`stop_reason` is `None` or one of `interrupted`, `target_unavailable`, `schema_mismatch`,
+`backend_failure`, `backend_invariant`, `unconfirmed` (independent of the diagnostic cap).
+
+**Scope.** Logical, supported-match, raw-column-only cleanup: derived and FTS tables, summaries,
+original transcripts, backups, WAL and free pages and provider history are not covered, and no
+rebuild runs. See `ll-session redact` in [CLI.md](CLI.md#ll-session).
 
 ### Assistant usage replay dispatch (ENH-3534)
 

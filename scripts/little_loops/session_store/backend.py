@@ -447,6 +447,23 @@ class SqliteBackend:
             raise HistoryUnavailable(f"could not open {path} read-only: {exc}") from exc
         return conn
 
+    def connect_existing_writable(
+        self, target: Path | HistoryTarget, *, timeout: float = 5.0
+    ) -> sqlite3.Connection:
+        """Writable open of an *existing* store for explicit-transaction maintenance (ENH-3752).
+
+        Uses ``mode=rw``, so a missing file raises instead of being created; it never migrates
+        and applies no pragma. The connection is in autocommit (``isolation_level=None``) so
+        the caller issues ``BEGIN``/``COMMIT`` itself. Raises :class:`HistoryUnavailable`.
+        """
+        path = _local_path(target, "connect_existing_writable")
+        try:
+            return sqlite3.connect(
+                sqlite_file_uri(path, mode="rw"), uri=True, timeout=timeout, isolation_level=None
+            )
+        except sqlite3.Error as exc:
+            raise HistoryUnavailable(f"could not open {path} read-write: {exc}") from exc
+
     @staticmethod
     def _connect_readonly_bound(
         path: Path, timeout: float, deadline: Deadline
@@ -567,6 +584,17 @@ def connect_readonly(
     return resolve_backend(resolved.provider).connect_readonly(
         resolved, timeout=timeout, deadline=deadline
     )
+
+
+def connect_existing_writable(
+    target: Path | str | HistoryTarget | None = None, *, timeout: float = 5.0
+) -> sqlite3.Connection:
+    """Non-creating writable open of the resolved *local* store (ENH-3752 maintenance only).
+
+    Raises :class:`HistoryUnsupported` for a remote target and :class:`HistoryUnavailable` when
+    the store is missing or unopenable; it never creates, migrates or configures the store.
+    """
+    return SqliteBackend().connect_existing_writable(_resolve_once(target), timeout=timeout)
 
 
 def open_history(

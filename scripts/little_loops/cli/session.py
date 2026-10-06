@@ -24,6 +24,7 @@ Subcommands:
     migrate  apply pending schema migrations; the only command that migrates a remote store
     prune    delete compacted raw_events rows older than configured max-age and VACUUM (ENH-1906)
     recompress rewrite legacy uncompressed raw_events payloads as zlib BLOBs and VACUUM
+    redact   scrub stored raw_events payloads under the current redaction policy (ENH-3752)
     export   dump selected tables as JSONL for visualization or external tooling
     record-hook-event  record one hook fire into hook_events; invoked by the bash shim (ENH-2506)
 """
@@ -72,10 +73,12 @@ from little_loops.session_store import (
     recent,
     recompress_raw_events,
     record_hook_event,
+    redact_raw_events,
     resolve_history_db,
     search,
 )
 from little_loops.session_store.backend import refuse_on_remote
+from little_loops.session_store.raw_redaction import RawRedactionError, RawRedactionReport
 from little_loops.session_store.usage_refresh import refresh_raw_events
 from little_loops.user_messages import get_project_folder
 
@@ -108,6 +111,8 @@ Examples:
   %(prog)s prune --dry-run                        # Show what would be pruned
   %(prog)s prune                                  # Delete old raw events and VACUUM
   %(prog)s recompress                             # Compress legacy raw_events payloads and VACUUM
+  %(prog)s redact --dry-run                       # Preview scrubbing stored raw_events payloads
+  %(prog)s redact                                 # Scrub stored raw_events payloads in place
 """,
     )
     parser.add_argument(
@@ -398,6 +403,26 @@ Examples:
     )
     add_json_arg(recompress_parser)
 
+    redact_parser = subparsers.add_parser(
+        "redact",
+        help="Scrub stored raw_events payloads under the current redaction policy "
+        "(local or remote; never migrates)",
+    )
+    redact_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Validate and report what would change without writing anything",
+    )
+    redact_parser.add_argument(
+        "--batch",
+        type=_positive_int,
+        default=2000,
+        metavar="N",
+        help="Maximum rows per scan page (default: 2000; internal byte bounds still apply)",
+    )
+    add_json_arg(redact_parser)
+
     subparsers.add_parser(
         "migrate",
         help="Bring the history store's schema to this install's version "
@@ -475,6 +500,103 @@ def _is_foreign_path(path_text: str | None) -> bool:
     return isinstance(resolve_history_target(DEFAULT_DB_PATH), RemoteTarget)
 
 
+def _positive_int(raw: str) -> int:
+    """argparse ``type=`` callable: an integer >= 1."""
+    value = int(raw)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1, got {value}")
+    return value
+
+
+# Fixed stderr text per stop reason: backend messages, endpoints and credentials never appear.
+_REDACT_GUIDANCE = {
+    (
+        "target_unavailable",
+        None,
+    ): "the history store is missing or unreachable; nothing was created",
+    ("schema_mismatch", "migrate"): (
+        "the history store schema is behind this install; run `ll-session migrate`, then retry"
+    ),
+    ("schema_mismatch", "upgrade"): (
+        "the history store schema is ahead of this install; upgrade little-loops, then retry"
+    ),
+    ("schema_mismatch", None): "the history store is not a current-schema store for this project",
+    ("backend_failure", None): "the history store reported a failure before any row was scanned",
+    ("interrupted", None): "interrupted before the scan started",
+}
+
+_REDACT_SCOPE = (
+    "Scope: raw_events payload columns only. Derived/FTS/summary rows, original transcripts, "
+    "backups, WAL/free pages and provider history are not covered; no rebuild was run."
+)
+
+
+def _redact_error(args: argparse.Namespace, exc: RawRedactionError | None) -> int:
+    reason = "backend_failure" if exc is None else exc.reason
+    guidance = None if exc is None else exc.guidance
+    if args.json:
+        print_json({"complete": False, "error": reason})
+    text = _REDACT_GUIDANCE.get((reason, guidance)) or _REDACT_GUIDANCE.get((reason, None))
+    print(f"ll-session redact: {text or reason}", file=sys.stderr)
+    return 130 if reason == "interrupted" else 1
+
+
+def _print_redact_report(report: RawRedactionReport) -> None:
+    verb = "Would change" if report.dry_run else "Changed"
+    through = "" if report.last_scanned_id is None else f" through id {report.last_scanned_id}"
+    if report.dry_run:
+        print("DRY RUN — nothing was written\n")
+    print(f"Scanned {report.scanned:,} row(s){through}.")
+    if report.dry_run:
+        print(f"{verb} {report.would_change:,} row(s).")
+    else:
+        print(f"{verb}: {report.updates_applied:,} update(s) applied.")
+        if report.unattributed_updates_applied:
+            print(f"  {report.unattributed_updates_applied:,} without a per-rule breakdown.")
+        if report.reconciled:
+            print(f"  {report.reconciled:,} row(s) already scrubbed when re-read.")
+    for column, rules in report.counts_by_column.items():
+        detail = ", ".join(f"{rule}={n:,}" for rule, n in sorted(rules.items()))
+        print(f"  {column}: {detail}")
+    if not report.counts_complete:
+        print("Counts are a lower bound: some write outcomes could not be attributed.")
+    for label, value in (
+        ("Failed", report.failed),
+        ("Conflicts", report.conflicts),
+        ("Unconfirmed", report.unconfirmed),
+    ):
+        if value:
+            print(f"{label}: {value:,} row(s) left as found (see --json for codes).")
+    if report.stop_reason:
+        print(f"Stopped early: {report.stop_reason}")
+    if not report.complete:
+        print("Incomplete: rerun after resolving the above.")
+    print(_REDACT_SCOPE)
+
+
+def _main_redact(args: argparse.Namespace) -> int:
+    """``ll-session redact``: runs outside ``cli_event_context`` so a preview writes no telemetry
+    and the explicit ``--db`` target is the only store touched."""
+    from dataclasses import asdict
+
+    from little_loops.session_store.backend import HistoryError
+
+    configure_output()
+    try:
+        report = redact_raw_events(args.db, batch_size=args.batch, dry_run=args.dry_run)
+    except RawRedactionError as exc:
+        return _redact_error(args, exc)
+    except HistoryError:
+        return _redact_error(args, None)
+    if args.json:
+        print_json(asdict(report))
+    else:
+        _print_redact_report(report)
+    if report.complete:
+        return 0
+    return 130 if report.stop_reason == "interrupted" else 1
+
+
 def _main_migrate() -> int:
     """``ll-session migrate``: run before ``cli_event_context`` so no telemetry row is written
     into a store that may be mid-migration (or, for a remote store, not yet migratable)."""
@@ -543,15 +665,18 @@ def _main_session() -> int:
     """
     if sys.argv[1:2] == ["migrate"]:
         return _main_migrate()
+    # Parsed once, before the telemetry context (ENH-3752): `redact` must run outside it, so
+    # help and argparse usage errors no longer emit telemetry for any subcommand.
+    parser = _build_parser()
+    args = parser.parse_args()
+    if args.command == "redact":
+        return _main_redact(args)
     # Loaded before the with-block: the context manager opens before argparse
     # runs, so parsed args cannot participate (see cli/history.py, ENH-3449).
     capture_config = _load_capture_config(Path.cwd())
     with cli_event_context(DEFAULT_DB_PATH, "ll-session", sys.argv[1:], config=capture_config):
         configure_output()
         logger = Logger(use_color=use_color_enabled())
-
-        parser = _build_parser()
-        args = parser.parse_args()
 
         if not args.command:
             parser.print_help()

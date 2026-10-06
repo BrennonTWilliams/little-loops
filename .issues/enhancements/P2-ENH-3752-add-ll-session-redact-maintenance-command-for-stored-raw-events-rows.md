@@ -3,8 +3,9 @@ id: ENH-3752
 title: Add ll-session redact maintenance command for stored raw_events rows
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-10-05'
+completed_at: '2026-10-06T21:49:40Z'
 parent: ENH-3743
 blocked_by: []
 labels:
@@ -95,7 +96,7 @@ Verified on `main` on 2026-10-06, after commit `28612c337`:
 
 ## Motivation
 
-Default-on ingest sanitization does not remove older plaintext. Compression and rebuilding cannot provide a bounded, conflict-safe raw-column scrub with truthful local/remote accounting. ENH-3751 now supplies the compatibility prerequisite; proof of the new persistence mechanism remains outstanding.
+Default-on ingest sanitization does not remove older plaintext. Compression and rebuilding cannot provide a bounded, conflict-safe raw-column scrub with truthful local/remote accounting. ENH-3751 supplies the compatibility prerequisite, and the M0 spike has proven the new persistence mechanism.
 
 ## Proposed Solution
 
@@ -147,7 +148,7 @@ Original page and replacement budgets may coexist; guards reference original pag
 
 Use a **conservative wire-byte upper bound**, not a claim to serialize/validate the exact final outbound body in maintenance. Size encoded parameter components (the public Hrana `encode_value` helper is available), encoded SQL, and fixed per-step/envelope overhead covering begin/commit/rollback, conditions, close and pipeline wrapping. Pin the estimator against captured real `_post` bodies for both `executemany` and single-row retry `execute`: estimate >= actual body bytes <= request cap. Do not duplicate transaction builders, add a serializer API or call private client methods.
 
-BLOB data expands by `4 * ceil(n / 3)` plus wrappers. Changed TEXT JSON is ASCII: its outer JSON escaping costs at most twice its byte length plus wrappers. Arbitrary context TEXT retains a general sixfold bound or its measured encoded component size. Old payload guards are always BLOB/base64. With these choices, even two 1 MiB TEXT replacements plus two 1 MiB original guards fit alone under 8 MiB with bounded overhead (~6.7 MiB); avoid a blanket sixfold replacement estimate that needlessly refuses conforming rows. A truly over-budget single row is `resource_limit` in both modes, and no oversized request is sent. Pin non-ASCII source/context, DEL/control escapes, quotes/backslashes, base64 and cap boundaries.
+BLOB data expands by `4 * ceil(n / 3)` plus wrappers. Changed TEXT JSON is ASCII: its outer JSON escaping costs at most twice its byte length plus wrappers. Arbitrary context TEXT uses its measured `encode_value` component size or the M0-proven tiered per-character bound (2x printable ASCII, 6x ASCII with control characters, 12x non-ASCII, since astral code points escape to 12-byte surrogate pairs); a flat sixfold bound undercounts non-ASCII. Old payload guards are always BLOB/base64. With these choices, even two 1 MiB TEXT replacements plus two 1 MiB original guards fit alone under 8 MiB with bounded overhead (~6.7 MiB); avoid a blanket sixfold replacement estimate that needlessly refuses conforming rows. A truly over-budget single row is `resource_limit` in both modes, and no oversized request is sent. Pin non-ASCII source/context, DEL/control escapes, quotes/backslashes, base64 and cap boundaries.
 
 Capped BLOB projections derive a <=32 MiB conforming read-response envelope for eight two-column rows plus bounded metadata/headroom; pin captured stub responses. Hrana reads whole response bodies and has no response-size limiter, so this is not a malformed/unexpected-server transport guarantee. These input/page/replacement/request bounds do not promise total Python RSS or database-engine memory bounds; JSON objects and serialization buffers can exceed input sizes.
 
@@ -302,7 +303,7 @@ Update `docs/reference/CLI.md` (subcommand/flags/examples/counters/exits/remote 
 1. **M0 — internal proof before production:** run `/ll:spike ENH-3752` through the public backend and Hrana stub. Prove typed BLOB/context guards, mixed TEXT/BLOB and type-only differences, NULL/COALESCE retention/NOT NULL prerequisites, capped projections, nullable/nonpositive keysets, short counts and bounded retry/reconciliation, committed-but-lost acknowledgement, wire upper bounds for both write shapes, and interruption after local commit but before accounting. Record proof through the spike workflow; retain unproven flags until it succeeds. Stub proof establishes client/SQLite/protocol behavior; hosted-provider parity remains an explicit deployment assumption, not a provider-validation claim.
 2. **M1 — pure core:** context-support query, bounded strict decode, sanitize/no-op detection, ASCII serialization/output validation, safe codes and resource estimator. Gate with pure boundary/PII tests.
 3. **M2 — local maintenance:** non-creating open/preflight, nullable keyset, short explicit transactions, guards, reconciliation, safe interruption and atomic accounting transitions. Gate with local/URI/metadata/preview tests.
-4. **M3 — remote maintenance:** per-request byte packing, public executemany/execute writes, short/ambiguous outcomes, attribution and reconciliation. Gate with deterministic interleavings/captured requests and serial lost-ack tests. Split this milestone only if M0 proves it needs separate scope/review.
+4. **M3 — remote maintenance:** per-request byte packing, public executemany/execute writes, short/ambiguous outcomes, attribution and reconciliation. Gate with deterministic interleavings/captured requests and serial lost-ack tests. M0 passed without surfacing separate remote scope, so M3 is not split; revisit only if implementation review shows otherwise.
 5. **M4 — CLI and exports:** one parse before telemetry, report/error/exit routing, package exports and supported remote operation. Gate with CLI/telemetry/export/chokepoint tests.
 6. **M5 — rollout and docs:** landed ENH-3751 parity regressions, help/docs/counter/exclusion contracts, focused gates and `python -m pytest scripts/tests/`.
 
@@ -344,15 +345,15 @@ Prior reviews on 2026-10-05/06 with `/ll:advise` and `claude-opus-5-5` settled b
 
 Reviewed again on `main`, 2026-10-06, after ENH-3751 landed (`28612c337`), with `/ll:advise --signal user_requested --host claude-code --model claude-opus-5-5` (confidence 0.78). Removed the completed dependency and obsolete integration claims. Added nullable keysets, context SQL-type validation, uncapped stop_reason, conservative local commit/rollback uncertainty, strict decoder ValueError handling and a fixed diagnostic cap. Resolved contradictory exact-wire/upper-bound wording; ASCII replacements keep conforming single-row requests within the cap, while captured full bodies prove the estimator. Accepted parse-before-capture consequences; rejected the advisor's suggested new redact resolver exemption because redact must not call resolve_history_db at all.
 
-Advisor dissent offered an interrupted-report exception as an alternative to a field; the explicit stop_reason keeps library/JSON callers on one report contract. A hosted-provider validation claim and immediate splitting of remote work were not adopted: M0 remains required and provider parity remains an assumption. The local reproductions confirmed nonpositive IDs/BLOB context are legal and a within-cap long integer raises ValueError. Existing policy/ingest regression verification: `python -m pytest scripts/tests/test_enh3751_sanitize_raw_events.py scripts/tests/test_pii.py -q` — **220 passed**. This review adds no production implementation or proof record.
+Advisor dissent offered an interrupted-report exception as an alternative to a field; the explicit stop_reason keeps library/JSON callers on one report contract. A hosted-provider validation claim and immediate splitting of remote work were not adopted: M0 remains required and provider parity remains an assumption. The local reproductions confirmed nonpositive IDs/BLOB context are legal and a within-cap long integer raises ValueError. Existing policy/ingest regression verification: `python -m pytest scripts/tests/test_enh3751_sanitize_raw_events.py scripts/tests/test_pii.py -q` — **220 passed**. This review added no production implementation or proof record (M0 proof was recorded afterward; see Spike Results).
 
 ## Confidence Check Notes
 
-Earlier scores/verdicts described pre-ENH-3751 plans and are superseded by this contract; do not reuse them as implementation approval. No unresolved issue dependency remains. `ll-learning-tests assess --issue ENH-3752 --json` reports **absent** (`spike=absent`); `spike_needed: true` and `unproven_mechanism: true` remain. Run M0 and reassess confidence before production implementation.
+Earlier scores/verdicts described pre-ENH-3751 plans and are superseded by this contract; do not reuse them as implementation approval. No unresolved issue dependency remains. Superseded: the M0 spike has since completed and `ll-learning-tests assess --issue ENH-3752 --json` reports **proven** (see Spike Results and the newer Confidence Check Notes below).
 
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P2 | Next prerequisite: M0 spike proof
+**Done** | Created: 2026-10-05 | Completed: 2026-10-06 | Priority: P2 | M0 spike PROVEN; M1–M5 implemented
 
 ## Spike Results
 
@@ -404,7 +405,29 @@ Supersedes the earlier Confidence Check Notes above: M0 is now PROVEN (`ll-learn
 ### Risk Factor Delta
 - Baseline: none recorded
 
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-10-06
+- **Action**: improve
+
+**Changes**
+
+- `scripts/little_loops/session_store/raw_redaction.py` (new): `redact_raw_events` core — nullable keyset snapshot, capped `typeof`/length/BLOB projections, bounded strict decode, sanitize/ASCII-encode/revalidate, conservative wire-byte estimator (2x/6x/12x context tiers), typed/context-guarded `UPDATE`, local explicit transactions and remote `executemany`, bounded reconciliation with at most one guarded retry, single-assignment accounting, fixed reason/stop vocabularies and `RawRedactionError` for pre-snapshot failures.
+- `session_store/backend.py`: non-creating writable opener `connect_existing_writable` (`mode=rw`).
+- `pii.py`: public `is_replay_safe_history_context`, derived from the protocol-rule registry.
+- `cli/session.py`: `ll-session redact [--dry-run] [--batch N] [--json]`, parse-once before telemetry, redact handled outside `cli_event_context`, one JSON object, exit 0/130/1.
+- `session_store/__init__.py`: exports `redact_raw_events`, `RawRedactionReport`, `RawRedactionProblem`.
+- Docs: `CLI.md`, `CONFIGURATION.md`, `HISTORY_SESSION_GUIDE.md`, `API.md`; new `DOC_STRINGS_PRESENT` rows.
+- Tests: `test_raw_redaction.py` (new, 61), additions to `test_pii.py`, `test_ll_session.py`, `test_session_store_backend.py`, `test_remote_operation_matrix.py`.
+
+**Decisions**: M3 (remote) not split — the remote path shares the core via the public `LibsqlConnection`. Hosted-provider (Turso/sqld) parity remains an assumption; proof is stub-backed. The lost-acknowledgement real-I/O stall test relies on the deterministic injected-failure test rather than a serial `no_parallel` stall test.
+
+**Verification**: `python -m pytest scripts/tests/` — 29217 passed, 310 skipped, 8 errors, all in `test_libsql_integration.py::TestLive` (live Turso endpoint rejects the configured JWT as expired; environmental). `ruff check scripts/` and `mypy scripts/little_loops/` clean.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T21:49:32 - `1e84850f-9ccc-4da7-adda-e5836ed7c2b4.jsonl`
+- `/ll:ready-issue` - 2026-10-06T21:22:39 - `196a7ff2-4676-4a7d-b9e8-4eecbacea711.jsonl`
 - `/ll:confidence-check` - 2026-10-06T21:10:02 - `4fc0d666-699d-4898-92bb-0f49567df55d.jsonl`
 - `/ll:spike` - 2026-10-06T21:03:01 - `abc671b1-1433-4acc-b1c8-d9248434e4e4.jsonl`
 - `/ll:confidence-check` - 2026-10-06T09:57:04 - `6e20ecba-9b39-4fa5-a2d1-2716b647e53a.jsonl`

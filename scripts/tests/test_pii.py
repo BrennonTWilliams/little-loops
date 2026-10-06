@@ -27,6 +27,7 @@ from little_loops.pii import (
     apply_pii_action,
     credential_rules_sha,
     detect_pii,
+    is_replay_safe_history_context,
     redact_history_text,
     redact_pii,
     sanitize_history_payload,
@@ -1006,3 +1007,63 @@ class TestHistoryExistingApiUnchanged:
 
         for name in ("redact_history_text", "sanitize_history_payload", "HistorySanitizationError"):
             assert not hasattr(little_loops, name)
+
+
+class TestReplaySafeHistoryContext:
+    """ENH-3752: the public registry-derived context-support query."""
+
+    @pytest.mark.parametrize(
+        "host", ["claude-code", "opencode", "pi", "qwen", "gemini", "omp", "kimi-code"]
+    )
+    def test_string_context_for_claude_shaped_and_kimi_hosts(self, host: str) -> None:
+        assert is_replay_safe_history_context(host=host, event_type="anything") is True
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            "assistant",
+            "user",
+            "session_meta",
+            "turn_context",
+            "event_msg",
+            "response_item",
+            "token_usage_record",
+        ],
+    )
+    def test_registered_native_and_normalized_codex_types(self, event_type: str) -> None:
+        assert is_replay_safe_history_context(host="codex", event_type=event_type) is True
+
+    @pytest.mark.parametrize(
+        ("host", "event_type"),
+        [
+            ("codex", "nonesuch"),
+            ("mystery", "assistant"),
+            (None, "assistant"),
+            ("claude-code", None),
+            (None, None),
+            (b"claude-code", "assistant"),
+            ("claude-code", b"assistant"),
+        ],
+    )
+    def test_missing_non_string_unknown_context_is_false(
+        self, host: object, event_type: object
+    ) -> None:
+        assert is_replay_safe_history_context(host=host, event_type=event_type) is False  # type: ignore[arg-type]
+
+    def test_agrees_with_the_sanitizer_registry(self) -> None:
+        from little_loops.pii import _protocol_rules
+
+        for host in (*HISTORY_REGISTERED_HOSTS, "mystery", None):
+            for event in ("assistant", "response_item", "nonesuch", None):
+                assert is_replay_safe_history_context(host=host, event_type=event) == (
+                    _protocol_rules(host, event) is not None
+                )
+
+    def test_policy_semantics_and_vocabulary_unchanged(self) -> None:
+        assert HISTORY_REDACTION_VERSION == 1
+        assert HISTORY_ERROR_REASONS == (
+            "invalid_payload",
+            "key_collision",
+            "unsafe_identity",
+            "resource_limit",
+        )

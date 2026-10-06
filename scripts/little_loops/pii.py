@@ -621,6 +621,16 @@ def _protocol_rules(host: str | None, event_type: str | None) -> _RuleTable | No
     return None
 
 
+def is_replay_safe_history_context(*, host: str | None, event_type: str | None) -> bool:
+    """Whether the protocol-rule registry can protect replay fields for this context.
+
+    True only for string context the registry registers: a Claude-shaped or Kimi host, or a
+    registered native/normalized Codex event type. Missing or non-string context, an unknown
+    Codex type and an unregistered host are False (the sanitizer would apply no exemptions).
+    """
+    return _protocol_rules(host, event_type) is not None
+
+
 def _extend_path(path: tuple[object, ...] | None, key: object) -> tuple[object, ...] | None:
     if path is None or len(path) >= _MAX_PATH:
         return None

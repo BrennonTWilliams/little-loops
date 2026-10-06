@@ -133,6 +133,41 @@ class TestSupportedOperations:
         assert isinstance(result, dict)
 
 
+class TestRedactIsASupportedRemoteOperation:
+    """ENH-3752: ``redact`` is logical maintenance, not a retention refusal."""
+
+    def test_redact_is_not_in_the_refusal_table(self) -> None:
+        from little_loops.session_store.backend import _REMOTE_REFUSALS
+
+        assert "redact" not in _REMOTE_REFUSALS
+        assert "redact" not in {operation for operation, _ in _REJECTED}
+
+    def test_default_target_resolves_to_the_configured_remote_store(
+        self, remote: HranaStub
+    ) -> None:
+        from little_loops.session_store import redact_raw_events
+
+        remote.db.execute(
+            "INSERT INTO raw_events(id, ts, host, source_path, line_no, event_type, raw_line,"
+            " parsed_json) VALUES (1, 't', 'claude-code', 'p', 1, 'assistant', ?, ?)",
+            (json.dumps({"type": "assistant", "x": "a@b.co"}),) * 2,
+        )
+        preview = redact_raw_events(dry_run=True)
+        assert preview.target == {"provider": "libsql", "project_id": "acme-api"}
+        assert preview.would_change == 1 and preview.complete
+        applied = redact_raw_events()
+        assert applied.updates_applied == 1 and applied.complete
+        assert "[EMAIL]" in remote.db.execute("SELECT raw_line FROM raw_events").fetchone()[0]
+
+    def test_explicit_local_path_stays_local_under_a_remote_config(self, tmp_path: Path) -> None:
+        from little_loops.session_store import ensure_db, redact_raw_events
+
+        local = tmp_path / "other.db"
+        ensure_db(local)
+        report = redact_raw_events(local, dry_run=True)
+        assert report.target == {"provider": "sqlite", "path": str(local)}
+
+
 class TestLlGrepWithoutCreateFunction:
     def _messages(self, stub: HranaStub) -> None:
         for i, text in enumerate(["alpha needle one", "beta haystack", "Needle Two", "gamma"]):

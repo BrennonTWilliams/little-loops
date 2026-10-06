@@ -298,6 +298,16 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/API.md", "| `little_loops.cli.issues.advise_consult` |", "ENH-3632"),
     ("docs/reference/CONFIGURATION.md", "is required for", "ENH-3632"),
     ("docs/reference/API.md", "qualify_usage", "ENH-3731"),
+    ("docs/reference/CLI.md", "ll-session redact", "ENH-3752"),
+    ("docs/reference/CLI.md", "**`redact` flags**", "ENH-3752"),
+    ("docs/reference/API.md", "redact_raw_events", "ENH-3752"),
+    ("docs/reference/API.md", "is_replay_safe_history_context", "ENH-3752"),
+    (
+        "docs/reference/CONFIGURATION.md",
+        "`ll-session redact` scrubs stored raw payload",
+        "ENH-3752",
+    ),
+    ("docs/guides/HISTORY_SESSION_GUIDE.md", "## Scrubbing Stored Payloads", "ENH-3752"),
 ]
 
 
