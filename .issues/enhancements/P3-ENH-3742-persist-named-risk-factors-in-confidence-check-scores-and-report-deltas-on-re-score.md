@@ -5,8 +5,6 @@ type: ENH
 priority: P3
 status: open
 discovered_date: '2026-10-05'
-verify_verdict: CLAIMS_OUTDATED
-verify_evidence: "Verification Notes: 'quotes the slash-joined shorthand skill/rubric/reference/CLI.md verbatim, which format-check still flags as stale_file_ref' -> reword the note so it does not contain a slash-joined path token (e.g. describe it as a slash-joined shorthand for skill, rubric, reference and CLI.md text)"
 labels:
 - verification
 - confidence-check
@@ -266,7 +264,7 @@ Review validation: 287 existing tests passed across `test_set_scores_cli.py`, `t
 
 Verdict at time of check: **CLAIMS_OUTDATED** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
 
-- Tests bullet for `test_docs_audience_gate.py`: slash-joined shorthand `skill/rubric/reference/CLI.md` resolved as a nonexistent path (format-check `stale_file_ref`); rewritten in place as "skill, rubric, reference and CLI.md text". `ll-issues format-check` now reports no `stale_file_ref`.
+- Tests bullet for `test_docs_audience_gate.py`: a slash-joined shorthand for the skill, rubric, reference and CLI.md text was read as a nonexistent path (format-check `stale_file_ref`); rewritten in place as "skill, rubric, reference and CLI.md text". `ll-issues format-check` now reports no `stale_file_ref`.
 
 ## Session Log
 

@@ -51,7 +51,8 @@ if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 # Parsed here so downstream section 3/4 logic can branch on it, but it has no
 # effect when CHECK_MODE is true (--check always runs the full 2A-2E sweep;
 # it is the producer of verify_evidence, never a consumer of it).
-# Check B8 (format-check citations) is skipped under --from-evidence.
+# Check B8 (format-check citations) is skipped under --from-evidence; the post-write
+# format-check in section 4 ("must not re-introduce the finding") still applies.
 FROM_EVIDENCE=false
 if [[ "$FLAGS" == *"--from-evidence"* ]]; then FROM_EVIDENCE=true; fi
 ```
@@ -562,6 +563,17 @@ Motivation / Steps to Reproduce / Proposed Solution here; those verdicts stay
   `/ll:verify-issues <ID>` run (no `--from-evidence`) keeps its normal
   full-sweep behavior regardless of any `verify_evidence` a prior run left
   behind — the flag is explicit, never inferred from the field's presence.
+
+**Verification Notes must not re-introduce the finding.** A note describing a
+stale claim must **paraphrase** any path, symbol, flag or line citation it is about,
+never quote it verbatim: a quoted stale path in `## Verification Notes` is itself
+scanned by `ll-issues format-check` and re-triggers the same `stale_file_ref` /
+`CLAIMS_OUTDATED` finding on the next `--check`. Describe it instead (e.g. "a
+slash-joined shorthand for the skill, rubric and reference text"). After writing the
+note, run `ll-issues format-check <ID>`; if it reports a `stale_file_ref` (or other
+citation finding) that your own edit introduced, reword the note and re-run until
+clean. This post-write check applies under `--from-evidence` too, even though
+check B8 is skipped there.
 
 ### 4.1 Verdict Phrasing When Fixes Are Applied in the Same Pass
 

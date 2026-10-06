@@ -7,6 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T23:41:53Z'
+verify_verdict: VALID
 labels:
 - issues
 - link-epics
@@ -14,6 +15,12 @@ blocked_by:
 - BUG-3738
 relates_to:
 - BUG-3739
+confidence_score: 95
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3749: Add a parent-assignment option to ll-issues link for single child-to-EPIC assignment
@@ -65,11 +72,24 @@ Prefer extracting BUG-3738's per-pair apply core into a function that both `link
 - `scripts/little_loops/cli/issues/link.py` — new option in the mutually exclusive group, routing in `cmd_link`, a parent-assignment apply path, and `_report` output.
 - `scripts/little_loops/cli/issues/link_epics.py` — only if the per-pair apply core is extracted for sharing; `apply_assignment` becomes a caller of it.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/__init__.py` — update the `link` subcommand wording in two places: the epilog line `link   Write or remove a dependency edge in issue frontmatter` and the `help=` string in `add_link_parser`; both describe only dependency edges. Dispatch (`if args.command == "link": return cmd_link(...)`) needs no change [Agent 2 finding]
+- `scripts/little_loops/cli/issues/link.py` — `cmd_link` line `field = next(name for name in _FIELD_FLAGS if getattr(args, name, None))` raises `StopIteration` when only the new option is set; the parent branch must be tested *before* it, and must read the new attributes via `getattr(args, ..., None/False)` [Agent 2 finding]
+- `scripts/little_loops/cli/issues/epic_consistency.py` — optional: `cmd_epic_consistency` text branch prints `(b) Body-listed, no parent: backref (human decision needed):` with no remedy hint; add a one-line pointer to the new command. Must keep the substrings `body`/`(b)`/`no parent`/`backref` that `test_epic_consistency.py` asserts. The `--fix` help (`category-(a) drift`) and `fix_epic` docstring stay correct as-is [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/create.py` — source of `_append_child_to_epic_children` (consumed, not changed).
 - `scripts/little_loops/frontmatter.py` — BUG-3738's scalar upsert (consumed).
 - `scripts/little_loops/cli/issues/epic_consistency.py` — shared Children recognizer (consumed).
 - `scripts/little_loops/file_utils.py` — `acquire_lock`, `issue_lock_path`, `atomic_write` (consumed).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/scaffold_epic.py` — `scaffold_epic` also calls `_append_child_to_epic_children` (graph-confirmed, `ll-code callers-of`); a third consumer, so the helper's three-outcome contract must not change [Agent 1 + graph finding]
+- `scripts/little_loops/cli/issues/link_epics.py` — `cmd_link_epics` `--apply` branch is the only production caller of `apply_assignment`; its catch order (`ConflictingParent`, `AmbiguousChildrenSection`, `ValueError`, `TimeoutError`, `OSError`) is load-bearing because the first two subclass `ValueError`. `ConflictingParent` lives here and `link_epics.py` imports nothing from `link.py`, so `link.py` must import it lazily (or move it to a shared module) to avoid a cycle [Agent 2 finding]
+- `scripts/little_loops/cli/issues/format_check.py` — `_fix_prose_deps` builds an `argparse.Namespace` with only list-edge attributes plus `json_output`/`dry_run` and calls `cmd_link`; regression surface for `getattr` tolerance (already noted above, now with the exact test: `test_ll_issues_format_check.py::TestFormatCheckFix`) [Agent 3 finding]
+- `scripts/little_loops/issues/cli_surface.py` — subprocess-scrapes `ll-issues link --help` and parses option-definition lines (used by `format_check`'s `stale_cli_flag` check); the new option is picked up automatically, no registry to update [Agent 2 finding]
+- `scripts/little_loops/mcp_server/tools.py` — `_tool_issue_link` treats any status outside `linked|would_link|unlinked|would_unlink` as `unchanged`; keep `_FIELD_FLAGS` list-only so a parent status can never reach it [Agent 2 finding]
+- `commands/refine-issue.md` — cites `link.py` line numbers and `apply_link` internals (`_check_cycle()`, `unchanged`-on-duplicate); edits to `link.py` can stale those citations, though `test_refine_issue_command.py` only asserts `"ll-issues link"`/`"blocked_by"` substrings [Agent 1 finding]
 
 ### Similar Patterns
 - `apply_link` in `link.py`: lock, read, validate, write for list edges.
@@ -87,9 +107,30 @@ Prefer extracting BUG-3738's per-pair apply core into a function that both `link
   - lock timeout
 - `scripts/tests/test_link_epics_cli.py` — regression coverage if the apply core is extracted.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_surface.py::test_build_cli_surface_index_against_real_ll_issues_link` (line 170) — the **only** test coupled to the real parser: asserts `cli_surface_accepts(idx, "ll-issues", "link", "--parent") is False`. It breaks iff the new flag is spelled `--parent`; re-point it at another nonexistent flag in that case [Agent 3 finding; verified]
+- `scripts/tests/test_feat3048_symbol_cli_claim_gaps.py::test_stale_cli_flag_gap_populated_feat_2942_regression` (line 174), `test_check_format_gaps_spawns_no_subprocess` — **will not break**: they use the synthetic `cli_index` fixture (`surface={"ll-issues": {"link": {"--blocked-by","--depends-on","--relates-to"}}}`, line 138). This corrects the Codebase Research Findings note above, which lists them as needing re-pointing. `test_cli_claims.py` and `test_symbol_claims.py` are likewise parse-only/synthetic [Agent 2 + 3 finding; verified]
+- `scripts/tests/test_link_cli.py` — new class (e.g. `TestIssuesCLILinkParent`); `_write_issue` hardcodes `features/`, so add a category-aware helper (model: `test_link_epics_cli.py::_write_issue(issues_dir, category, filename, content)`; the shared `issues_dir` fixture in `scripts/tests/conftest.py` already creates `bugs/`, `features/`, `epics/`). Additional cases beyond the list above: CRLF + file-mode preservation (model `TestApplyAssignmentHardening::test_crlf_and_mode_preserved`), single lock acquisition (model `test_bug3150_issue_mutator_atomicity.py::TestLockIsTaken::test_link_holds_a_single_lock_across_source_and_reciprocal`), second-write `OSError` naming `epic-consistency --fix <EPIC>` (model `test_second_write_failure_names_remedy_and_direct_reapply_repairs`), bare-numeric/non-canonical-prefix target resolving by the file's own type (model `test_link_bare_numeric_id_resolves`), and a `Namespace` without parent attributes still reaching the list-edge path [Agent 3 finding]
+- `scripts/tests/test_link_cli.py::TestIssuesCLILink::test_link_json_output` (line 210) — asserts only the return code; optionally tighten to `json.loads(out)` single-document parse (pattern: `capsys.readouterr().out` + `json.loads`, as in `test_link_epics_cli.py::TestApplyOneWinnerAndRejections`) [Agent 3 finding]
+- `scripts/tests/test_ll_issues_format_check.py::TestFormatCheckFix` — `test_fix_without_apply_previews_and_does_not_write` asserts `"would link (dry-run)" in out`; regression only, keeps `_report`'s list-edge verb text stable [Agent 3 finding]
+- `scripts/tests/test_link_epics_cli.py::TestApplyAssignment` / `TestApplyAssignmentHardening` (~lines 153-327) and the `racing` wrapper (`patch("little_loops.cli.issues.link_epics.apply_assignment", racing)`) — if the core is extracted: keep `apply_assignment(proposal, *, orphan_path, epic_path, ...)` as a module-level name in `link_epics.py` called through the module global; keep the **lazy** `acquire_lock`/`atomic_write` imports inside the function body (tests patch `little_loops.file_utils.acquire_lock`/`atomic_write`, which only take effect for lazy imports); keep `ConflictingParent` defined in `link_epics.py` and the `parent: EPIC-2` / `epic-consistency --fix EPIC-1` message substrings byte-compatible [Agent 2 + 3 finding]
+- `scripts/tests/test_epic_consistency.py::TestEpicConsistencyCategoryB` (line 224) and `TestFindChildrenSection` / `TestIterChildEntries` — reusable fixtures for the category-(b) remedy test; also pin the `(b)`/`no parent`/`backref` substrings if a hint is added to `cmd_epic_consistency` [Agent 3 finding]
+- `scripts/tests/test_ll_issues_create.py::TestAppendChildToEpicChildren` (`_children_helper`) — model for the none / unchanged / new-text / `AmbiguousChildrenSection` outcomes; `TestParentWiringLockAndAmbiguity::test_parent_append_waits_for_mutation_lock` is the real-lock timeout model for a CLI-level test [Agent 3 finding]
+- `scripts/tests/test_link_epics_skill.py::TestLinkEpicsSkillExists` — substring checks; the rewritten wording must keep `ll-issues link-epics`, `--mode assign`, `--mode synthesize`, `## Children`, `parent:`, `--apply`, `--threshold`, `ll-issues clusters` and must not introduce `--min-score`, `--min-cluster`, `Jaccard`, `union-find`, `intersection`, `create-epics-from-unparented` [Agent 2 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` (the `ll-issues link` section) and `docs/reference/COMMANDS.md`.
 - `skills/link-epics/SKILL.md`: replace BUG-3738's "a different EPIC requires a manual edit" wording with this command, and point children-listed drift reports at it as the remedy. Regenerate host mirrors with `ll-adapt`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` `#### ll-issues link <issue_id>` — lede says "frontmatter-key writer ... dependency edge" and the flag table says `--blocked-by` is "mutually exclusive with the two below"; both need the new option, a parent example in Examples, and "list edges only" qualifiers on `--force`/`--reciprocal` [Agent 2 finding]
+- `docs/reference/CLI.md` `#### ll-issues link-epics` — the `--apply` row ("lower-ranked alternatives stay in `proposals` but are not written") and the "A rejected pair does not fall through to a lower-ranked EPIC" paragraph are the natural places to point at the new command [Agent 2 finding]
+- `docs/reference/CLI.md` `#### ll-issues epic-consistency` — covers category-(a) only; add the category-(b) remedy pointer [Agent 2 finding]
+- `docs/reference/API.md` `### apply_assignment` (~line 1630 parameter table; also the "calling `apply_assignment()` again directly also repairs it" sentence) — update only if the core is extracted or the signature changes [Agent 2 finding]
+- `skills/link-epics/SKILL.md` — three sites, not one: `### A2: Proposal Flow` (line 86, "need a manual edit of the orphan's `parent:`/`epic:`…"), `### A3: Apply Assignments` (`write_failed` / `epic-consistency --fix <EPIC>` guidance), and `### S4: Create Accepted EPICs and Write-Back` step 4 (line 237, "insert `parent:`/`epic:` into each child's frontmatter block directly (same fields `apply_assignment()` writes)" — a hand-edit that the new command could replace). `allowed-tools: Bash(ll-issues:*, git:*)` already covers it [Agent 2 finding; verified lines 86, 237]
+- `docs/reference/COMMANDS.md` — only `### /ll:link-epics` (~line 460) exists; no `ll-issues link` entry, so adding one is a new-content decision (confirmed) [Agent 2 finding]
+- Host mirrors: no tracked `.gemini/.qwen/.kimi-code` mirror of `link-epics` exists, and `skills/link-epics/agents/openai.yaml` carries only `display_name`/`short_description`, so a SKILL.md body edit is unlikely to trip `test_host_artifacts_are_not_stale`; still run it to confirm before spending effort on `ll-adapt` [Agent 2 finding]
+- Doc-audience gate: new prose in `docs/reference/` and `skills/` must not cite `scripts/tests/` or `scripts/little_loops/` paths (`test_docs_audience_gate.py`) [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -107,7 +148,7 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
 - **Additional callers constrain the `link` surface** (all consume `cmd_link`/`apply_link`/`_FIELD_FLAGS`): `scripts/little_loops/cli/issues/__init__.py` (`main_issues` dispatch, `add_link_parser`; subcommand help text ~line 177), `scripts/little_loops/cli/issues/format_check.py` (`_fix_prose_deps` builds an `argparse.Namespace` with only the list-edge attributes and calls `cmd_link` — any attribute `cmd_link` reads for the new option must tolerate absence, as `blocked_by`/`depends_on`/`relates_to` do via `getattr(args, name, None)`), and `scripts/little_loops/mcp_server/tools.py` (`_tool_issue_link` calls `apply_link` directly and branches on list-shaped `LinkResult.status`; it must keep working unchanged, and MCP code must never call `cmd_*` because stdout is the JSON-RPC frame).
 - **Error-handling gap to close:** `cmd_link` catches only `ValueError` (prints `Error: …`, exit 1). `TimeoutError` from `acquire_lock` and `OSError` from `atomic_write` propagate uncaught today, yet the Acceptance Criteria require a lock timeout to be rejected cleanly with no writes. `link-epics --apply` already maps every failure class to a `rejected` reason (`conflicting_parent`, `ambiguous_children_section`, `metadata_unsafe`, `lock_timeout`, `write_failed`); the catch order matters because the first two are `ValueError` subclasses.
-- **Flag spelling collision (test-enforced):** `--parent` is *not* a valid `ll-issues link` flag today, and two tests use exactly that as the stale-flag regression example: `scripts/tests/test_cli_surface.py` (`test_build_cli_surface_index_against_real_ll_issues_link` asserts `cli_surface_accepts(idx, "ll-issues", "link", "--parent") is False`) and `scripts/tests/test_feat3048_symbol_cli_claim_gaps.py` (`test_stale_cli_flag_gap_populated_feat_2942_regression`, which feeds that same `link`-plus-`--parent` example into issue text and expects a `stale_cli_flag` gap). Choosing `--parent` for the new option requires re-pointing those fixtures at a different nonexistent flag; choosing another spelling avoids it. Either way the choice is deliberate. `--parent` already means "EPIC ID" on `create` and "ancestor filter" on `list`; `--force` already means "skip target-existence validation" on `link`; `--reciprocal` is declared on `link` but out of scope here; `--re` is already ambiguous among `--remove`/`--reciprocal`/`--relates-to` (no `allow_abbrev` set), and no `--reparent`/`--move-parent`/`--set-parent` exists anywhere.
+- **Flag spelling collision (test-enforced):** `--parent` is *not* a valid `ll-issues link` flag today, and two tests use exactly that as the stale-flag regression example: `scripts/tests/test_cli_surface.py` (`test_build_cli_surface_index_against_real_ll_issues_link` asserts `cli_surface_accepts(idx, "ll-issues", "link", "--parent") is False`) and `scripts/tests/test_feat3048_symbol_cli_claim_gaps.py` (`test_stale_cli_flag_gap_populated_feat_2942_regression`, which feeds that same `link`-plus-`--parent` example into issue text and expects a `stale_cli_flag` gap). Only `test_cli_surface.py` queries the real parser, so choosing `--parent` for the new option requires re-pointing that one fixture at a different nonexistent flag; the `test_feat3048_symbol_cli_claim_gaps.py` stale-flag test feeds a synthetic `cli_index` fixture and needs no change (see the wiring note under Tests). Choosing another spelling avoids the re-pointing entirely. Either way the choice is deliberate. `--parent` already means "EPIC ID" on `create` and "ancestor filter" on `list`; `--force` already means "skip target-existence validation" on `link`; `--reciprocal` is declared on `link` but out of scope here; `--re` is already ambiguous among `--remove`/`--reciprocal`/`--relates-to` (no `allow_abbrev` set), and no `--reparent`/`--move-parent`/`--set-parent` exists anywhere.
 - `_write_reciprocal` and `apply_link` use `update_frontmatter` (full re-dump) and plain `atomic_write` (no `shared_mode`, `read_text()` not `newline=""`); the parent path must instead follow the preserving contract that `apply_assignment` holds (CRLF, mode, unrelated bytes unchanged), so it cannot be built by extending `apply_link`'s body.
 
 _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
@@ -161,6 +202,18 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 - **Docs sync surface:** `docs/reference/CLI.md` `ll-issues link` section (~lines 3189-3223, flag table + Examples; the `link-epics` section after it documents reason codes and `epic-consistency --fix`), `skills/link-epics/SKILL.md` (~lines 82-88 currently say a non-top EPIC "need[s] a manual edit"; A3 documents reject reasons), and `scripts/little_loops/cli/help.py` / `docs/reference/API.md` where link-epics is named. `docs/reference/COMMANDS.md` has no `ll-issues link` entry (only the `/ll:link-epics` skill), so adding an entry there is a new-content decision, not an update. Host mirrors are gated by `test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` (regenerate with `ll-adapt --host <host> --apply`).
 - **Stale ordering note:** Step 1 above is phrased "After BUG-3738 lands"; it has landed, so the shared per-pair core can be extracted from `apply_assignment` immediately (it currently takes an `EpicProposal` and a path pair, with no ID/type validation).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/issues/link.py` `cmd_link` — route the parent option before the `next(name for name in _FIELD_FLAGS ...)` line, read new attributes with `getattr(..., None/False)`, add `parent`-path statuses to `_report`'s verb dict (or give the path its own reporter), and catch `TimeoutError`/`OSError` (not just `ValueError`) with `ConflictingParent`/`AmbiguousChildrenSection` ordered first
+- Update `scripts/little_loops/cli/issues/__init__.py` — change the `link` epilog line and `add_link_parser` `help=` text so they no longer say "dependency edge" only
+- If extracting the core from `apply_assignment`: keep it a module-level name in `link_epics.py`, keep lazy `acquire_lock`/`atomic_write` imports and `ConflictingParent` in `link_epics.py` (import it lazily from `link.py`); parameterize the `epic:` key policy
+- Update `scripts/tests/test_cli_surface.py` line 170 only if the flag is spelled `--parent` (re-point at another nonexistent flag); otherwise leave all `--parent` fixtures alone
+- Add `TestIssuesCLILinkParent` to `scripts/tests/test_link_cli.py` with a category-aware EPIC fixture helper, covering the Tests-section additions above
+- Update `docs/reference/CLI.md` (`link`, `link-epics`, `epic-consistency` sections) and `skills/link-epics/SKILL.md` (A2, A3, S4); optionally add the category-(b) remedy hint to `epic_consistency.cmd_epic_consistency` text output, keeping its asserted substrings
+- Run `test_link_epics_skill.py`, `test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale`, `test_docs_audience_gate.py`, `test_ll_issues_format_check.py::TestFormatCheckFix`, `test_bug3150_issue_mutator_atomicity.py`, and `test_feat_3149_mcp_mutation_tools.py` as regression surfaces
+
 ## Acceptance Criteria
 
 - [ ] One command assigns an existing BUG/FEAT/ENH issue to a named EPIC. Both sides are written with BUG-3738's preserving writers, and unrelated bytes, line endings, and file modes are unchanged.
@@ -196,11 +249,38 @@ A new mutually exclusive option on `ll-issues link` that takes the EPIC ID, plus
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Codebase Research Findings, flag-spelling bullet claimed that both the real-parser surface test and the feat3048 stale-flag test would need re-pointing if the new option is spelled like the existing `create` option. Only the real-parser surface test does; the feat3048 test uses a synthetic index fixture. Bullet rewritten in place to match the wiring note under Tests.
+
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- `epic:` key policy is unreconciled: `apply_assignment` writes `epic:` unconditionally, this issue says "when that key is present", and `create --parent` writes `parent:` only. Pick one before extracting the shared core.
+- Flag spellings (the parent option and the reparent switch) are left to the implementer; `--parent` would force re-pointing `test_cli_surface.py:170`.
+
+### Outcome Risk Factors
+- Moderate per-site complexity: extracting `apply_assignment`'s core touches shared state (lock, two-file ordered writes, error taxonomy) and must keep `test_link_epics_cli.py` patch points (lazy `acquire_lock`/`atomic_write` imports, `ConflictingParent` location) byte-compatible.
+- Broad enumeration across ~8-10 sites (link.py, link_epics.py, `__init__.py`, optional epic_consistency.py hint, CLI.md, link-epics SKILL.md, tests) with several regression surfaces (MCP `_tool_issue_link`, `format_check._fix_prose_deps`).
+- Minor open design points (epic: key policy, flag spellings, whether `--unlink` ships) can be resolved during implementation but may cause one iteration.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T01:09:31 - `c373be39-3ae5-465c-90da-c98a8ab828e9.jsonl`
+- `/ll:verify-issues` - 2026-10-06T01:07:52 - `6493c397-fb81-474b-97a7-2295ce48765a.jsonl`
+- `/ll:verify-issues` - 2026-10-06T01:06:23 - `10ca63b5-4074-4b4f-9add-57902bcfae70.jsonl`
+- `/ll:verify-issues` - 2026-10-06T01:05:15 - `8500a46e-f51f-4ec8-9d17-7e9f56e7470e.jsonl`
+- `/ll:wire-issue` - 2026-10-06T01:03:02 - `958cdfd3-c0a0-44ad-9b42-f2955c8e4922.jsonl`
 - `/ll:refine-issue` - 2026-10-06T00:55:53 - `03a6fd69-1d12-493d-b61f-d9a48062a4d3.jsonl`
 - `/ll:capture-issue` - 2026-10-05T23:43:06 - `dfedb32a-de04-4382-86b8-3c6cab5d9da5.jsonl`

@@ -16,6 +16,12 @@ relates_to:
 - BUG-3738
 verify_verdict: VALID
 reconcile_attempted: true
+confidence_score: 85
+outcome_confidence: 70
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3739: Frontmatter keys placed after the closing fence are silently ignored, and link-epics re-proposes Children-listed and intentionally-parentless issues as orphans
@@ -275,6 +281,7 @@ _Added by `/ll:confidence-check` on 2026-10-05_
 - [resolved 2026-10-05 by /ll:reconcile-issue] Stale claim (`stale_symbol_ref`): `_section_bounds` in `epic_consistency.py` no longer exists; BUG-3738 landed the shared recognizer in `cda52e0eb` — the "created here if this issue lands first" wording in Files to Modify and Implementation Step 2's "check whether BUG-3738 has landed" prerequisite were out of date — rewrote Files to Modify, Dependent Files, Implementation Step 2 and the recognizer Acceptance Criterion to consume the existing public recognizer (the Root Cause bullet sits outside the rewrite scope and was left as-is).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T01:02:04 - `7ce14b43-677b-479f-b1f1-2aec6e7467fb.jsonl`
 - `/ll:reconcile-issue` - 2026-10-06T00:58:23 - `25f9ee70-9553-4942-b494-3226cac87846.jsonl`
 - `/ll:confidence-check` - 2026-10-06T00:13:52 - `c9f2014b-1e92-4dc8-a5a8-e4b3f5742389.jsonl`
 - `/ll:confidence-check` - 2026-10-05T23:26:54 - `dfedb32a-de04-4382-86b8-3c6cab5d9da5.jsonl`
