@@ -14,6 +14,12 @@ labels:
 relates_to:
 - BUG-3755
 - BUG-3759
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3758: SQLite route search omits destination and prefers legacy source
@@ -167,5 +173,6 @@ Additional review on 2026-10-06 at `46f696c4b` reproduced the legacy-source sele
 **Open** | Reviewed: 2026-10-06 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T19:26:49 - `afda5a75-36fd-4868-b330-ef24a018b110.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:18:56 - `471d3a7a-54d3-4495-af46-a12400a91738.jsonl`
 - `/ll:capture-issue` - 2026-10-06T09:04:30 - `da8cdf64-7ea1-489f-a22f-62d03c35c5b9.jsonl`

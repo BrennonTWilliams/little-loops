@@ -13,6 +13,12 @@ labels:
 - history
 decision_needed: false
 size: Large
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons
@@ -278,20 +284,24 @@ None. The sanitizer API this issue consumes landed in commit `b953e103c`; the fr
 
 _Added by `/ll:confidence-check` on 2026-10-06_
 
-Historical assessment of the earlier plan; not a fresh verdict for the revised comparison/failure contract. Re-run after these issue edits before implementation.
+Fresh assessment of the revised comparison/failure contract (supersedes the earlier historical note).
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE (below outcome_threshold 65)
 
 ### Concerns
-- ENH-3750 sanitizer API has landed (`b953e103c`) and `blocked_by` is empty; the earlier Dependencies Hard Override no longer applies. All format-check gates (Program Design, parity, claim, structure, decision) are clean.
+- Dependencies clear: ENH-3750 is `done`, `blocked_by` is empty, and all format-check gates (Program Design, parity, claim, structure, decision) are clean. Code anchors verified: `_backfill_raw_events` (`lifecycle.py:804`) has the four stated callers, `_event_signature`/`_stored_signatures`/`_preserves_fields` exist, and nothing under `session_store/` or `cli/` imports `little_loops.pii` yet.
+- Full-backfill rollback precondition holds: `_backfill_*` helpers in `writers.py` never call `commit()`, so the single end-of-`backfill()` commit is the only boundary.
+- Type-sensitive equality deliberately refuses legacy scalar coercions that previously passed; the docs must say so.
+- Minor open items resolvable during implementation: final `source_metadata_changed`/`usage_contract_changed` reason codes are "proposed", and the "policy-extension fixed point" test needs a concrete fixture design.
 
 ### Outcome Risk Factors
 - Broad dependent surface: `_backfill_raw_events` has four callers plus the Claude insert, `cli/session.py`, `cli/backfill_worker.py`, and two spawning hooks (6–10 dependents).
-- Moderate per-site depth: rollback/watermark boundaries across local and remote chunks, and both-column preservation in refresh comparisons, are cross-module logic with shared state in `lifecycle.py` and `usage_refresh.py`, across ~7 source files plus docs and ~15 test files.
+- Moderate per-site depth: rollback/watermark boundaries across local and remote chunks, both-column preservation, per-line metadata refusal and the NULL→marker qualification transition are cross-module logic with shared state in `lifecycle.py` and `usage_refresh.py`, across ~7 source files plus 5 docs and ~15 test files.
 - Rebuild-fingerprint gate (`test_enh3678_rebuild_derive_gate.py`) constrains where sanitization may be inserted; a misplaced seam forces a `REBUILD_DERIVE_VERSION` bump.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T19:26:53 - `afda5a75-36fd-4868-b330-ef24a018b110.jsonl`
 - `/ll:confidence-check` - 2026-10-06T09:21:57 - `efbe7654-b8cc-4b46-8b6e-54d1216778fc.jsonl`
 - `/ll:verify-issues` - 2026-10-06T09:20:37 - `3fd3819a-5352-4bac-bbe1-b8a3f3e515f1.jsonl`
 - `/ll:wire-issue` - 2026-10-06T09:18:17 - `69fbb543-02d8-48e4-bbb6-a2a33935a7ec.jsonl`

@@ -15,6 +15,12 @@ relates_to:
 - BUG-3758
 learning_tests_required:
 - opentelemetry-sdk
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3759: OTel resume root is overwritten without being ended
@@ -181,6 +187,7 @@ Additional review on 2026-10-06 at `46f696c4b` reproduced the defect through sav
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T19:27:10 - `faf2e2f0-abac-49b1-b171-601fdd02e926.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:23:36 - `rollout-2026-10-06T12-12-23-01a1126a-ab9e-7362-9b58-e87fb7718a10.jsonl`
 - `/ll:advise` - 2026-10-06T18:23:36 - `rollout-2026-10-06T12-12-23-01a1126a-ab9e-7362-9b58-e87fb7718a10.jsonl`
 - `/ll:capture-issue` - 2026-10-06T09:07:39 - `69fbb543-02d8-48e4-bbb6-a2a33935a7ec.jsonl`
