@@ -205,7 +205,28 @@ _Added by `/ll:confidence-check` on 2026-10-06_
 - Existing tests pin shell text rather than behavior (194 test items, none render the shell actions); the 11-row behavioral matrix is effectively all new test code, so regressions in untouched branches could go undetected until it lands.
 - Minor ambiguity: how the post-validation verdict gate reads `${captured.assess.verdict}` from a shell state is specified by contract but not by concrete state wiring; resolve while implementing.
 
+## Go/No-Go Findings
+
+_Added by `/ll:go-no-go` on 2026-10-06_ — **GO**
+
+**Deciding Factor**: The defect is confirmed and the fix is well understood; remaining objections concern scope, sequencing and priority, not validity.
+
+### Key Arguments For
+- Inversion reproduces at `rn-remediate.yaml:180`, `:215`, `:384-399` against `rubric.md:281-345`; `rn-remediate` is the lone inverted consumer (`preparation_policy.py`, `rubric.md:442`, `issue_parser.py` all use high = better).
+- Mixed delta signs (A/C pre−post vs confidence/outcome post−pre, lines 797-801) make an A/C improvement look like a stall; `assess.on_no` (152) and `re_assess.on_no` (733) bypass validation and the budget.
+
+### Key Arguments Against
+- Unlisted tests pin current behavior and must be updated: `scripts/tests/test_fsm_topology.py:319-331` (hard-pins 48 states), `scripts/tests/test_fsm_executor.py:2831-2842` (BUG-3489 pins `check_convergence._error → gate_implement`), `scripts/tests/test_builtin_loops.py:15617-15625` (`assess.on_no == "refine_first"`) and the MR11 allowlist at `:20009-20018`, and `scripts/tests/data/loop_interpolation_baseline.json:797` (`emit_needs_manual_review` heredoc line numbers).
+- `check_convergence` emits `CONVERGED_STALLED` and exits (lines 774-778) before the counter increment (806-810) and the POST → PRE refresh, so a missing PRE never counts against the budget; trace this path when adding the `SCORES_MISSING` classification.
+- `${captured.<state>.verdict}` has no shipped precedent for being read from a shell state (only a test fixture and `scaffold_verify.py`).
+- Shared-file collisions with BUG-3757 (readiness comment, test docstring, `rubric.md`, mirrors) and ENH-3742 (`rubric.md`, `SKILL.md`, mirrors); sequence or coordinate those edits.
+- The core polarity/delta-sign fix is ~10 lines; validation/atomic-snapshot/verdict-gate work could be split if the single-commit scope proves too large (outcome confidence 59).
+
+### Rationale
+Both sides agree the polarity inversion is real. `rn-remediate` is the lone inverted consumer, and it silently misroutes hard issues in tooling every local-editable project shares. The con side's objections concern scope and sequencing, and can be handled during implementation.
+
 ## Session Log
+- `/ll:go-no-go` - 2026-10-06T17:31:50 - `6f6f118e-a57b-482f-b8e5-4dc2eadf81d3.jsonl`
 - `/ll:confidence-check` - 2026-10-06T17:24:54 - `4c721804-b470-47a2-a026-f84f3bc78843.jsonl`
 - `/ll:confidence-check` - 2026-10-06T17:08:39 - `06682c99-4a6d-4e45-b7d6-4e7235d06590.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T06:49:38 - `cede7154-079d-47b6-bd61-dd96bcbe90b1.jsonl`

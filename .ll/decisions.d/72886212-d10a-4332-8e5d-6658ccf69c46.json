@@ -1,0 +1,11 @@
+{
+  "id": "840fe36c-62a3-46dc-9cc7-67aa31242c09",
+  "type": "decision",
+  "timestamp": "2026-10-06T17:31:50Z",
+  "category": "implementation",
+  "labels": [],
+  "rationale": "Polarity inversion confirmed; rn-remediate is the lone inverted consumer. Scope/sequencing objections handled during implementation.",
+  "rule": "GO",
+  "scope": "issue",
+  "issue": "BUG-3756"
+}
