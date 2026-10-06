@@ -13,6 +13,12 @@ labels:
 - history
 decision_needed: false
 size: Large
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons
@@ -294,21 +300,21 @@ None. The sanitizer API this issue consumes landed in commit `b953e103c`; the fr
 
 _Added by `/ll:confidence-check` on 2026-10-06_
 
-Historical assessment of the earlier comparison/failure contract. The latest review changes that contract and clears its cached frontmatter scores; rerun confidence-check before using a score to authorize implementation.
+Re-assessed against the revised contract (type-sensitive comparison, safe stored-column decode, per-line metadata refusal, qualification-transition rule, Codex literal-vs-canonical split). Supersedes the earlier historical assessment.
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE (below outcome_threshold 65)
 
 ### Concerns
-- Dependencies clear: ENH-3750 is `done`, `blocked_by` is empty, and all format-check gates (Program Design, parity, claim, structure, decision) are clean. Code anchors verified: `_backfill_raw_events` (`lifecycle.py:804`) has the four stated callers, `_event_signature`/`_stored_signatures`/`_preserves_fields` exist, and nothing under `session_store/` or `cli/` imports `little_loops.pii` yet.
-- Full-backfill rollback precondition holds: `_backfill_*` helpers in `writers.py` never call `commit()`, so the single end-of-`backfill()` commit is the only boundary.
+- Dependencies clear: ENH-3750 landed (`sanitize_history_payload` at `pii.py:679`, `HistorySanitizationError` at `pii.py:342`), `blocked_by` is empty, and all format-check gates (Program Design, parity, claim, structure, decision) are clean. Anchors verified: `_backfill_raw_events` (`lifecycle.py:804`), `_refresh_codex_usage_source` (`:1369`), `refresh_usage_source` (`:1524`), `_event_signature`/`_stored_signatures`/`_preserves_fields` (`usage_refresh.py:58/74/91`); nothing under `session_store/` or `cli/` imports `little_loops.pii` yet; `backfill_worker.py:230` catches only `HistoryUnsupported`.
 - Type-sensitive equality deliberately refuses legacy scalar coercions that previously passed; the docs must say so.
-- Resolved by this review: `source_metadata_changed`/`usage_contract_changed` are decided refusal codes, and the policy-extension test has a concrete historical PEM fixture above.
+- The contract is dense with ordered refusals (holds → attribution/coverage/session-set → per-line metadata → qualification transition → decode → preservation). Implement the refusal ordering as one explicit sequence and test each adjacent pair, since a reordering silently changes which reason a corrupt-plus-structural source reports.
 
 ### Outcome Risk Factors
 - Broad dependent surface: `_backfill_raw_events` has four callers plus the Claude insert, `cli/session.py`, `cli/backfill_worker.py`, and two spawning hooks (6–10 dependents).
 - Moderate per-site depth: rollback/watermark boundaries across local and remote chunks, both-column preservation, per-line metadata refusal and the NULL→marker qualification transition are cross-module logic with shared state in `lifecycle.py` and `usage_refresh.py`, across ~7 source files plus 5 docs and ~15 test files.
 - Rebuild-fingerprint gate (`test_enh3678_rebuild_derive_gate.py`) constrains where sanitization may be inserted; a misplaced seam forces a `REBUILD_DERIVE_VERSION` bump.
+- Prior pre-implementation critique rounds on this contract (history-context correction match) indicate the contract has churned; treat the Codex first-cursor literal/canonical split and the rollback-scope rules as the likeliest places for iteration.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-10-06T19:26:53 - `afda5a75-36fd-4868-b330-ef24a018b110.jsonl`
