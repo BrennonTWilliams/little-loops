@@ -188,7 +188,8 @@ class TestEnH3719FooterExactBytes:
         # wording and the trailing newline.
         expected = (
             "state                    invoc    input   output    cache   est_cost\n"
-            + "-" * 68 + "\n"
+            + "-" * 68
+            + "\n"
             "research                     1      100       50       15        n/a\n"
             "Note: claude-future-99 not priced; cost shown is n/a.\n"
         )
@@ -244,7 +245,10 @@ class TestEnH3719FooterExactBytes:
         out = report.table()
         # Two-line footer block (concrete first, sentinel second).
         assert "Note: claude-future-99 not priced; cost shown is n/a." in out
-        assert "Note: usage rows with no price identifier (unknown, None, \"\") contribute to n/a." in out
+        assert (
+            'Note: usage rows with no price identifier (unknown, None, "") contribute to n/a.'
+            in out
+        )
         # The sentinel line follows the concrete line.
         concrete_idx = out.index("claude-future-99 not priced")
         sentinel_idx = out.index("no price identifier")

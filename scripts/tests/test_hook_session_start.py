@@ -157,11 +157,12 @@ class TestSessionStartLocalOverrides:
         assert result.feedback is not None
         assert "Local overrides applied" not in result.feedback
 
-
     def test_local_null_leaf_under_new_mapping_is_removed(self, in_tmp: Path) -> None:
         """FEAT-3681: a null reset inside a newly introduced mapping no longer survives."""
         self._write_base(in_tmp, {"a": 1})
-        self._write_local(in_tmp, "next:\n  loop_history:\n    weights:\n      recency: null\n      success: 0")
+        self._write_local(
+            in_tmp, "next:\n  loop_history:\n    weights:\n      recency: null\n      success: 0"
+        )
 
         result = handle(_event())
 

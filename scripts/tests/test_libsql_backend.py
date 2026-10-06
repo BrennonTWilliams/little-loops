@@ -127,7 +127,6 @@ class TestConfigResolution:
         )
         assert db_mod._read_backend_block(tmp_path) == {"provider": "libsql"}
 
-
     def test_libsql_default_shaped_selects_the_remote_target(self, remote: HranaStub) -> None:
         target = _resolve_once(None)
         assert isinstance(target, RemoteTarget)

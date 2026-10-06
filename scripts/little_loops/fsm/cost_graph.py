@@ -49,9 +49,9 @@ _STATE_KEYS = (
 _MISSING_MODEL_SENTINELS = frozenset(
     {
         "unknown",  # default str(None) after the row dict lookup
-        "none",   # str(None) — persisted rows with JSON-null model
-        "",      # explicit empty string
-        " ",     # whitespace-only after strip
+        "none",  # str(None) — persisted rows with JSON-null model
+        "",  # explicit empty string
+        " ",  # whitespace-only after strip
     }
 )
 
@@ -340,13 +340,12 @@ class CostReport:
         if self.states:
             if self.unpriced_models:
                 lines.append(
-                    f"Note: {', '.join(self.unpriced_models)} not priced; "
-                    "cost shown is n/a."
+                    f"Note: {', '.join(self.unpriced_models)} not priced; cost shown is n/a."
                 )
             if self.unpriced_missing_sentinels:
                 lines.append(
                     "Note: usage rows with no price identifier "
-                    "(unknown, None, \"\") contribute to n/a."
+                    '(unknown, None, "") contribute to n/a.'
                 )
         return "\n".join(lines) + "\n"
 

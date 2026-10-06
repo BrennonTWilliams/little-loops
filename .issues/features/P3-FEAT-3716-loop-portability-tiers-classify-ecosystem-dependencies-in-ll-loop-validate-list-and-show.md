@@ -23,6 +23,43 @@ blocks:
 - FEAT-3717
 learning_tests_required:
 - pyyaml
+confidence_score: 95
+outcome_confidence: 43
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 0
+risk_factors:
+- id: cache-ownership-copies
+  domain: outcome
+  criterion: complexity
+  description: Defensive FSM copies must break context/binding aliasing while preserving
+    per-copy YAML aliases and read-count bounds
+- id: detection-partition-judgments
+  domain: outcome
+  criterion: ambiguity
+  description: Skill, MCP tool and console-script partitions need per-name judgment
+    calls during implementation
+- id: interface-freeze-for-feat-3717
+  domain: outcome
+  criterion: ambiguity
+  description: Resolver/report interface is frozen for FEAT-3717 only after focused
+    fixtures pass, leaving sequencing judgment open
+- id: load-and-validate-fanout
+  domain: outcome
+  criterion: change_surface
+  description: load_and_validate is referenced by 14 source modules and 52 test files;
+    new keyword args must stay backward compatible
+- id: new-context-seam-pattern
+  domain: readiness
+  criterion: architecture_compliance
+  description: Operation-owned LoopResolutionContext and recorder are a new seam with
+    no existing precedent in the loader
+- id: resolver-seam-rewiring
+  domain: outcome
+  criterion: complexity
+  description: Typed resolution events, merge provenance and operation context thread
+    through fragments, loop_paths, validators, CLI and MCP
 ---
 
 # FEAT-3716: Loop portability tiers: classify ecosystem dependencies in ll-loop validate, list and show
@@ -353,8 +390,25 @@ A developer searches for a loop to run in a client repo with no issue setup. The
 
 **Open** | Created: 2026-10-03 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 43/100 → LOW
+
+### Outcome Risk Factors
+- Deep per-site complexity and broad enumeration across roughly 30 files: typed resolution events, merge-time provenance and an operation context thread through `fragments`, `loop_paths`, validators, CLI and MCP.
+- `load_and_validate` is referenced by 14 source modules and 52 test files; the new keyword arguments must stay backward compatible.
+- Defensive FSM copies must break `context`/binding aliasing while preserving per-copy YAML aliases and the read-count bounds.
+- Skill, MCP tool and console-script partitions need a judgment call per name during implementation.
+- The resolver/report interface freezes for FEAT-3717 only after focused fixtures pass, so phase sequencing is a judgment call.
+
+### Risk Factor Delta
+- Baseline: none recorded
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T22:13:31 - `13f1265d-e2a6-4f7d-afac-9257042414f2.jsonl`
 - Final contract review; `/ll:advise` with Opus, confidence 0.80; failure/serialization/output/lifetime clarifications and 225 existing loader tests passed - 2026-10-06
 - Follow-up pre-implementation review; `/ll:advise` with Opus, confidence 0.78; resolution/provenance/report corrections and regression requirements - 2026-10-06
 - Pre-implementation review on main; `/ll:advise` with Opus, confidence 0.80; learning/context probes and contract updates - 2026-10-06

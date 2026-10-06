@@ -356,7 +356,9 @@ class TestEnH3719UnpricedModelFooter:
         assert "claude-future-99" in report.unpriced_models
         assert "claude-future-99" in report.table()
 
-    def test_known_id_with_incomplete_tokens_does_not_appear_in_footer(self, tmp_path: Path) -> None:
+    def test_known_id_with_incomplete_tokens_does_not_appear_in_footer(
+        self, tmp_path: Path
+    ) -> None:
         # A row with a KNOWN model but incomplete tokens: state cost is n/a,
         # but the footer does NOT name the model (the issue is the tokens,
         # not the price).
@@ -686,9 +688,7 @@ class TestEnH3719UnpricedModelFooter:
         out = report.table()
         assert "not priced" not in out
 
-    def test_json_round_trip_drops_unpriced_diagnostics(
-        self, tmp_path: Path
-    ) -> None:
+    def test_json_round_trip_drops_unpriced_diagnostics(self, tmp_path: Path) -> None:
         """ENH-3719: ``to_dict`` excludes ``unpriced_models`` and
         ``unpriced_missing_sentinels``. Round-tripping through ``read_json``
         gives a clean report with empty diagnostic fields. Stable keys
