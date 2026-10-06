@@ -18,17 +18,7 @@ relates_to:
 - BUG-3735
 - ENH-3748
 size: Large
-confidence_score: 90
-outcome_confidence: 71
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
 risk_factors:
-- id: diagnostic-count-columns-open
-  domain: outcome
-  criterion: ambiguity
-  description: Extra diagnostic count columns are left conditional on need.
 - id: export-only-overflow-exception
   domain: readiness
   criterion: architecture_compliance
@@ -68,7 +58,7 @@ Decomposed from ENH-3723. Recorded Decision (commit `01747bb96`) makes legacy NU
 
 ## Current Behavior
 
-On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops/session_store/queries.py` qualifies only model coverage and per-column missingness. A partial/unknown row with numeric stored cost can supply canonical token/cost components. `_SnapshotTotals` accepts invalid/non-finite costs; the predefined dashboard query omits qualification reasons and NULL renders as an empty cell. A temporary-store probe with two valid `2**62` token contributors qualifies in the source reader but crashes snapshot export because the resulting Python integer exceeds SQLite's signed integer range. Source schema is currently 60; computed snapshot tables are not source migrations.
+On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops/session_store/queries.py` qualifies only model coverage and per-column missingness. A partial/unknown row with numeric stored cost can supply canonical token/cost components. `_SnapshotTotals` accepts invalid/non-finite costs; the predefined dashboard query omits qualification reasons and NULL renders as an empty cell. A temporary-store probe with two valid `2**62` token contributors qualifies in the source reader but crashes snapshot export because the resulting Python integer exceeds SQLite's signed integer range. Separately, the dashboard's default `stmt.getAsObject()` read rounds an exactly stored `9007199254740993` to `9007199254740992`; the bundled sql.js supports exact BigInt reads. Source schema is currently 60; computed snapshot tables are not source migrations.
 
 ## Expected Behavior
 
@@ -78,6 +68,7 @@ On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops
 - Normalize computed buckets with `row_channel` and `UNKNOWN_MODEL_BUCKET`; preserve original raw model/channel/provenance in observation exports. A source reader whose public grouping key remains NULL is compared through an explicit NULL-to-bucket mapping. Derived `mixed` is allowed in computed aggregate metadata, without storing it as producer provenance.
 - Generated raw/known audit subtotals apply the same valid-value and finite-sum rules as source `ObservationGroup` subtotals. Unknown-but-valid values remain labeled audit sums. Invalid values are not silently admitted or allowed to create non-finite SQL values; missing/invalid count meanings are documented and do not claim qualified completeness.
 - Check generated integer subtotals against SQLite's signed 64-bit range before binding. An unrepresentable raw/known token subtotal becomes NULL without losing observation rows/counts; if any canonical channel token subtotal overflows, all canonical token components for that model become unavailable with `snapshot_integer_overflow`. Cost remains independently qualified. This export representability failure does not make valid producer observations invalid or change shared qualification. Never round/clamp to fit, switch exact integers to REAL, or let the whole export crash.
+- Read representable SQLite INTEGER values exactly through the dashboard's shared query path, including custom SQL. Preserve exact decimal display above JavaScript's safe-integer range, numeric zero and REAL cost values; exact snapshot storage alone is insufficient. This is a row-read/display change using the existing runtime, with no SQL rewrite, vendor upgrade or extra snapshot exception.
 - New reason/version/label fields contain only approved bounded codes/literals. A lexical snake_case/length check alone is insufficient: an identifier-shaped source secret must become `unclassified`. Preserve existing approved observation columns (including already-allowlisted `session_id`/`invocation_id`); add no native request/turn IDs, raw links, paths, credentials or source-derived prose. The metadata change does not expand identity export permissions.
 - Keep existing public numeric fields. The snapshot has no rate column and gains none; cache-rate measured-only/zero-denominator criteria are source-reader parity controls. Custom SQL stays unchanged and is described as an audit tool: `SUM` over selected rows or NULLs does not certify a complete population.
 
@@ -99,7 +90,7 @@ Consume implemented frozen `UsageQualification` fields `eligible`, `provenance`,
 
 Add exactly these aggregate metadata columns to `usage_coverage_audit`: `provenance`, `qualification_reason`, `cost_qualification_reason`, `qualification_policy_version`. Their scope is the whole in-filter logical model, repeated on each channel row. Keep `coverage_reason` distinct from accounting reasons. `selected_usage_events.provenance` remains the raw stored value; no row-level qualification columns are needed.
 
-Reuse `_SnapshotTotals` for per-channel raw/coverage-selected contributions, with shared validity/finite-sum behavior. Track NULL versus present-invalid internally; if additional diagnostic count columns are necessary, add them consistently and document their meanings. Never change the shared `ObservationGroup.channel_subtotals()` shape to add cost.
+Reuse `_SnapshotTotals` for per-channel raw/coverage-selected contributions, with shared validity/finite-sum behavior. Track NULL versus present-invalid internally. Fix the export schema to exactly the four new metadata columns above; add no diagnostic-count columns. Existing `raw_missing_cost_count` and `known_missing_cost_count` count SQL NULL only, matching shared `missing_count`; invalid inputs are excluded from valid-value subtotals and reported through the existing bounded qualification reasons. This corrects the current conflation of invalid and missing, so document the changed count semantics under the new allowlist version. Aggregate overflow increments neither missing nor invalid contributor counts. Never change the shared `ObservationGroup.channel_subtotals()` shape to add cost.
 
 Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_REASONS`, the consumer-only `snapshot_integer_overflow` literal and the enumerated shared coverage reason codes. Unknown code → `unclassified`; stable sorted joins for coverage reasons. No arbitrary source text is admitted merely because it passes the old sanitizer. Shared qualification failures keep their existing precedence; use the export overflow reason only when shared token qualification otherwise succeeds.
 
@@ -121,6 +112,7 @@ Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_
 - Every canonical token component is NULL together when token qualification fails; cost uses its own result. Selected/audit counts and raw evidence remain diagnostic.
 - Qualification and export representability both precede canonical token publication. The bounded overflow exception is the only source/snapshot numeric-parity exception introduced here; the shared result and policy version are unchanged. Audit subtotal NULL may mean no valid values or an unrepresentable sum, not an invented missing/invalid contributor.
 - Create audit channel rows only for actual in-filter observations. A nonempty qualified channel whose observed components are all zero has numeric zero; an empty channel/model/window gains neither a row nor a fabricated zero. Dashboard availability requires a non-NULL canonical value as well as applicable model-scoped metadata.
+- In `runQuery`, acquire rows with `stmt.getAsObject(undefined, {useBigInt: true})` for both predefined and custom queries. Keep `String(value)`/`textContent` rendering, the row cap, submitted SQL and REAL reads. Do not convert BigInt back to Number or serialize query rows with JSON; existing interaction payloads carry no query-row values. Zero displays as `0`, never `0n`. The existing bundled sql.js/WASM needs no edit.
 - Acquire source version and exported source rows from the same read snapshot; move `read_schema_version` inside the existing export transaction if needed. Generated raw/selected/audit tables must never describe different source commits.
 - Keep the recorded Option C and legacy/empty behavior. Unknown historical provenance, unresolved coverage and unpriced cost can legitimately leave an unscoped dashboard unavailable after implementation.
 
@@ -129,7 +121,7 @@ Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_
 ### Files to Modify
 
 - `scripts/little_loops/session_store/queries.py` — `_snapshot_usage_selection`, `_SnapshotTotals`, `_SHAREABLE_COLUMNS`, generated `CREATE TABLE` DDL, insert tuple/column order and export-reason admission; coherent source-version read in `build_snapshot_db`.
-- `scripts/little_loops/templates/dashboard.llat/template.html.j2` — predefined usage query and visible model-scope/availability/reason/custom-SQL guidance. Prefer explicit SQL `CASE` availability fields to changing the shared custom-SQL renderer; keep numeric zero numeric and unavailable NULL.
+- `scripts/little_loops/templates/dashboard.llat/template.html.j2` — predefined usage query, exact INTEGER retrieval in the shared `runQuery` loop and visible model-scope/availability/reason/custom-SQL guidance. Use explicit SQL `CASE` availability fields; the shared renderer already handles BigInt through `String`. Keep numeric zero numeric and unavailable NULL.
 
 ### Dependent Files
 
@@ -141,15 +133,16 @@ Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_
 
 - `scripts/tests/test_enh3543_snapshot_usage.py` — extend real `_source_db` fixtures for partial/unknown/mixed/unpriced/invalid rows, NULL model/channel, coexisting channel contributions, `since` and out-of-window overlap. Compare source `aggregate_usage`/`cost_attribution` token/cost qualification and audit subtotals on the same store; selected/raw rows and counts remain intact.
 - Assert all four token canonical fields change together, token/cost independence, unavailable vs zero, all-invalid audit values and finite-sum overflow; prove a complete channel cannot recertify an incomplete model. Compare qualification at the model scope, not a separately qualified channel.
+- Add a measured model with one NULL cost and one stored infinite cost: raw/selected missing-cost counts are exactly 1, cost reason is `invalid_cost`, valid tokens remain available and no invalid-cost subtotal is published. Check invalid token/cost inputs separately from missing and aggregate-overflow cases; no extra diagnostic columns appear.
 - Add two measured `2**62` contributors in one channel, a second complete channel of that model and an unaffected model: export succeeds, oversized raw/known subtotals are NULL, model-wide canonical tokens are NULL with the bounded overflow reason, and independently qualified costs remain numeric. Check the exact signed-64-bit boundary and insertion permutations without changing approved raw observations. Query generated fields rather than re-summing raw integers in predefined SQL.
 - Leak tests scan snapshot bytes for source/native-ID sentinels and inject both prose and a syntactically valid identifier-shaped sentinel into reason inputs; new code fields must become `unclassified`. Preserve existing approved identity columns rather than asserting that all session IDs vanished.
 - `scripts/tests/test_feat3304_artifact_dashboard.py` — allowlist hash/version lockstep, `PRAGMA table_info` order, policy version, empty/legacy/pre-v55 behavior, deterministic gzip bytes and actual predefined SQL execution on a real generated snapshot through stdlib SQLite. Require numeric zero, NULL cost plus visible unavailable reason, unknown-model bucket and model-wide taint cases; a substring assertion alone is insufficient.
-- `scripts/tests/js/feat3304/feat3304_dashboard_runtime.test.mjs` — execute the usage query/render against embedded snapshot bytes. Existing pytest Node gate runs wherever Node is available and skips gracefully when absent; `LL_REQUIRE_NODE=1` makes missing Node a failure. Do not misdescribe it as opt-in-only or add a CI workflow.
+- `scripts/tests/js/feat3304/feat3304_dashboard_runtime.test.mjs` — execute the generated page's own `runQuery`/`renderTable` with a small DOM stub against embedded snapshot bytes, without a new dependency. The existing test repeats engine calls and does not yet execute that page loop; an engine-only probe or template substring check cannot close the rendering criterion. Exercise the actual predefined usage query and a custom query of generated token fields: `2**53-1`, `2**53`, `2**53+1` and `2**63-1` render as exact decimal strings, zero as `0`, NULL with the applicable unavailable label and REAL costs unchanged. Require the SQL text and row cap to remain intact, with no BigInt query-row JSON serialization. Existing pytest Node gate runs wherever Node is available and skips gracefully when absent; `LL_REQUIRE_NODE=1` makes missing Node a failure. Do not misdescribe it as opt-in-only or add a CI workflow.
 - Preserve `scripts/tests/test_feat3323_sse_bridge.py`, `test_remote_operation_matrix.py` and `test_usage_selection_chokepoint_gate.py` for payload, export signature/return and selector seams.
 
 ### Documentation
 
-Update snapshot/table/qualification scope, policy-version, old/empty snapshot and custom-SQL guidance in `docs/reference/API.md` and `docs/reference/CLI.md`; correct stale allowlist documentation. `docs/reference/CONFIGURATION.md` changes only if mentioning policy metadata. Use end-user wording; run audience gates. No release/changelog edit here.
+Update snapshot/table/qualification scope, policy-version, old/empty snapshot, NULL-only missing-cost count semantics and custom-SQL guidance in `docs/reference/API.md` and `docs/reference/CLI.md`; correct stale allowlist documentation. State that the page preserves exact SQLite integers; do not imply SQL arithmetic beyond SQLite's range is supported. `docs/reference/CONFIGURATION.md` changes only if mentioning policy metadata. Use end-user wording; run audience gates. No release/changelog edit here.
 
 ### Configuration
 
@@ -159,10 +152,10 @@ Bump `_SHAREABLE_ALLOWLIST_VERSION` with every allowlist edit and update `TestAl
 
 - [ ] Source/snapshot token and cost qualification agree for measured/estimated/mixed, partial/unknown, invalid and unpriced contributor populations; rejected rows cannot create a canonical subset. Valid sums outside SQLite's integer range follow the documented consumer-only unavailable exception without crashing or rounding.
 - [ ] Full-identity coverage precedes filtering; window/channel/model controls preserve completeness, approved raw/selected evidence and observation counts. Logical NULL buckets and whole-model metadata are documented.
-- [ ] Canonical unavailable fields are NULL with bounded reasons; observed zero remains numeric zero. Empty channels/models create no figures or artificial zeros. Generated audit subtotals obey shared validity/finite-sum/range rules without failing on invalid or unrepresentable values; overflow does not inflate missing/invalid counts.
+- [ ] Canonical unavailable fields are NULL with bounded reasons; observed zero remains numeric zero. Empty channels/models create no figures or artificial zeros. Generated audit subtotals obey shared validity/finite-sum/range rules without failing on invalid or unrepresentable values; missing-cost counts mean NULL only, and invalid/overflow values do not inflate them. Exactly four new metadata columns are added.
 - [ ] New metadata is strictly allowlisted and leak-tested against both prose and identifier-shaped sentinels; approved existing observation identities remain unchanged.
 - [ ] Aggregate label, separate token/cost reasons and shared policy version travel on audit rows. Old snapshots are audit-only; empty new snapshots have neither figures nor a version row. No rate/page-stamp/payload/table additions.
-- [ ] Predefined SQL is executed in ordinary pytest against real generated snapshots and displays unavailable vs zero correctly; Node runtime rendering passes wherever supported. Custom SQL is unmodified and receives truthful completeness guidance.
+- [ ] Predefined SQL is executed in ordinary pytest against real generated snapshots and displays unavailable vs zero correctly. The generated page's own query/render path passes Node controls for exact integers through `2**63-1`, REAL costs, zero, NULL and row caps wherever supported. Custom SQL is unmodified and receives truthful completeness guidance; no BigInt query-row JSON serialization or vendor edit is needed.
 - [ ] Generated tables and source-version metadata use one source read snapshot; concurrent writes cannot create internally inconsistent export. Schema/allowlist/hash lockstep, reproducibility and five-key live payload controls pass.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
@@ -180,26 +173,31 @@ No qualification-core change, new source-history migration, quality/derive-statu
 
 1. Build per-model audit groups and independent token/cost qualification using the landed API; align logical buckets and audit validity.
 2. Add the four bounded metadata columns, synchronize allowlist/DDL/tuple and bump allowlist/hash pins. Preserve Option C, old/empty behavior and a coherent export snapshot.
-3. Update predefined SQL/guidance; execute it through normal pytest and embedded-browser runtime tests.
+3. Update predefined SQL/guidance and exact shared row reads; execute the SQL through normal pytest and the generated page's query/render loop through the Node gate.
 4. Extend source-parity, privacy and deterministic-export controls, update docs and run the local suite.
 
 ## Confidence Check Notes
 
-Historical missing-core checks in the log are superseded: ENH-3731/3748 exist on `main`. This review consolidates the active contract and sets size to Large instead of the stale Very Large estimate. Export/template/privacy integration remains unimplemented; re-run confidence for this contract before implementation. No new score is claimed.
+Historical missing-core checks in the log are superseded: ENH-3731/3748 exist on `main`. Export/template/privacy integration remains unimplemented. The earlier 90 readiness / 71 outcome scores predate the exact-display and fixed-count contract; cleared them with `ll-issues set-scores --clear` and removed the resolved conditional-count risk with the supported risk-factor command. Re-run confidence for this revised contract before implementation. No new score is claimed.
 
 ## Verification Notes
 
-Verdict at time of check: **VALID** (2026-10-06; no corrections were needed, so nothing was edited beyond this note).
+Verdict at time of check: **VALID** (2026-10-06; corrected contract on inspected `main` at `ec36b137d`, not an implementation or refreshed confidence pass).
 
 - Current-behavior claims hold on `main`: the snapshot selector builds per-channel totals from selected rows without calling `qualify_usage`, the totals class accepts any numeric cost (no finite check), `read_schema_version` runs before the export transaction begins, and the source schema version is 60.
 - Referenced API exists: `UsageQualification` (with `counts`, `policy_version`, `rejected_contributors`, `component_counts`), `qualify_usage`, `USAGE_QUALIFICATION_REASONS`, `UNKNOWN_MODEL_BUCKET` and `row_channel` in the token-provenance module.
 - Allowlist pins hold: allowlist version 3 with a lockstep test class pinning version and hash; the dashboard template's predefined query already reads the audit table; the Node gate honors `LL_REQUIRE_NODE`.
+- Actual vendored sql.js/WASM probe: default row retrieval returned `9007199254740992` for SQL integer `9007199254740993`; BigInt retrieval preserved the exact decimal. Added shared page-loop precision controls through the signed-64-bit boundary, including custom SQL, without a vendor change.
+- Resolved diagnostic-column ambiguity: exactly four new metadata columns; existing missing-cost counts mean NULL only, with invalid inputs tracked internally and exposed by bounded qualification reasons. The already-required allowlist bump documents the semantic change too.
 - Dependencies: ENH-3731, ENH-3748, BUG-3735, ENH-3543 and parent ENH-3723 are done; ENH-3732 and ENH-3730 (relates_to only) are open. The single `blocked_by` edge is satisfied.
 - Evidence-quote check clean; format-check reported no gaps; no required decision rules exist.
-- Graph provider: codegraph, freshness fresh (not needed to decide any verdict).
 - Proposal-vs-code check: no refuted mechanism found; every Integration Map entry maps to a criterion or step.
+- Opus consult (`claude-opus-5-5`, confidence 0.78) supported the exact reads and fixed column scope. Kept a real page-loop test despite its cheaper static/engine-only alternative, since those do not exercise the failing read/render seam. Existing related suites: **233 passed**; proposed implementation tests remain to be written.
 
 ## Session Log
+
+- `/ll:ready-issue` - 2026-10-06T23:34:46 - `rollout-2026-10-06T17-27-26-01a1138b-1e26-7522-81f8-fe08a1540f42.jsonl`
+- Pre-implementation consumer review - 2026-10-06 - Reproduced sql.js rounding of an exact stored integer and required BigInt retrieval in the actual page query/render loop. Fixed the four-column schema and NULL-only missing-cost count semantics; invalid/overflow inputs remain separate. Opus confidence 0.78; existing related suites: 233 passed. Invalidated prior confidence scores with the CLI; no implementation or fresh score claimed.
 
 - `/ll:confidence-check` - 2026-10-06T23:26:26 - `7b2080b7-52de-4a81-b19c-3b298dbc8c46.jsonl`
 - `/ll:verify-issues` - 2026-10-06T23:03:22 - `2c57054f-2b3f-496f-821f-b71d405d9036.jsonl`
