@@ -3,7 +3,7 @@ id: ENH-3743
 title: Redact history raw payloads before persistence and provide a resumable scrub
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-10-05'
 labels:
 - security
@@ -11,14 +11,15 @@ labels:
 - history
 learning_tests_required:
 - hypothesis
+decision_needed: false
 verify_verdict: VALID
-confidence_score: 85
-outcome_confidence: 63
+confidence_score: 80
+outcome_confidence: 55
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 10
 score_change_surface: 10
-decision_needed: true
+size: Very Large
 ---
 
 ## Summary
@@ -90,6 +91,41 @@ Add `ll-session redact [--dry-run] [--batch N] [--json]`, using the existing glo
 - Corrupt BLOBs, undecodable data, invalid legacy JSON, key collisions, or unsafe identity changes remain unchanged, receive safe row-ID/reason diagnostics, and make the result incomplete with a nonzero exit. Do not mark such rows sanitized. A restarted run may rescan prior rows safely; no schema migration or permanent one-time skip marker is required.
 - Every invocation may rescan with the current policy. A success covers only the reported snapshot and supported matches in the raw columns. Concurrent inserts by older writers require another pass after those writers are upgraded. Default-on new writers prevent reintroduction through supported paths.
 - Print/document that existing derived/search/summary/live rows, original transcripts, backups, SQLite free pages/WAL, and remote provider history are outside this operation's cleanup guarantee. Do not run `VACUUM` remotely or imply an UPDATE securely erases historical physical copies.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
+
+- **Open decision — guarded remote UPDATE shape.** `HranaClient.execute_many()` returns only a summed `affected_row_count` over its data steps (`session_store/hrana.py:488`), and `LibsqlConnection.executemany()` forwards that sum as `rowcount` (`session_store/libsql.py:228-230`). Per-step results are available only via `HranaClient.batch()` → `BatchResult.step_results[i].affected_row_count` / `step_errors[i]` (`hrana.py:150-158`, `:454-468`). Two shapes satisfy "guarded, atomic, conflict-detecting":
+
+**Option A**: Guarded `executemany` with summed-count check. Issue `UPDATE raw_events SET raw_line = ?, parsed_json = ? WHERE id = ? AND raw_line IS ? AND parsed_json IS ?` through `conn.executemany()` in bounded chunks. If the summed `rowcount` equals the chunk size, every row landed. If it is lower, the chunk is atomic and committed, so re-read the chunk's rows, classify each as already-sanitized or conflicted, and report the conflicted ones without overwriting.
+
+> **Selected:** Option A — reuses the `LibsqlConnection.executemany` rowcount path and backend-neutral connection surface; per-row attribution is deferred to a re-read only on a short count.
+
+**Option B**: Guarded `HranaClient.batch` with per-step results. Build explicit `BatchStep` lists (`begin`, one guarded UPDATE per row, `commit`, conditional `rollback`, following the step-condition helpers `cond_ok`/`cond_not` in `hrana.py:161-166`), call `conn.client.batch(steps)`, and read `step_results[i].affected_row_count` to attribute a guard miss to a specific row id with no re-read. Per-step SQL errors surface in `step_errors[i]` instead of raising.
+
+**Conventions and ground truth for this decision** (evidence, not templates):
+- No existing UPDATE compares a data column against a previously read value; every guard in the codebase is a status or null-state predicate (`queue_store.py:570-695`, `session_store/writers.py:1493-1500`). No existing code compares a rowcount to an expected batch size — all uses are `> 0`, `== 0`, `== 1`, truthiness or accumulation.
+- Only one remote write path consumes `rowcount` from `executemany` (`lifecycle.py:842`, the `_REMOTE_RAW_INSERT` insert), and remote writes are chunked at `_REMOTE_INSERT_CHUNK = 200` (`lifecycle.py:778`). No chunked remote read or UPDATE exists yet.
+- `BatchStep`/`client.batch` is already used for multi-step atomic remote work with per-step error inspection in `session_store/remote_schema.py:100-149` (guard step plus detection through `step_errors`/`step_results`), so Option B has an in-repo usage shape; `execute_many` is the only caller that reads `affected_row_count` from step results, and it sums.
+- Ambiguous-commit handling has exactly one in-repo handler: `remote_schema.py:_apply_one` catches `HranaUnavailable` and re-reads an idempotent marker. A redaction pass has no marker row, but the issue's own idempotent-transform and guarded-update properties make a plain re-run the equivalent safe recovery.
+- `HranaStub` (`scripts/tests/hrana_stub.py`) can model both shapes: `_batch` runs steps with conditions and records per-step errors, and `delay`/`stall_body` execute the batch server-side while the client times out (a committed-but-unacknowledged write). It has no hook to force a specific per-step `affected_row_count` or inject a per-step SQL error; a conflict test must seed a changed row through `stub.db` between read and update. No test currently asserts on a write that landed behind an `HranaUnavailable`.
+- Local SQLite maintenance in this module commits per batch and pages by self-clearing predicate (`lifecycle.py:965-990`); `id > ?` paging exists only in `_derive_usage_incremental_conn`. Neither convention covers the issue's `MAX(id)` snapshot plus keyset design, which is a deliberate departure already noted above.
+- CLI convention for maintenance subcommands: `prune`/`recompress` return 0 unconditionally and do not catch `HistoryError`; `refresh` catches `HistoryError`, prints a reason-coded skip to stderr, and exits 1 on any skip (`cli/session.py:746-843`); `migrate` resolves via `resolve_history_target`, branches on `isinstance(target, RemoteTarget)`, and returns 1 on `HistoryError` (`cli/session.py:478-522`). The `redact` incomplete-run exit contract aligns with `refresh`/`migrate`, not `recompress`.
+- `main_session()` wraps every command except `migrate` in `cli_event_context` (`writers.py:601`), so `redact` would write a `cli_events` row remotely unless it runs outside that wrapper as `migrate` does; the issue currently says to disclose it.
+
+### Decision Rationale
+
+**Selected:** Option A — guarded `executemany` with a summed-count check and a re-read on mismatch.
+
+**Reasoning:** Option A stays on the backend-neutral `conn.executemany()` surface, the only remote write path that already consumes `rowcount` (`lifecycle.py:842`), so it keeps `_guard` (read-only, schema access, deadline) and `_run` telemetry in force and mirrors the existing chunked-remote shape (`_REMOTE_INSERT_CHUNK`). Option B calls `conn.client.batch()` directly, bypassing `LibsqlConnection._guard`/`_run`, hand-builds begin/commit/rollback steps, and duplicates the local-vs-remote split. Its one advantage, per-row conflict attribution without a re-read, costs little here: a short count is the rare path, and a re-read is already required by the issue's "re-read guard conflicts" rule.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — `executemany` + summed count | 2 | 2 | 2 | 2 | 8/12 |
+| B — `batch` + per-step results | 2 | 1 | 2 | 1 | 6/12 |
+
+**Key evidence:** `libsql.py:228-230` (`executemany` → summed `rowcount`); `lifecycle.py:778,842` (chunked remote write consuming `rowcount`); `libsql.py:183-206` (`_guard`/`_run` bypassed by `client.batch`); `remote_schema.py:100-149` (only existing `batch` use, for schema migration under its own client handle); `hrana_stub.py` supports a conflict test by seeding a changed row via `stub.db` between read and update.
 
 ## Program Design
 
@@ -242,7 +278,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Keep `lifecycle._backfill_raw_events` as a module attribute with its positional call shape (monkeypatched by `test_failed_reingestion_rolls_back_existing_rows`)
 - Add the `redact` branch in `cli/session.py:main_session()` via `resolve_history_target` + `try/except HistoryError`; touch the module docstring list, epilog examples, subparser block, and import block; use a positive-int `type=` for `--batch`; do not add `redact` to `session_store/backend.py:_REMOTE_REFUSALS` or `test_remote_operation_matrix.py:_REJECTED`
 - Export `redact_raw_events` in both the import block and `__all__` of `scripts/little_loops/session_store/__init__.py` (gate: `TestPackageReexportSurface`); decide on `little_loops/__init__.py` pii re-exports
-- Design the guarded remote UPDATE around `HranaClient.execute_many()` returning only a summed row count (compare to batch size and re-read, or use `HranaClient.batch` per-step results)
+- Guarded remote UPDATE goes through `conn.executemany()` and compares the summed row count to the batch size, re-reading the batch on a short count (Option A, selected under Proposed Solution → Decision Rationale); `HranaClient.batch` per-step results are not used
 - Ensure sanitizer exceptions carry content-free messages — `cli/backfill_worker.py` prints `{exc}` to stderr in `_run_usage_trigger()` and `main()`
 - Keep sanitizer code out of `rebuild`-reachable functions (`writers._unpack_payload`, `_iter_events*`, `_backfill_*`) or bump `REBUILD_DERIVE_VERSION` and regenerate `rebuild_fingerprint.json`; run `test_enh3678_rebuild_derive_gate.py` after the comment/docstring edits in `writers.py`
 - Update stale "verbatim"/"JSON-equal" comments in `lifecycle.py`, `usage_refresh.py`, `qwen.py`, `writers.py`, `schema.py` (text only)
@@ -282,24 +318,34 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-06_
+_Added by `/ll:confidence-check` on 2026-10-06 (re-scored 2026-10-05 after `/ll:decide-issue`)_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 63/100 → MODERATE
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 55/100 → LOW
 
 ### Concerns
 - `ll-issues format-check` flags `ll-session redact (no such subcommand)` as `stale_cli_flag`. It is the forward-looking new subcommand, not a stale claim, so it is advisory only, but it caps Criterion 4 at 10.
 - Remote `redact` breaks the repo-wide `refuse_on_remote` maintenance convention (Review Notes record this as a deliberate decision). `test_remote_operation_matrix.py`, `docs/reference/CLI.md`, and `docs/reference/CONFIGURATION.md` all need an explicit exception.
-- The guarded remote `UPDATE` design is left as an either/or: `HranaClient.execute_many()` returns only a summed row count. Pick "compare to batch size and re-read" or per-step `HranaClient.batch` before coding.
+- The guarded remote `UPDATE` decision is now recorded (Option A: `executemany` + summed-count check + re-read on short count). The Wiring Phase already reflects it, but `ll-issues format-check` reports `unapplied_decision` (below), so directive sections were not rewritten to match.
 - Sanitizer placement matters: any edit to `rebuild`-reachable functions (`writers._unpack_payload`, `_iter_events*`, `_backfill_*`) trips `test_enh3678_rebuild_derive_gate.py` and needs a `REBUILD_DERIVE_VERSION` bump.
 - Open judgment calls: whether `redact_history_text`/`sanitize_history_payload` join the `little_loops/__init__.py` exports, and exact bearer/URI-userinfo match boundaries (to be settled by adversarial fixtures).
+
+### Gaps to Address
+- `unapplied_decision` (caps Criterion C at 10): the `> **Selected:** Option A` record is present, but the gate still finds rejected-option identifiers unmarked in directive sections (`HranaClient.batch` in Implementation Steps, plus `MAX(id)`, `main_session()`, `redact`, `refresh`, `resolve_history_target`, `recompress`, `cli_events` across Proposed Solution/Program Design/Files to Modify). Most of these are generic identifiers shared with the selected option, so this is largely detector noise; run `/ll:reconcile-issue ENH-3743` to mark Option B's `HranaClient.batch` mentions as rejected and clear the gate.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: shared canonicalization must stay consistent across the insert branches, Codex certification, and the `refresh_raw_events` signature, field-preservation, and column-parity checks. A mismatch rolls back every refresh.
 - Broad blast radius: every raw payload consumer (replay, usage qualification, rebuild, dedup keys) sees changed payload content. A false positive can corrupt identity or usage attribution.
-- Roughly 6-15 change sites across source, tests, and five docs files, with 15+ existing tests that may break.
+- Broad enumeration across 6-15 change sites (source, tests, five docs files), with 15+ existing tests that may break.
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-10-06T00:26:53 - `09ea1492-1a86-4cce-bf60-5f1435b6dea3.jsonl`
+- `/ll:confidence-check` - 2026-10-06T00:25:17 - `8205c006-a395-4b84-bffa-4b266393ef1b.jsonl`
+- `/ll:verify-issues` - 2026-10-06T00:24:06 - `48d916c8-bf44-4d12-9c7d-d72a3d5900a9.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-10-06T00:22:20 - `a467ce0f-32de-4026-90cb-c574efe1fbc0.jsonl`
+- `/ll:confidence-check` - 2026-10-06T00:21:13 - `7f137275-99a6-4d87-8f9e-1ce553a24130.jsonl`
+- `/ll:decide-issue` - 2026-10-06T00:19:24 - `cd8feb66-b58f-4e22-afb5-afe735ab0ed8.jsonl`
+- `/ll:refine-issue` - 2026-10-06T00:18:19 - `cd8feb66-b58f-4e22-afb5-afe735ab0ed8.jsonl`
 - `/ll:confidence-check` - 2026-10-06T00:11:33 - `cba8250f-da78-4dc9-9001-f8bed2e5e7b0.jsonl`
 - `/ll:verify-issues` - 2026-10-06T00:09:56 - `23214518-2834-45d1-9a9e-5041b278fc6e.jsonl`
 - `/ll:wire-issue` - 2026-10-06T00:08:03 - `b249786e-08d6-4f68-83f0-5c270f528ab9.jsonl`
@@ -311,3 +357,16 @@ _Added by `/ll:confidence-check` on 2026-10-06_
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P2
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-10-05
+- **Reason**: Issue too large for single session (size score 11/11)
+
+### Decomposed Into
+- ENH-3750: Add history payload redaction policy and JSON sanitizer to the pii module (Proposed Solution §1)
+- ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons (§2; blocked by ENH-3750)
+- ENH-3752: Add ll-session redact maintenance command for stored raw_events rows (§3; blocked by ENH-3750)

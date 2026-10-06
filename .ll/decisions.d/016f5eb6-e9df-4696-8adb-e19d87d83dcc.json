@@ -1,0 +1,12 @@
+{
+  "id": "9662315c-e7f1-487c-923b-3cfd068ab183",
+  "type": "decision",
+  "timestamp": "2026-10-06T00:19:14Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Stays on backend-neutral conn.executemany surface (keeps _guard/_run), matches chunked remote write shape; per-step batch bypasses LibsqlConnection guards",
+  "rule": "Guarded remote UPDATE via executemany with summed-count check and re-read on mismatch",
+  "scope": "issue",
+  "alternatives_rejected": "Guarded HranaClient.batch with per-step BatchStep results",
+  "issue": "ENH-3743"
+}

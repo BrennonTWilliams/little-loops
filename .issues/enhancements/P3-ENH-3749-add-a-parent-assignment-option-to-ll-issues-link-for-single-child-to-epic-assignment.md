@@ -94,12 +94,72 @@ Prefer extracting BUG-3738's per-pair apply core into a function that both `link
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
+
+- **BUG-3738 has landed (`status: done`)**; its pieces are in the tree, so `blocked_by: BUG-3738` is already resolved. Existing: `apply_assignment` (`scripts/little_loops/cli/issues/link_epics.py`), `upsert_frontmatter_scalars` (`scripts/little_loops/frontmatter.py`), the three-outcome `_append_child_to_epic_children` and `AmbiguousChildrenSection` (`scripts/little_loops/cli/issues/create.py`), and `find_children_section` / `iter_child_entries` (`scripts/little_loops/cli/issues/epic_consistency.py`). `ll-issues link` itself has no parent option: `_FIELD_FLAGS` and the mutually exclusive group in `add_link_parser` hold only `blocked_by`/`depends_on`/`relates_to`.
+- **`apply_assignment` today** is `apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path, child_title: str | None = None, base_dir: str = ".issues") -> bool`. It reads only `proposal.orphan_id` / `proposal.epic_id`; it does **not** validate that the target is an EPIC or that the child is BUG/FEAT/ENH (that filtering lives upstream in `is_orphan()` and the `epics` selection in `cmd_link_epics`). It returns `appended is not None`, so `False` means "no `## Children` heading, EPIC body not written". Raises `ConflictingParent`, `AmbiguousChildrenSection`, `ValueError` (unsafe frontmatter), `TimeoutError`, `OSError`.
+- **`epic:` semantics differ from this issue's wording.** `apply_assignment` writes `{"parent": epic_id, "epic": epic_id}` unconditionally (adds `epic:` when absent); Expected Behavior says "`epic` when that key is present". The conflict rule likewise checks both keys. The two must be reconciled knowingly: either the new path reuses the unconditional write, or the shared core takes the key set as a parameter. `compute_drift` in `epic_consistency.py` matches on `IssueInfo.parent` only, and `create --parent` writes `parent:` only (no `epic:`), so three writers already disagree on whether `epic:` is written.
+- **Reciprocal/`create --parent` has no EPIC-type check** on its parent and silently skips wiring if the parent does not resolve; the validation this issue requires (EPIC target, BUG/FEAT/ENH child, EPIC child rejected) is new logic with no existing helper. Type is derived from the ID prefix (`startswith("EPIC-")`, `is_orphan` / `_ORPHAN_TYPE_PREFIXES`) or the `type:` frontmatter key; `resolve_issue_path` (`issue_parser.py`, wrapped by `_resolve_issue_id` in `cli/issues/show.py`) treats the type prefix as advisory, so validation must read the resolved file's own ID/type, not the user-typed prefix.
+
+_Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
+
+- **Additional callers constrain the `link` surface** (all consume `cmd_link`/`apply_link`/`_FIELD_FLAGS`): `scripts/little_loops/cli/issues/__init__.py` (`main_issues` dispatch, `add_link_parser`; subcommand help text ~line 177), `scripts/little_loops/cli/issues/format_check.py` (`_fix_prose_deps` builds an `argparse.Namespace` with only the list-edge attributes and calls `cmd_link` — any attribute `cmd_link` reads for the new option must tolerate absence, as `blocked_by`/`depends_on`/`relates_to` do via `getattr(args, name, None)`), and `scripts/little_loops/mcp_server/tools.py` (`_tool_issue_link` calls `apply_link` directly and branches on list-shaped `LinkResult.status`; it must keep working unchanged, and MCP code must never call `cmd_*` because stdout is the JSON-RPC frame).
+- **Error-handling gap to close:** `cmd_link` catches only `ValueError` (prints `Error: …`, exit 1). `TimeoutError` from `acquire_lock` and `OSError` from `atomic_write` propagate uncaught today, yet the Acceptance Criteria require a lock timeout to be rejected cleanly with no writes. `link-epics --apply` already maps every failure class to a `rejected` reason (`conflicting_parent`, `ambiguous_children_section`, `metadata_unsafe`, `lock_timeout`, `write_failed`); the catch order matters because the first two are `ValueError` subclasses.
+- **Flag spelling collision (test-enforced):** `--parent` is *not* a valid `ll-issues link` flag today, and two tests use exactly that as the stale-flag regression example: `scripts/tests/test_cli_surface.py` (`test_build_cli_surface_index_against_real_ll_issues_link` asserts `cli_surface_accepts(idx, "ll-issues", "link", "--parent") is False`) and `scripts/tests/test_feat3048_symbol_cli_claim_gaps.py` (`test_stale_cli_flag_gap_populated_feat_2942_regression`, which feeds that same `link`-plus-`--parent` example into issue text and expects a `stale_cli_flag` gap). Choosing `--parent` for the new option requires re-pointing those fixtures at a different nonexistent flag; choosing another spelling avoids it. Either way the choice is deliberate. `--parent` already means "EPIC ID" on `create` and "ancestor filter" on `list`; `--force` already means "skip target-existence validation" on `link`; `--reciprocal` is declared on `link` but out of scope here; `--re` is already ambiguous among `--remove`/`--reciprocal`/`--relates-to` (no `allow_abbrev` set), and no `--reparent`/`--move-parent`/`--set-parent` exists anywhere.
+- `_write_reciprocal` and `apply_link` use `update_frontmatter` (full re-dump) and plain `atomic_write` (no `shared_mode`, `read_text()` not `newline=""`); the parent path must instead follow the preserving contract that `apply_assignment` holds (CRLF, mode, unrelated bytes unchanged), so it cannot be built by extending `apply_link`'s body.
+
+_Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
+
+- **Conventions in force:**
+  - Subcommand logic is a non-printing core returning a result dataclass plus a thin `cmd_*` shell that prints and returns the exit code (`apply_link`/`cmd_link`, `link_epics.apply_assignment`/`cmd_link_epics`); `--json` emits exactly one document via `print_json`. Evidence: `link.py` `_report`, `link_epics.py` `cmd_link_epics`. The two commands disagree on the `--json` dest name (`json_output` on `link`, `json` on `link-epics`); the new option lives on `link`, so `json_output`.
+  - Two-file writes: one `acquire_lock(issue_lock_path(path, base_dir))`, re-read both files inside it with `newline=""`, compute both texts, write only files whose text changed, child before EPIC, `atomic_write(..., shared_mode=True)`, and a failed second write re-raises naming `ll-issues epic-consistency --fix <EPIC>`. Evidence: `link_epics.py:apply_assignment`. `apply_link` holds one lock across source and reciprocal writes and never nests a second `acquire_lock` (flock contends within a single process; `test_bug3150_issue_mutator_atomicity.py::TestLockIsTaken` asserts a single acquisition).
+  - Children placement/duplicate detection goes through `find_children_section` + `iter_child_entries`; `fix_epic` (`epic_consistency.py`) is the dissenting writer (appends `(added by epic-consistency --fix)` at section end, creates a section at EOF, no lock, no `shared_mode`) and is category-(a)-only; the new path follows `_append_child_to_epic_children`, which never creates a missing heading.
+  - Bullet format written by the shared helper: `- **ID** — <title> (open)`, title whitespace-collapsed; the title fallback chain is `_fallback_title` (frontmatter title → H1 minus ID prefix → filename stem).
+
+## Program Design
+
+### Types
+- `LinkResult(issue_id: str, field: str, target_id: str, status: str)` in `scripts/little_loops/cli/issues/link.py` — status vocabulary today is `unchanged | linked | unlinked | would_link | would_unlink`; `_report` indexes a verb dict by status, so any new status value a parent path returns must be added there or it raises `KeyError`. Whether the parent path reuses `LinkResult` (with `field="parent"`) or gets its own result type is open; `to_dict()` / the `--json` document must stay a single flat document.
+- `EpicProposal` in `scripts/little_loops/cli/issues/link_epics.py` — carries `orphan_id`/`epic_id` (plus score/tier); `apply_assignment` consumes only the two IDs.
+- `ConflictingParent(ValueError)` in `link_epics.py` and `AmbiguousChildrenSection(ValueError)` in `scripts/little_loops/cli/issues/create.py` — the error taxonomy the parent path must map to non-zero exits.
+
+### Signatures
+- `apply_link(config: BRConfig, *, issue_id: str, field: str, target: str, unlink: bool = False, reciprocal: bool = False, force: bool = False, dry_run: bool = False) -> LinkResult` — raises `ValueError` for a `field` outside `_FIELD_FLAGS`; the new scalar relationship does not belong in that tuple (MCP `_tool_issue_link` and `format_check._fix_prose_deps` both depend on its list-edge meaning).
+- `cmd_link(config: BRConfig, args: argparse.Namespace) -> int` — exit 0 on success including `unchanged` and dry-run; exit 1 only via `ValueError`.
+- `apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path, child_title: str | None = None, base_dir: str = ".issues") -> bool` — returns `False` when the EPIC has no `## Children` heading.
+- `upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str` in `scripts/little_loops/frontmatter.py` — span-preserving; leaves a key untouched when its merged value already equals the request; raises `ValueError` on mixed line endings, duplicate keys, non-scalar values, unterminated blocks.
+- `_append_child_to_epic_children(content: str, child_id: str, child_title: str) -> str | None` — `None` = no exact heading, same text back = already listed, otherwise new text; raises `AmbiguousChildrenSection`.
+- `find_children_section(content: str) -> tuple[int, int] | None` and `iter_child_entries(section_text: str) -> list[ChildEntry]` in `scripts/little_loops/cli/issues/epic_consistency.py`.
+- New (to be defined at implementation): an apply function for the parent relationship and its `add_link_parser` option wiring; the signature is the implementer's call, subject to the contract in Decision Rules.
+
+### Call Path
+`main_issues` -> `cmd_link` -> (existing) `apply_link` -> `atomic_write`; and (new) `main_issues` -> `cmd_link` -> parent-assignment apply -> `acquire_lock` -> `upsert_frontmatter_scalars` + `_append_child_to_epic_children` -> `atomic_write`. `cmd_link_epics` -> `apply_assignment` is the existing sibling of the new path and must keep its behavior and tests unchanged if its core is shared.
+
+### Decision Rules
+- **Target validation:** the resolved target's own ID/`type` must be EPIC, else exit 1 with no writes. The child must resolve to BUG/FEAT/ENH; an EPIC child is rejected (sub-EPICs use `relates_to` + prose). A target that does not resolve is an error (no `--force` bypass specified).
+- **Conflict rule:** if the child's `parent` or `epic` is non-null and differs from the target EPIC ID, exit 1 with no writes unless the explicit reparent switch is given; same ID = idempotent, not a conflict. This mirrors `apply_assignment`'s `ConflictingParent` check.
+- **Idempotency:** unchanged frontmatter and an already-listed child produce no write on either file and report `unchanged`. Already-listed child + missing back-reference (category-(b) drift) writes the child's frontmatter only.
+- **Failure mapping:** `AmbiguousChildrenSection`, unsafe frontmatter, lock `TimeoutError`, and `OSError` each exit non-zero with no further writes; a second-write failure names `ll-issues epic-consistency --fix <EPIC>`. Missing `## Children` heading is **not** a failure: frontmatter is written, exit 0, and the output (text and `--json`) says the body write was skipped.
+- **Reparent:** moves `parent`/`epic` and adds the bullet on the new EPIC; the old EPIC's stale bullet is reported, never removed.
+- **Escape hatch:** the explicit reparent switch is the only override; `--force` keeps its existing meaning.
+
 ## Implementation Steps
 
 1. After BUG-3738 lands, extract its per-pair apply core (lock, re-read, validate, compute both texts, ordered changed-file writes) into a reusable function, keeping `link-epics` behavior and tests unchanged.
 2. Add the option to `ll-issues link`, with validation (EPIC target, BUG/FEAT/ENH child), conflict and reparent handling, and `--dry-run`/`--json` reporting.
 3. Add the `test_link_cli.py` cases above, then update CLI.md, COMMANDS.md, the link-epics skill and its mirrors.
 4. Run the focused suites, then `python -m pytest scripts/tests/`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
+
+- **Test conventions:** class-based, inline issue text, "no writes" asserted by `read_bytes()`/`read_text()` equality or a patched `little_loops.file_utils.atomic_write` with `assert_not_called()` — not mtime. Lock-timeout is tested by patching `little_loops.file_utils.acquire_lock` with `side_effect=TimeoutError` (`test_link_epics_cli.py::TestApplyAssignmentHardening::test_lock_timeout_leaves_files_untouched`); second-write failure by wrapping `atomic_write` to raise `OSError` for the EPIC path. `test_link_cli.py::TestIssuesCLILink` drives `main_issues()` via patched `sys.argv` and has no lock-timeout test and no parsed-JSON assertion today (`test_link_json_output` only checks the return code), so the single-document `--json` criterion needs a test that actually parses the output. `_write_issue` there writes only under `features/`; EPIC fixtures need `epics/`.
+- **Regression surfaces to keep green:** `test_link_epics_cli.py` (if the core is shared), `test_bug3150_issue_mutator_atomicity.py::TestLockIsTaken` (single lock acquisition per link), `test_feat_3149_mcp_mutation_tools.py` (`issue_link`, `not_a_field`), `test_cli_surface.py` and `test_feat3048_symbol_cli_claim_gaps.py` (the `--parent` stale-flag fixtures, see Integration Map), and `test_link_epics_skill.py` (substring checks on `skills/link-epics/SKILL.md`).
+- **Docs sync surface:** `docs/reference/CLI.md` `ll-issues link` section (~lines 3189-3223, flag table + Examples; the `link-epics` section after it documents reason codes and `epic-consistency --fix`), `skills/link-epics/SKILL.md` (~lines 82-88 currently say a non-top EPIC "need[s] a manual edit"; A3 documents reject reasons), and `scripts/little_loops/cli/help.py` / `docs/reference/API.md` where link-epics is named. `docs/reference/COMMANDS.md` has no `ll-issues link` entry (only the `/ll:link-epics` skill), so adding an entry there is a new-content decision, not an update. Host mirrors are gated by `test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` (regenerate with `ll-adapt --host <host> --apply`).
+- **Stale ordering note:** Step 1 above is phrased "After BUG-3738 lands"; it has landed, so the shared per-pair core can be extracted from `apply_assignment` immediately (it currently takes an `EpicProposal` and a path pair, with no ID/type validation).
 
 ## Acceptance Criteria
 
@@ -142,4 +202,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-10-06T00:55:53 - `03a6fd69-1d12-493d-b61f-d9a48062a4d3.jsonl`
 - `/ll:capture-issue` - 2026-10-05T23:43:06 - `dfedb32a-de04-4382-86b8-3c6cab5d9da5.jsonl`

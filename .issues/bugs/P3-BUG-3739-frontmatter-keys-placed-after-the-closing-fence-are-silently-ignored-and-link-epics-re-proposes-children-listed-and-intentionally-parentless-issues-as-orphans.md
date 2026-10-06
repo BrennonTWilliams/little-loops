@@ -15,12 +15,7 @@ labels:
 relates_to:
 - BUG-3738
 verify_verdict: VALID
-confidence_score: 95
-outcome_confidence: 70
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 25
-score_change_surface: 10
+reconcile_attempted: true
 ---
 
 # BUG-3739: Frontmatter keys placed after the closing fence are silently ignored, and link-epics re-proposes Children-listed and intentionally-parentless issues as orphans
@@ -196,7 +191,7 @@ Exclusions/drift alone exit 0 and do not write. Text mode names primary counts a
 - `scripts/little_loops/frontmatter.py` — house raw post-fence entry/span analysis beside existing block geometry if useful; do not change `parse_frontmatter` precedence.
 - `scripts/little_loops/cli/issues/format_check.py` — render loop, per-issue repair dispatch, and parser/help/docstring gap/fix lists; do not add the repair to sweep-safe kinds.
 - `scripts/little_loops/cli/issues/link_epics.py` — misplaced-metadata exclusion, local marker classification, all-status EPIC exclusion index, deterministic text/JSON reporting in both modes, and accurate orphan help.
-- `scripts/little_loops/cli/issues/epic_consistency.py` — safe shared child-entry and section recognition, exposed as the public `find_children_section`/`iter_child_entries` recognizer (created here if this issue lands first, otherwise adopted from BUG-3738); retain `compute_drift` category-(b) meaning and the separate fix policy.
+- `scripts/little_loops/cli/issues/epic_consistency.py` — no recognizer is created here: BUG-3738 (done) landed the public `find_children_section`/`iter_child_entries`/`ChildEntry` recognizer in `cda52e0eb`, and `_parse_children_body` now delegates to it. Consume it; touch this file only if the landed grammar lacks a fence or whole-ID safeguard this issue's exclusion index needs. Retain `compute_drift` category-(b) meaning and the separate fix policy.
 - `scripts/little_loops/cli/issues/__init__.py` — update the manually maintained format-check help summary.
 
 ### Dependent Files
@@ -205,7 +200,7 @@ Exclusions/drift alone exit 0 and do not write. Text mode names primary counts a
 - `scripts/little_loops/loops/rn-remediate.yaml` and `skills/format-issue/SKILL.md` consume the format-check exit result; the new kind remains blocking.
 - `skills/confidence-check/SKILL.md` documents which structure gaps have automatic remedies; synchronize that statement and its pinned test if updated.
 - `skills/link-epics/SKILL.md` parses both payloads. Show exclusion/drift reports before its early return on empty proposals/clusters, otherwise a run consisting entirely of exclusions hides the result.
-- BUG-3738 updates the same command's writes/result bookkeeping (one-winner apply, an additive `rejected` list, a per-pair lock, exit code 1 on rejection). Keep this issue's additive exclusion keys compatible with those; the fixes have no semantic prerequisite on each other but share the Children recognizer (see Children Recognition and Status Rules) and should land serially. Note the interaction: BUG-3738 writes the orphan first, so its partial write (orphan parented, EPIC bullet missing) removes the issue from the orphan set and never reaches this classifier; it is repaired by `epic-consistency --fix`. Children-listed drift here arises only from manual or pre-existing listings without a back-reference.
+- BUG-3738 (done) already updated the same command's writes/result bookkeeping (one-winner apply, an additive `rejected` list, a per-pair lock, exit code 1 on rejection) and landed the shared Children recognizer (`cda52e0eb`). Keep this issue's additive exclusion keys compatible with those; no serial-landing constraint remains. Note the interaction: BUG-3738 writes the orphan first, so its partial write (orphan parented, EPIC bullet missing) removes the issue from the orphan set and never reaches this classifier; it is repaired by `epic-consistency --fix`. Children-listed drift here arises only from manual or pre-existing listings without a back-reference.
 
 ### Tests
 
@@ -229,7 +224,7 @@ No setting, third-party dependency, model call, or broad issue-schema migration.
 ## Implementation Steps
 
 1. Add detector/fixer regressions, including conflict/multiline refusals and valid-multiple-block/fenced/body false positives. Run the raw detector over the local issue corpus and inspect hits before enabling the blocking gap; repair only verified safe records. Then wire the blocking gap and conservative per-issue repair.
-2. Check whether BUG-3738 has landed the shared Children recognizer; if not, create it in `epic_consistency.py` first (small prerequisite commit with its own tests). Add malformed-metadata exclusion, local `parentless_reason` classification, and the all-status documented-child index (non-terminal claims exclude; terminal claims report only) on top of it. Filter before assign, synthesize, apply, and deep paths.
+2. Consume the existing shared Children recognizer (`find_children_section`, `iter_child_entries`, `ChildEntry` in `epic_consistency.py`, landed by BUG-3738 in `cda52e0eb`) — no prerequisite commit. Add malformed-metadata exclusion, local `parentless_reason` classification, and the all-status documented-child index (non-terminal claims exclude; terminal claims report only) on top of it. Filter before assign, synthesize, apply, and deep paths.
 3. Emit the defined skip/drift reports in both output modes, including no remaining candidates and multiple/overlapping claims; update skill early-return handling.
 4. Synchronize help/API/template/skill contracts and affected mirrors.
 5. Run focused parser/format/link/consistency/skill regression suites and changed-code lint/types, then the authoritative `python -m pytest scripts/tests/`.
@@ -240,7 +235,7 @@ No setting, third-party dependency, model call, or broad issue-schema migration.
 - [ ] Safe single-line, absent-key runs move inside one valid block without unrelated byte/newline/mode changes; preview and sweep mode do not write, successful apply is idempotent, and duplicate/colliding/multiline/malformed/multi-block runs stay reported without partial movement.
 - [ ] Misplaced parenting metadata excludes candidates before any new assignment, including unsafe repair shapes; a correctly placed non-empty `parentless_reason` opts out, and null/empty/whitespace/non-scalar values still qualify as orphans.
 - [ ] Real child entries in non-terminal EPICs exclude candidates before scoring/deep calls; claims from `done`/`cancelled` EPICs are reported (`blocks_proposal: false`) without excluding; fenced/prose/partial-ID entries do not count. Several claimants and overlapping opt-out/membership reasons remain visible without any automatic reparenting.
-- [ ] The Children recognizer exists once, shared with BUG-3738's writer and the consistency checker.
+- [ ] The Children recognizer stays single-sourced: the exclusion index calls the public `find_children_section`/`iter_child_entries` landed by BUG-3738 (shared with its writer and the consistency checker), and this issue adds no second implementation of section selection, fence handling, or whole-ID matching.
 - [ ] Both modes always emit the defined counters/detail lists, including zero/all-excluded runs; primary counts are disjoint and secondary EPIC claims/statuses remain visible. JSON stdout stays clean, exclusions/drift alone exit 0, and file-read failures produce explicit nonzero errors.
 - [ ] Parser/model compatibility and consistency-reader regression tests pass; docs, help, and skill consumers describe and display the final contract; focused and full local suites pass.
 
@@ -265,7 +260,23 @@ Used `/ll:advise --signal user_requested --host claude-code --model opus` for cr
 
 **Open** | Created: 2026-10-05 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-05_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 70/100 → MODERATE
+
+### Concerns
+- Criterion 4 is capped at 10/20 by that claim gap only; no other readiness gap found. Program Design gate, dependencies (`relates_to: BUG-3738` is done), and unproven-mechanism flag are all clear.
+
+## Resolved Concerns
+
+- [resolved 2026-10-05 by /ll:reconcile-issue] Stale claim (`stale_symbol_ref`): `_section_bounds` in `epic_consistency.py` no longer exists; BUG-3738 landed the shared recognizer in `cda52e0eb` — the "created here if this issue lands first" wording in Files to Modify and Implementation Step 2's "check whether BUG-3738 has landed" prerequisite were out of date — rewrote Files to Modify, Dependent Files, Implementation Step 2 and the recognizer Acceptance Criterion to consume the existing public recognizer (the Root Cause bullet sits outside the rewrite scope and was left as-is).
+
 ## Session Log
+- `/ll:reconcile-issue` - 2026-10-06T00:58:23 - `25f9ee70-9553-4942-b494-3226cac87846.jsonl`
+- `/ll:confidence-check` - 2026-10-06T00:13:52 - `c9f2014b-1e92-4dc8-a5a8-e4b3f5742389.jsonl`
 - `/ll:confidence-check` - 2026-10-05T23:26:54 - `dfedb32a-de04-4382-86b8-3c6cab5d9da5.jsonl`
 - `/ll:confidence-check` - 2026-10-05T21:03:07 - `275ebb58-903a-4210-9cb0-e88316d19a35.jsonl`
 - `/ll:ready-issue` - 2026-10-05T20:18:56 - `c6ed73f5-2103-48a0-bfaa-97a8901cbedc.jsonl`
