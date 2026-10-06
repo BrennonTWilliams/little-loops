@@ -17,6 +17,53 @@ spike_needed: true
 spike_attempted: true
 spike_completed: true
 size: Very Large
+confidence_score: 85
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: cli-parse-before-telemetry
+  domain: readiness
+  criterion: architecture
+  description: Parse-once-before-cli_event_context reroutes _main_session and drops
+    help/usage-error telemetry for every ll-session command
+- id: deep-concurrency-accounting
+  domain: outcome
+  criterion: complexity
+  description: Guarded writes, ambiguous-commit reconciliation, ABA accounting and
+    interruption transitions share state across local/remote paths
+- id: estimator-contract-stale-vs-spike
+  domain: readiness
+  criterion: well_specified
+  description: Contract keeps a flat sixfold context-TEXT bound; spike proved it undercounts
+    non-ASCII (needs 2x/6x/12x tiers)
+- id: m3-split-undecided
+  domain: outcome
+  criterion: ambiguity
+  description: Remote milestone M3 split is left conditional with no recorded decision
+    after M0 completed
+- id: main-session-routing-blast-radius
+  domain: outcome
+  criterion: change_surface
+  description: Changing _main_session parse ordering touches the dispatch path of
+    every ll-session subcommand and its telemetry tests
+- id: related-maintenance-helpers
+  domain: readiness
+  criterion: no_duplicates
+  description: recompress_raw_events and ENH-3751 decode/compare helpers overlap in
+    purpose but cannot be reused (unbounded decode, local-only)
+- id: stale-spike-status-text
+  domain: readiness
+  criterion: well_specified
+  description: Status footer, Confidence Check Notes and Review Notes still describe
+    M0 spike as absent/outstanding after it was PROVEN
+- id: wide-site-count
+  domain: outcome
+  criterion: complexity
+  description: Five production files plus four doc files and many test files across
+    two backends and the CLI
 ---
 
 # ENH-3752: Add ll-session redact maintenance command for stored raw_events rows
@@ -339,7 +386,26 @@ _Added by `/ll:spike` on 2026-10-06_
 **Assumptions not proven**: hosted-provider (Turso/sqld) parity; the stub is SQLite-backed. The lost-acknowledgement test runs without `no_parallel` (0.4 s timeout against a 1.5 s post-commit stall); the serial real-I/O gate remains an implementation-time task.
 **Promotion**: fold into its production module under `project.src_dir` and its test under `project.test_dir`, in a separate PR.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+Supersedes the earlier Confidence Check Notes above: M0 is now PROVEN (`ll-learning-tests assess` → proven; `spike_completed`), so the unproven-mechanism cap is suppressed.
+
+### Concerns
+- Contract text still specifies a flat sixfold bound for arbitrary context TEXT; the spike proved this undercounts non-ASCII — fold the tiered 2×/6×/12× (or measured `encode_value`) bound into "Resource bounds and request packing".
+- Status footer, Review Notes and the older Confidence Check Notes still describe M0 as outstanding; refresh them so the issue does not contradict its own Spike Results.
+- Parse-once-before-telemetry changes `_main_session` dispatch for every `ll-session` subcommand; keep the existing telemetry/remote-caller gates green.
+- Remote milestone M3 split is left conditional ("only if M0 proves it needs") with no recorded decision now that M0 passed.
+
+### Risk Factor Delta
+- Baseline: none recorded
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T21:10:02 - `4fc0d666-699d-4898-92bb-0f49567df55d.jsonl`
 - `/ll:spike` - 2026-10-06T21:03:01 - `abc671b1-1433-4acc-b1c8-d9248434e4e4.jsonl`
 - `/ll:confidence-check` - 2026-10-06T09:57:04 - `6e20ecba-9b39-4fa5-a2d1-2716b647e53a.jsonl`
 - `/ll:verify-issues` - 2026-10-06T09:55:28 - `5670a7ad-a6f3-4ca8-8442-6031f1500522.jsonl`
