@@ -28,6 +28,17 @@ logger = logging.getLogger(__name__)
 EventCallback = Callable[[dict[str, Any]], None]
 
 
+def event_loop_name(event: dict[str, Any]) -> str | None:
+    """Return the loop name an FSM event belongs to, or ``None``.
+
+    ``FSMExecutor._emit`` stamps every event with ``loop`` (ENH-3345); older
+    payloads and hand-built events used ``loop_name``. Transports read both so
+    live rows and spans keep their loop identity (BUG-3755).
+    """
+    name = event.get("loop") or event.get("loop_name")
+    return str(name) if name else None
+
+
 @dataclass
 class LLEvent:
     """Structured event emitted by little-loops subsystems.

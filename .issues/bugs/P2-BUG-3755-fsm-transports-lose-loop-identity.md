@@ -3,7 +3,8 @@ id: BUG-3755
 title: SQLite and OTel transports lose FSM loop identity
 type: BUG
 priority: P2
-status: open
+status: done
+completed_at: '2026-10-06T00:00:00Z'
 discovered_date: '2026-10-05'
 verify_verdict: VALID
 labels:
@@ -150,9 +151,24 @@ Resume test trap: `resume()` emits `loop_resume` and then `loop_start`; the latt
 
 The prior 95/86 confidence scores and component scores were removed because they assessed the previous combined scope and unsupported impact rationale. A later confidence check must assess this revised issue rather than reusing those scores.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-06
+- **Status**: Completed
+
+### Changes Made
+- `events.py`: `event_loop_name()` reads the executor-stamped `loop` key, falling back to `loop_name` for older payloads.
+- `transport.py`: `OTelTransport._handle_loop_start` and `_handle_loop_resume` name the loop span through it, so spans are named after the loop instead of `ll-loop`.
+- `session_store/writers.py`: `SQLiteTransport.send` records the loop name through it, so live `loop_events` rows are no longer NULL.
+- `scripts/tests/test_bug3755_transport_loop_identity.py`: drives a real `PersistentExecutor` through its event bus into both transports (fails without the fix).
+
+### Scope note
+The branch also shipped route-endpoint persistence that this issue scoped out to BUG-3758: schema v60 adds nullable `loop_events.to_state` (a `route` row keeps `from` as `state` and records `to` in `to_state`). BUG-3758 should be re-checked against this before implementation.
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P2
+**Completed** | Created: 2026-10-05 | Completed: 2026-10-06 | Priority: P2
 
 ## Session Log
 - `/ll:advise` - 2026-10-06T09:04:30 - `da8cdf64-7ea1-489f-a22f-62d03c35c5b9.jsonl`

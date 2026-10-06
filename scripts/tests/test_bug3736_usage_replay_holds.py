@@ -102,6 +102,8 @@ def _downgrade_and_remigrate(db: Path) -> None:
     conn = sqlite3.connect(str(db))
     try:
         conn.execute("DROP TABLE usage_replay_holds")
+        # A v58 store predates every later migration too (v60, BUG-3755).
+        conn.execute("ALTER TABLE loop_events DROP COLUMN to_state")
         conn.execute("UPDATE meta SET value = '58' WHERE key = 'schema_version'")
         conn.commit()
     finally:
@@ -484,7 +486,7 @@ class TestLegacySeeding:
     ) -> None:
         db = tmp_path / "h.db"
         ensure_db(db)
-        assert SCHEMA_VERSION == 59
+        assert SCHEMA_VERSION == 60
         assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(0,)]
         assert lifecycle._USAGE_DERIVE_VERSION == "enh3651-v1"
         assert lifecycle.REBUILD_DERIVE_VERSION == "enh3678-v1"
