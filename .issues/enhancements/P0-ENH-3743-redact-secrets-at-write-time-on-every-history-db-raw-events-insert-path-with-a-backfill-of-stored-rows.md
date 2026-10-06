@@ -14,6 +14,14 @@ goals:
 - 7
 captured_at: "2026-10-05T00:00:00Z"
 source_issue: ll-product/ENH-464 (promoted 2026-10-05)
+scope_boundary:
+  raw_events_only: true
+  deferred_to: ENH-3750
+  rationale: |
+    Promotion scope is explicitly raw_events-only per the source spec's
+    "Promotion scope" clause. Direct-write tables (cli_events, file_events,
+    hook_events, usage_events live writer, commit_events, issue_events,
+    test_run_events) are out of scope; tracked under ENH-3750.
 ---
 
 # ENH-3743: Redact secrets at write time on every history.db raw_events insert path, with a backfill of stored rows [promoted]

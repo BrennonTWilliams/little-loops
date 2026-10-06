@@ -5,6 +5,8 @@ type: ENH
 priority: P1
 status: open
 parent: ENH-3743
+relates_to:
+- ENH-3750
 captured_at: "2026-10-05T00:00:00Z"
 labels: [redaction, history-db, session-store, security]
 ---
