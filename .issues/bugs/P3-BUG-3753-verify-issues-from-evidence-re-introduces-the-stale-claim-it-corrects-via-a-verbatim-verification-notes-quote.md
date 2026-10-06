@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-06'
 captured_at: '2026-10-06T01:01:37Z'
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3753: Historical verification notes re-trigger blocking stale-file findings
@@ -120,6 +126,7 @@ BUG-3637, ENH-3690 and BUG-3695 are background for the existing correction flow.
 **Open** | Reviewed: 2026-10-06 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T18:08:39 - `f53c33ea-4b32-4695-9997-91e6e5833639.jsonl`
 - `/ll:confidence-check` - 2026-10-06T02:18:10 - `e2600ce5-ae49-45dd-9f4d-c7454cd772ad.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-06T02:14:49 - `dd470030-53a4-4ea7-a28e-a42612652be7.jsonl`
 - `/ll:wire-issue` - 2026-10-06T02:10:41 - `f07bd331-c0c6-4aed-ba28-ade85ff49455.jsonl`
