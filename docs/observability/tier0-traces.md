@@ -164,7 +164,12 @@ Five behavioral nuances the implementer must respect:
    `has_unknown_model: false` is therefore the AND of all bucket-level
    flags; an implementer adding a third trace that touches a non-Claude
    model must either ensure that trace's `model` resolves in
-   `MODEL_PRICING` or relax this assertion.
+   `MODEL_PRICING` or relax this assertion. ENH-3719 adds a
+   `Note: <ids> not priced; cost shown is n/a.` footer line below the
+   table for any unrecognized concrete IDs and a `Note: usage rows with
+   no price identifier (unknown, None, "") contribute to n.a.` line for
+   sentinel rows; the diagnostic collection is intentionally absent from
+   the per-trace JSON envelope (locked shape preserved).
 
 4. **Print output is sorted lexicographically, not in YAML order.**
    `cost_graph.py:136` (`CostReport.table()`) iterates

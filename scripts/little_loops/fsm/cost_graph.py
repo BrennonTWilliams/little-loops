@@ -25,7 +25,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from little_loops.pricing import _event_date, estimate_cost_usd
+from little_loops.pricing import MODEL_PRICING, _event_date, estimate_cost_usd
 
 # Locked JSON keys (do not reorder / rename without a schema version bump).
 _STATE_KEYS = (
@@ -38,6 +38,34 @@ _STATE_KEYS = (
     "cost_usd",
     "wallclock_ms",
 )
+
+# ENH-3719: pinned sentinel set for "the row's model identifier is missing
+# rather than unknown-by-name". When a row carries one of these as its model,
+# the diagnostic listing renders a separate "missing identifier" footer line
+# (so the user can see *why* the cost is n/a: not a missing price, but no
+# identifier to look up). Everything else (concrete IDs, dated/prefixed/
+# suffixed variants, or any other unrecognized name) lands in the concrete
+# footer line.
+_MISSING_MODEL_SENTINELS = frozenset(
+    {
+        "unknown",  # default str(None) after the row dict lookup
+        "none",   # str(None) — persisted rows with JSON-null model
+        "",      # explicit empty string
+        " ",     # whitespace-only after strip
+    }
+)
+
+
+def _is_missing_model_sentinel(model: str) -> bool:
+    """Return True if the model's effective identifier is a missing-ID sentinel.
+
+    The sentinel set (``unknown``, ``None``, ``""``, whitespace-only) is
+    distinct from concrete IDs (which may be unrecognized but still name a
+    specific model — e.g. ``claude-sonnet-5-5-20261001``, ``anthropic.fable-5``,
+    ``claude-opus-5[1m]``). The footer splits these two cases so the user
+    can tell *why* the cost is n/a: no identifier vs. identifier not priced.
+    """
+    return model.strip().lower() in {s.lower() for s in _MISSING_MODEL_SENTINELS}
 
 
 # ENH-3538: token components tracked for completeness. A ``None`` component is
@@ -256,24 +284,51 @@ class CostReport:
     Attributes:
         states: Per-state aggregates (one PerStateCost per state).
         totals: Run-wide aggregate keyed by the same metric names.
+        unpriced_models: Sorted, de-duplicated effective pricing IDs absent
+            from ``pricing.MODEL_PRICING`` (concrete IDs only; sentinel
+            missing-IDs land in ``unpriced_missing_sentinels``). Diagnostic
+            only — intentionally absent from the stable JSON shape so an
+    unknown-model report round-trips without diagnostic metadata
+            (ENH-3719). Once BUG-3724 lands and the per-contribution
+            identity is available, ``unpriced_models`` collects every
+            contributor's pricing ID, not just the legacy aggregate one.
+        unpriced_missing_sentinels: True when at least one row's model is
+            a sentinel from ``_MISSING_MODEL_SENTINELS`` (no price
+            identifier to look up). Diagnostic only — absent from JSON.
     """
 
     states: list[PerStateCost] = field(default_factory=list)
     totals: dict[str, Any] = field(default_factory=dict)
+    unpriced_models: list[str] = field(default_factory=list)
+    unpriced_missing_sentinels: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the locked stable-JSON shape for the report."""
+        """Return the locked stable-JSON shape for the report.
+
+        ``unpriced_models`` and ``unpriced_missing_sentinels`` are diagnostic
+        only — they are intentionally absent from the stable JSON shape so
+        the JSON consumer (cli/loop/summary.py writes this for downstream
+        tools) never reads a diagnostic field it didn't have before
+        ENH-3719.
+        """
         return {
             "states": [s.to_dict() for s in self.states],
             "totals": dict(self.totals),
         }
 
     def table(self) -> str:
-        """Render the existing CLI cost table (byte-identical to legacy output).
+        """Render the existing CLI cost table with optional ENH-3719 footer.
 
-        Header and separator line widths match the original
-        ``_print_usage_summary`` at ``cli/loop/summary.py``:
-        the separator is ``"-" * 68``. Rows are sorted by state name.
+        When ``unpriced_models`` is non-empty OR
+        ``unpriced_missing_sentinels`` is true, one or two footer lines
+        appear after the state rows. The footer is end-user-phrased and
+        never instructs the user to edit ``little_loops.pricing`` —
+        it only names the IDs and sentinel rows that the report could not
+        price.
+
+        An empty report (no states) renders no footer (no table for the user
+        to read); the calling code short-circuits in that case but the
+        guard here is defensive.
         """
         lines: list[str] = []
         lines.append(
@@ -282,6 +337,17 @@ class CostReport:
         lines.append("-" * 68)
         for state in sorted(self.states, key=lambda s: s.state):
             lines.append(state.table_row())
+        if self.states:
+            if self.unpriced_models:
+                lines.append(
+                    f"Note: {', '.join(self.unpriced_models)} not priced; "
+                    "cost shown is n/a."
+                )
+            if self.unpriced_missing_sentinels:
+                lines.append(
+                    "Note: usage rows with no price identifier "
+                    "(unknown, None, \"\") contribute to n/a."
+                )
         return "\n".join(lines) + "\n"
 
     # ------------------------------------------------------------------
@@ -354,6 +420,16 @@ class CostReport:
         if not text.strip():
             return cls()
 
+        # ENH-3719: diagnostic-only collections for the table() footer.
+        # Sorted and de-duplicated at return; concrete-IDs are effective
+        # pricing IDs absent from ``MODEL_PRICING``; the boolean captures
+        # whether any row carried a missing-identifier sentinel. Set
+        # membership uses effective ID string equality (no normalization —
+        # dated/prefixed/suffixed variants land in their own distinct
+        # entries so the footer names them verbatim).
+        unpriced_concrete_ids_set: set[str] = set()
+        unpriced_missing_sentinels_flag: bool = False
+
         buckets: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
                 "iterations": 0,
@@ -383,6 +459,19 @@ class CostReport:
             wallclock = int(row.get("wallclock_ms", 0) or 0)
             is_batch = bool(row.get("is_batch", False))
             bucket = buckets[state]
+            # ENH-3719: collect pricing diagnostics. The footer splits
+            # missing-identifier sentinels (no price to look up — ``unknown``,
+            # ``None``, ``""``, whitespace) from concrete IDs that are
+            # unrecognized by ``pricing.MODEL_PRICING`` (dated/prefixed/
+            # suffixed variants etc). Both are diagnostic-only — never
+            # serialized to the stable JSON shape. We collect before the
+            # contribution branch so BUG-3724's per-contribution IDs can
+            # replace the legacy aggregate ``model`` field; the table()
+            # call renders whatever the constructor collected.
+            if _is_missing_model_sentinel(model):
+                unpriced_missing_sentinels_flag = True
+            elif model not in MODEL_PRICING:
+                unpriced_concrete_ids_set.add(model)
             bucket["iterations"] += 1
             bucket["wallclock_ms"] += wallclock
             # ENH-3538: an explicit null component is unknown; an absent key is a
@@ -467,7 +556,12 @@ class CostReport:
             for state_name, b in buckets.items()
         ]
 
-        return cls(states=states, totals=_compute_totals(states))
+        return cls(
+            states=states,
+            totals=_compute_totals(states),
+            unpriced_models=sorted(unpriced_concrete_ids_set),
+            unpriced_missing_sentinels=unpriced_missing_sentinels_flag,
+        )
 
 
 def _compute_totals(states: list[PerStateCost]) -> dict[str, Any]:

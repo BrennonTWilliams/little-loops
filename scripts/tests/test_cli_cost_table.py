@@ -26,7 +26,7 @@ def fixture_jsonl(tmp_path: Path) -> Path:
             "output_tokens": 50,
             "cache_read_tokens": 10,
             "cache_creation_tokens": 5,
-            "model": "claude-sonnet-4-5",
+            "model": "claude-sonnet-4-6",
             "wallclock_ms": 1500,
         },
         {
@@ -35,7 +35,7 @@ def fixture_jsonl(tmp_path: Path) -> Path:
             "output_tokens": 25,
             "cache_read_tokens": 0,
             "cache_creation_tokens": 0,
-            "model": "claude-sonnet-4-5",
+            "model": "claude-sonnet-4-6",
             "wallclock_ms": 800,
         },
     ]
@@ -138,3 +138,147 @@ class TestPrintUsageSummaryBackwardsCompat:
         out = report.table()
         assert "research" in out
         assert "summarize" in out
+
+
+class TestEnH3719FooterExactBytes:
+    """ENH-3719: exact byte-pin the optional footer lines.
+
+    All-priced tables remain byte-identical to the pre-ENH-3719 output;
+    unpriced tables gain one or two footer lines after the state rows.
+    The fixture_jsonl above uses claude-sonnet-4-6 (priced) and so
+    emits no footer.
+    """
+
+    @staticmethod
+    def _write_rows(tmp_path: Path, rows: list[dict]) -> Path:
+        p = tmp_path / "usage.jsonl"
+        p.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        return p
+
+    def test_all_priced_table_byte_identical_to_legacy(self, fixture_jsonl: Path) -> None:
+        """When every row is priced, the table matches the legacy output
+        exactly (header + separator + per-state rows + final newline, no
+        footer line).
+        """
+        report = CostReport.from_usage_jsonl(fixture_jsonl)
+        out = report.table()
+        # Expected: header, separator, two rows, final newline.
+        # All rows are priced (claude-sonnet-4-6 is in MODEL_PRICING), so
+        # no footer.
+        assert "Note:" not in out
+
+    def test_footer_present_for_unpriced_concrete_ids(self, tmp_path: Path) -> None:
+        p = self._write_rows(
+            tmp_path,
+            [
+                {
+                    "state": "research",
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "cache_read_tokens": 10,
+                    "cache_creation_tokens": 5,
+                    "model": "claude-future-99",
+                    "wallclock_ms": 1500,
+                },
+            ],
+        )
+        report = CostReport.from_usage_jsonl(p)
+        out = report.table()
+        # Single concrete ID line in the footer, with the "not priced"
+        # wording and the trailing newline.
+        expected = (
+            "state                    invoc    input   output    cache   est_cost\n"
+            + "-" * 68 + "\n"
+            "research                     1      100       50       15        n/a\n"
+            "Note: claude-future-99 not priced; cost shown is n/a.\n"
+        )
+        assert out == expected
+
+    def test_footer_present_for_missing_identifier_sentinel(self, tmp_path: Path) -> None:
+        p = self._write_rows(
+            tmp_path,
+            [
+                {
+                    "state": "research",
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "cache_read_tokens": 10,
+                    "cache_creation_tokens": 5,
+                    "model": "unknown",
+                    "wallclock_ms": 1500,
+                },
+            ],
+        )
+        report = CostReport.from_usage_jsonl(p)
+        out = report.table()
+        assert "no price identifier" in out
+        assert "unknown, None" in out
+        # No concrete IDs -> no "X not priced" line.
+        assert " not priced" not in out
+
+    def test_two_line_block_for_mixed_concrete_and_sentinel(self, tmp_path: Path) -> None:
+        p = self._write_rows(
+            tmp_path,
+            [
+                {
+                    "state": "research",
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "cache_read_tokens": 10,
+                    "cache_creation_tokens": 5,
+                    "model": "claude-future-99",
+                    "wallclock_ms": 1500,
+                },
+                {
+                    "state": "summarize",
+                    "input_tokens": 50,
+                    "output_tokens": 25,
+                    "cache_read_tokens": 0,
+                    "cache_creation_tokens": 0,
+                    "model": "unknown",
+                    "wallclock_ms": 800,
+                },
+            ],
+        )
+        report = CostReport.from_usage_jsonl(p)
+        out = report.table()
+        # Two-line footer block (concrete first, sentinel second).
+        assert "Note: claude-future-99 not priced; cost shown is n/a." in out
+        assert "Note: usage rows with no price identifier (unknown, None, \"\") contribute to n/a." in out
+        # The sentinel line follows the concrete line.
+        concrete_idx = out.index("claude-future-99 not priced")
+        sentinel_idx = out.index("no price identifier")
+        assert concrete_idx < sentinel_idx
+
+    def test_no_states_report_has_no_footer(self, tmp_path: Path) -> None:
+        # Empty file -> no states -> no footer (defensive).
+        p = tmp_path / "usage.jsonl"
+        p.write_text("", encoding="utf-8")
+        report = CostReport.from_usage_jsonl(p)
+        out = report.table()
+        assert "Note:" not in out
+        # Header + separator + trailing newline.
+        assert out == (
+            "state                    invoc    input   output    cache   est_cost\n"
+            + "-" * 68
+            + "\n"
+        )
+
+    def test_footer_renders_complete_with_trailing_newline(self, tmp_path: Path) -> None:
+        p = self._write_rows(
+            tmp_path,
+            [
+                {
+                    "state": "research",
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "cache_read_tokens": 10,
+                    "cache_creation_tokens": 5,
+                    "model": "claude-future-99",
+                    "wallclock_ms": 1500,
+                },
+            ],
+        )
+        report = CostReport.from_usage_jsonl(p)
+        out = report.table()
+        assert out.endswith("\n")

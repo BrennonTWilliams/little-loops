@@ -1008,12 +1008,12 @@ When no effort level is set anywhere in that chain, the `model:` value is unchan
 After a loop run completes, `ll-loop run` prints a per-state token and cost summary table immediately before the final completion line. The table is produced whenever at least one LLM action (`prompt` or `slash_command`) executed during the run.
 
 ```
-state                    invoc    input   output    cache     est_cost
-────────────────────────────────────────────────────────────────────
-execute                      3   12 400    2 100    8 500      $0.042
-check_semantic               3    3 200      480    2 900      $0.011
-────────────────────────────────────────────────────────────────────
-TOTAL                        6   15 600    2 580   11 400      $0.053
+state                    invoc    input   output    cache   est_cost
+--------------------------------------------------------------------
+execute                      3    12400     2100    8500     $0.0421
+check_semantic               3     3200      480    2900     $0.0112
+--------------------------------------------------------------------
+Note: claude-future-99 not priced; cost shown is n/a.
 ```
 
 **Columns:**
@@ -1022,10 +1022,18 @@ TOTAL                        6   15 600    2 580   11 400      $0.053
 |--------|-------------|
 | `state` | FSM state name |
 | `invoc` | Number of times the state ran an LLM action |
-| `input` | Total input tokens (prompt + cached) |
-| `output` | Total output tokens |
-| `cache` | Cache read tokens (`cache_read_tokens`) |
-| `est_cost` | Estimated USD cost (using `pricing.py` MODEL_PRICING constants; shown as `~$X.XXX (model unknown)` when the model is not in the pricing table) |
+| `input` | Aggregate `input_tokens` only — does **not** include cache tokens |
+| `output` | Total output tokens (`output_tokens`) |
+| `cache` | Sum of `cache_read_tokens` + `cache_creation_tokens` (rendered as `R+W` when one of them is unknown or missing) |
+| `est_cost` | Estimated USD cost (using `pricing.py` `MODEL_PRICING` exact-ID match; shown as `n/a` when any contributor is unpriced or incomplete) |
+
+A footer line appears below the table when the run used model IDs that `MODEL_PRICING` does not recognize — the line reads `Note: <id1>, <id2>, ... not priced; cost shown is n/a.` The IDs are sorted, de-duplicated effective pricing identifiers (dated, `anthropic.`-prefixed, and `[1m]`-suffixed variants appear verbatim). A second footer line (`Note: usage rows with no price identifier (unknown, None, "") contribute to n/a.`) appears when at least one row carried a missing-identifier sentinel. Footer wording is end-user-phrased and never instructs the user to edit `little_loops.pricing` — it only names the IDs and sentinel rows that the report could not price.
+
+**Exact-match limitation.** `MODEL_PRICING` lookup is exact-match on the model ID, so dated IDs (`claude-sonnet-5-5-20261001`), `anthropic.`-prefixed IDs, and `[1m]`-suffixed IDs stay unpriced; the footer now names them so the user can identify the gap. Cost estimates use published API list prices regardless of subscription or API billing; the estimate is not the user's billed amount.
+
+**Mixed-model actions (BUG-3724).** One action can report usage from several models, batch modes, or pricing dates. Each `usage.jsonl` row therefore carries an additive `usage_contributions` list — one bucket per (model, `is_batch`, pricing date) with nullable token components and `<component>_missing` counts — and the cost is the sum of each bucket priced at its own rate. The row's flat token fields stay as an audit summary (tagged with the last event's model) and are never priced a second time; an action is still one iteration. A bucket's pricing date is the UTC date of its observed event time, falling back to the action-completion date when no parseable time exists. Rows written before this change have no `usage_contributions` and keep their single model/flag pricing; earlier identities are not reconstructed. A row with an empty or malformed `usage_contributions` value has unavailable cost (never the last-model price), and an unpriced or incomplete bucket makes the state/run cost `n/a` while keeping known token subtotals. When a `cost_ceiling` state's cost is unavailable, one `cost_ceiling_unknown` event is emitted per state (reason `unpriceable model` or `invalid usage attribution`) and the numeric ceiling is not evaluated.
+
+**Last-event-model limitation.** The flat aggregate `model` field on a legacy `usage.jsonl` row is the **last** usage event's model (`fsm/executor.py:2761`), so a heterogeneous action is priced and named by its last contributor. The footer cannot recover earlier identities from the flat aggregate alone. Once BUG-3724 lands and `usage_contributions` carries per-contributor pricing IDs, the footer is expected to enumerate every unpriced contributor (a known last model cannot hide an earlier unpriced or missing-ID contribution). Until then, this is a known limitation.
 
 Shell (`action_type: shell`) and MCP tool (`action_type: mcp_tool`) states are omitted from the table — they produce no token usage row in `usage.jsonl`.
 
@@ -1062,7 +1070,9 @@ Pass `--cost-output-json PATH` to also write the same per-state aggregates as a 
 }
 ```
 
-State rows are sorted by name. Totals mirror the same metric keys. `cost_usd` is `0.0` for any state where at least one row used an unknown model (the `has_unknown_model` flag is surfaced only in the Python API, not the JSON). The flag is forwarded through `ll-loop run --background` re-exec so detached runs honor the same destination (BUG-1414 prevention).
+State rows are sorted by name. Totals mirror the same metric keys. `cost_usd` is `null` for any state where at least one row used an unknown model or was incomplete (the `has_unknown_model` flag is surfaced only in the Python API, not the JSON). Totals' `cost_usd` is `null` whenever any state is `null`. The unpriced-models diagnostic collection (the footer) is intentionally absent from this stable JSON shape — round-tripping a report via `--cost-output-json` does not preserve the footer. The flag is forwarded through `ll-loop run --background` re-exec so detached runs honor the same destination (BUG-1414 prevention).
+
+**Stored null history costs are not back-filled.** A `cost_usd: null` row written before ENH-3719 (when its model was priced) does not pick up a price on read; the `ll-history quality` cost-coverage gate is the user's primary signal for such gaps.
 
 > **Note:** `agent:`, `tools:`, `model:`, and `effort:` are per-state YAML fields, not CLI flags. See [Subprocess Agent and Tool Scoping](../guides/LOOPS_GUIDE.md#subprocess-agent-and-tool-scoping) in the Loops Guide for per-state agent, tool, model, and effort scoping options.
 
