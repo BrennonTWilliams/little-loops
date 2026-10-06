@@ -15,12 +15,53 @@ decision_needed: false
 size: Large
 confidence_score: 95
 verify_verdict: CLAIMS_OUTDATED
-verify_evidence: "Integration Map (wiring pass): 'docs/reference/CLI.md ll-session refresh flags and safety (:4635-4650)' -> section now starts at line 4666 and spans to about 4695; Integration Map (wiring pass): 'recompress flags (:4693-4698), idempotent and byte-lossless' -> section now starts at line 4717 with the byte-lossless sentence at line 4729; Integration Map (wiring pass): 'll-session example block (~:4735-4754)' -> refresh/recompress examples now at lines 4769-4786; Documentation (Codebase Research Findings): 'CLI.md:4635-4659 documents ll-session refresh skip reporting' -> refresh section now at lines 4666-4695"
+verify_evidence: 'Integration Map (wiring pass): ''docs/reference/CLI.md ll-session
+  refresh flags and safety (:4635-4650)'' -> section now starts at line 4666 and spans
+  to about 4695; Integration Map (wiring pass): ''recompress flags (:4693-4698), idempotent
+  and byte-lossless'' -> section now starts at line 4717 with the byte-lossless sentence
+  at line 4729; Integration Map (wiring pass): ''ll-session example block (~:4735-4754)''
+  -> refresh/recompress examples now at lines 4769-4786; Documentation (Codebase Research
+  Findings): ''CLI.md:4635-4659 documents ll-session refresh skip reporting'' -> refresh
+  section now at lines 4666-4695'
 outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+risk_factors:
+- id: broad-dependent-surface
+  domain: outcome
+  criterion: change_surface
+  description: _backfill_raw_events has four callers plus the Claude insert, cli/session.py,
+    cli/backfill_worker.py and two spawning hooks (6-10 dependents).
+- id: codex-split-contract-churn
+  domain: outcome
+  criterion: ambiguity
+  description: Contract has churned across critique rounds; the Codex first-cursor
+    literal-vs-canonical split and rollback-scope rules are the likeliest places for
+    iteration.
+- id: cross-module-rollback-depth
+  domain: outcome
+  criterion: complexity
+  description: Rollback/watermark boundaries, both-column preservation, per-line metadata
+    refusal and NULL-to-marker qualification are shared-state logic across lifecycle.py
+    and usage_refresh.py.
+- id: ordered-refusal-sequence
+  domain: outcome
+  criterion: ambiguity
+  description: Ordered refusals (holds, attribution, per-line metadata, qualification,
+    decode, preservation) must be one explicit sequence; reordering changes the reported
+    reason.
+- id: rebuild-fingerprint-seam
+  domain: outcome
+  criterion: complexity
+  description: Rebuild-fingerprint gate constrains where sanitization may be inserted;
+    a misplaced seam forces a REBUILD_DERIVE_VERSION bump.
+- id: stale-doc-line-refs
+  domain: readiness
+  criterion: issue_well_specified
+  description: Integration Map cites CLI.md refresh/recompress/example line ranges
+    that have drifted (verify_verdict CLAIMS_OUTDATED).
 ---
 
 # ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons
@@ -302,23 +343,28 @@ None. The sanitizer API this issue consumes landed in commit `b953e103c`; the fr
 
 _Added by `/ll:confidence-check` on 2026-10-06_
 
-Re-assessed against the revised contract (type-sensitive comparison, safe stored-column decode, per-line metadata refusal, qualification-transition rule, Codex literal-vs-canonical split). Supersedes the earlier historical assessment.
+Re-assessed after the latest issue edits. Supersedes the earlier assessment.
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE (below outcome_threshold 65)
 
 ### Concerns
 - Dependencies clear: ENH-3750 landed (`sanitize_history_payload` at `pii.py:679`, `HistorySanitizationError` at `pii.py:342`), `blocked_by` is empty, and all format-check gates (Program Design, parity, claim, structure, decision) are clean. Anchors verified: `_backfill_raw_events` (`lifecycle.py:804`), `_refresh_codex_usage_source` (`:1369`), `refresh_usage_source` (`:1524`), `_event_signature`/`_stored_signatures`/`_preserves_fields` (`usage_refresh.py:58/74/91`); nothing under `session_store/` or `cli/` imports `little_loops.pii` yet; `backfill_worker.py:230` catches only `HistoryUnsupported`.
+- Integration Map doc line ranges for `CLI.md` (refresh flags, recompress flags, example block) have drifted (`verify_verdict: CLAIMS_OUTDATED`); locate by heading, not line number.
 - Type-sensitive equality deliberately refuses legacy scalar coercions that previously passed; the docs must say so.
-- The contract is dense with ordered refusals (holds → attribution/coverage/session-set → per-line metadata → qualification transition → decode → preservation). Implement the refusal ordering as one explicit sequence and test each adjacent pair, since a reordering silently changes which reason a corrupt-plus-structural source reports.
+- The contract is dense with ordered refusals (holds → attribution/coverage/session-set → per-line metadata → qualification transition → decode → preservation). Implement the refusal ordering as one explicit sequence and test each adjacent pair.
 
 ### Outcome Risk Factors
 - Broad dependent surface: `_backfill_raw_events` has four callers plus the Claude insert, `cli/session.py`, `cli/backfill_worker.py`, and two spawning hooks (6–10 dependents).
-- Moderate per-site depth: rollback/watermark boundaries across local and remote chunks, both-column preservation, per-line metadata refusal and the NULL→marker qualification transition are cross-module logic with shared state in `lifecycle.py` and `usage_refresh.py`, across ~7 source files plus 5 docs and ~15 test files.
+- Moderate per-site depth: rollback/watermark boundaries across local and remote chunks, both-column preservation, per-line metadata refusal and the NULL→marker qualification transition are cross-module logic with shared state in `lifecycle.py` and `usage_refresh.py`.
 - Rebuild-fingerprint gate (`test_enh3678_rebuild_derive_gate.py`) constrains where sanitization may be inserted; a misplaced seam forces a `REBUILD_DERIVE_VERSION` bump.
-- Prior pre-implementation critique rounds on this contract (history-context correction match) indicate the contract has churned; treat the Codex first-cursor literal/canonical split and the rollback-scope rules as the likeliest places for iteration.
+- Prior critique rounds indicate the contract has churned; treat the Codex first-cursor literal/canonical split and the rollback-scope rules as the likeliest places for iteration.
+
+### Risk Factor Delta
+- Baseline: none recorded
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T20:17:48 - `50d7bb2b-f64d-4142-8ee2-7f463bfad337.jsonl`
 - `/ll:verify-issues` - 2026-10-06T20:14:55 - `78d80ae4-e260-4b0c-9bb2-85e65c40ea76.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:45:56 - `466b925c-c989-4144-94bc-ff9597778e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:26:53 - `afda5a75-36fd-4868-b330-ef24a018b110.jsonl`
