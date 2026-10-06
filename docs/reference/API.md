@@ -12995,12 +12995,12 @@ Estimates cost in USD for a token usage event. Returns `None` if `model` is not 
 
 **Parameters:**
 
-- `model` — model ID to look up in the pricing tables.
+- `model` — model ID to look up in the pricing tables. Lookup is exact-match: dated IDs (`claude-sonnet-5-5-20261001`), `anthropic.`-prefixed IDs, and `[1m]`-suffixed IDs stay unrecognized — `CostReport.table()` lists them under a `not priced` footer line (ENH-3719) so the gap is visible.
 - `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` — token counts by type.
 - `is_batch` — apply the Message Batches API flat discount.
 - `as_of` — UTC date the usage occurred, for the `INTRO_PRICING` window check; `None` (default) means today (BUG-3579).
 
-**Returns:** estimated cost in USD, or `None` if the model is unrecognized.
+**Returns:** estimated cost in USD, or `None` if the model is unrecognized or any token component is `None` (an incomplete observation is never priced — ENH-3538).
 
 ---
 
