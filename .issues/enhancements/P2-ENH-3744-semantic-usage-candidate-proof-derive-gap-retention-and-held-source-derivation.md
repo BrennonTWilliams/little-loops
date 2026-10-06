@@ -28,105 +28,116 @@ testable: true
 
 ## Summary
 
-Replace BUG-3736's conservative whole-source usage holdback with semantic proof where proof exists, and let held sources derive new appends again. Stage 1 (BUG-3736) stops the data loss by holding any source whose raw rows cannot all be safely pruned and by guarding every destructive replay path; this child makes that hold precise and releasable.
+Replace BUG-3736's whole-source holdback with shared semantic proof and resume safe appends while preserving retained usage. Separate candidate correspondence, mutation permission and source completion: an observation can be represented without being safe to replace or sufficient to certify progress. Deliver with ENH-3745 before exposing the new writer behavior on `main`.
 
 ## Current Behavior
 
-After BUG-3736, prune treats "checkpoint at or above the source's max raw ID" as derivation proof and holds a whole source when any of its rows is ineligible. A recognized usage candidate with no committed representation is not detected, and a held source that keeps appending derives nothing new until its hold is lifted.
+On inspected branch `main`, `_plan_raw_prune` in `scripts/little_loops/session_store/lifecycle.py` treats a checkpoint at/above source max raw ID as sufficient derivation proof. `_backfill_usage_events` skips entire held sources; the incremental max-equals-checkpoint early return also misses outstanding work. `_write_host_usage_observation` uses raw-ID ingestion order to update Claude snapshots and computes cost before checking unchanged replay. Neither order nor a high-water checkpoint proves native source order, safe replacement or complete candidate representation.
 
 ## Expected Behavior
 
-- Prune proof requires a committed observation or a proved native coalesced/dedup representation for each recognized usage candidate, using shared native normalization rather than a payload-key heuristic. Unproved candidates are retained with `usage_derive_gap`. Safely derived unknown/partial audit observations satisfy the proof without canonical qualification.
-- Terminal non-candidates under the current normalizer (malformed/partial/all-zero Claude snapshots with a native message ID; Codex rate-limit-only notifications) need no fabricated usage row and no indefinite holdback. Unsupported usage-bearing evidence still fails closed.
-- Replacement can be per record where proved: replayable records update under native identity/mutation rules; a later retained value is never replaced by an older surviving snapshot; native positions compare only within a proved compatible source (raw IDs and path aliases prove nothing).
-- Codex supporting context (header/thread, model/turn/closed-span, adjacent-notification) is retained or the source stays held; a surviving request pointer does not prove it. Document the availability/storage tradeoff.
-- A hold marker is lifted only by this proof; new appends to a held source derive without duplicating retained consumption. Legacy observations lacking source links or observation keys stay held conservatively (no value/timestamp matching).
+- Every recognized logical candidate requires a committed observation or an actual native coalesced/deduplicated representation before its raw can be pruned. Missing representation reports `usage_derive_gap`; safely derived partial/unknown audit observations satisfy conservation independently of canonical qualification.
+- Known terminal omissions under actual producer rules need no fabricated observation: malformed/partial/all-zero current-contract Claude snapshots with message ID, and recognized Codex rate-limit-only notifications. Unsupported/unknown contracts, missing native identity/context and corrupt retained inputs fail closed.
+- Keep protected observations unchanged unless a safe mutation is proved. Unchanged/equal/older replay is an idempotent no-op, including stored cost, timestamps and provenance. A genuinely newer compatible native snapshot may update using its stored/native ordering proof; path aliases, larger raw IDs and equal values/timestamps alone prove neither generation nor order.
+- Allow proved-distinct new requests on a source that still has conservation protection. Preserve old protected rows and the hold while unrelated new appends derive safely; hold removal is not a prerequisite for safe additive work. Unkeyed/wildcard legacy populations may prevent proving distinctness and stay conservative.
+- Retain Codex header/thread, model/turn/closure and adjacency/dedup context or keep affected work unprovable. A request pointer alone is insufficient. Retain enough context for safe future replay or explicitly keep retained observations protected; document the availability/storage tradeoff.
 
 ## Impact
 
-- **Priority**: P2 - follow-up split from BUG-3736 (Stage 1)
-- **Effort**: Medium-large - Per-record proof needs native normalization sharing and Codex context handling.
-- **Risk**: Medium-high - Wrong proof could duplicate or drop retained usage.
+- **Priority**: P2 — follow-up to the landed retention safety floor.
+- **Effort**: Large — shared native proof and guarded replay/mutation across destructive paths.
+- **Risk**: High — a false correspondence/mutation proof can lose or double-count usage; paired source-completion delivery is required.
 - **Breaking Change**: No
+
+## Proposed Solution
+
+Factor the existing native producer recognition/omission/coalescing into pure proof outcomes, then use them transactionally in prune, held-source derivation, rebuild and parser refresh. Keep proof separate from pricing and qualification. ENH-3745 owns progress/boundary storage and publishes completion from these outcomes.
 
 ## Program Design
 
 ### Types
 
-Reuse stored usage observations, source/raw links, logical observation keys and the BUG-3736 hold marker; no new persisted subsystem.
+Proposed frozen `UsageCandidateProof` has a logical host/session/channel/native identity where provable, bounded `correspondence` (`represented`, `missing`, `intentional_omission`, `excluded_channel`, `unprovable`), bounded `mutation` (`insert`, `replace`, `none`) and a bounded reason. Native keys/source/raw links are internal and never serialized into quality or shareable diagnostics. Representation is independent of mutation.
 
-Add a pure, immutable candidate-proof result with a logical source/host/session/channel key and a bounded disposition: represented, missing representation, intentional no-observation, proved excluded channel, or unprovable. These are internal proof outcomes, not new observation provenance values. Representation can be a committed audit observation; canonical admission remains ENH-3731's separate decision. Expose only bounded status/reason through readers, never native keys or paths.
+Proposed `UsageReplayFailure` carries retained envelope identity and a bounded decode/context error when no usable `UsageReplayRecord` can be produced. The proof input adapter must preserve every raw record, including malformed JSON, non-object payloads, invalid packed bytes and decompression failures; the current `_iter_usage_replay_records`' silent skips cannot be reused as affirmative absence. Ordinary corruption produces an unprovable outcome, not a fabricated observation or unchecked crash.
+
+ENH-3745 owns the source-local completion/boundary result and any durable source-generation/pending evidence needed by both issues. No separate candidate ledger, registry framework or competing boundary migration here.
 
 ### Signatures
 
-- `prune(db, *, config=None, dry_run=False) -> dict` — keep the interface; replace whole-source hold with candidate proof, adding the `usage_derive_gap` reason.
-- `backfill_usage_incremental(db) -> int` — keep the interface; derive appends to held sources and lift holds only under proof.
-- Proposed `inspect_usage_candidates(records: Iterable[UsageReplayRecord], observations: Iterable[Mapping[str, Any]], *, channel: str | None = None) -> tuple[UsageCandidateProof, ...]` — pure retained-evidence inspection shared by pruning/replay safety and ENH-3732's read-only reader. Inputs are an ordered retained window for one compatible source, not independent rows: source label + verified host + native stream/session identity; positions compare only within that proved scope. Factor recognition, keys, intentional omission and coalescing from existing producer logic; no SQL writes, native-file reads, pricing or derivation. Do not duplicate a parser/identity algorithm in quality.
+- Keep `prune(db, *, config=None, dry_run=False) -> dict` and `backfill_usage_incremental(db) -> int` public contracts.
+- `inspect_usage_candidates(records: Iterable[UsageReplayRecord | UsageReplayFailure], observations: Iterable[Mapping[str, Any]], *, channel: str | None = None) -> tuple[UsageCandidateProof, ...]` — new pure helper. Records include a deterministically ordered retained window plus required native context. Observation inputs include the affected hosts/sessions' relevant representations across sources, not just rows with this source path. Inspect compatible source windows independently and compose only actual native cross-source dedup rules. No SQL writes, file reads, pricing or write normalizer calls.
 
 ### Call Path
 
-`backfill_raw_events` → `backfill_usage_incremental` → `prune` candidate proof → hold lift → `rebuild` → retained usage readers.
+`backfill_usage_incremental` → `_derive_usage_incremental_conn` → `inspect_usage_candidates` → `_backfill_usage_events` → source completion.
+
+`prune` → `_plan_raw_prune` → `inspect_usage_candidates` → transactional raw/usage protection. `rebuild` and `refresh_usage_source` consume the same safe-replay decisions; ENH-3745 publishes progress, and quality reads the pure proof.
 
 ### Decision Rules
 
-- Share native normalization (recognition, intentional no-observation, coalescing) with the proof; never use a payload-key heuristic.
-- Unsupported usage-bearing evidence fails closed; legacy unlinked usage stays held.
-- Compare native positions only within a proved compatible source; raw IDs and path aliases prove nothing.
-- Only a recognized ingest-time contract can prove non-usage or an excluded acquisition channel. An empty normalizer result for an unregistered host/version is unprovable, not affirmative absence. Known Claude terminal omissions require the actual verified host/version/native-ID rule; do not generalize malformed/zero omission to another producer.
-- Lift a source hold only when every retained observation it protects remains represented or explicitly preserved and every pending candidate has a safe outcome. Inspect the entire held source, including candidates below an advanced global checkpoint; never clear a wildcard population hold on the strength of one source. Legacy unlinked populations remain held. ENH-3745 owns processed boundaries and cursor publication, consuming this outcome without changing semantic proof.
-
-| Pure outcome | Retention/replay action | Transcript quality action |
+| Correspondence outcome | Retention/replay | Transcript quality |
 | --- | --- | --- |
-| Represented candidate | Eligible for pruning only with preserved native context and atomic retained-usage protection | Correspondence passes; shared row qualification remains separate |
-| Intentional no-observation under a recognized producer rule | No fabricated observation; retain any context another candidate needs | Not an observed zero; cannot conceal another missing candidate |
-| Missing representation | Keep raw evidence; do not advance completion for skipped work | `derive_gap` |
-| Unprovable identity/contract or missing required context | Keep raw/context and conservation holds | `derive_status_unavailable` |
-| Proved channel excluded by this invocation's scope | No permission to prune or release a hold; prune uses all-channel scope | `out_of_scope` only when all session evidence is positively excluded |
+| Represented | Raw eligible only with needed context/protected usage; mutation requires separate permission | Correspondence passes; row qualification remains separate |
+| Recognized intentional omission | No usage fabricated; retain context another candidate needs | Not an observed zero and cannot hide another gap |
+| Missing | Keep raw; incomplete source | `derive_gap` |
+| Unprovable identity/contract/context or corrupt input | Keep raw/context and protected observations; incomplete source | `derive_status_unavailable` |
+| Proved excluded channel | No prune/hold-release permission; prune inspects all channels | `out_of_scope` only if all session evidence is positively excluded |
 
-Each logical candidate has exactly one outcome. A truncated source window or missing Codex header/model/turn/closure context cannot become intentional no-observation. The pure seam can evaluate only evidence that remains: persisted hold/boundary facts written by the same transaction govern protection and source progress after deletion, without retrospectively claiming a candidate inventory for older already-pruned history. Retained as-of row qualification remains the recorded ENH-3723 policy.
+- Proof is total over retained inputs and respects producer grain. Several Claude snapshots with the same qualified host/session/message ID coalesce; two candidates with one observation remain a gap. Do not requalify legacy missing ingest-time markers. Known terminal omissions require the actual verified host/version/native-ID rule, not a generic malformed/zero heuristic.
+- An unkeyed audit row can correspond through its exact surviving raw link with compatible envelope identity. Without that link/native proof, classify it unprovable, not missing; it still protects itself and may prove ingestion. Never infer correspondence by token/cost/timestamp equality.
+- Codex duplicate-copy proof must match the writer's cross-source native-response rules: identical proved copies may share representation; conflicts remain audit/unprovable; unkeyed notifications cannot borrow another source's representation. Retain the relevant dedup context even if the winner's original raw was pruned.
+- Existing `source_line_no`/`source_ordinal`, verified native stream/session and compatible committed source-generation witnesses may support ordering. A raw ID orders ingestion only. If generation/order cannot be proved after pruning, preserve the retained observation and report mutation unavailable; do not invent compatibility or accept rollback as a risk. ENH-3745 owns a minimal durable witness if existing state is insufficient.
+- Check for unchanged/older/protected replay before calling pricing. No replay or rebuild reprices an unchanged retained observation. New or proved-changed requests follow existing pricing semantics; stored historic costs are not recalculated as a side effect of proof.
+- Retry outstanding held candidates below the global checkpoint, including when raw max equals it. This issue owns candidate iteration/retry; ENH-3745 owns checkpoint validation/floors and source-local completion, consuming these outcomes.
+- Hold release requires all protected observations safely reconstructible or still explicitly protected by equivalent retained guards, and every pending candidate resolved. Preserving an observation is not permission to drop its protection. Per-source release cannot clear a wildcard population hold or another source's guards.
+- Compute proof, protect/replace rows, retain context, delete eligible raw and update hold/progress outcomes in the existing `BEGIN IMMEDIATE` transaction. Forced failure rolls everything back. Retained evidence cannot retrospectively certify inventories of older already-pruned history.
+
+### Delivery Contract
+
+Develop ENH-3744/3745 on one integration branch and land their completed writer changes together. ENH-3745 validation/read-only work may precede semantic work, but final cursor publication must consume this proof. Do not add circular `blocked_by` edges. All local-editable consumer projects immediately run this checkout; a temporary cursor-certification gap on `main` is unacceptable.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/session_store/writers.py` — factor pure native recognition/key/coalescing from `normalize_host_usage` and the Codex replay state; integrate held-source replay without replacing retained observations from incomplete context.
-- `scripts/little_loops/session_store/claude_usage.py` — reuse the actual producer qualification/terminal-omission rules; do not requalify absent legacy ingest-time markers.
-- `scripts/little_loops/session_store/lifecycle.py` — `_plan_raw_prune`, `_derive_usage_incremental_conn`, destructive replay guards and transactional hold release; preserve the v59 safety floor.
-- `scripts/little_loops/session_store/usage_refresh.py` — consume the same safe-to-replace/held disposition in parser refresh; it must not independently clear holds.
-- A small shared pure helper module under `session_store/` is permitted if factoring avoids circular imports; no new dependency, general registry framework or persisted candidate ledger is assumed.
+- `scripts/little_loops/session_store/writers.py` — factor native recognition/coalescing/dedup, total retained-input decoding and safe observation insert/replace/no-op; resume safe additive work without clearing protection.
+- `scripts/little_loops/session_store/claude_usage.py` — reuse actual producer/omission rules without promoting legacy contracts.
+- `scripts/little_loops/session_store/lifecycle.py` — semantic `_plan_raw_prune`, held-candidate iteration, all destructive replay guards and atomic protection release. Coordinate shared edits with ENH-3745, which owns checkpoint/cursor semantics.
+- `scripts/little_loops/session_store/usage_refresh.py` — reuse safe preservation/replacement decisions; parser refresh cannot independently clear guards or certify skipped work.
+- A small pure helper module under `session_store/` is permitted to avoid circular imports; no third-party dependency or new persisted subsystem.
 
 ### Dependent Files
 
-- `scripts/little_loops/history_reader/usage.py` — ENH-3732 consumes the pure proof; this issue supplies its tested handoff, not the quality/report implementation.
-- ENH-3745 owns checkpoint validation/floors, per-source completion/freshness and cursor publication; ENH-3746 owns reader admission, ENH-3747 search restoration. Coordinate shared lifecycle edits without circular scheduling edges.
+- `scripts/little_loops/history_reader/usage.py` — ENH-3732 consumes the pure retained-input proof; export a tested interface without implementing quality here.
+- ENH-3745 consumes bounded source outcomes and owns shared durable progress/generation facts. ENH-3746 owns retained-session admission; ENH-3747 owns search restoration.
 
 ### Tests
 
-- Extend `scripts/tests/test_bug3736_usage_replay_holds.py` and `test_session_store_incremental_usage.py`; add focused pure-proof tests. Drive real fixture → ingest → derive → prune → append/recovery → rebuild, with original files removed during replay.
-- Check parity between the writer's recognition and the pure proof for native valid, coalesced, intentionally omitted, unknown-contract and unsupported-host records. Run the proof with retained inputs only; quality must be able to call it without source reads or writes.
+Extend `scripts/tests/test_bug3736_usage_replay_holds.py` and `test_session_store_incremental_usage.py`; add pure-proof parity tests. Drive real Claude/Codex fixture → ingest/derive → production prune → append/recovery → repeated catch-up/rebuild with original files removed. Test below-checkpoint work, decode failure totality, actual cross-source dedup and failure rollback; forbid file reads/pricing/write normalization inside the pure proof.
 
 ## Acceptance Criteria
 
-- [ ] A recognized candidate without committed or proved-coalesced representation keeps its raw rows and reports `usage_derive_gap`; a current checkpoint alone does not hide it.
-- [ ] Ignored malformed/partial/zero Claude snapshots (with and without a prior valid snapshot) and Codex rate-limit-only notifications are not held and produce no usage row; unsupported candidate evidence stays held.
-- [ ] Claude latest snapshot pruned with an older survivor, and re-ingested older source positions with larger raw IDs, never roll back, duplicate or reprice the retained observation; repeated unchanged replay is idempotent and proved newer snapshots still update.
-- [ ] Codex usage raw surviving with header/model/turn/closure context lost never downgrades a retained measured request or duplicates it.
-- [ ] Appends to a held source derive after the hold is lifted or the context is retained, without double counting retained rows.
-- [ ] Shared pure proof distinguishes represented audit observations, genuine missing candidates, intentional omissions and unprovable/excluded evidence; a writer's empty result alone cannot certify non-usage. Two snapshots coalesce without false gaps, while two logical candidates with one observation remain a gap. ENH-3732 can consume the result on a read-only connection without invoking derivation.
-- [ ] Recovery revisits held candidates below an advanced checkpoint. Hold lifting, observation replacement and preservation commit atomically; a forced failure rolls them back together. Per-source release cannot clear a legacy wildcard hold or affect another source's protected rows.
-- [ ] Prune computes proof, protects usage, deletes eligible raw and updates holds/progress under the existing `BEGIN IMMEDIATE` transaction. Pure proof totality/parity and missing-Codex-context tests pass; file reads, pricing and the write normalizer are forbidden in the pure proof test.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [ ] A current checkpoint cannot hide a missing logical candidate; its raw stays retained with `usage_derive_gap`. Coalesced snapshots and represented audit rows do not create false gaps.
+- [ ] Recognized Claude terminal omissions and Codex rate-limit-only notifications produce no fabricated usage or unnecessary permanent hold; unsupported/unregistered/corrupt evidence remains protected and bounded-unprovable.
+- [ ] A newer retained Claude snapshot cannot be rolled back by an older surviving or re-ingested native position with a larger raw ID. Same-path rotation/restore and alias controls do not manufacture compatibility. Repeated unchanged replay leaves cost/metadata untouched even when pricing is patched to fail/change.
+- [ ] Codex lost header/model/turn/closure/adjacency context cannot downgrade or duplicate retained requests. Cross-source duplicate/conflict and unkeyed-notification cases match native writer rules.
+- [ ] Proved-distinct appends derive while older conservation protection remains; ambiguous/unkeyed/wildcard legacy populations cannot be bypassed. Recovery revisits held candidates below an advanced/equal checkpoint without double counting.
+- [ ] Source completion is separate from representation/mutation/hold presence and is handed to ENH-3745. No incomplete proof can publish complete; final writer delivery is tested and landed together.
+- [ ] Protection, safe mutation, prune deletion and source-progress outcomes commit atomically; forced failures preserve rows, guards and proof. Source release cannot clear another source or wildcard protections.
+- [ ] ENH-3732 consumes the pure interface on a read-only connection without source reads, derivation or pricing; statuses expose no native keys/paths.
+- [ ] `python -m pytest scripts/tests/` exits 0, including paired progress/freshness tests.
 
 ## Implementation Steps
 
-1. Specify and test the pure proof inputs/outcomes against the existing Claude/Codex producer behavior; hand the interface to ENH-3732/3745.
-2. Apply it inside the existing write transaction to prune planning, safe retained replacement and hold release; keep unprovable evidence protected.
-3. Replay pending held-source work regardless of the global high-water mark, coordinating per-source progress with ENH-3745; prove failure rollback and recovery.
-4. Run the native fixture lifecycle and shared proof parity controls, then the local suite.
+1. Agree with ENH-3745 on bounded source completion and minimal generation/pending evidence; keep storage ownership there.
+2. Factor/test total native proof, correspondence and safe mutation separately, with coalescing/cross-source/decode/legacy controls.
+3. Integrate transactional prune/replay/refresh protection and below-checkpoint held retries; preserve unchanged stored costs and guards.
+4. Run real lifecycle, rollback and paired completion tests; land the completed ENH-3744/3745 writer integration together, then the local suite.
 
 ## Scope Boundaries
 
-Out of scope: freshness/cursor semantics (ENH-3745), reader admission, search reindex, requalifying unknown history, repricing stored costs.
+No independent freshness/cursor storage, reader admission, search restoration, legacy promotion or repricing of retained observations. Conservative unprovable evidence can retain storage indefinitely; report a bounded reason rather than silently discarding it.
 
 ## Status
 
@@ -135,3 +146,5 @@ Out of scope: freshness/cursor semantics (ENH-3745), reader admission, search re
 ## Session Log
 
 - Pre-implementation epic review - 2026-10-05 - Added the shared pure semantic-proof handoff, concrete lifecycle/refresh ownership, atomic hold-release and below-checkpoint recovery controls. A temporary-store probe with one deleted committed observation reproduced checkpoint-only pruning of all four raw rows; the missing candidate must remain protected. No implementation or new readiness score is claimed.
+
+- Pre-implementation review - 2026-10-06 - Separated correspondence, mutation and completion; required safe additive held-source appends, total corrupt-input proof, actual cross-source Codex dedup and unchanged-cost no-ops. Assigned all shared generation/progress storage to ENH-3745 and required paired writer delivery. Opus confidence 0.72; rejected its raw-ID-only replacement rule because larger ingestion IDs can carry older source snapshots. Existing related suites: 188 passed; no implementation/readiness claim.
