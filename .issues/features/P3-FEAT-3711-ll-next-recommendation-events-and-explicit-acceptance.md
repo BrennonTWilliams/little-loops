@@ -24,7 +24,7 @@ relates_to:
 
 ## Summary
 
-Add append-only recommendation `shown` and explicit-acceptance events, `ll-next accept REC_ID`, and a read-only `ll-next feedback REC_ID` lookup. This issue owns the arena's only history schema migration; claim the next free schema version at implementation time (currently 59, so 60 if still free), and derive the write-readiness floor from the assigned migration version. **Slimmed after an Opus epic review (2026-10-04):** automatic observed-acceptance attribution (`ProducerEvidence` adapters) and opt-in activity pressure moved to the deferred FEAT-3722; the shared read-only reader is FEAT-3721; the cross-backend read-deadline primitive ENH-3720 is now done and reused here. It does not bound writes or activate remote support. v1 is **local SQLite only**.
+Add append-only recommendation `shown` and explicit-acceptance events, `ll-next accept REC_ID`, and a read-only `ll-next feedback REC_ID` lookup. This issue owns the arena's only history schema migration; claim the next free schema version at implementation time (currently 60, so 61 if still free), and derive the write-readiness floor from the assigned migration version. **Slimmed after an Opus epic review (2026-10-04):** automatic observed-acceptance attribution (`ProducerEvidence` adapters) and opt-in activity pressure moved to the deferred FEAT-3722; the shared read-only reader is FEAT-3721; the cross-backend read-deadline primitive ENH-3720 is now done and reused here. It does not bound writes or activate remote support. v1 is **local SQLite only**.
 
 ## Current Behavior
 
