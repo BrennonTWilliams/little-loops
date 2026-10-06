@@ -77,6 +77,8 @@ Sanitize once in `_backfill_raw_events()` before `json.dumps()`/`_pack_payload()
 
 Canonicalize both stored and parser payloads with the same policy in Codex first-use certification and source refresh signatures/field-preservation checks. Continue to check nonsecret field parity, structural identities, file changes, and field loss; do not bypass `_preserves_fields()` just because redaction occurred. Test mixed legacy/redacted rows and a later policy extension. Tail digests, offsets, inode/device checks, line numbers, and ingest watermarks retain their existing meaning.
 
+ENH-3751 specifies per-line relational identity refusal and a separate usage-qualification rule: explicit source refresh may promote NULL from verified original evidence through replacement/rebuild, but must not remove/change a persisted marker. Replay never promotes qualification. Codex first-use certification compares pre-existing rows canonically and newly inserted rows literally to the sanitized source, so a missed insertion seam cannot be hidden by sanitizing the stored side during verification.
+
 If sanitization fails, never fall back to original content, advance a cursor past the failed record, or publish a success watermark. Roll back the local affected operation; already committed remote chunks may remain, but are sanitized and safe to deduplicate on retry. Diagnostics must not echo input or exception text containing it.
 
 ### 3. Provide explicit logical raw-row maintenance
@@ -356,7 +358,7 @@ _Added by `/ll:confidence-check` on 2026-10-06 (re-scored 2026-10-05 after `/ll:
 
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P2
+**Done** (decomposed; child implementation pending) | Created: 2026-10-05 | Priority: P2
 
 ---
 
@@ -367,6 +369,6 @@ _Added by `/ll:confidence-check` on 2026-10-06 (re-scored 2026-10-05 after `/ll:
 - **Reason**: Issue too large for single session (size score 11/11)
 
 ### Decomposed Into
-- ENH-3750: Add history payload redaction policy and JSON sanitizer to the pii module (Proposed Solution §1)
-- ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons (§2; blocked by ENH-3750)
-- ENH-3752: Add ll-session redact maintenance command for stored raw_events rows (§3; blocked by ENH-3750)
+- ENH-3750: Add history payload redaction policy and JSON sanitizer to the pii module (§1; done, policy API landed in `b953e103c`)
+- ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons (§2; open and unblocked)
+- ENH-3752: Add ll-session redact maintenance command for stored raw_events rows (§3; blocked by ENH-3751)
