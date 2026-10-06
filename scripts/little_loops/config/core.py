@@ -6,6 +6,7 @@ point that loads ll-config.json and exposes all domain configs via properties.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from dataclasses import dataclass, field
@@ -563,6 +564,18 @@ class BRConfig:
     def extensions(self) -> list[str]:
         """Get extension config paths (e.g. ``["module:Class", ...]``)."""
         return self._raw_config.get("extensions", [])
+
+    def confidence_gate_raw(self) -> dict[str, Any]:
+        """Return a detached copy of the loaded raw ``commands.confidence_gate`` block (BUG-3760).
+
+        Unlike ``commands.confidence_gate`` (a dataclass that always populates defaults), this
+        preserves key *absence* — including keys removed by a local ``null`` override — so
+        callers can apply their own per-key fallbacks. Returns ``{}`` when the block (or its
+        ``commands`` ancestor) is absent or not a mapping. Values are not normalized.
+        """
+        commands = self._raw_config.get("commands")
+        gate = commands.get("confidence_gate") if isinstance(commands, dict) else None
+        return copy.deepcopy(gate) if isinstance(gate, dict) else {}
 
     @property
     def repo_path(self) -> Path:

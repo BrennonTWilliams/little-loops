@@ -6273,3 +6273,75 @@ class TestOnUsageDoesNotWriteContextState:
         src = inspect.getsource(issue_manager.process_issue_inplace)
         assert "result_token_count" not in src
         assert "on_usage=on_usage," in src
+
+
+class TestAutoGateHonorsLocalOverrides:
+    """BUG-3760: the real ll-auto pre-Phase-1 gate follows the merged (local) configuration."""
+
+    def _setup(
+        self, root: Path, base_enabled: bool, local: str, base_readiness: int = 75
+    ) -> tuple[BRConfig, IssueInfo]:
+        import json
+
+        for kind in ("bugs", "features", "enhancements", "epics"):
+            (root / ".issues" / kind).mkdir(parents=True, exist_ok=True)
+        (root / ".ll").mkdir(exist_ok=True)
+        (root / ".ll" / "ll-config.json").write_text(
+            json.dumps(
+                {
+                    "commands": {
+                        "confidence_gate": {
+                            "readiness_threshold": base_readiness,
+                            "enabled": base_enabled,
+                        }
+                    }
+                }
+            )
+        )
+        (root / ".ll" / "ll.local.md").write_text(f"---\n{local}\n---\n\n# notes\n")
+        issue_file = root / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text(
+            "---\nid: BUG-001\nconfidence_score: 80\noutcome_confidence: 10\n---\n\n"
+            "# BUG-001: Test Bug\n\n## Summary\nTest"
+        )
+        info = IssueInfo(
+            path=issue_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-001",
+            title="Test Bug",
+        )
+        return BRConfig(root), info
+
+    def test_local_enable_and_raise_gates_before_phase_1(self, temp_project_dir: Path) -> None:
+        from little_loops.issue_manager import process_issue_inplace
+
+        config, info = self._setup(
+            temp_project_dir,
+            False,
+            "commands:\n  confidence_gate:\n    readiness_threshold: 85\n    enabled: true",
+        )
+        with patch("little_loops.issue_manager.run_claude_command") as mock_run:
+            result = process_issue_inplace(info, config, MagicMock())
+
+        mock_run.assert_not_called()
+        assert result.was_gated is True
+        assert result.failure_reason == "below_readiness_threshold (80 < 85)"
+
+    def test_local_disable_bypasses_gate(self, temp_project_dir: Path) -> None:
+        from little_loops.issue_manager import process_issue_inplace
+
+        config, info = self._setup(
+            temp_project_dir,
+            True,
+            "commands:\n  confidence_gate:\n    enabled: false",
+            base_readiness=90,
+        )
+        with patch(
+            "little_loops.issue_manager.run_claude_command",
+            return_value=MagicMock(returncode=1, stdout="", stderr=""),
+        ) as mock_run:
+            result = process_issue_inplace(info, config, MagicMock())
+
+        mock_run.assert_called()
+        assert result.was_gated is False

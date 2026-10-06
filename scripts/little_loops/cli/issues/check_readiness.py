@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -72,25 +73,37 @@ def _coerce_optional_int(raw: Any) -> int | None:
     return int(raw) if raw is not None and str(raw).isdigit() else None
 
 
+def confidence_thresholds_from_gate(
+    gate_config: Mapping[str, Any], defaults: tuple[int, int]
+) -> tuple[int, int, bool]:
+    """Resolve ``(readiness, outcome, enabled)`` from a raw ``confidence_gate`` mapping (BUG-3760).
+
+    Pure, per-key calculation (ENH-3604 semantics): each threshold falls back to the matching
+    entry of *defaults* when its key is absent; ``enabled`` defaults to False. Values are
+    returned as-is (no coercion). Only ``readiness_threshold`` / ``outcome_threshold`` are
+    recognized — the legacy ``threshold`` alias is intentionally ignored.
+    """
+    return (
+        gate_config.get("readiness_threshold", defaults[0]),
+        gate_config.get("outcome_threshold", defaults[1]),
+        bool(gate_config.get("enabled", False)),
+    )
+
+
 def resolve_confidence_thresholds(
     config_path: Path, defaults: tuple[int, int]
 ) -> tuple[int, int, bool]:
-    """Read ``commands.confidence_gate`` from raw ll-config.json, key by key (ENH-3604).
+    """Read ``commands.confidence_gate`` from a raw config file, key by key (ENH-3604).
 
-    Returns ``(readiness, outcome, enabled)``. Each threshold falls back to the matching
-    entry of *defaults* when its key is absent; any read/parse failure falls back to both
-    defaults and ``enabled=False``. Deliberately raw-JSON (not ``BRConfig``) so it stays
-    cheap on the selector's hot path and keeps the caller-supplied default semantics that
-    ``seed_confidence_thresholds`` does not have.
+    Compatible path-reading wrapper over :func:`confidence_thresholds_from_gate`. Any
+    read/parse failure falls back to both defaults and ``enabled=False``. The BRConfig-backed
+    readers (`readiness_status`, `cmd_next_action`) no longer use this: they consume the
+    loaded, merged block via ``BRConfig.confidence_gate_raw()`` (BUG-3760).
     """
     try:
         raw = json.loads(config_path.read_text())
         cg = raw.get("commands", {}).get("confidence_gate", {})
-        return (
-            cg.get("readiness_threshold", defaults[0]),
-            cg.get("outcome_threshold", defaults[1]),
-            bool(cg.get("enabled", False)),
-        )
+        return confidence_thresholds_from_gate(cg, defaults)
     except Exception:
         return defaults[0], defaults[1], False
 
@@ -106,12 +119,13 @@ def readiness_status(
 ) -> ReadinessStatus | None:
     """Resolve an issue's readiness status, or None if the issue can't be found.
 
-    Threshold resolution stays the absence-sensitive raw-JSON read this
-    replaces (moved verbatim, not re-sourced from `config.commands.confidence_gate`):
-    `default_readiness`/`default_outcome` win only when the `commands.confidence_gate`
-    keys are absent from `ll-config.json`. `ConfidenceGateConfig` always populates
-    non-None defaults, so it cannot express "absent" and would break the
-    `--readiness`/`--outcome` CLI fallback the `autodev.yaml` call sites depend on.
+    Threshold resolution is absence-sensitive and reads the loaded, merged raw block
+    (`config.confidence_gate_raw()`, BUG-3760) so local overrides, local null removals and
+    the selected root/host base are honored: `default_readiness`/`default_outcome` win only
+    when the `commands.confidence_gate` keys are absent from the merged config.
+    `ConfidenceGateConfig` always populates non-None defaults, so it cannot express "absent"
+    and would break the `--readiness`/`--outcome` CLI fallback the `autodev.yaml` call sites
+    depend on.
 
     BUG-3390: `readiness_override`/`outcome_override`, when not None, win over
     both config and defaults. This is how an *explicit* `--readiness N` on the
@@ -134,8 +148,8 @@ def readiness_status(
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.frontmatter import parse_frontmatter
 
-    readiness, outcome, enabled = resolve_confidence_thresholds(
-        config.project_root / ".ll" / "ll-config.json", (default_readiness, default_outcome)
+    readiness, outcome, enabled = confidence_thresholds_from_gate(
+        config.confidence_gate_raw(), (default_readiness, default_outcome)
     )
     if readiness_override is not None:
         readiness = readiness_override

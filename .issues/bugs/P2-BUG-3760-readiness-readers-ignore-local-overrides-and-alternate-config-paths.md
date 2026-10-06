@@ -3,10 +3,11 @@ id: BUG-3760
 type: BUG
 title: Readiness readers ignore local overrides and alternate config paths
 priority: P2
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-10-06'
 captured_at: '2026-10-06T18:15:32Z'
+completed_at: '2026-10-06T19:24:11Z'
 testable: true
 relates_to:
 - BUG-3757
@@ -169,11 +170,24 @@ Review validation: the five original targeted suites passed **723 tests**, next-
 | reference | `docs/reference/CLI.md` | Threshold flag precedence and readiness consumers |
 | architecture | `docs/ARCHITECTURE.md` | Configuration layer and automation consumers |
 
+## Resolution
+
+**Fixed** | 2026-10-06
+
+- Added `BRConfig.confidence_gate_raw()` (detached deep copy of the loaded, merged raw `commands.confidence_gate`; `{}` when absent) in `config/core.py`.
+- Extracted pure `confidence_thresholds_from_gate()` in `cli/issues/check_readiness.py`; `resolve_confidence_thresholds()` is now a path-reading wrapper with its unchanged signature and error fallback.
+- `readiness_status()` and `cmd_next_action()` use the loaded config via the pure helper (no fixed `.ll/ll-config.json` path, no reload). Explicit overrides and per-key caller fallbacks preserved.
+- Tests: pure-helper table, accessor detachment/absence, local raise/lower, leaf/gate/ancestor null removal, local-only, root-level, snapshot, zero override, next-action flips, real ll-auto gate enable/disable (red before fix, green after).
+- Docs: `docs/reference/API.md`, `docs/reference/CLI.md` (next-action flag precedence corrected; loaded/merged config noted).
+- Not added (downstream inherit via `readiness_status`, no source change): dedicated next-obligation `SCORES:readiness_below` and typed run-record `blocked` merged-config cases.
+
 ## Status
 
 **Open** | Created: 2026-10-06 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T19:24:11 - `870a5416-0554-46c4-9e76-ed97531c52e1.jsonl`
+- `/ll:ready-issue` - 2026-10-06T19:09:32 - `73506fb1-c0e5-4b62-be2f-2b2ec257a4cf.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:07:12 - `94eb3c7e-b57c-4546-ab2b-1b9d4b0e9038.jsonl`
 - `/ll:capture-issue` - 2026-10-06T18:16:35 - `471d3a7a-54d3-4495-af46-a12400a91738.jsonl`

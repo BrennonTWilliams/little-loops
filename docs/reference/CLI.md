@@ -1855,7 +1855,7 @@ Output format: `<ACTION> <issue-id>` (one line), or `ALL_DONE`.
 | `--skip / -s ISSUE_ID[,...]` | — | Comma-separated issue IDs to exclude (e.g. `ENH-929,BUG-001`); absent `--skip` preserves existing behavior |
 | `--config` | (auto) | Override the config file path |
 
-> **Config-driven defaults**: `next-action` reads `commands.confidence_gate.readiness_threshold` from `.ll/ll-config.json` before falling back to the CLI default of `85`. Set `commands.confidence_gate.readiness_threshold: 90` in your project config to raise the bar globally without passing `--ready-threshold` on every call. The `--ready-threshold` flag still overrides the config value when provided explicitly.
+> **Config-driven defaults**: `next-action` reads `commands.confidence_gate.readiness_threshold` and `outcome_threshold` from the loaded project configuration (the selected base config merged with `.ll/ll.local.md`) before falling back to the CLI defaults. Set `commands.confidence_gate.readiness_threshold: 90` in your project config to raise the bar globally without passing `--ready-threshold` on every call. `--ready-threshold` and `--outcome-threshold` are per-key fallbacks used only when the corresponding config key is absent — a configured value wins over the flag.
 
 #### `ll-issues next-issue` / `ll-issues nx`
 
@@ -3141,7 +3141,7 @@ child-issue creation mechanics now go through `ll-issues create` / `ll-issues sc
 
 #### `ll-issues check-readiness` / `ll-issues cr`
 
-Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the thresholds. Threshold resolution (BUG-3390): an explicit `--readiness` / `--outcome` wins; otherwise `commands.confidence_gate` in `ll-config.json`; otherwise 85 / 65. Exit 2 when the issue ID cannot be resolved. Exit 3 (`SCORES_ABSENT` on stderr) when either score key is absent from frontmatter — checked before thresholds and regardless of `--honor-waiver`, so a cleared or never-written score is "cannot judge" rather than a failing `0`.
+Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the thresholds. Threshold resolution (BUG-3390): an explicit `--readiness` / `--outcome` wins; otherwise `commands.confidence_gate` from the loaded project configuration (selected base config merged with `.ll/ll.local.md`); otherwise 85 / 65. Exit 2 when the issue ID cannot be resolved. Exit 3 (`SCORES_ABSENT` on stderr) when either score key is absent from frontmatter — checked before thresholds and regardless of `--honor-waiver`, so a cleared or never-written score is "cannot judge" rather than a failing `0`.
 
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|

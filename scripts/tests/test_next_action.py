@@ -619,3 +619,51 @@ class TestNextActionConfigFirstThresholds:
         out = capsys.readouterr().out
         assert result == 0, "Should ALL_DONE: scores pass CLI-arg fallback thresholds (50/50)"
         assert "ALL_DONE" in out
+
+
+class TestNextActionLocalOverrides:
+    """BUG-3760: next-action honors the merged config (.ll/ll.local.md), not a fixed file."""
+
+    @pytest.mark.parametrize(
+        ("base_outcome", "local_outcome", "expected_out", "expected_rc"),
+        [
+            (65, 75, "NEEDS_REFINE BUG-001", 1),
+            (75, 65, "ALL_DONE", 0),
+        ],
+    )
+    def test_local_threshold_overrides_base(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+        base_outcome: int,
+        local_outcome: int,
+        expected_out: str,
+        expected_rc: int,
+    ) -> None:
+        config = dict(sample_config)
+        config["commands"] = {"confidence_gate": {"outcome_threshold": base_outcome}}
+        _write_config(temp_project_dir, config)
+        (temp_project_dir / ".ll" / "ll.local.md").write_text(
+            "---\ncommands:\n  confidence_gate:\n"
+            f"    outcome_threshold: {local_outcome}\n---\n\n# notes\n"
+        )
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(
+            bugs_dir,
+            "P3-BUG-001-test.md",
+            "BUG-001: Test issue",
+            confidence_score=90,
+            outcome_confidence=70,
+            session_commands=["/ll:format-issue", "/ll:verify-issues"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "next-action", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert expected_out in capsys.readouterr().out
+        assert result == expected_rc

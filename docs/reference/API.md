@@ -1482,7 +1482,7 @@ def resolve_confidence_thresholds(
 ) -> tuple[int, int, bool]
 ```
 
-Reads `commands.confidence_gate` from the raw `ll-config.json` key by key and returns `(readiness, outcome, enabled)`. A missing threshold key falls back to the matching entry of `defaults`; an absent file or a parse failure falls back to both defaults with `enabled=False`. `readiness_status` and `next-action` both call it; explicit per-call overrides are layered on by the caller afterwards. It intentionally does not go through `BRConfig`, which always resolves absent thresholds to 85/65.
+Reads `commands.confidence_gate` from a raw config file key by key and returns `(readiness, outcome, enabled)`. A missing threshold key falls back to the matching entry of `defaults`; an absent file or a parse failure falls back to both defaults with `enabled=False`. It is the path-reading wrapper over `confidence_thresholds_from_gate(gate_config, defaults)`, a pure per-key calculation over a raw `confidence_gate` mapping (omitted keys use `defaults`; `enabled` defaults to `False`; values are not coerced and the legacy `threshold` alias is ignored). `readiness_status` and `next-action` call the pure helper with `BRConfig.confidence_gate_raw()`, a detached copy of the loaded, merged raw `commands.confidence_gate` block (`{}` when absent), so `.ll/ll.local.md` overrides, local `null` removals and the selected root/host base are honored and later file edits do not change a loaded config. Explicit per-call overrides are layered on by `readiness_status` afterwards. The raw block is used instead of the typed `ConfidenceGateConfig`, which always resolves absent thresholds to 85/65.
 
 ## little_loops.cli.issues.scaffold_epic
 
