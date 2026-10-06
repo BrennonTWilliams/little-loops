@@ -14,6 +14,8 @@ labels:
 decision_needed: false
 unproven_mechanism: true
 spike_needed: true
+spike_attempted: true
+spike_completed: true
 size: Very Large
 ---
 
@@ -305,7 +307,40 @@ Earlier scores/verdicts described pre-ENH-3751 plans and are superseded by this 
 
 **Open** | Created: 2026-10-05 | Priority: P2 | Next prerequisite: M0 spike proof
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-10-06_
+
+**Retired risks** (M0 proof, run against real SQLite and the public `LibsqlConnection` → `HranaClient` → `HranaStub`)
+
+| Risk (from M0 / Confidence Check Notes) | Proven by | Result |
+|------------------------------------------|-----------|--------|
+| Typed BLOB guard; type-only difference misses | `TestTypedGuards::test_type_only_difference_misses_guard` | ✓ pass |
+| Context `typeof` guard (BLOB host/event_type) | `test_blob_context_misses_text_context_guard` | ✓ pass |
+| Mixed TEXT/BLOB, NULL/COALESCE sibling retention | `test_null_param_retains_sibling_bytes_and_type` | ✓ pass |
+| NOT NULL prerequisite | `test_not_null_prerequisite_rejects_null_write` | ✓ pass |
+| Capped projections (cap / cap+1, invalid-UTF-8 TEXT as bytes) | `TestProjectionAndKeyset::test_capped_projection_bounds_value_and_reports_length` | ✓ pass |
+| Nullable / nonpositive / min-int keyset, holes, beyond-max inserts | `test_keyset_nullable_nonpositive_and_holes` | ✓ pass |
+| Full / short counts, bounded retry, reconciliation, ABA accounting | `TestAckAndReconcile::*` | ✓ pass |
+| Committed-but-lost acknowledgement | `test_committed_but_lost_ack_is_found_desired` | ✓ pass |
+| Wire upper bounds (`executemany` + `execute`), 2×1 MiB TEXT fits 8 MiB, 8-row page < 32 MiB | `TestWireBounds::*` | ✓ pass |
+| `mode=rw` never creates; ro preview leaves live-WAL main/WAL bytes unchanged | `test_mode_rw_open_never_creates_and_ro_preview_leaves_bytes` | ✓ pass |
+| Interruption after commit / before commit / failed rollback | `TestLocalOpenAndInterrupt::*` | ✓ pass |
+
+**Findings to carry into M1–M3**
+
+- A flat sixfold escaping bound **undercounts non-ASCII context**: astral code points JSON-escape to a 12-byte surrogate pair. The estimator uses 2× (printable ASCII), 6× (ASCII with control chars) and 12× (non-ASCII) per character; use measured `encode_value` size or this tiered bound, not a blanket 6×.
+- A direct `SELECT raw_line` on invalid-UTF-8 TEXT raises on both backends; only the `CAST(... AS BLOB)` projection reads it, confirming the bytes-first projection is required.
+- An acknowledged local ROLLBACK counts zero; commit-then-interrupt and failed-rollback outcomes are unconfirmed even though the data did commit.
+- Accounting transitions as one frozen-state swap keep the counters from being half-applied.
+
+**Spike location**: `scripts/tests/spike/enh3752_raw_redaction/` (plan: `.ll/spikes/spike-ENH-3752.md`)
+**Verification**: 37 tests pass (35 AC + 2 guard) plus `test_libsql_backend.py`, `test_sqlite_uri.py` and `test_hrana_client.py` across 4 commands; verdict PROVEN.
+**Assumptions not proven**: hosted-provider (Turso/sqld) parity; the stub is SQLite-backed. The lost-acknowledgement test runs without `no_parallel` (0.4 s timeout against a 1.5 s post-commit stall); the serial real-I/O gate remains an implementation-time task.
+**Promotion**: fold into its production module under `project.src_dir` and its test under `project.test_dir`, in a separate PR.
+
 ## Session Log
+- `/ll:spike` - 2026-10-06T21:03:01 - `abc671b1-1433-4acc-b1c8-d9248434e4e4.jsonl`
 - `/ll:confidence-check` - 2026-10-06T09:57:04 - `6e20ecba-9b39-4fa5-a2d1-2716b647e53a.jsonl`
 - `/ll:verify-issues` - 2026-10-06T09:55:28 - `5670a7ad-a6f3-4ca8-8442-6031f1500522.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-06T09:53:43 - `61d58fe9-ad6e-4e80-ba4c-3aba78f84c55.jsonl`
