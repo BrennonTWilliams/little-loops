@@ -18,6 +18,42 @@ relates_to:
 - BUG-3735
 - ENH-3748
 size: Large
+confidence_score: 90
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: diagnostic-count-columns-open
+  domain: outcome
+  criterion: ambiguity
+  description: Extra diagnostic count columns are left conditional on need.
+- id: export-only-overflow-exception
+  domain: readiness
+  criterion: architecture_compliance
+  description: snapshot_integer_overflow is a consumer-only deviation from source/snapshot
+    numeric parity.
+- id: qualification-shared-state-depth
+  domain: outcome
+  criterion: complexity
+  description: Model-wide qualification, per-channel contributions and one read snapshot
+    interact across functions.
+- id: snapshot-export-caller-surface
+  domain: outcome
+  criterion: change_surface
+  description: build_snapshot_db has several callers (dashboard, serve, loop run)
+    that must stay compatible.
+- id: snapshot-selector-extension
+  domain: readiness
+  criterion: duplicate_implementations
+  description: Snapshot selector and _SnapshotTotals already exist; work extends them
+    rather than starting clean.
+- id: wide-test-doc-site-count
+  domain: outcome
+  criterion: complexity
+  description: About nine change sites span queries, template, five test files and
+    two reference docs.
 ---
 
 # ENH-3733: Snapshot export and dashboard usage qualification
@@ -165,6 +201,7 @@ Verdict at time of check: **VALID** (2026-10-06; no corrections were needed, so 
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-06T23:26:26 - `7b2080b7-52de-4a81-b19c-3b298dbc8c46.jsonl`
 - `/ll:verify-issues` - 2026-10-06T23:03:22 - `2c57054f-2b3f-496f-821f-b71d405d9036.jsonl`
 - Pre-implementation handoff review - 2026-10-06 - Reproduced a valid `2**63` source subtotal crashing SQLite snapshot binding. Added a bounded export-only representability guard, model-wide token taint with independent cost, range/permutation tests and exact unavailable-versus-empty semantics. Opus confidence 0.74 supported the overflow guard; its empty-channel zero proposal was rejected because no observation cannot certify zero. Targeted existing policy/lifecycle/reader/quality/workspace/dashboard/chokepoint suites: 293 passed. No implementation or readiness score claimed.
 
