@@ -12,6 +12,12 @@ relates_to:
 - BUG-3757
 - ENH-3604
 - BUG-3123
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3760: Readiness readers ignore local overrides and alternate config paths
@@ -169,4 +175,5 @@ Review validation: the five original targeted suites passed **723 tests**, next-
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T19:07:12 - `94eb3c7e-b57c-4546-ab2b-1b9d4b0e9038.jsonl`
 - `/ll:capture-issue` - 2026-10-06T18:16:35 - `471d3a7a-54d3-4495-af46-a12400a91738.jsonl`
