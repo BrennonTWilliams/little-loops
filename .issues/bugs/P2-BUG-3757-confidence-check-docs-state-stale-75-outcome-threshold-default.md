@@ -1,6 +1,6 @@
 ---
 id: BUG-3757
-title: 'Confidence-check outcome threshold drifts in docs and set-flags configuration'
+title: Confidence-check outcome threshold drifts in docs and set-flags configuration
 type: BUG
 priority: P2
 status: open
@@ -16,6 +16,12 @@ relates_to:
 - BUG-3756
 - BUG-3760
 - ENH-3742
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3757: Confidence-check outcome threshold drifts in docs and set-flags configuration
@@ -139,5 +145,6 @@ Further review on 2026-10-06 inspected `main` at `77faacc66`. Probes confirmed n
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T18:21:47 - `225d913b-150f-4f37-9e25-fcb3cb3d0b0e.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:16:35 - `471d3a7a-54d3-4495-af46-a12400a91738.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T06:49:39 - `cede7154-079d-47b6-bd61-dd96bcbe90b1.jsonl`
