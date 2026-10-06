@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import itertools
 import json
 import logging
@@ -105,6 +106,115 @@ class TestSQLiteTransport:
         row = recent(db, kind="loop")[0]
         assert row["state"] is not None
         assert row["state"] == "failed"
+
+    @staticmethod
+    def _send_alone(db: Path, event: dict) -> tuple[dict, list[dict]]:
+        """Send *event* to a fresh DB; return (payload as sent, loop rows)."""
+        before = copy.deepcopy(event)
+        transport = SQLiteTransport(db)
+        try:
+            transport.send(event)
+        finally:
+            transport.close()
+        assert event == before, "send() mutated the input event"
+        return event, recent(db, kind="loop")
+
+    def test_route_prefers_canonical_from_over_legacy_state(self, tmp_path: Path) -> None:
+        """BUG-3758: non-null from beats legacy state in the row and in FTS."""
+        db = tmp_path / "session.db"
+        _, rows = self._send_alone(
+            db,
+            {
+                "event": "route",
+                "loop_name": "lp",
+                "from": "canonicalsource",
+                "state": "legacysource",
+                "to": "uniquedestination",
+            },
+        )
+        assert rows[0]["state"] == "canonicalsource"
+        assert rows[0]["to_state"] == "uniquedestination"
+        assert rows[0]["transition"] == "route"
+        content = "lp canonicalsource route uniquedestination"
+        for token in ("canonicalsource", "uniquedestination"):
+            hits = search(db, query=token)
+            assert [h["content"] for h in hits] == [content]
+            assert hits[0]["kind"] == "loop"
+            assert hits[0]["ref"] == "lp"
+            assert hits[0]["anchor"] == ".loops/lp.yaml"
+        assert search(db, query="legacysource") == []
+
+    def test_route_empty_canonical_source_is_still_a_source(self, tmp_path: Path) -> None:
+        """BUG-3758: from="" is supplied (None check, not truthiness)."""
+        db = tmp_path / "session.db"
+        _, rows = self._send_alone(
+            db,
+            {
+                "event": "route",
+                "loop_name": "lp",
+                "from": "",
+                "state": "rejectedemptysource",
+                "to": "emptydest",
+            },
+        )
+        assert rows[0]["state"] == ""
+        hits = search(db, query="emptydest")
+        assert [h["content"] for h in hits] == ["lp  route emptydest"]
+        assert search(db, query="rejectedemptysource") == []
+
+    @pytest.mark.parametrize(
+        ("event", "state", "to_state", "content"),
+        [
+            ({"state": "legacy", "to": "dest"}, "legacy", "dest", "lp legacy route dest"),
+            (
+                {"from": None, "state": "legacy", "to": "dest"},
+                "legacy",
+                "dest",
+                "lp legacy route dest",
+            ),
+            ({"from": "src"}, "src", None, "lp src route"),
+            ({"from": "src", "to": None}, "src", None, "lp src route"),
+            ({"to": "dest"}, None, "dest", "lp route dest"),
+            ({}, None, None, "lp route"),
+            ({"from": "same", "to": "same"}, "same", "same", "lp same route same"),
+            ({"from": 7, "to": 8}, "7", "8", "lp 7 route 8"),
+        ],
+    )
+    def test_route_endpoint_matrix(
+        self,
+        tmp_path: Path,
+        event: dict,
+        state: str | None,
+        to_state: str | None,
+        content: str,
+    ) -> None:
+        """BUG-3758: fallback, null/absent endpoints, self-transition, str() coercion."""
+        db = tmp_path / "session.db"
+        _, rows = self._send_alone(db, {"event": "route", "loop_name": "lp", **event})
+        assert (rows[0]["state"], rows[0]["to_state"]) == (state, to_state)
+        assert rows[0]["transition"] == "route"
+        hits = search(db, query="route")
+        assert [h["content"] for h in hits] == [content]
+        assert "None" not in hits[0]["content"]
+
+    def test_non_route_ignores_from_and_to(self, tmp_path: Path) -> None:
+        """BUG-3758: from/to keys never affect a non-route row or its FTS text."""
+        db = tmp_path / "session.db"
+        _, rows = self._send_alone(
+            db,
+            {
+                "event": "state_enter",
+                "loop_name": "lp",
+                "state": "verify",
+                "from": "misleadingsource",
+                "to": "misleadingdest",
+            },
+        )
+        assert rows[0]["state"] == "verify"
+        assert rows[0]["to_state"] is None
+        assert [h["content"] for h in search(db, query="verify")] == ["lp verify state_enter"]
+        assert search(db, query="misleadingsource") == []
+        assert search(db, query="misleadingdest") == []
 
     def test_send_after_close_is_noop(self, tmp_path: Path) -> None:
         db = tmp_path / "session.db"

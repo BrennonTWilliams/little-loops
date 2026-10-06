@@ -10195,11 +10195,13 @@ class FragmentStore:
 
 ## little_loops.session_store
 
-Unified SQLite session store for `.ll/history.db`. Current schema version: **45**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+Unified SQLite session store for `.ll/history.db`. Current schema version: **60**. All write-side helpers degrade gracefully and are safe to call on every session start via `ensure_db()`. The DB path resolves through a single precedence chain (ENH-2623): the `LL_HISTORY_DB` env var, then the `history.db_path` config key, then the default `.ll/history.db` — applied to default-shaped paths only; a deliberate explicit path is honored verbatim.
+
+**Route events (BUG-3758):** `SQLiteTransport` stores a `route` event's source in `loop_events.state` and its destination in `loop_events.to_state`. A non-null `from` is the source; the legacy `state` key is used only when `from` is absent or null (an empty-string `from` still counts as supplied). Both endpoints are in the row's full-text content, `"<loop> <source> route <destination>"`, so `search()` finds a route by either state (null endpoints are omitted). This applies to newly received route events only; rows and search entries written earlier are not rewritten, and `rebuild()` does not regenerate `loop_events`.
 
 ```python
 from little_loops.session_store import (
-    SCHEMA_VERSION,        # 45
+    SCHEMA_VERSION,        # 60
     VALID_KINDS,           # tuple of valid recent()/search --kind values — single source (ENH-2581)
     ensure_db,             # create/migrate the DB
     connect,               # open a write-capable connection

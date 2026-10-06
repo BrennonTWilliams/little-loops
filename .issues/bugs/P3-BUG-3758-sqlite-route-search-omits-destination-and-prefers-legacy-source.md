@@ -3,10 +3,11 @@ id: BUG-3758
 type: BUG
 title: SQLite route search omits destination and prefers legacy source
 priority: P3
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-10-06'
 captured_at: '2026-10-06T09:02:29Z'
+completed_at: '2026-10-06T19:43:15Z'
 labels:
 - telemetry
 - transport
@@ -168,11 +169,20 @@ Additional review on 2026-10-06 at `46f696c4b` reproduced the legacy-source sele
 |---|---|---|
 | architecture | `docs/reference/API.md` | SQLite transport and search contract. |
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-06
+- **Changes**: `SQLiteTransport.send` (`scripts/little_loops/session_store/writers.py`) now prefers a non-null `from` over legacy `state` for routes and appends the destination to the route FTS content (`"<loop> <source> route <destination>"`). Regressions added in `test_bug3755_transport_loop_identity.py` (real executor route) and `test_session_store_writers.py` (precedence, empty source, endpoint matrix, non-route). `docs/reference/API.md` and `docs/guides/HISTORY_SESSION_GUIDE.md` updated (API schema references refreshed to v60).
+- **Verification**: new tests fail without the fix; full suite 28929 passed, 8 errors in `test_libsql_integration.py::TestLive` (expired live JWT; same 8 errors on the pre-change tree); ruff and mypy clean.
+
 ## Status
 
-**Open** | Reviewed: 2026-10-06 | Priority: P3
+**Done** | Reviewed: 2026-10-06 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T19:42:58 - `cb6316ff-ddb6-4617-a26c-5abf85ec662f.jsonl`
+- `/ll:ready-issue` - 2026-10-06T19:34:12 - `f0964627-c607-4e44-92f3-bb6e15369944.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:26:49 - `afda5a75-36fd-4868-b330-ef24a018b110.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:18:56 - `471d3a7a-54d3-4495-af46-a12400a91738.jsonl`
 - `/ll:capture-issue` - 2026-10-06T09:04:30 - `da8cdf64-7ea1-489f-a22f-62d03c35c5b9.jsonl`

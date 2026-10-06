@@ -3087,10 +3087,13 @@ class SQLiteTransport:
                 if event_type in _LOOP_EVENT_TYPES:
                     loop_name = event_loop_name(event)
                     state = event.get("state")
-                    if event_type == "route" and state is None:
-                        # A route event carries the transition as from/to, not
-                        # state; keep the source state (BUG-3755).
-                        state = event.get("from")
+                    if event_type == "route":
+                        # A route event carries the transition as from/to; the
+                        # canonical non-null source wins over a legacy state
+                        # (BUG-3755, BUG-3758). Explicit None check: "" is a source.
+                        source = event.get("from")
+                        if source is not None:
+                            state = source
                     if event_type == "loop_complete":
                         from little_loops.fsm.persistence import map_final_status
 
@@ -3115,7 +3118,9 @@ class SQLiteTransport:
                     _index(
                         conn,
                         content=" ".join(
-                            str(p) for p in (loop_name, state, event_type) if p is not None
+                            str(p)
+                            for p in (loop_name, state, event_type, to_state)
+                            if p is not None
                         ),
                         kind="loop",
                         ref=loop_name or "",

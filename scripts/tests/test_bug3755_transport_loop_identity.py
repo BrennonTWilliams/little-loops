@@ -19,7 +19,7 @@ from little_loops.events import event_loop_name
 from little_loops.fsm.executor import ActionResult
 from little_loops.fsm.persistence import PersistentExecutor
 from little_loops.fsm.schema import EvaluateConfig, FSMLoop, StateConfig
-from little_loops.session_store import SQLiteTransport, recent
+from little_loops.session_store import SQLiteTransport, recent, search
 
 try:
     import opentelemetry.sdk.trace  # noqa: F401
@@ -54,8 +54,10 @@ def _run_loop(tmp_path: Path, *transports: Any) -> None:
     executor = PersistentExecutor(fsm, loops_dir=tmp_path / ".loops", action_runner=_Runner())
     for transport in transports:
         executor.event_bus.add_transport(transport)
-    executor.run()
-    executor.event_bus.close_transports()
+    try:
+        executor.run()
+    finally:
+        executor.event_bus.close_transports()
 
 
 class TestEventLoopName:
@@ -92,6 +94,21 @@ class TestSQLiteTransportLiveLoop:
             conn.close()
         assert ("route", "work", "done") in rows
         assert all(to_state is None for transition, _, to_state in rows if transition != "route")
+
+    def test_route_is_searchable_by_destination(self, tmp_path: Path) -> None:
+        """BUG-3758: the real work -> done route's FTS content carries both endpoints."""
+        db = tmp_path / "history.db"
+        _run_loop(tmp_path, SQLiteTransport(db))
+        expected = f"{LOOP} work route done"
+        for query in ("work route done", "work route"):
+            hits = [r for r in search(db, query=query) if r["content"] == expected]
+            assert len(hits) == 1, query
+            assert hits[0]["kind"] == "loop"
+            assert hits[0]["ref"] == LOOP
+            assert hits[0]["anchor"] == f".loops/{LOOP}.yaml"
+        rows = recent(db, kind="loop", limit=100)
+        route = [r for r in rows if r["transition"] == "route"]
+        assert [(r["state"], r["to_state"]) for r in route] == [("work", "done")]
 
 
 @pytest.mark.skipif(not _HAS_OTEL_SDK, reason="opentelemetry-sdk not installed")

@@ -288,6 +288,8 @@ ll-session search --fts "worktree" --kind tool --limit 5
 
 Returns BM25-ranked results across all event tables. Use `--kind` to restrict to one table type: `tool`, `file`, `issue`, `loop`, `correction`, `message`, `skill`, `cli`, `snapshot`, `commit`, `test_run`, `usage`, `orchestration_run`, `loop_run`, `learning_test`, `session_lifecycle`, `subagent_run`, `hook_event`, `harness`, `prompt_opt`, `verdict`, `context_pressure`, `review`, `advisor_consult`, `research_triage`, `credential_scope`, `harness_admission` — 27 kinds in total, sourced from `VALID_KINDS` in `session_store/schema.py`. Note the kind for `harness_events` is `harness`, not `harness_event`.
 
+Loop `route` events are indexed as `"<loop> <source> route <destination>"`, so searching for either the source or the destination state finds the transition. This holds for route events recorded from now on; routes recorded earlier were indexed without the destination and are not re-indexed, so a destination search will not find them.
+
 ### Most recent events
 
 ```bash
