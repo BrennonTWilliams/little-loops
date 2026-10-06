@@ -36,9 +36,11 @@ completion (2026-07-06) with that same model:
 
 - `.loops/runs/general-task-20260707T133447/usage.jsonl` (2026-07-07, the
   only post-ship `general-task` run) uses `MiniMax-M3[1m]` — not in
-  `MODEL_PRICING`, `CostReport.from_usage_jsonl` returns `cost_usd: 0.0` /
+  `MODEL_PRICING`, `CostReport.from_usage_jsonl` returns `cost_usd: null` /
   `has_unknown_model: true` for every state (still true; `MiniMax-M3` is
-  unrelated to ENH-2745's fix and remains unpriced).
+  unrelated to ENH-2745's fix and remains unpriced). The cost table
+  prints a `Note: MiniMax-M3[1m] not priced; cost shown is n/a.` footer
+  line under the state rows (ENH-3719).
 - Every loop run from 2026-07-20 onward uses `claude-sonnet-5` or
   `claude-opus-4-8` — **ENH-2745 added both to `MODEL_PRICING`**
   (`scripts/little_loops/pricing.py`), along with `claude-fable-5`, so these
