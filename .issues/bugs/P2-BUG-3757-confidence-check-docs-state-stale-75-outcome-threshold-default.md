@@ -1,6 +1,6 @@
 ---
 id: BUG-3757
-title: 'Confidence-check docs state a stale 75 outcome_threshold default (real default is 65)'
+title: 'Confidence-check outcome threshold drifts in docs and set-flags configuration'
 type: BUG
 priority: P2
 status: open
@@ -10,48 +10,112 @@ labels:
 - confidence-check
 - docs
 - scoring
+- configuration
+relates_to:
+- BUG-3756
+- ENH-3742
 ---
 
-# BUG-3757: Confidence-check docs state a stale 75 outcome_threshold default (real default is 65)
+# BUG-3757: Confidence-check outcome threshold drifts in docs and set-flags configuration
 
 ## Summary
 
-`skills/confidence-check/SKILL.md` (~`:424`) and `rubric.md` (~`:360-361`) say `outcome_threshold` defaults to 75, so the unproven-mechanism hard cap reads as 74. The real default is 65 (`config/automation.py:160`, `config-schema.json:534-539`), so the cap is 64. The 65 gate stays where it is; only the text (and sibling stale defaults) change, and a test ties the documented number to the schema.
+The confidence gate defaults to outcome 65, but confidence-check documentation and `set-flags`' fallback still use 75. In addition, `set-flags` re-reads the base JSON instead of using the loaded configuration, so local threshold overrides are ignored. Align the flag evaluator and the documentation with the existing configuration contract; keep the gate's default at 65 and the unproven-mechanism cap relative to the effective threshold.
 
 ## Parent Issue
 
-Decomposed from BUG-3754: Confidence-check score contract drift: rn-remediate reads score polarity inverted, skill text states a stale 75 outcome threshold. The polarity half lives in the sibling child (BUG-3756).
+Decomposed from BUG-3754. BUG-3756 owns rn-remediate score polarity and routing. This child owns threshold documentation and the related runtime configuration drift; it is no longer a docs-only change.
 
 ## Current Behavior
 
-- `SKILL.md:424` and `rubric.md:360-361` document default 75 / cap 74, and the `.gemini/`, `.kimi-code/`, `.qwen/` skill mirrors carry the same text.
-- Sibling stale values: `scripts/little_loops/cli/issues/set_flags.py` (`_DEFAULT_OUTCOME_THRESHOLD = 75` at `:34`, `FLAG_RULES` `:239`, `_resolve_outcome_threshold` docstring/fallbacks `:243`, `:252`, `:255`, `apply_flags_from_notes` branch `:297`); comment `rn-remediate.yaml:206` ("outcome >= 75"); `test_rn_remediate.py:661` docstring; `docs/reference/CLI.md:1587` (75) and `:1844` (`70`).
-- No test compares a number in `skills/**/*.md` or `docs/` to the schema.
+- `skills/confidence-check/SKILL.md:424` says the Phase 4.5 outcome-risk threshold defaults to 75. `skills/confidence-check/rubric.md:360` documents default 75 / cap 74. Tracked `.gemini/`, `.kimi-code/`, `.qwen/` mirrors carry the same text.
+- `scripts/little_loops/cli/issues/set_flags.py` sets `_DEFAULT_OUTCOME_THRESHOLD = 75`, constructs exported `FLAG_RULES` with it, and uses it in `_resolve_outcome_threshold()` when the config key/file cannot be read. A project omitting the key therefore has a loaded gate of 65 but a flag-evaluation threshold of 75.
+- `_resolve_outcome_threshold()` reads `.ll/ll-config.json` directly. With base outcome 65 and `.ll/ll.local.md` overriding it to 75, `BRConfig` reports 75 while `set-flags` still resolves 65.
+- `docs/reference/CLI.md:1844` says `next-action --outcome-threshold` defaults to 70; the CLI fallback is 65. The rn-remediate readiness comment and an associated test docstring also retain the old 85/75 pair.
+- `docs/reference/CLI.md:1587` is a custom policy-table example using 75, not a default claim. The examples in the policy-router guide and library have the same status and should remain valid examples.
+
+## Steps to Reproduce
+
+1. In a temporary project, omit `commands.confidence_gate.outcome_threshold` from `.ll/ll-config.json`. Load `BRConfig` and compare its `commands.confidence_gate.outcome_threshold` with `set_flags._resolve_outcome_threshold(config)`: observe 65 versus 75.
+2. Use a fresh issue with `outcome_confidence: 70` and an active decision signal in its current confidence notes. Run `ll-issues set-flags <ID> --dry-run`: the fallback 75 treats the issue as below threshold although the default gate is 65.
+3. Set base outcome 65 and a local Markdown override of 75. Load configuration again: the gate reports 75 while the flag resolver returns 65. At outcome 70 an eligible finding is consequently missed.
+4. Compare the skill's Phase 4.5 default and the rubric's cap prose with `ConfidenceGateConfig` and the schema; compare the CLI reference's 70 with `ll-issues next-action --help`.
+
+## Root Cause
+
+The threshold change did not update every consumer. The static flag rules and a separately implemented JSON reader retain 75, while the canonical loaded configuration defaults to 65 and merges local overrides. Changing just the literal would fix omitted-key projects but leave override drift. The documentation also copied a default instead of being checked against the schema.
 
 ## Expected Behavior
 
-- `SKILL.md` and `rubric.md` state default 65 and cap 64; mirrors regenerate cleanly.
-- A test ties the documented default to `config-schema.json`.
-- Sibling stale defaults are fixed or explicitly left (rule-syntax examples at `policy-router.yaml:184`, `POLICY_ROUTER_GUIDE.md:4,73` are not default claims and stay).
+- `set-flags` uses `config.commands.confidence_gate.outcome_threshold`, including merged local overrides and the dataclass fallback. Exported default `FLAG_RULES` use the canonical default 65; custom thresholds still build rules for the effective value.
+- The skill states default 65. The rubric states default 65 / cap 64 and preserves `min(raw_sum, outcome_threshold − 1)`: an explicit threshold of 75 still has cap 74.
+- The CLI reference states fallback 65 for `next-action`; custom policy examples retain their chosen 75.
+- Existing true flags remain set under the current set-only contract. This fix changes new flag evaluation, without clearing previously recorded flags or changing signal phrases, suppressors, or scoring buckets.
+
+## Program Design
+
+### Types
+
+- `ConfidenceGateConfig.outcome_threshold: int` — existing effective gate threshold, default 65.
+- `FLAG_RULES: tuple[FlagRule, ...]` — existing exported rules for the canonical default.
+
+### Signatures
+
+- `_resolve_outcome_threshold(config: BRConfig) -> int` — retain the existing signature and read the loaded configuration rather than opening JSON again.
+- `_rules_for_threshold(threshold: int) -> tuple[FlagRule, ...]` — retain the existing dynamic rule builder and its strict below-threshold preconditions.
+
+### Call Path
+
+`BRConfig` loads defaults, base JSON and local overrides → `apply_flags_from_notes()` resolves the effective threshold → default or custom rules evaluate current findings → existing set-only persistence. Skill/rubric prose describes the same default and the relative cap formula.
 
 ## Implementation Steps
 
-1. Edit `SKILL.md:424` in place (file is 499/500 lines — no net added line) and `rubric.md:360-361` to 65 / 64. Regenerate mirrors with `ll-adapt --host <gemini|kimi-code|qwen> --apply` (`test_skill_mirrors_carry_companions` requires byte-identical mirror `rubric.md`). Avoid `scripts/tests/…` / `scripts/little_loops/…` citations in skill/doc text (`test_docs_audience_gate.py`).
-2. Add `test_documented_outcome_threshold_matches_schema` to `scripts/tests/test_confidence_check_skill.py` using `little_loops.init.core.schema_default("commands.confidence_gate.outcome_threshold")` and the existing `_cap_section_text` section slice; keep the existing Phase 2b/4.5 cap-text assertions green.
-3. Decide `set_flags.py` scope (code default, not docs). If in: move `:34`, `:239`, `:243`, `:252`, `:255`, `:297` together, add a 65–74 boundary case (e.g. `outcome_confidence=70`) to `test_set_flags_cli.py` and a `_DEFAULT_OUTCOME_THRESHOLD == schema_default(...)` assertion.
-4. Fix the `rn-remediate.yaml:206` comment and `test_rn_remediate.py:661` docstring (prose only; coordinate with BUG-3756 if both edit the YAML). Decide `docs/reference/CLI.md:1587` and fix `:1844` (`70` → 65).
-5. Run `python -m pytest scripts/tests/test_confidence_check_skill.py scripts/tests/test_wiring_skills_and_commands.py scripts/tests/test_enh494_skill_companions.py scripts/tests/test_docs_audience_gate.py scripts/tests/test_set_flags_cli.py -v`, then the full `python -m pytest scripts/tests/`.
+1. Replace the independent JSON reader in `_resolve_outcome_threshold()` with the loaded config property. Derive `_DEFAULT_OUTCOME_THRESHOLD` from `ConfidenceGateConfig().outcome_threshold` so static rules do not introduce another literal. Keep the default/custom rule-selection branch and all existing flag behavior.
+2. Add meaningful cases to `scripts/tests/test_set_flags_cli.py`: omitted config key with outcomes 64 / 65 / 70; explicit 75 with 74 / 75; base 65 overridden locally to 75 at outcome 70; base 75 overridden locally to 65 at outcome 70. Use fresh false flags and eligible current findings, with the existing per-rule spike gate/suppressor prerequisites. Test already-true flags remain true, dry-run does not mutate, and all four exported rules use the same default as the schema/dataclass. Also test a project with no config file.
+3. Edit the skill's Phase 4.5 default in place (499/500 lines; no net new lines) and the rubric's default/cap prose to 65 / 64. Tie the actual default and cap statements to `schema_default("commands.confidence_gate.outcome_threshold")` in `scripts/tests/test_confidence_check_skill.py`, using scoped Phase 4.5 and cap-section slices; checking for an unrelated `65` anywhere in the file is insufficient. Retain a text assertion for the relative cap formula so overrides are not turned into a fixed cap of 64.
+4. Correct `docs/reference/CLI.md`'s `next-action` default 70 → 65. Leave the custom policy-table example at 75. Correct the stale readiness-gate comment/test docstring in rn-remediate, or verify BUG-3756 already did so; avoid concurrent edits to the shared YAML.
+5. Regenerate tracked confidence-check mirrors using `ll-adapt --host gemini --apply`, and the corresponding kimi-code/qwen commands. Inspect the generated diff and run the artifact/companion gates; do not hand-edit mirrors or add unrelated host artifacts. Keep skill/doc text within the docs-audience rules.
+6. Run `python -m pytest scripts/tests/test_confidence_check_skill.py scripts/tests/test_set_flags_cli.py scripts/tests/test_wiring_skills_and_commands.py scripts/tests/test_enh494_skill_companions.py scripts/tests/test_docs_audience_gate.py -q`, then the full `python -m pytest scripts/tests/`.
+
+## Integration Map
+
+### Files to Modify
+
+- `scripts/little_loops/cli/issues/set_flags.py` — canonical default and effective threshold resolution.
+- `scripts/tests/test_set_flags_cli.py` — real configuration/boundary/flag behavior.
+- `skills/confidence-check/SKILL.md`, `skills/confidence-check/rubric.md` — default/cap wording.
+- `scripts/tests/test_confidence_check_skill.py` — scoped default/cap assertions.
+- `docs/reference/CLI.md` — next-action default.
+- `scripts/little_loops/loops/rn-remediate.yaml`, `scripts/tests/test_rn_remediate.py` — stale comment/docstring only, coordinated with BUG-3756.
+- `.gemini/skills/confidence-check/`, `.kimi-code/skills/confidence-check/`, `.qwen/skills/confidence-check/` — regenerated tracked mirrors.
+
+### Dependent Files
+
+- `scripts/little_loops/config/automation.py` and `scripts/little_loops/config-schema.json` already default to 65; reuse them without changing the gate.
+- `scripts/little_loops/config/core.py` already merges local overrides; this fix consumes that result.
+- ENH-3742 also edits the skill/rubric and `set_flags.py`. Coordinate shared-file changes; neither fix requires the other to land first.
+
+### Tests and Documentation
+
+The existing flag/skill suites and mirror/docs-audience gates remain required. The custom policy examples in `docs/guides/POLICY_ROUTER_GUIDE.md`, `scripts/little_loops/loops/lib/policy-router.yaml`, and the CLI reference are examples, so their 75 values are not part of the default correction.
 
 ## Impact
 
-- **Priority**: P2 - documentation drift (the actual gate is already 65); split from P0 parent because it has no runtime effect
-- **Effort**: Small
-- **Risk**: Low
+- **Priority**: P2 - runtime flag drift affects omitted defaults and local overrides; the canonical gate is already correct
+- **Effort**: Small to Medium
+- **Risk**: Low to Medium - changes newly evaluated flags in affected projects; existing flags remain set
 - **Breaking Change**: No
 
 ## Acceptance Criteria
 
-SKILL.md and rubric.md state default 65 and cap 64, a test ties the documented default to `config-schema.json`, mirror and docs-audience gates pass, and the `set_flags.py` / `CLI.md` scope decisions are recorded.
+- The loaded gate and flag evaluator agree for absent configuration, omitted keys, explicit thresholds and both directions of local override.
+- At default 65, eligible findings can fire at 64 and do not newly fire at 65 or 70; custom 75 gives the corresponding 74 / 75 boundary. Existing true flags are retained.
+- Skill/rubric prose states default 65 / cap 64 and keeps the relative cap formula; scoped tests tie the documented values and exported flag-rule default to the schema/dataclass.
+- CLI default documentation is corrected; policy examples remain valid. Mirror, docs-audience, targeted and full local test gates pass.
+
+## Review Notes
+
+Reviewed on 2026-10-06. Temporary-project probes reproduced 65 versus 75 with an omitted key and 75 versus 65 with a local override. The pre-change rn-remediate, confidence-check and set-flags suites passed together (287 tests); their current coverage does not catch these cases. An Opus `/ll:advise` consult supported including the runtime resolver and canonical default (confidence 0.75). P2 is retained because omitted keys/local overrides are affected rather than all configured projects, although incorrect flags can feed DECIDE/WIRE routing. Coordinate shared-file edits with ENH-3742; the fixes have no hard dependency. No implementation changes were made during this review.
 
 ## Status
 

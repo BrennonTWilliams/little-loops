@@ -23,6 +23,8 @@ completed_at: '2026-10-06T06:49:39Z'
 
 ## Summary
 
+**Decomposed; implementation proceeds through BUG-3756 and BUG-3757.** This parent remains `done` for the decomposition, not because either fix has shipped. The 2026-10-06 review below and the child issues replace the parent's earlier open scope choices; its previous research and confidence scores are historical context.
+
 The confidence-check score contract is read two ways inside little-loops, and its documented outcome threshold is wrong.
 
 **(1) Inverted polarity.** The rubric scores outcome criteria as points toward confidence: higher means better. Criterion A gives 1-2 change sites 12/12 breadth and a simple isolated change 25/25 (`skills/confidence-check/rubric.md`, Criterion A tables and worked examples). Criterion C gives "no ambiguity" 25. `preparation_policy.py` (around line 647) agrees: it treats the lowest of the scores as the worst dimension.
@@ -34,7 +36,7 @@ The confidence-check score contract is read two ways inside little-loops, and it
 
 So the complexity- and ambiguity-keyed remediation fires on the simple, well-specified end of the scale. Complex or ambiguous issues reach REFINE only through the separate confidence-floor and outcome-threshold branch.
 
-**(2) Stale threshold text.** `skills/confidence-check/SKILL.md` (around line 424) and `rubric.md` (around line 360) say `outcome_threshold` defaults to 75, so the unproven-mechanism hard cap is documented as 74. The real default is 65 (`config/automation.py` around line 160; `config-schema.json` `outcome_threshold` default 65), so the cap is actually 64. The 65 gate is intended to stay where it is; only the text is stale.
+**(2) Threshold drift.** `skills/confidence-check/SKILL.md` (around line 424) and `rubric.md` (around line 360) say `outcome_threshold` defaults to 75, so the unproven-mechanism hard cap is documented as 74. The real default is 65 (`config/automation.py` around line 160; `config-schema.json` `outcome_threshold` default 65), so the default cap is 64. Review also confirmed that `set-flags` falls back to 75 and ignores merged local overrides. BUG-3757 includes that runtime defect; the canonical gate stays at 65.
 
 ## Current Behavior
 
@@ -61,6 +63,8 @@ So the complexity- and ambiguity-keyed remediation fires on the simple, well-spe
 - BUG-2007, ENH-2229 and BUG-2230 fixed other rn-remediate routing defects; none addressed polarity.
 
 ## Implementation Steps
+
+**Historical plan, replaced by the child implementation steps.** BUG-3756 now defines score validation, minimum-score boundaries, inventory-based wiring and preserved routing order. BUG-3757 explicitly includes the runtime flag-threshold resolver and documentation. Do not reopen the old “decide scope” tasks below or implement this parent separately.
 
 ### Codebase Research Findings
 
@@ -209,11 +213,13 @@ Verified against main 4c6be4c26 on 2026-10-05.
 
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P0
+**Done (decomposed)** | Created: 2026-10-05 | Priority: P0 | Fixes remain open in BUG-3756 and BUG-3757
 
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-10-06_
+
+Historical assessment of the unsplit parent. The child review resolves its scope questions; these 95/63 scores are not new assessments of the revised children.
 
 **Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 63/100 → MODERATE
@@ -255,8 +261,21 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
 ## Resolution
 
-- **Status**: Decomposed
+- **Status**: done
 - **Closed**: 2026-10-06
+- **Resolution**: Decomposed; runtime fixes not yet implemented
 - **Decomposed into**: BUG-3756, BUG-3757
 
 Work for BUG-3754 is now carried by its child issues; this parent was closed by rn-decompose.
+
+## Pre-Implementation Review
+
+Reviewed on 2026-10-06 against the working tree, with `/ll:advise --signal user_requested --host claude-code --model opus` (advisor confidence 0.75).
+
+- **BUG-3756:** keep threshold defaults at 15 and define deficiency as `< minimum acceptable score`; equality is acceptable. Validate aggregate and consumed criterion scores at both snapshots; missing/null/invalid scores terminate as `SCORES_MISSING`, while zero is valid. Include the overlooked `check_wire_needed_outcome` state. Use existing `integration_files` independently of Criterion D, and skip repeat inventory-only wiring after a wired marker. Preserve the initial band and four-term convergence sum; correct A/C delta signs only.
+- **Routing scope:** direct DECOMPOSE/REFINE_LIGHT rules are dormant on normal diagnosis entry. Do not make them reachable by reordering this bugfix: Criterion D also measures mechanical-fanout verifiability, so a low value can need enumeration rather than decomposition. Keep budget-based escalation; separate pattern-aware routing can be reviewed later. Opus dissented that a mirrored ≤10 cutoff might better preserve intent; the explicit decision here is to retain configurable minimum 15.
+- **BUG-3757:** include the default-75 flag evaluator and its bypass of loaded/local configuration. Use the existing effective configuration, document default 65 / relative cap 64, correct next-action's documented 70, and preserve custom policy examples using 75. Preserve set-only flags. Retain P2 because the runtime drift affects omitted keys/local overrides rather than every configured project.
+- **Implementation readiness:** child files now include reproduction steps, concrete program design, integration maps, resolved scope boundaries and behavioral acceptance tests. Coordinate shared rubric/YAML edits and ENH-3742; no hard dependency is needed. Document reversed custom-threshold semantics and use fresh run directories rather than pre-fix sidecars.
+- **Evidence:** the pre-change rn-remediate, confidence-check and set-flags suites passed (287 tests), while extracted actions reproduced A=5 → `MINIMAL` and D=0 with a positive inventory → `WIRE`. Temporary configs reproduced gate/flag disagreement both for an omitted key (65/75) and a local override (75/65). Passing baseline tests do not cover these defects.
+
+No runtime code, skill or loop implementation was changed during this review.

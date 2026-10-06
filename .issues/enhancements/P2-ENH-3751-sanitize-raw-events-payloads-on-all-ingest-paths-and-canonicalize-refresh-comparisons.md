@@ -19,6 +19,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+size: Large
 ---
 
 # ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons
@@ -265,6 +266,7 @@ _Added by `/ll:confidence-check` on 2026-10-06_
 - Rebuild-fingerprint gate (`test_enh3678_rebuild_derive_gate.py`) constrains where sanitization may be inserted; a misplaced seam forces a `REBUILD_DERIVE_VERSION` bump.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T09:21:57 - `efbe7654-b8cc-4b46-8b6e-54d1216778fc.jsonl`
 - `/ll:verify-issues` - 2026-10-06T09:20:37 - `3fd3819a-5352-4bac-bbe1-b8a3f3e515f1.jsonl`
 - `/ll:wire-issue` - 2026-10-06T09:18:17 - `69fbb543-02d8-48e4-bbb6-a2a33935a7ec.jsonl`
 - `/ll:refine-issue` - 2026-10-06T09:05:52 - `da8cdf64-7ea1-489f-a22f-62d03c35c5b9.jsonl`

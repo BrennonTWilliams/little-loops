@@ -22,6 +22,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+size: Very Large
 ---
 
 # ENH-3752: Add ll-session redact maintenance command for stored raw_events rows
@@ -386,6 +387,7 @@ Verdict at time of check: **CLAIMS_OUTDATED** (correction below applied in the s
 - Confidence Check Notes listed the sanitizer-API blocker as still open; it is done. Only the ingest-wiring blocker remains open. Corrected in place.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T09:57:04 - `6e20ecba-9b39-4fa5-a2d1-2716b647e53a.jsonl`
 - `/ll:verify-issues` - 2026-10-06T09:55:28 - `5670a7ad-a6f3-4ca8-8442-6031f1500522.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-06T09:53:43 - `61d58fe9-ad6e-4e80-ba4c-3aba78f84c55.jsonl`
 - `/ll:confidence-check` - 2026-10-06T09:45:03 - `516d313f-0876-453e-a4bd-d939284c79cd.jsonl`
