@@ -566,7 +566,10 @@ _Added by `/ll:confidence-check` on 2026-10-02 (re-scored after the FEAT-3667 sp
 
 **Note** (added by `/ll:audit-issue-conflicts`): Profile data vs FEAT-3667: the four preset JSONs (`artifact`, `visual`, `functional`, `business`) ship in FEAT-3667 with unbuilt knobs off; this issue owns only the state wiring that calls `resolve_profile`. "Ships with the built-in `artifact` profile only" is superseded; brief 2's `mode=functional` merge gate depends on the FEAT-3667 presets.
 
+**Note** (added by `/ll:audit-issue-conflicts`): Init preflight vs FEAT-3583: this issue owns wiring `resolve-profile --validate-only` into `init` for explicit modes/knobs; FEAT-3583 only adds the auto-only `classify_mode` branch after that preflight.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-06T17:22:35 - `41577712-f527-4990-b326-7134aa659541.jsonl`
 - Implementation-boundary review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue updates only) - 2026-10-05
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05

@@ -30,7 +30,7 @@ The current shipped loop has one generic pipeline. After FEAT-3667/3582 land, fo
 
 ## Expected Behavior
 
-- Init runs `resolve-profile --validate-only` with the explicit mode/knobs before any classifier call; invalid mode, unknown key, bad numeric/bool, or unbuilt capability fails with no LLM dispatch. Reuse the engine validator, without a separate gate state or a second implementation.
+- FEAT-3582's `init` already runs `resolve-profile --validate-only` with the explicit mode/knobs; this issue only adds the auto-only `classify_mode` branch after that preflight, so it runs before any classifier call; invalid mode, unknown key, bad numeric/bool, or unbuilt capability fails with no LLM dispatch. Reuse the engine validator, without a separate gate state or a second implementation.
 - Keep the shipped default `mode=artifact`; users can explicitly select `mode=auto`. Explicit `mode=artifact|visual|functional|business` skips classification. `mode=auto` runs one prompt state, capturing `MODE_JSON: {"mode": str, "confidence": number, "rationale": str}` for the resolver. `classify_mode` declares `next: resolve_profile` and `on_error: resolve_profile` (plus bounded timeout/rate-limit routing), and the resolver treats a failed classifier call as fallback, rather than accepting partial stdout.
 - Confidence must be finite and in [0,1], excluding booleans. A known mode with confidence >= 0.6 is accepted; malformed/unknown/invalid confidence, confidence < 0.6, or classifier host error/timeout falls back to artifact. `profile.json` records requested mode, decision, fallback reason, resolved mode, and overridden keys. The banner and report make the choice visible and explain `mode=` reruns.
 - Explicit nonempty context knobs override the selected preset. Empty string inherits; explicit false/none disables. Knobs are reframe, ground, materialize, premortem, min_ideas, min_cells, max_finalists, ideas_per_round. The resolver enforces BUILT_CAPABILITIES. In core v1, reframe=true, ground=codebase, materialize=render and premortem=true fail until their owning implementation enables them (reframe remains v2).
@@ -98,7 +98,7 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 | brainstorm-profiles/*.json | Preset schema and unbuilt knobs off | Preserved; tune bins/definitions/lenses only |
 
 ### Files to Modify
-- scripts/little_loops/loops/brainstorm.yaml — init preflight/auto route, classifier, existing resolver's override plumbing; keep artifact as the default.
+- scripts/little_loops/loops/brainstorm.yaml — init auto route (after FEAT-3582's preflight), classifier, existing resolver's override plumbing; keep artifact as the default.
 - scripts/little_loops/brainstorm_engine.py — parse_mode_decision and decision/fallback provenance; reuse resolver validation.
 - scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json — tuning of existing files.
 - scripts/little_loops/fsm/fence.py — classify_mode brief registration.
@@ -174,7 +174,12 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 
 **Open** | Created: 2026-09-25 | Priority: P2
 
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue adds opt-in `mode=auto` only and preserves the shipped `mode=artifact` default; FEAT-3596 owns the gated default flip to `auto` (the 2026-09-30 note above saying this issue flips the default is superseded). FEAT-3582 owns wiring the `resolve-profile --validate-only` preflight into `init`; this issue adds only the auto-only `classify_mode` branch after it.
+
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-10-06T17:22:34 - `41577712-f527-4990-b326-7134aa659541.jsonl`
 - Implementation-boundary review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue updates only) - 2026-10-05
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
