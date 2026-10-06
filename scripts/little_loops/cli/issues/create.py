@@ -174,7 +174,9 @@ _SUBSECTION_RE = re.compile(r"[ \t]{0,3}#{3,6}[ \t]")
 _LIST_MARKER_RE = re.compile(r"[ \t]*(?:[-*+]|\d+[.)])[ \t]")
 
 
-def _append_child_to_epic_children(content: str, child_id: str, child_title: str) -> str | None:
+def _append_child_to_epic_children(
+    content: str, child_id: str, child_title: str, *, child_status: str = "open"
+) -> str | None:
     """Append a child bullet to an EPIC's ``## Children`` section.
 
     Three outcomes: ``None`` when there is no exact ``## Children`` heading
@@ -183,6 +185,8 @@ def _append_child_to_epic_children(content: str, child_id: str, child_title: str
     The bullet goes after the last child bullet (and its continuations)
     that precedes any ``###`` subsection, or at the top of the section when
     there is none. Line endings and the final-newline state are preserved.
+    *child_status* labels a newly inserted bullet (default ``open``); an
+    already-listed child keeps its existing text.
 
     Raises:
         AmbiguousChildrenSection: when a lazy continuation paragraph follows
@@ -200,7 +204,7 @@ def _append_child_to_epic_children(content: str, child_id: str, child_title: str
 
     title = " ".join(child_title.split())
     cr = "\r" if "\r\n" in content else ""
-    bullet = f"- **{child_id}** — {title} (open)" + cr
+    bullet = f"- **{child_id}** — {title} ({child_status})" + cr
     blank = cr
 
     section = content[start:end]

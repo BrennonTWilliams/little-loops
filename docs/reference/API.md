@@ -1611,6 +1611,23 @@ def deep_synthesize_clusters(
 
 **Raises:** `little_loops.host_runner.BlockingJsonError` on host/call failure; `ValueError` when the response fails the post-hoc key-set check. Both must be handled by the caller as a hard failure (`Error: ...` + exit 1) — never silently falling back to Jaccard-only output.
 
+### apply_parent_link
+
+```python
+from little_loops.cli.issues.link import apply_parent_link, ParentLinkResult
+
+def apply_parent_link(
+    config: BRConfig,
+    *,
+    issue_id: str,
+    target: str,
+    reparent: bool = False,
+    dry_run: bool = False,
+) -> ParentLinkResult
+```
+
+Non-printing core of `ll-issues link <ISSUE> --parent <EPIC> [--reparent]`. Re-reads, validates, and plans both files under one issue-tree mutation lock, then writes the child first and the EPIC second. Always sets `parent:`; synchronizes `epic:` only when the child already carries that key. Validation failures are returned as `status="rejected"` results with a stable `reason` code (`not_found`, `invalid_type`, `invalid_target`, `identity_mismatch`, `conflicting_parent`, `ambiguous_children_section`, `metadata_unsafe`, `malformed_metadata`, `lock_timeout`, `write_failed`) rather than raised. `dry_run=True` performs identical validation and planning with zero writes. `ParentLinkResult.child_written`/`epic_written` record only completed writes; `status="partial_failure"` means the child was assigned but the EPIC write failed (`repair` holds the command to re-run).
+
 ### apply_assignment
 
 ```python

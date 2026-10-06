@@ -413,6 +413,7 @@ def cmd_epic_consistency(config: BRConfig, args: argparse.Namespace) -> int:
             print("  (b) Body-listed, no parent: backref (human decision needed):")
             for child_id in drift.body_without_parent:
                 print(f"      {child_id}")
+            print(f"      to accept a listing: ll-issues link <child> --parent {drift.epic_id}")
         if drift.relates_to_is_child:
             print("  [advisory] relates_to lists child membership (parent: backref implies it):")
             for child_id in drift.relates_to_is_child:

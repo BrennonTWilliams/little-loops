@@ -174,7 +174,7 @@ Sub-commands:
   set-scores       Write confidence and dimension scores to issue frontmatter
   set-flags        Write decision_needed/missing_artifacts/implementation_order_risk/spike_needed flags from confidence-check findings
   set-status       Transition an issue to a new status value
-  link             Write or remove a dependency edge in issue frontmatter
+  link             Write or remove a dependency edge, or assign an issue to an EPIC (--parent)
   link-epics       Score orphans for EPIC assignment, or cluster into new-EPIC proposals
   skip             Deprioritize an issue by bumping its priority prefix
   anchor-sweep     Rewrite file:line references in active issue files to anchor form

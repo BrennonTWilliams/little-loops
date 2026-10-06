@@ -158,7 +158,7 @@ def test_build_cli_surface_index_against_real_metavar_tools(
 def test_build_cli_surface_index_against_real_ll_issues_link() -> None:
     """Integration: scrapes this repo's real installed `ll-issues` CLI and
     reproduces the exact FEAT-2942 regression this issue exists to catch —
-    `ll-issues link --parent` (no such flag) — while confirming a real,
+    a nonexistent `ll-issues link` flag — while confirming a real,
     existing flag still resolves. build_cli_surface_index() itself is
     instant/empty; the first cli_surface_accepts() query triggers (and
     caches) the actual --help scrape.
@@ -167,4 +167,5 @@ def test_build_cli_surface_index_against_real_ll_issues_link() -> None:
     assert idx.surface == {}
     assert cli_surface_accepts(idx, "ll-issues", "link", "--blocked-by") is True
     assert "ll-issues" in idx.surface
-    assert cli_surface_accepts(idx, "ll-issues", "link", "--parent") is False
+    assert cli_surface_accepts(idx, "ll-issues", "link", "--parent") is True
+    assert cli_surface_accepts(idx, "ll-issues", "link", "--no-such-flag") is False

@@ -717,6 +717,67 @@ def _fallback_title(content: str, path: Path) -> str:
     return h1.group(1) if h1 else path.stem
 
 
+@dataclass
+class _PairPlan:
+    """Computed (unwritten) outcome of assigning one child to one EPIC."""
+
+    new_child: str
+    new_epic: str
+    displaced: list[str]
+    body_status: str  # "updated" | "already_present" | "missing_heading"
+
+
+def _plan_pair(
+    child_text: str,
+    epic_text: str,
+    *,
+    child_id: str,
+    epic_id: str,
+    title: str,
+    sync_epic_key: str,
+    reparent: bool = False,
+    child_status: str = "open",
+) -> _PairPlan:
+    """Compute both new file texts for a child -> EPIC assignment without writing.
+
+    Shared by :func:`apply_assignment` (``sync_epic_key="always"``, never reparents)
+    and ``link.apply_parent_link`` (``sync_epic_key="if_present"``). Always upserts
+    ``parent:``; ``epic:`` is upserted always, or only when the key already exists
+    (an explicit null counts). A non-null ``parent:``/``epic:`` naming another EPIC
+    raises :class:`ConflictingParent` unless *reparent*, in which case every
+    distinct displaced value is reported in ``displaced``.
+
+    Raises:
+        ConflictingParent: a different parent/epic is set and *reparent* is false.
+        AmbiguousChildrenSection: the EPIC's Children list extent is unclear.
+        ValueError: the child's frontmatter cannot be edited safely.
+    """
+    from little_loops.cli.issues.create import _append_child_to_epic_children
+    from little_loops.frontmatter import parse_frontmatter, upsert_frontmatter_scalars
+
+    current = parse_frontmatter(child_text.replace("\r\n", "\n"))
+    displaced: list[str] = []
+    for field_name in ("parent", "epic"):
+        value = current.get(field_name)
+        if value is not None and value != epic_id:
+            if not reparent:
+                raise ConflictingParent(f"{child_id} already has {field_name}: {value}")
+            if value not in displaced:
+                displaced.append(value)
+
+    updates = {"parent": epic_id}
+    if sync_epic_key == "always" or "epic" in current:
+        updates["epic"] = epic_id
+    new_child = upsert_frontmatter_scalars(child_text, updates)
+    appended = _append_child_to_epic_children(epic_text, child_id, title, child_status=child_status)
+    if appended is None:
+        body_status, new_epic = "missing_heading", epic_text
+    else:
+        body_status = "already_present" if appended == epic_text else "updated"
+        new_epic = appended
+    return _PairPlan(new_child, new_epic, displaced, body_status)
+
+
 def apply_assignment(
     proposal: EpicProposal,
     *,
@@ -753,39 +814,34 @@ def apply_assignment(
         TimeoutError: the mutation lock could not be acquired.
         OSError: a write failed.
     """
-    from little_loops.cli.issues.create import _append_child_to_epic_children
     from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
-    from little_loops.frontmatter import parse_frontmatter, upsert_frontmatter_scalars
 
     with acquire_lock(issue_lock_path(orphan_path, base_dir)):
         orphan_text = _read_raw(orphan_path)
         epic_text = _read_raw(epic_path)
 
-        current = parse_frontmatter(orphan_text.replace("\r\n", "\n"))
-        for field_name in ("parent", "epic"):
-            value = current.get(field_name)
-            if value is not None and value != proposal.epic_id:
-                raise ConflictingParent(f"{proposal.orphan_id} already has {field_name}: {value}")
-
         title = child_title if child_title else _fallback_title(orphan_text, orphan_path)
-        new_orphan = upsert_frontmatter_scalars(
-            orphan_text, {"parent": proposal.epic_id, "epic": proposal.epic_id}
+        plan = _plan_pair(
+            orphan_text,
+            epic_text,
+            child_id=proposal.orphan_id,
+            epic_id=proposal.epic_id,
+            title=title,
+            sync_epic_key="always",
         )
-        appended = _append_child_to_epic_children(epic_text, proposal.orphan_id, title)
-        new_epic = epic_text if appended is None else appended
 
-        if new_orphan != orphan_text:
-            atomic_write(orphan_path, new_orphan, shared_mode=True)
-        if new_epic != epic_text:
+        if plan.new_child != orphan_text:
+            atomic_write(orphan_path, plan.new_child, shared_mode=True)
+        if plan.new_epic != epic_text:
             try:
-                atomic_write(epic_path, new_epic, shared_mode=True)
+                atomic_write(epic_path, plan.new_epic, shared_mode=True)
             except OSError as exc:
                 raise OSError(
                     f"{proposal.orphan_id} was assigned to {proposal.epic_id} but the EPIC "
                     f"## Children write failed ({exc}); run "
                     f"`ll-issues epic-consistency --fix {proposal.epic_id}` to repair"
                 ) from exc
-    return appended is not None
+    return plan.body_status != "missing_heading"
 
 
 def add_link_epics_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:

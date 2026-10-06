@@ -3,10 +3,11 @@ id: ENH-3749
 type: ENH
 title: Add a parent-assignment option to ll-issues link for single child-to-EPIC assignment
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T23:41:53Z'
+completed_at: '2026-10-06T02:05:41Z'
 verify_verdict: VALID
 labels:
 - issues
@@ -148,12 +149,12 @@ No new configuration or dependency.
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues link CHILD --parent EPIC [--reparent]` assigns both sides with preserving writers, exact canonical identities and accurate new-bullet status; present/null `epic:` is synchronized, absent `epic:` stays absent.
-- [ ] Idempotent reruns perform no writes; same-parent missing bullets are repaired; category-(b) drift writes only the child when already listed.
-- [ ] Both-key conflicts, invalid types/metadata, ambiguity, timeout, and unsupported flags reject before writes, including in dry-run. Reparent reports every displaced relationship and preserves old bullets.
-- [ ] Missing heading is an explicit successful skip; second-write failure exits nonzero, truthfully reports the partial state, and provides a valid repair/reapply command.
-- [ ] JSON success/error output parses as exactly one document; existing list/MCP and `apply_assignment` behavior remains compatible.
-- [ ] Help, skill guidance, and docs specify the command, flags, partial-write boundary, and remedies; focused gates and `python -m pytest scripts/tests/` pass.
+- [x] `ll-issues link CHILD --parent EPIC [--reparent]` assigns both sides with preserving writers, exact canonical identities and accurate new-bullet status; present/null `epic:` is synchronized, absent `epic:` stays absent.
+- [x] Idempotent reruns perform no writes; same-parent missing bullets are repaired; category-(b) drift writes only the child when already listed.
+- [x] Both-key conflicts, invalid types/metadata, ambiguity, timeout, and unsupported flags reject before writes, including in dry-run. Reparent reports every displaced relationship and preserves old bullets.
+- [x] Missing heading is an explicit successful skip; second-write failure exits nonzero, truthfully reports the partial state, and provides a valid repair/reapply command.
+- [x] JSON success/error output parses as exactly one document; existing list/MCP and `apply_assignment` behavior remains compatible.
+- [x] Help, skill guidance, and docs specify the command, flags, partial-write boundary, and remedies; focused gates and `python -m pytest scripts/tests/` pass.
 
 ## Scope Boundaries
 
@@ -170,11 +171,25 @@ Single child-to-EPIC assignment only. No parent unlink, automatic old-bullet del
 
 Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Settled `--parent`/`--reparent`, the existing-key `epic:` policy, unlink deferral, and partial-write reporting; removed the resolved BUG-3738 blocker. Previous confidence scores (95 readiness / 71 outcome) described the prior contract and are archived here rather than reused as a fresh assessment. Re-score the revised contract at the implementation gate.
 
+## Resolution
+
+Implemented `ll-issues link CHILD --parent EPIC [--reparent]`.
+
+- `link.py`: `--parent`/`--reparent` flags, `ParentLinkResult`, non-printing `apply_parent_link`, CLI shell with single-document `--json`.
+- `link_epics.py`: extracted `_plan_pair` shared by `apply_assignment` (unchanged signature/behavior, `epic:` always written) and the new path (`epic:` only when present).
+- `create.py`: optional keyword-only `child_status` on `_append_child_to_epic_children` (default `open`).
+- `epic_consistency.py` category-(b) remedy hint; help epilog; `docs/reference/{CLI,API,COMMANDS}.md`; `skills/link-epics/SKILL.md`.
+- Tests: 32 new in `test_link_cli.py`; `test_cli_surface.py` re-pointed.
+
+Verification: ruff, mypy clean; full suite 28514 passed. Unrelated pre-existing failures: `test_verify_evidence::TestRepoGate` (ENH-3700 evidence spans, fails on baseline), `test_libsql_integration::TestLive` (live endpoint errors), plus two order-dependent flakes (`test_fsm_runners` tempfile, `test_hooks_integration` quote path) that pass in isolation.
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P3
+**Done** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T02:05:41 - `1d15372c-5120-428f-a687-34ae7d2d3fe4.jsonl`
+- `/ll:ready-issue` - 2026-10-06T01:49:12 - `83d344b3-b8a0-40c6-b8c1-ad4ff646376b.jsonl`
 - `/ll:confidence-check` - 2026-10-06T01:46:32 - `2fc077e6-f247-45dc-97b8-6729a8243496.jsonl`
 - `/ll:confidence-check` - 2026-10-06T01:09:31 - `c373be39-3ae5-465c-90da-c98a8ab828e9.jsonl`
 - `/ll:verify-issues` - 2026-10-06T01:07:52 - `6493c397-fb81-474b-97a7-2295ce48765a.jsonl`

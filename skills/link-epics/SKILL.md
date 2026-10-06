@@ -105,8 +105,9 @@ questions:
 at or above `THRESHOLD`; it has no single-pair apply, and a score threshold cannot represent
 an arbitrary accepted subset or select a non-top EPIC. Run A3 only when the user accepts all
 proposals. If they accept only some, or want a different EPIC than the top-ranked one, do
-not run `--apply`; tell them those assignments need a manual edit of the orphan's
-`parent:`/`epic:` and the EPIC's `## Children` section. If nothing is selected, report
+not run `--apply`; apply each such pair individually instead with
+`ll-issues link <ORPHAN_ID> --parent <EPIC_ID>` (add `--reparent` only to replace an
+existing parent). If nothing is selected, report
 `No assignments made.` and stop.
 
 **Auto (`--auto`)**: skip the prompt, go straight to A3.
@@ -125,7 +126,10 @@ JSON `rejected` list (`reason`: `conflicting_parent`, `ambiguous_children_sectio
 `lock_timeout`, `metadata_unsafe`, `write_failed`) and the command exits 1; report them.
 A `write_failed` rejection means the orphan was linked but the EPIC bullet was not
 written — re-running `link-epics --apply` will **not** repair it (the orphan is no longer
-parentless); run `ll-issues epic-consistency --fix <EPIC>`. Stage the touched files:
+parentless); run `ll-issues epic-consistency --fix <EPIC>` (or re-run
+`ll-issues link <ORPHAN_ID> --parent <EPIC>`). For a `conflicting_parent` rejection, the
+user can choose to override it explicitly with `ll-issues link <ORPHAN_ID> --parent <EPIC>
+--reparent`. Stage the touched files:
 
 ```bash
 git add -u {{config.issues.base_dir}}/

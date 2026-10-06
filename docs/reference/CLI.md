@@ -3221,15 +3221,52 @@ apply` (below), which write the same fields as **markdown-body sections**
 | `--blocked-by <ID>` | Target hard-blocks `issue_id` (mutually exclusive with the two below) |
 | `--depends-on <ID>` | Target is a soft prerequisite of `issue_id` |
 | `--relates-to <ID>` | Target is related to `issue_id` |
-| `--unlink` / `--remove` | Remove the edge instead of adding it |
+| `--parent <EPIC>` | Assign `issue_id` (a BUG/FEAT/ENH) to this EPIC — see below (mutually exclusive with the three above) |
+| `--reparent` | With `--parent`: replace an existing, different parent instead of rejecting it |
+| `--unlink` / `--remove` | Remove the edge instead of adding it (not valid with `--parent`) |
 | `--reciprocal` | Also write the matching reverse edge on the target (`blocked_by` → `blocks`; `relates_to` is already bidirectional) |
-| `--force` | Skip target-existence validation |
+| `--force` | Skip target-existence validation (not valid with `--parent`) |
 | `--json` | Output result as JSON |
 | `--dry-run` | Report what would change without writing |
 | `--config` | Path to project root |
 
+**`--parent` (single child-to-EPIC assignment).** Assigns one existing BUG/FEAT/ENH to a
+chosen EPIC: sets the child's `parent:`, synchronizes `epic:` only when that key already
+exists in the child (an explicit null included; an absent key stays absent), and adds a
+`- **ID** — <title> (<status>)` bullet to the EPIC's exact `## Children` section using the
+child's current status. Use it to pick an EPIC other than the one `link-epics --apply`
+chose, or to resolve `epic-consistency` category-(b) drift (a child listed in an EPIC body
+with no `parent:` back-reference).
+
+- Both IDs resolve through the numeric ID; a stale type prefix does not change the type.
+  The target must be an EPIC and the child a BUG/FEAT/ENH.
+- A child whose `parent:` or `epic:` names a different EPIC (or whose two keys disagree) is
+  rejected unless `--reparent` is given. With `--reparent` both keys are synchronized and
+  every displaced EPIC is reported; its old `## Children` bullet is **not** removed, so
+  review that EPIC manually.
+- Rerunning an assignment that already holds writes nothing. A same-parent rerun still adds
+  a missing Children bullet; a child already listed in the EPIC body writes only the child.
+- An EPIC with no exact `## Children` heading exits 0 with `epic_body_status:
+  missing_heading` and only the child is written. An ambiguous Children section, malformed
+  or post-fence parenting metadata (repair with `ll-issues format-check <ID> --fix --apply`),
+  inconsistent filename/frontmatter identity, or a lock timeout rejects with exit 1 before
+  any write. `--dry-run` validates and plans identically and never writes.
+- The child is written first, then the EPIC; the pair is not a transaction. If only the EPIC
+  write fails the result is `partial_failure` (exit 1): the child is already assigned, and
+  re-running the same command (or `ll-issues epic-consistency --fix <EPIC>`) repairs the
+  Children bullet.
+- An intentionally parentless child (`parentless_reason`) is assigned anyway; the override
+  is reported as a warning and the `parentless_reason` key is left in place.
+- `--json` emits exactly one document: `issue_id`, `target_id`, `status` (`assigned`,
+  `would_assign`, `unchanged`, `rejected`, `partial_failure`), `reason`, `detail`,
+  `child_would_change`, `epic_would_change`, `child_written`, `epic_written`,
+  `epic_body_status`, `previous_parents`, `warnings`, `repair`.
+
 **Examples:**
 ```bash
+ll-issues link FEAT-110 --parent EPIC-200                # Assign FEAT-110 to EPIC-200
+ll-issues link FEAT-110 --parent EPIC-300 --reparent     # Move it to a different EPIC
+ll-issues link FEAT-110 --parent EPIC-200 --dry-run --json
 ll-issues link FEAT-110 --blocked-by FEAT-109   # First run: writes the edge
 ll-issues link FEAT-110 --blocked-by FEAT-109   # Second run: no-op, exit 0
 ll-issues link FEAT-110 --blocked-by FEAT-109 --unlink   # Remove the edge
@@ -3358,7 +3395,7 @@ Detect and reconcile EPIC body/parent drift — cases where an EPIC's `## Childr
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--all` | `-a` | Check every EPIC in the epics directory |
-| `--fix` | | Rewrite `## Children` for category-(a) drift instead of only reporting it |
+| `--fix` | | Rewrite `## Children` for category-(a) drift instead of only reporting it. Category-(b) drift (body-listed child with no `parent:` back-reference) needs a human choice: accept it with `ll-issues link <child> --parent <EPIC>` |
 | `--format` | `-f` | Output format: `text` (default) or `json` |
 | `--config` | | Path to `ll-config.json` |
 
