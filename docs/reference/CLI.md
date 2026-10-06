@@ -4670,8 +4670,18 @@ It requires `--host HOST` plus exactly one of `--session-id ID` or `--all`;
 `--all` means all verified sources for that host in the selected local store.
 Each source is replaced atomically from its original file. Missing originals,
 legacy or mixed host attribution, compacted rows, a changed session identity,
-and parser output that drops stored fields are skipped with a reason on stderr
-and a nonzero exit status. `--json` includes each source's status/reason and
+parser output that drops stored fields, per-line metadata (timestamp, session,
+ordinal, event type) that differs from the original, and a persisted usage
+qualification that would be removed or changed are skipped with a reason on
+stderr and a nonzero exit status. Source and stored payloads are compared in
+their redacted (canonical) form with type-sensitive equality (`true` vs `1` and
+`1` vs `1.0` differ), so a source whose stored rows only differ by redacted
+secret spans is reported `unchanged` and nothing is rewritten — this certifies
+compatibility, it does not scrub legacy plaintext rows. A stored payload that
+cannot be decoded, or a source the redaction policy rejects, is skipped with a
+reason-only line (for example `invalid_payload`); other sources still complete.
+A stored `NULL` usage qualification may be promoted from the original file by
+replacement, which requires a rebuild. `--json` includes each source's status/reason and
 keeps stdout parseable. A successful raw replacement invalidates its source
 cursor and linked usage rows and requires derivation before readers can call
 the source fresh. `--rebuild` performs a full re-derivation in the same command;
@@ -4727,6 +4737,8 @@ maintenance sweep that converts pre-existing uncompressed TEXT rows (written
 before ENH-2624) to the compressed form and VACUUMs afterward. The read path
 (`rebuild`) transparently decompresses either representation, so the command is
 idempotent and byte-lossless — running it twice is a no-op on the second pass.
+It only changes the storage encoding: it does not redact legacy plaintext
+payloads.
 
 **`export` flags:**
 

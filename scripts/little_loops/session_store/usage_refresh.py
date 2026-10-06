@@ -1,8 +1,10 @@
 """Conservative re-ingestion of session sources after a parser upgrade.
 
-``raw_events`` stores normalized payloads. A parser that used to discard a
-field cannot recover it by replaying those rows; the original source must be
-parsed again. This module refreshes only sources with verified handle-based
+``raw_events`` stores normalized, history-policy-redacted payloads. A parser that
+used to discard a field cannot recover it by replaying those rows; the original
+source must be parsed again. Source and stored payloads are compared in their
+canonical (sanitized) form, so legacy plaintext rows and redacted rows certify as
+semantically compatible without this module scrubbing anything. This module refreshes only sources with verified handle-based
 attribution. It deliberately leaves derived tables alone: callers must run
 ``rebuild`` after a successful refresh.
 """
@@ -10,10 +12,12 @@ attribution. It deliberately leaves derived tables alone: callers must run
 from __future__ import annotations
 
 import json
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, NoReturn, cast
 
+from little_loops.pii import HistorySanitizationError, sanitize_history_payload
 from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.sessions import SessionEvent, SessionHandle, iter_events
@@ -55,50 +59,146 @@ def _source_version(path: Path) -> tuple[int, int] | None:
     return (stat.st_size, stat.st_mtime_ns) if path.is_file() else None
 
 
-def _event_signature(event: SessionEvent, handle: SessionHandle) -> tuple[object, ...]:
-    from little_loops.session_store.claude_usage import claude_transcript_contract
-
-    return (
-        event.line_no,
-        event.timestamp,
-        event.payload.get("sessionId") or handle.session_id,
-        handle.host,
-        "handle",
-        event.ordinal,
-        event.type or "unknown",
-        event.payload,
-        claude_transcript_contract(event.payload, host=handle.host, host_basis="handle"),
-    )
+_STORED_SELECT = (
+    "SELECT line_no, ts, session_id, host, host_basis, ordinal, event_type, "
+    "CAST(raw_line AS BLOB), CAST(parsed_json AS BLOB), usage_contract, compacted, "
+    "summary_node_id, typeof(raw_line), typeof(parsed_json) "
+    "FROM raw_events WHERE source_path = ? ORDER BY line_no"
+)
 
 
-def _stored_signatures(rows: list[tuple[object, ...]]) -> list[tuple[object, ...]]:
-    return [
-        (
-            row[0],
-            row[1],
-            row[2],
-            row[3],
-            row[4],
-            row[5],
-            row[6],
-            json.loads(_unpack_payload(cast(str | bytes, row[7]))),
-            row[9],
+def _refuse(reason: str) -> NoReturn:
+    raise HistorySanitizationError(reason) from None
+
+
+def _reject_constant(_name: str) -> NoReturn:
+    _refuse("invalid_payload")
+
+
+def _reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in out:
+            _refuse("invalid_payload")
+        out[key] = value
+    return out
+
+
+def _decode_stored_payload(value: object, *, storage_type: str) -> dict[str, Any]:
+    """Decode one stored payload column for comparison, refusing with a safe reason.
+
+    *value* is the ``CAST(column AS BLOB)`` projection and *storage_type* the column's
+    ``typeof``: TEXT is strict UTF-8 without decompression, BLOB is the existing zlib
+    codec. Expected decode failures become content-free ``invalid_payload`` (or
+    ``resource_limit`` for recursion overflow) with the original context suppressed.
+    """
+    if storage_type not in ("text", "blob") or not isinstance(value, bytes):
+        _refuse("invalid_payload")
+    try:
+        text = value.decode("utf-8") if storage_type == "text" else _unpack_payload(value)
+        decoded = json.loads(
+            text, object_pairs_hook=_reject_duplicates, parse_constant=_reject_constant
         )
-        for row in rows
-    ]
+    except (zlib.error, UnicodeDecodeError, json.JSONDecodeError):
+        _refuse("invalid_payload")
+    except RecursionError:
+        _refuse("resource_limit")
+    if type(decoded) is not dict:
+        _refuse("invalid_payload")
+    return decoded
+
+
+def _canonical_payload(
+    payload: dict[str, Any], *, host: str | None, event_type: str | None
+) -> dict[str, Any]:
+    """The history-policy form of *payload* under the verified ``host``/``event_type``."""
+    return sanitize_history_payload(payload, host=host, event_type=event_type).payload
+
+
+def _payload_equal(left: object, right: object) -> bool:
+    """Exact JSON equality: identical scalar types, so ``True``/``1``/``1.0`` differ."""
+    stack: list[tuple[Any, Any]] = [(left, right)]
+    while stack:
+        a, b = stack.pop()
+        if type(a) is not type(b):
+            return False
+        if type(a) is dict:
+            if a.keys() != b.keys():
+                return False
+            stack.extend((value, b[key]) for key, value in a.items())
+        elif type(a) is list:
+            if len(a) != len(b):
+                return False
+            stack.extend(zip(a, b, strict=True))
+        elif a != b:
+            return False
+    return True
 
 
 def _preserves_fields(stored: object, parsed: object) -> bool:
-    """Require a parser upgrade to retain every field already stored."""
-    if isinstance(stored, dict) and isinstance(parsed, dict):
-        return all(
-            key in parsed and _preserves_fields(value, parsed[key]) for key, value in stored.items()
+    """Require a parser upgrade to retain every field already stored (type-sensitive)."""
+    stack: list[tuple[Any, Any]] = [(stored, parsed)]
+    while stack:
+        before, after = stack.pop()
+        if type(before) is not type(after):
+            return False
+        if type(before) is dict:
+            for key, value in before.items():
+                if key not in after:
+                    return False
+                stack.append((value, after[key]))
+        elif type(before) is list:
+            if len(before) != len(after):
+                return False
+            stack.extend(zip(before, after, strict=True))
+        elif before != after:
+            return False
+    return True
+
+
+def _stored_payloads(
+    raw_line: object, raw_type: object, parsed_json: object, parsed_type: object
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Decode both payload columns from their ``CAST(... AS BLOB)``/``typeof`` projections."""
+    return (
+        _decode_stored_payload(raw_line, storage_type=str(raw_type)),
+        _decode_stored_payload(parsed_json, storage_type=str(parsed_type)),
+    )
+
+
+def _expected_contract(event: SessionEvent, handle: SessionHandle) -> str | None:
+    from little_loops.session_store.claude_usage import claude_transcript_contract
+
+    return claude_transcript_contract(event.payload, host=handle.host, host_basis="handle")
+
+
+def _event_metadata(event: SessionEvent, handle: SessionHandle) -> tuple[object, ...]:
+    """Relational identity of *event*: ts, session, ordinal, type (host/basis checked apart)."""
+    return (
+        event.timestamp,
+        event.payload.get("sessionId") or handle.session_id,
+        event.ordinal,
+        event.type or "unknown",
+    )
+
+
+def _inserted_matches(
+    row: tuple[object, ...],
+    event: SessionEvent,
+    handle: SessionHandle,
+    expected_payload: dict[str, Any],
+) -> bool:
+    """Whether an inserted row has the source's identity, contract and sanitized payloads."""
+    timestamp, session_id, ordinal, event_type = _event_metadata(event, handle)
+    return (
+        tuple(row[:7])
+        == (event.line_no, timestamp, session_id, handle.host, "handle", ordinal, event_type)
+        and row[9] == _expected_contract(event, handle)
+        and all(
+            _payload_equal(column, expected_payload)
+            for column in _stored_payloads(row[7], row[12], row[8], row[13])
         )
-    if isinstance(stored, list) and isinstance(parsed, list):
-        return len(stored) == len(parsed) and all(
-            _preserves_fields(before, after) for before, after in zip(stored, parsed, strict=True)
-        )
-    return stored == parsed
+    )
 
 
 def refresh_raw_events(
@@ -153,12 +253,7 @@ def refresh_raw_events(
         conn = store.connect(db)
         try:
             conn.execute("BEGIN IMMEDIATE")
-            rows = conn.execute(
-                "SELECT line_no, ts, session_id, host, host_basis, ordinal, event_type, "
-                "raw_line, parsed_json, usage_contract, compacted, summary_node_id "
-                "FROM raw_events WHERE source_path = ? ORDER BY line_no",
-                (str(path),),
-            ).fetchall()
+            rows = conn.execute(_STORED_SELECT, (str(path),)).fetchall()
             reason: str | None = None
             # BUG-3736: refreshing a held source would invalidate retained usage that
             # no surviving raw row can reproduce. Reject before touching anything.
@@ -180,29 +275,67 @@ def refresh_raw_events(
                 reason = "session_attribution_changed"
             elif _source_version(path) != version:
                 reason = "source_changed"
+            by_line = {event.line_no: event for event in events}
+            promote = False
+            if reason is None:
+                # Per-line relational identity must survive before any payload is decoded.
+                for row in rows:
+                    event = by_line.get(cast(int, row[0]))
+                    if event is None:
+                        reason = "existing_payload_not_preserved"
+                    elif tuple(row[i] for i in (1, 2, 5, 6)) != _event_metadata(event, handle):
+                        reason = "source_metadata_changed"
+                    if reason is not None:
+                        break
+            if reason is None:
+                # Qualification is monotonic: NULL may be promoted from the original
+                # source (by replacement); a persisted marker is never removed or changed.
+                for row in rows:
+                    expected_contract = _expected_contract(by_line[cast(int, row[0])], handle)
+                    if row[9] == expected_contract:
+                        continue
+                    if row[9] is None:
+                        promote = True
+                    else:
+                        reason = "usage_contract_changed"
+                        break
             if reason is not None:
                 conn.rollback()
                 outcomes.append(SourceRefresh(path, "skipped", reason))
                 continue
 
-            expected = sorted(
-                (_event_signature(event, handle) for event in events),
-                key=lambda signature: cast(int, signature[0]),
-            )
-            stored = _stored_signatures(rows)
-            parsed_by_line = {signature[0]: signature[7] for signature in expected}
+            # Canonical comparison: both stored columns and the source are sanitized under
+            # the same verified context, so legacy plaintext and redacted rows agree.
+            canonical_source = {
+                line: _canonical_payload(
+                    event.payload, host=handle.host, event_type=event.type or "unknown"
+                )
+                for line, event in by_line.items()
+            }
+            stored_canonical: list[tuple[dict[str, Any], dict[str, Any]]] = []
+            for row in rows:
+                stored_canonical.append(
+                    tuple(  # type: ignore[arg-type]
+                        _canonical_payload(payload, host=str(row[3]), event_type=str(row[6]))
+                        for payload in _stored_payloads(row[7], row[12], row[8], row[13])
+                    )
+                )
             if any(
-                row[0] not in parsed_by_line
-                or not _preserves_fields(signature[7], parsed_by_line[row[0]])
-                for row, signature in zip(rows, stored, strict=True)
+                not _preserves_fields(column, canonical_source[cast(int, row[0])])
+                for row, columns in zip(rows, stored_canonical, strict=True)
+                for column in columns
             ):
                 conn.rollback()
                 outcomes.append(SourceRefresh(path, "skipped", "existing_payload_not_preserved"))
                 continue
-            if stored == expected and all(
-                _unpack_payload(cast(str | bytes, row[8]))
-                == _unpack_payload(cast(str | bytes, row[7]))
-                for row in rows
+            if (
+                not promote
+                and len(events) == len(rows)
+                and all(
+                    _payload_equal(column, canonical_source[cast(int, row[0])])
+                    for row, columns in zip(rows, stored_canonical, strict=True)
+                    for column in columns
+                )
             ):
                 conn.rollback()
                 outcomes.append(SourceRefresh(path, "unchanged", rows=len(rows)))
@@ -237,18 +370,24 @@ def refresh_raw_events(
                 conn.rollback()
                 outcomes.append(SourceRefresh(path, "skipped", "source_changed_during_refresh"))
                 continue
-            replaced = conn.execute(
-                "SELECT line_no, ts, session_id, host, host_basis, ordinal, event_type, "
-                "raw_line, parsed_json, usage_contract, compacted, summary_node_id "
-                "FROM raw_events WHERE source_path = ? ORDER BY line_no",
-                (str(path),),
-            ).fetchall()
-            if _stored_signatures(replaced) != expected:
+            replaced = conn.execute(_STORED_SELECT, (str(path),)).fetchall()
+            # Literal check: decode what was inserted and compare it, unsanitized, to the
+            # expected sanitized source so a missed insertion seam cannot be masked.
+            if len(replaced) != len(events) or not all(
+                _inserted_matches(row, event, handle, canonical_source[event.line_no])
+                for row, event in zip(
+                    replaced, sorted(events, key=lambda e: cast(int, e.line_no)), strict=True
+                )
+            ):
                 conn.rollback()
                 outcomes.append(SourceRefresh(path, "skipped", "parser_changed_during_refresh"))
                 continue
             conn.commit()
             outcomes.append(SourceRefresh(path, "refreshed", rows=inserted))
+        except HistorySanitizationError as exc:
+            # Content-free reason; keeps earlier sources' commits and results.
+            conn.rollback()
+            outcomes.append(SourceRefresh(path, "skipped", exc.reason, rows=0))
         except Exception:
             conn.rollback()
             raise

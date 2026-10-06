@@ -152,7 +152,7 @@ def read_cli_event_drops(db: Path | str, *, since_epoch: float = 0.0) -> dict[st
 # resolved lazily at call time — long after this module (and the package
 # __init__ that imports it) has finished loading.
 
-# raw_events payload compression (ENH: shrink the source-of-truth table).
+# raw_events payload compression (ENH: shrink the normalized, redacted replay-source table).
 # ``raw_line``/``parsed_json`` are stored zlib-compressed as BLOBs. SQLite's
 # dynamic typing lets a BLOB live in the existing (nominally TEXT) columns with
 # no destructive DDL, and legacy uncompressed TEXT rows coexist with new BLOB
@@ -3605,8 +3605,8 @@ def _iter_events_with_host(
     Lets the JSONL-derived ``_backfill_*`` functions accept either a legacy
     ``list[Path]`` (re-reads files line-by-line) or a ``raw_events`` cursor
     selecting ``(raw_line, source_path)`` rows in that order — the
-    :func:`rebuild` path, replaying previously-ingested lines instead of
-    re-reading the filesystem (ENH-2581). Cursor-sourced ``raw_line`` values pass
+    :func:`rebuild` path, replaying previously-ingested (normalized, redacted)
+    lines instead of re-reading the filesystem (ENH-2581). Cursor-sourced ``raw_line`` values pass
     through :func:`_unpack_payload` (compressed BLOB → text; legacy TEXT unchanged).
 
     Ingest-time normalization moved onto the ``sessions.py`` parsers in

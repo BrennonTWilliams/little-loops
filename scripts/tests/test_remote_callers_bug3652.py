@@ -98,7 +98,7 @@ _CALLER_ALLOWLIST: dict[tuple[str, str], str] = {
     ("cli/doctor.py", "_schema_drift_data"): "already remote-aware (early return on RemoteTarget)",
     (
         "cli/session.py",
-        "main_session",
+        "_main_session",
     ): "already refuses via refuse_on_remote before resolving (refresh)",
     ("cli/ctx_stats.py", "main_ctx_stats"): "reader CLI -> ENH-3657",
     ("cli/harness.py", "_read_target_history"): "reader -> ENH-3657",

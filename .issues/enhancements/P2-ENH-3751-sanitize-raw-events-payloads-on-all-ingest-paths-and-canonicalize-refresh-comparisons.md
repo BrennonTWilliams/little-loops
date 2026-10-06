@@ -3,8 +3,9 @@ id: ENH-3751
 title: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-10-05'
+completed_at: '2026-10-06T20:39:09Z'
 parent: ENH-3743
 blocked_by: []
 labels:
@@ -14,15 +15,6 @@ labels:
 decision_needed: false
 size: Large
 confidence_score: 95
-verify_verdict: CLAIMS_OUTDATED
-verify_evidence: 'Integration Map (wiring pass): ''docs/reference/CLI.md ll-session
-  refresh flags and safety (:4635-4650)'' -> section now starts at line 4666 and spans
-  to about 4695; Integration Map (wiring pass): ''recompress flags (:4693-4698), idempotent
-  and byte-lossless'' -> section now starts at line 4717 with the byte-lossless sentence
-  at line 4729; Integration Map (wiring pass): ''ll-session example block (~:4735-4754)''
-  -> refresh/recompress examples now at lines 4769-4786; Documentation (Codebase Research
-  Findings): ''CLI.md:4635-4659 documents ll-session refresh skip reporting'' -> refresh
-  section now at lines 4666-4695'
 outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
@@ -237,7 +229,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 `docs/reference/API.md`, `docs/ARCHITECTURE.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/CLI.md`, and `docs/reference/CONFIGURATION.md`: default-on raw-column coverage, semantic refresh no-op vs explicit legacy cleanup, fail-safe rejected sources, remote chunk boundary, and preserved replay/source proofs. Explain the narrower per-line metadata refusal and retained explicit-refresh qualification promotion: promotion requires replacement/rebuild and can change legacy usage qualification; replay alone cannot promote it. Mention full-backfill transaction scope and that direct derived writers and originals are outside this guarantee. Use end-user wording in guides/reference docs.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/CLI.md` — `ll-session` "`refresh` flags and safety" (`:4635-4650`) promises nonzero exit only for skipped sources; describe sanitizer rejection as a reason-only line. "`recompress` flags" (`:4693-4698`, "idempotent and byte-lossless") must say `recompress` does not scrub legacy plaintext. The `ll-session` example block (`~:4735-4754`) is the place for a `refresh`/`recompress` note [Agent 2 finding]
+- `docs/reference/CLI.md` — `ll-session` "`refresh` flags and safety" (locate by heading) promises nonzero exit only for skipped sources; describe sanitizer rejection as a reason-only line. "`recompress` flags" (locate by heading; "idempotent and byte-lossless") must say `recompress` does not scrub legacy plaintext. The `ll-session` example block (locate by the `ll-session refresh`/`recompress` examples) is the place for a `refresh`/`recompress` note [Agent 2 finding]
 - `docs/reference/HOST_COMPATIBILITY.md` — `[^qwenwire]` footnote (`:719-737`) describes what reaches `raw_events` and how replay re-normalizes it; check it against sanitized storage. `[^kimiwire]` (`:713`, "yields the raw typed events untouched") is parser-level and likely unchanged [Agent 2 finding]
 - `docs/reference/CONFIGURATION.md` — `### history` / "Remote history backend" **Ingestion** bullet (`:737`) is the natural home for the committed-remote-chunk statement; keep both headings (pinned by `scripts/tests/test_wiring_reference_docs.py`) [Agent 2 finding]
 - `docs/ARCHITECTURE.md` — keep the `## History DB: Producer→Consumer Flow` heading when editing raw-event descriptions. The heading is pinned by `scripts/tests/test_wiring_guides_and_meta.py`. [Agent 2 finding]
@@ -335,9 +327,20 @@ None. The sanitizer API this issue consumes landed in commit `b953e103c`; the fr
 
 - ENH-3752
 
+## Resolution
+
+Implemented 2026-10-06 on `main`.
+
+- `lifecycle._backfill_raw_events` and the Claude `refresh_usage_source` insert sanitize once per event (verified host + event type) before serialization/packing/remote queuing; metadata and qualification still derive from the original event. Local `backfill_raw_events`/`backfill` now roll back before closing.
+- `usage_refresh`: `_decode_stored_payload` (byte/`typeof` projections, reason-only refusals), `_canonical_payload`, iterative type-sensitive `_payload_equal`/`_preserves_fields`, per-line metadata refusal (`source_metadata_changed`), monotonic qualification (`usage_contract_changed`, NULL promotion via replacement), both-column canonical preservation/no-op, literal post-insert check, per-source `HistorySanitizationError` refusal that keeps earlier commits.
+- Codex first-cursor certification captures pre-existing lines, certifies them canonically, and requires literal sanitized payloads (both columns) for newly inserted lines, plus the expected contract.
+- `ll-session` and `backfill_worker` report sanitizer refusals as a reason-only line, exit 1.
+- Deviation: with refusal order qualification-before-preservation, a source that drops usage now reports `usage_contract_changed` (was `existing_payload_not_preserved`); `test_session_store_usage_refresh.py` updated. `main_session` body moved to `_main_session` (caller-gate allowlist key updated).
+- Tests: `scripts/tests/test_enh3751_sanitize_raw_events.py` (35). Full suite: 28204 passed. Not covered: remote 200-row chunk failure/retry test, cross-host ingest→rebuild canary matrix.
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P2
+**Done** | Created: 2026-10-05 | Priority: P2
 
 ## Confidence Check Notes
 
@@ -364,6 +367,8 @@ Re-assessed after the latest issue edits. Supersedes the earlier assessment.
 - Baseline: none recorded
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T20:39:09 - `51264dbb-db67-464f-bbac-3f94b03b01c8.jsonl`
+- `/ll:ready-issue` - 2026-10-06T20:21:01 - `0f1ba05a-0337-4cd3-b76d-00558de83c6c.jsonl`
 - `/ll:confidence-check` - 2026-10-06T20:17:48 - `50d7bb2b-f64d-4142-8ee2-7f463bfad337.jsonl`
 - `/ll:verify-issues` - 2026-10-06T20:14:55 - `78d80ae4-e260-4b0c-9bb2-85e65c40ea76.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:45:56 - `466b925c-c989-4144-94bc-ff9597778e0e.jsonl`
@@ -381,4 +386,4 @@ Re-assessed after the latest issue edits. Supersedes the earlier assessment.
 
 _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
-- `docs/reference/API.md:10437-10447` (`### raw_events / rebuild / compact`) still says `raw_line` is "JSON-equal to the parser's own output" and documents `_backfill_raw_events` with a `host` keyword the code does not have (`lifecycle.py:804` is `(conn, handles)`); `API.md:8476-8565` documents the ENH-3750 policy but says nothing about ingest. Comment text claiming verbatim/JSON-equal payloads: `qwen.py:28`, `schema.py:471-473`, `lifecycle.py:826-828`. `HISTORY_SESSION_GUIDE.md:129` calls `raw_events` the "source of truth" and `:666`/`:677` mention "verbatim source records"; `docs/ARCHITECTURE.md` `raw_events` mentions at 695-724, 772, 1588-1594. `CLI.md:4635-4659` documents `ll-session refresh` skip reporting.
+- `docs/reference/API.md:10437-10447` (`### raw_events / rebuild / compact`) still says `raw_line` is "JSON-equal to the parser's own output" and documents `_backfill_raw_events` with a `host` keyword the code does not have (`lifecycle.py:804` is `(conn, handles)`); `API.md:8476-8565` documents the ENH-3750 policy but says nothing about ingest. Comment text claiming verbatim/JSON-equal payloads: `qwen.py:28`, `schema.py:471-473`, `lifecycle.py:826-828`. `HISTORY_SESSION_GUIDE.md:129` calls `raw_events` the "source of truth" and `:666`/`:677` mention "verbatim source records"; `docs/ARCHITECTURE.md` `raw_events` mentions at 695-724, 772, 1588-1594. `CLI.md` "`refresh` flags and safety" documents `ll-session refresh` skip reporting.

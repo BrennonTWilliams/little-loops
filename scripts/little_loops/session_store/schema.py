@@ -468,8 +468,9 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS idx_test_run_events_branch ON test_run_events(branch);
     CREATE INDEX IF NOT EXISTS idx_test_run_events_failed_count ON test_run_events(failed);
     """,
-    # v19 (ENH-2581): raw_events — the parsed event payload (re-serialized;
-    # no longer verbatim for per-line hosts as of ENH-3422 D6) + parsed
+    # v19 (ENH-2581): raw_events — the parsed event payload (re-serialized and
+    # history-policy-redacted as of ENH-3751; no longer verbatim for per-line
+    # hosts as of ENH-3422 D6) + parsed
     # fields, the source of truth for the JSONL-derived cache tables (tool_events,
     # message_events, assistant_messages, skill_events, sessions). backfill()
     # ingests here only; rebuild() wipes+re-derives the cache tables from this

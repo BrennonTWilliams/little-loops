@@ -231,6 +231,18 @@ def test_no_parsed_events_and_duplicate_paths_are_refused(tmp_path: Path) -> Non
         conn.close()
 
 
+def test_refresh_refuses_parser_output_that_drops_nonusage_fields(tmp_path: Path) -> None:
+    db, handle, source = _source(tmp_path)
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    del payload["message"]["model"]
+    source.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    result = refresh_raw_events(db, handles=[handle])
+    assert result.sources[0].status == "skipped"
+    assert result.sources[0].reason in {"existing_payload_not_preserved", "usage_contract_changed"}
+    assert not result.needs_rebuild
+
+
 def test_refresh_refuses_parser_output_that_drops_existing_fields(tmp_path: Path) -> None:
     db, handle, source = _source(tmp_path)
     payload = json.loads(source.read_text(encoding="utf-8"))
@@ -238,7 +250,9 @@ def test_refresh_refuses_parser_output_that_drops_existing_fields(tmp_path: Path
     source.write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
     result = refresh_raw_events(db, handles=[handle])
-    assert result.sources[0].reason == "existing_payload_not_preserved"
+    # Dropping usage also drops the persisted qualification; the marker is never removed
+    # (ENH-3751), and that refusal runs before payload preservation.
+    assert result.sources[0].reason == "usage_contract_changed"
     assert not result.needs_rebuild
     conn = connect(db)
     try:

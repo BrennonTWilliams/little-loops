@@ -10438,7 +10438,7 @@ defaulting to `Path.home()` at call time (byte-identical default path).
 
 ### raw_events / rebuild / compact (ENH-2581, ingest unified in ENH-3422)
 
-`raw_events` is the source of truth for the JSONL-derived cache tables (`tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`): one row per source event, storing both the re-serialized `raw_line` (JSON-equal to the parser's own output; no longer required to be byte-verbatim for any host as of ENH-3422 D6) and its parsed fields (`ts`, `session_id`, `host`, `source_path`, `line_no`, `event_type`). `backfill()`/`backfill_incremental()` now ingest into `raw_events` only — pass `also_rebuild=True` to also materialize the cache tables in the same call.
+`raw_events` is the source of truth for the JSONL-derived cache tables (`tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`): one row per source event, storing both the re-serialized, history-policy-redacted `raw_line` (the parser's output with supported secret spans replaced; no longer byte-verbatim for any host as of ENH-3422 D6 and redacted on every ingest path as of ENH-3751; a sanitizer failure raises `HistorySanitizationError` carrying only a reason code and rolls back the local transaction) and its parsed fields (`ts`, `session_id`, `host`, `source_path`, `line_no`, `event_type`). `backfill()`/`backfill_incremental()` now ingest into `raw_events` only — pass `also_rebuild=True` to also materialize the cache tables in the same call.
 
 ```python
 def _backfill_raw_events(

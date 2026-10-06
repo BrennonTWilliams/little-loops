@@ -214,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"backfill_worker: path not found: {positional[1]!r}", file=sys.stderr)
         return 1
 
+    from little_loops.pii import HistorySanitizationError
     from little_loops.session_store import backfill_incremental
     from little_loops.session_store.backend import HistoryUnsupported
 
@@ -229,6 +230,12 @@ def main(argv: list[str] | None = None) -> int:
                 _rebuild(db_path, config=None)
     except HistoryUnsupported as exc:  # e.g. --rebuild against a remote store (FEAT-3535)
         print(f"backfill_worker: {exc}", file=sys.stderr)
+        return 1
+    except HistorySanitizationError as exc:  # ENH-3751: reason code only, never payload text
+        print(
+            f"backfill_worker: history sanitization rejected a source: {exc.reason}",
+            file=sys.stderr,
+        )
         return 1
     return 0
 

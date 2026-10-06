@@ -25,7 +25,7 @@ the message body:
 :func:`normalize_qwen_record` maps one qwen record into the Claude-shaped
 form the existing ``_backfill_*`` extractors already consume, or returns
 ``None`` when the record has no Claude-shaped equivalent. Applied read-time
-inside ``_iter_events`` — ``raw_events`` keeps the verbatim source line.
+inside ``_iter_events`` — ``raw_events`` keeps the normalized, redacted payload (ENH-3751).
 Verified against ~10.9k real records; see
 ``thoughts/shared/research/2026-08-14-ENH-3166-qwen-wire-format.md``.
 """

@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import little_loops.session_store as _pkg
 from little_loops.host_runner import project_child_env, resolve_host
+from little_loops.pii import sanitize_history_payload
 from little_loops.session_store.backend import (
     HistoryError,
     connect_readonly,
@@ -64,7 +65,6 @@ from little_loops.session_store.writers import (
     _iter_events,
     _now,
     _pack_payload,
-    _unpack_payload,
     host_layout_for,
     load_usage_replay_holds,
     mine_corrections_from_messages,
@@ -824,8 +824,12 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
     number for per-line hosts; enumeration index for gemini/omp, matching
     prior behavior). ``session_id`` falls back to ``handle.session_id`` when
     the payload carries none (codex/kimi, D3). ``raw_line``/``parsed_json``
-    are both the re-serialized ``event.payload`` (D6) — no longer verbatim
-    for per-line hosts, but JSON-equal to the parser's own output.
+    are both the re-serialized, history-policy-sanitized ``event.payload`` (D6,
+    ENH-3751) — no longer verbatim for per-line hosts. Sanitization runs once per
+    event, under the handle's verified host and the event's type, before
+    serialization, packing, or queuing a remote batch; metadata and usage
+    qualification still come from the original event. A sanitizer failure
+    propagates (``HistorySanitizationError``) and persists nothing further.
     """
     from little_loops.session_store.claude_usage import claude_transcript_contract
 
@@ -846,7 +850,11 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
     for handle in handles:
         source_path = str(handle.path)
         for event in iter_events(handle):
-            serialized = json.dumps(event.payload)
+            serialized = json.dumps(
+                sanitize_history_payload(
+                    event.payload, host=handle.host, event_type=event.type or "unknown"
+                ).payload
+            )
             session_id = event.payload.get("sessionId") or handle.session_id
             usage_contract = claude_transcript_contract(
                 event.payload, host=handle.host, host_basis="handle"
@@ -937,6 +945,9 @@ def backfill_raw_events(
             (_watermark_key(db), _now()),
         )
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
     return count
@@ -1434,17 +1445,37 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
             raise RuntimeError("Codex rollout thread ID disagrees with source handle")
         if cursor and cursor[0] != session_id:
             raise RuntimeError("Codex rollout thread identity changed")
+        # Lines present before this call may be legacy plaintext: they certify by
+        # canonical comparison. Lines inserted below must be the literal sanitized
+        # payload, or canonicalizing the stored side would mask a missed insert seam.
+        preexisting: set[int] = set()
+        if cursor is None:
+            preexisting = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT line_no FROM raw_events WHERE source_path = ?", (str(path),)
+                )
+            }
         inserted = _backfill_raw_events(conn, handles)
 
         # First enablement may encounter rows ingested by SessionStart before
         # the source cursor existed. Certify the stored source against the
         # current parser output before publishing a fresh boundary.
         if cursor is None:
+            from little_loops.session_store.claude_usage import claude_transcript_contract
+            from little_loops.session_store.usage_refresh import (
+                _canonical_payload,
+                _payload_equal,
+                _stored_payloads,
+            )
+
             stored = {
                 row[0]: row[1:]
                 for row in conn.execute(
                     "SELECT line_no, session_id, host, host_basis, event_type, ts, "
-                    "ordinal, raw_line FROM raw_events WHERE source_path = ?",
+                    "ordinal, usage_contract, CAST(raw_line AS BLOB), CAST(parsed_json AS BLOB), "
+                    "typeof(raw_line), typeof(parsed_json) "
+                    "FROM raw_events WHERE source_path = ?",
                     (str(path),),
                 )
             }
@@ -1459,13 +1490,21 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
                     event.type or "unknown",
                     event.timestamp,
                     event.ordinal,
+                    claude_transcript_contract(event.payload, host="codex", host_basis="handle"),
                 )
                 row = stored.get(event.line_no)
-                if (
-                    row is None
-                    or row[:6] != expected
-                    or json.loads(_unpack_payload(row[6])) != event.payload
-                ):
+                if row is None or row[:7] != expected:
+                    raise RuntimeError("Codex stored source differs from current rollout")
+                columns = _stored_payloads(row[7], row[9], row[8], row[10])
+                sanitized = _canonical_payload(
+                    event.payload, host="codex", event_type=event.type or "unknown"
+                )
+                if event.line_no in preexisting:
+                    columns = tuple(  # type: ignore[assignment]
+                        _canonical_payload(column, host=str(row[1]), event_type=str(row[3]))
+                        for column in columns
+                    )
+                if not all(_payload_equal(column, sanitized) for column in columns):
                     raise RuntimeError("Codex stored source differs from current rollout")
                 seen.add(event.line_no)
             if seen != stored.keys():
@@ -1586,7 +1625,15 @@ def refresh_usage_source(
                 native_session = record.get("sessionId")
                 if isinstance(native_session, str) and native_session:
                     session_id = native_session
-                packed = _pack_payload(json.dumps(record))
+                packed = _pack_payload(
+                    json.dumps(
+                        sanitize_history_payload(
+                            record,
+                            host="claude-code",
+                            event_type=str(record.get("type") or "unknown"),
+                        ).payload
+                    )
+                )
                 contract = claude_transcript_contract(
                     record, host="claude-code", host_basis="handle"
                 )
@@ -1924,6 +1971,11 @@ def backfill(
             (_now(),),
         )
         conn.commit()
+    except Exception:
+        # Roll back every uncommitted write on this connection (issues, snapshots, loops,
+        # git, raw events): a sanitizer failure publishes no watermark and no rebuild.
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -1965,8 +2017,9 @@ def backfill_incremental(
     ingest-only and designed for low-latency background use in session hooks.
     *host* names the host whose transcripts are ingested for the
     ``raw_events.host`` column (ENH-3166); omitted, the ambient host is used.
-    Errors are not suppressed — the caller (session hook) catches them and
-    logs a warning.
+    Errors are not suppressed — the caller (the hook worker) handles them;
+    ``HistorySanitizationError`` carries a content-free reason code only and
+    leaves the watermark unchanged.
     """
     if also_rebuild:
         refuse_on_remote(db, "rebuild")

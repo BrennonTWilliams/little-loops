@@ -523,6 +523,19 @@ def _main_migrate() -> int:
 
 
 def main_session() -> int:
+    """Entry point for ``ll-session``; reports history-policy refusals by reason code only."""
+    from little_loops.pii import HistorySanitizationError
+
+    try:
+        return _main_session()
+    except HistorySanitizationError as exc:
+        # ENH-3751: a backfill source the sanitizer rejects (e.g. invalid_payload). The
+        # error carries only its fixed reason code, never payload text.
+        print(f"ll-session: history sanitization rejected a source: {exc.reason}", file=sys.stderr)
+        return 1
+
+
+def _main_session() -> int:
     """Entry point for ll-session command.
 
     Returns:

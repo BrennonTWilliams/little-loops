@@ -194,7 +194,9 @@ Reads these sources sequentially:
 6. **Subagent transcripts** (under the sessions root) → `subagent_runs`
 
 > **Since ENH-2581, session JSONL lands in `raw_events` and nowhere else.**
-> `raw_events` is the source of truth; the JSONL-derived cache tables
+> `raw_events` is the source of truth (its payloads are the normalized,
+> redacted event, not the verbatim source line: matched secret spans are
+> replaced by placeholders on every ingest path); the JSONL-derived cache tables
 > (`tool_events`, `message_events`, `assistant_messages`, `sessions`,
 > `user_corrections`, `skill_events`, `summary_nodes`/`summary_spans`,
 > `usage_events`) are **not** populated by a plain `backfill`. To (re)derive
