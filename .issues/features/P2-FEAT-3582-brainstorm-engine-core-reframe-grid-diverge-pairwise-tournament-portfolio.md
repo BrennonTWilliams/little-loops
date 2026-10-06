@@ -118,7 +118,7 @@ forced best-of hybrid.
    and the winner must be non-null.
 9. `verify_artifacts` — remains after sinks as a report-integrity check (sinks never see an empty report: `validate_portfolio` now also requires `brainstorm.md` non-empty).
 
-**Lens handoff**: `pop_lens` retains its state name/evaluator and empty/missing exit semantics, but becomes a non-destructive queue-head read followed by divergence-block construction. `ingest` acknowledges that head only after its publications succeed, per FEAT-3667. Do not use the destructive action from `queue_pop`; leave the shared fragment unchanged. An interrupted block construction or generation keeps the lens pending, including the native-resume window before the pop visit is checkpointed.
+**Lens handoff**: `pop_lens` retains its state name/evaluator and empty/missing exit semantics, calling FEAT-3667's `peek-lens` before divergence-block construction. The engine repairs outstanding acknowledgement from its completed receipt, then reads without consuming the next head. `ingest` acknowledges only its matching head after publication/completion; equal-input replay preserves IDs and cannot consume the next lens. Do not use the destructive action from `queue_pop`; leave the shared fragment unchanged. Interruptions before the pop or ingest checkpoint cannot lose a lens, including zero-valid-row ingestion.
 
 Sinks (`none|file|issue|decision`) keep their contract and read `winners` from the
 portfolio. No sink executes unless `validate_portfolio` passed.
@@ -239,6 +239,8 @@ A prompt state cannot run shell, so every LLM state that needs engine data is pr
 
 Enumerate every executed state on the nine-lens v1 path rather than relying on an estimate: each pop/diverge/ingest visit, the final empty pop, both block states, frame_apply/shortlist_apply, both floors, child call, report, validation, chosen sink and finalization. Assert the exact total in the end-to-end fixture. Core max_steps is 60; omit the deferred reframe visits. Optional children add their own exact increments in their enablement changes; ENH-3734 verifies the final cumulative bound.
 
+Core fixtures explicitly set ground=none, materialize=none and premortem=false, even after optional presets land; their exact visit count measures that core path. Optional combination fixtures explicitly set all three knobs. Do not let a later preset flip silently change an earlier test's intended path.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
@@ -345,9 +347,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Remaining implementation boundaries (2026-10-05)
 
-- **Generation replay**: use FEAT-3667's peek/acknowledge contract. Tests interrupt after peek, block failure, idea publication and queue acknowledgement; test native resume as well as init re-entry during generation, repeated frame output and zero-valid-row ingestion. The queue must advance exactly once; unchanged shared queue_pop tests remain valid, while brainstorm's former destructive-pop assertions change.
+- **Generation replay**: use FEAT-3667's peek/receipt/acknowledge contract. Tests interrupt after peek, block failure, idea publication, completion-receipt publication and queue acknowledgement; test native resume as well as init re-entry during generation, repeated frame output and zero-valid-row ingestion. An acknowledged batch keeps its original IDs after resume; its replay never consumes the next head. Changed/stale-lens input fails. The queue advances exactly once; unchanged shared queue_pop tests remain valid, while brainstorm's former destructive-pop assertions change.
 - **Shell delivery**: one parameterized real-shell/executor fixture passes literal RAWEOF/PYEOF lines, quotes, `$()`, backticks and newlines in a captured payload, plus paths/overrides with shell metacharacters and an interpreter path containing spaces. The raw file preserves the payload, no sentinel command executes, and each engine argument remains one argument. Do not change the interpolation engine or add an exemption to the warning budget.
-- **Pre-tournament duration**: every prompt, including frame/diverge/dedup/shortlist, declares a finite action timeout. Derive PRE_TOURNAMENT_WORST_S from actual visits (at most nine diverges) and FEAT-3667's attempt-bound helper, including both API and infra retry budgets/backoffs and deterministic-state bounds. The earlier 1800 estimate is not a bound. Choose finite prompt timeouts deliberately, publish the arithmetic, and size the parent timeout to cover that work plus child1800 + lastjudge300 + lastsleep30 + the separately derived tail. Mirror any final constants in the engine in this same change. Do not add per-lens runtime guard states or promise finalization after the executor's outer timeout.
+- **Pre-tournament duration**: every prompt, including frame/diverge/dedup/shortlist, declares a finite action timeout. With the specified zero-wait rate-limit settings, an ordinary prompt visit permits at most five dispatches (initial + two API-error + two infra retries) and 70 s backoff (2*30 + 2*5): its action/retry bound is `5 * declared_timeout_s + 70`. This issue owns the budget arithmetic and a mirror fixture against the executor's retry/backoff constants; no FEAT-3667 attempt-bound API is required. Derive PRE_TOURNAMENT_WORST_S from actual visits (at most nine diverges), that arithmetic and finite deterministic-state bounds. The earlier 1800 estimate is not a bound. Choose finite prompt timeouts deliberately, publish the arithmetic, and size the parent timeout to cover that work plus child1800 + lastjudge300 + lastsleep30 + the separately derived tail. Mirror final guard constants in the engine in this same change. Do not add per-lens runtime guard states or promise finalization after the executor's outer timeout. Explicit user delay/host-pressure pauses are interruptions beyond this action/retry accounting; record them separately in reference evidence.
 - **Step exhaustion**: retain core max_steps60 and child45. Normal nine-lens visits must fit; transient retries also consume visits and can exhaust the cap. Set parent `on_max_steps: finalize_failed` so the deterministic failure report runs at the cap; child cap still routes to parent salvage. Fake-clock fixtures distinguish nominal completion, retry-triggered cap failure, child-timeout salvage and outer-timeout termination. The <=30-call evidence gate describes measured successful reference runs, not a guarantee that every retry pattern completes.
 - **Merge evidence**: use EPIC-3581's single token-accounting definition and exact per-brief baseline totals. Input-context-only totals cannot serve as the denominator for a numerator that also includes output tokens.
 
@@ -377,7 +379,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P2 - core engine that FEAT-3583..3586 all depend on
-- **Effort**: Medium - rewrites most states of one 459-line loop YAML and adds a child loop, but the engine module now lives in FEAT-3667 and this issue reuses `lib/common.yaml` fragments and existing sinks
+- **Effort**: Large - coherent parent/child YAML rewrite, real-executor/resume/shell/failure/sink fixtures, derived budgets, registry/docs wiring and two live merge-gate runs; use tested checkpoints in the isolated worktree before the single main rewrite commit
 - **Risk**: Medium - replaces the loop's core behavior; mitigated by `ll-loop validate brainstorm` and updated tests
 - **Breaking Change**: Yes - drops the `novelty_threshold`, `max_saturation`, and `novelty_backend` context keys and changes `brainstorm.md` shape from best-of hybrid to portfolio
 
@@ -571,6 +573,7 @@ _Added by `/ll:confidence-check` on 2026-10-02 (re-scored after the FEAT-3667 sp
 **Note** (added by `/ll:audit-issue-conflicts`): Init preflight vs FEAT-3583: this issue owns wiring `resolve-profile --validate-only` into `init` for explicit modes/knobs; FEAT-3583 only adds the auto-only `classify_mode` branch after that preflight.
 
 ## Session Log
+- Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - `/ll:audit-issue-conflicts` - 2026-10-06T17:22:35 - `41577712-f527-4990-b326-7134aa659541.jsonl`
 - Implementation-boundary review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue updates only) - 2026-10-05
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05

@@ -54,7 +54,7 @@ Spike evidence under the original grids: six occupied cells on each brief, five 
 
 - Four explicitly requested mode=auto reference runs (the shipped default is still artifact), one per mode, record the chosen mode/confidence/fallback, expected layout, idea/finalist counts, tie/abstention rates, actual calls/tokens/runtime and import origin. Explicitly set ground=none, materialize=none and premortem=false for these core-only runs if optional children have already landed and changed preset defaults. Visual mode is text judged here; functional has no codebase filter; winner_risks layout omits unavailable annotations visibly.
 - One explicit-mode run with a **built numeric override**, e.g. mode=business ideas_per_round=3, proves override precedence; malformed/unbuilt explicit options fail before any LLM dispatch. Classification host errors/timeouts fall back visibly to artifact.
-- Deterministic MockActionRunner fixtures exercise only built states, including bounded/invalid preflight, zero ideas, insufficient cells/finalists, child timeout/error salvage, write-once round/probe replay, changed judging inputs with unchanged IDs, init interruption/re-entry, abstention thresholds, and all sink branches. No live LLM/browser is required in pytest.
+- Deterministic executor fixtures exercise only built states, including bounded/invalid preflight, zero ideas, insufficient cells/finalists, child timeout/error salvage, write-once round/probe replay, changed judging inputs with unchanged IDs, init interruption/re-entry, abstention thresholds, and all sink branches. Artifact assertions use a hybrid runner that executes real engine shell actions and stubs prompts/browser; MockActionRunner alone proves routes, not publication/recovery. Every core fixture explicitly sets ground=none, materialize=none and premortem=false. Seed a stale classifier success before current error/resume and verify the fixed-error artifact fallback; acknowledged ingest replay preserves IDs and the next head. No live LLM/browser is required in pytest.
 - Sinks see only a validated eligible portfolio and legacy winners.md text/rationale/role keys. sink_file receives a nonempty report; issue/decision sinks are stubbed or isolated to temporary stores for verification (reference runs use sink=none).
 - Enumerate actual core success/failure/salvage paths with at most nine lenses. Assert exact visits against shipped max_steps and time-guard constants, including classifier, report, sinks/finalization, judge timeouts and bounded rate-limit handling. Do not raise budget for unbuilt capabilities.
 - Comparable evaluation tags **both old and new idea sets** blindly with the same final grid definitions, duplicate criterion, model/version and scoring procedure. Historical tags can be reused only when definitions/procedure match. Changed FEAT-3583 axes require re-tagging both sets; preserve original results separately. The new generator's own tags are not an evaluation baseline. Preserve evaluator inputs/outputs and distinguish estimated duplicate labels from human judgments.
@@ -101,6 +101,7 @@ FSMExecutor.run -> init -> classify_mode -> resolve_profile -> frame -> diverge/
 - scripts/tests/test_brainstorm.py — core executor fixtures, sinks and derived budgets.
 - scripts/tests/test_brainstorm_engine.py — any missing combined artifact/rate invariant fixtures.
 - scripts/little_loops/loops/brainstorm.yaml / scripts/little_loops/brainstorm_engine.py — demonstrated core budget/guard corrections and the gated artifact -> auto default switch; no optional state changes.
+- scripts/tests/test_brainstorm.py core fixtures remain independent of shipped optional preset defaults; capability rejection is tested with an explicit core allowlist or permanently deferred reframe/web/synthesis values.
 
 ### Dependent Files
 - Final preset definitions and classifier from FEAT-3583; FEAT-3667 module; completed FEAT-3686 baseline.
@@ -148,6 +149,7 @@ _2026-10-05 follow-up, Opus consult confidence 0.72:_ core evidence verifies bou
 
 **Open** | Created: 2026-09-25 | Priority: P3
 ## Session Log
+- Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - Implementation-boundary review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue updates only) - 2026-10-05
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
