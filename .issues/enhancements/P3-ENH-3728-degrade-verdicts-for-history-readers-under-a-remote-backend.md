@@ -63,6 +63,10 @@ If **any** of those four flags is enabled, remote enrichment exits non-zero with
 
 Pass the four context flags into the Python action through the existing quoted `:shell` environment pattern and parse booleans/numeric thresholds explicitly, matching the filter states. A string `false` must not become truthy through `bool(string)`. Preserve existing FSM interpolation/escaping conventions.
 
+**Selected local metadata target (review #6).** Classifying once is insufficient if enrichment then calls `lookup_session_metadata(session_id)` with its default argument: that helper checks `.ll/history.db.exists()` before any resolver and can return `{}` despite a populated `LL_HISTORY_DB`. A temporary local probe with one seeded tool event returned `{}` through the default call and `tool_count=1` through the selected path. Pass the already-classified local result as `LocalTarget` to `lookup_session_metadata(..., db=...)`, retaining a separate Path for its filesystem check and forwarding the typed argument to `_connect_readonly`. Widen only this reached helper's accepted target type; omitted legacy callers keep their advisory fallback contract. Cover a missing default file and a stale default file with different metrics, local-provider `history.db_path`, and a default-shaped env override under remote config; the selected DB's real metadata must win. No dependency on ENH-3700's required-read channel is introduced.
+
+Keep the SFT acceptance claim precise: the current `ll-messages` formatters emit no `source`/session identifier, so ordinary staged windows cannot be joined to session quality metadata. Source-bearing enrich tests are explicit inputs to the actual packaged enrich state, not evidence that stage manufactures provenance. Document that limitation alongside the existing Claude-shaped-only fallback and first-record filter limitation. Adding transcript lineage, new SFT formats, local required-metadata semantics or per-record filters remains outside this epic; the remote quality refusal and preservation guarantee apply at stage/enrich, not as certification of the later corpus filters. Packaged defaults disable all four DB-quality flags; tests must use those actual defaults rather than assume a quality-enabled remote run succeeds.
+
 ### Docs wording
 
 Degrade rows are added to the single support table in `docs/reference/CONFIGURATION.md` (ENH-3657 creates it; merge rows, do not replace siblings'). Refused rows elsewhere say "not supported with a remote backend" and promise no follow-up.
@@ -83,6 +87,7 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 ### Files to Modify
 - `scripts/little_loops/cli/history.py` (`summary`), `scripts/little_loops/decisions.py` / `scripts/little_loops/cli/issues/decisions.py`, `user_messages.py` / `cli/messages.py`, `skills/improve-claude-md/SKILL.md` (+ mirrors), `scripts/little_loops/loops/sft-corpus.yaml`.
 - `scripts/little_loops/issue_history/parsing.py` — selected-local target parameter (default `None`) on the three summary/decisions DB helpers; preserve existing filesystem Paths and legacy caller behavior. ENH-3657 owns the reader-side setup/conversation prerequisite; no ENH-3700 edge is added.
+- `scripts/little_loops/history_reader/sessions.py` — `lookup_session_metadata` selected-local forwarding only; keep the separate filesystem Path, successful metadata shape and legacy advisory results. This complements ENH-3657's conversation helper edits in the same module.
 - Anchors drift: re-grep every `resolve_history_db(` site (`scripts/little_loops/decisions.py:596`, `user_messages.py` ~`:1227`).
 
 ### Tests
@@ -92,6 +97,7 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 - Local summary/decisions tests select a local owning root from a remote foreign cwd and observe seeded issue/loop data through all reached helpers, with zero remote reader requests and no fallback masking. Include `LL_HISTORY_DB` pointing to a default-shaped local file; match the existing explicit/env resolution precedence and keep legacy parsing callers unchanged.
 - Execute the packaged stage/enrich actions through the real FSM after ENH-3729: remote/no-quality-flags preserves records and pre-existing metadata with one note and zero metadata lookups; each of the four enabled flags fails before output publication (also with empty input), retaining the previous good output and never reaching filters/sentinel. A local `LL_HISTORY_DB` override enriches actual session data. No copied enrich script alone is sufficient evidence.
 - Exercise public messages `--cwd` in both foreign-cwd directions and direct auto-library fallback without a notice; supported Claude-shaped JSONL produces actual windows and Codex/Kimi remain at their documented limitation.
+- Run the packaged enrich action on an explicit source-bearing record and seeded selected local metadata, with default `.ll/history.db` absent and then stale. Assert real correction/tool/file values from env/config-selected targets and no remote request. Separately exercise actual stage output without injected source and document its lineage limitation; do not assert a fabricated source or full-pipeline quality certification.
 - Keep green: `test_cli_decisions.py`/`test_decisions.py` DB-first local branch, `test_cli_messages.py`, `test_adapt_skills_for_codex.py`, `test_verify_skill_prose.py`, `test_enh494_skill_companions.py`.
 
 ## Program Design
@@ -102,6 +108,7 @@ Local-only fallbacks already exist for these sites; routing remote users to them
 ### Signatures
 - `generate_from_completed(config: BRConfig) -> int` — degrade site in `little_loops.decisions`; local branch stays DB-first.
 - `extract_conversation_turns(..., reader="auto")` — catches `HistoryUnsupported` before the JSONL fallback.
+- `lookup_session_metadata(session_id: str, *, db: Path | str | LocalTarget = DEFAULT_DB_PATH) -> dict` — additive selected-local support; Path for probes, typed target for the opener, unchanged default advisory contract.
 - `issue_events_ever_recorded(db_path: Path, *, db_target: LocalTarget | None = None) -> bool`, `scan_completed_issues_from_db(db_path: Path, since=None, until=None, *, db_target: LocalTarget | None = None) -> list[CompletedIssue]`, `count_loop_runs_in_window(db_path: Path, since, until, *, db_target: LocalTarget | None = None) -> tuple[int | None, int | None]` — optional local provenance for these callers; filesystem checks keep the Path, SQL receives the supplied target.
 
 ### Call Path
@@ -143,6 +150,7 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper an
 - [ ] Packaged stage uses `--reader auto` and preserves the CLI's single note. Remote enrich with all DB-quality flags disabled preserves input records/metadata, makes no metadata lookup and adds no fabricated zero/false fields; its output is published atomically.
 - [ ] Each enabled DB-quality flag makes remote enrich fail through `corpus_failed` before output publication, including empty input and pre-existing metadata; previous output survives and filter/publish/sentinel do not run. The actual packaged YAML/FSM tests also prove a local env override still enriches.
 - [ ] Messages auto fallback honors selected `--cwd` through the owning root, produces actual supported JSONL windows, and documentation states the existing Claude-shaped-only fallback limitation.
+- [ ] Local source-bearing enrichment reads the selected env/config DB when the default file is missing or stale, preserving `LocalTarget` through `lookup_session_metadata` and observing actual seeded metrics. Docs/tests state that ordinary stage formatter output lacks session provenance and that downstream first-record filters remain unchanged; the packaged four DB-quality flags are confirmed disabled by default.
 - [ ] No endpoint/token/SQL/exception text in any note; no duplicate library warning; the catch class is `HistoryUnsupported`, never bare `HistoryError`.
 - [ ] `"No history.db found"` is unchanged (invariant test); if ENH-3658's temporary CT-0 allowlist entry exists, it is removed here.
 - [ ] With the default local store `python -m pytest scripts/tests/` passes unchanged.
@@ -165,5 +173,6 @@ Scope amended 2026-10-05; no readiness or passing-test claim is made. Re-run `/l
 
 ## Session Log
 
+- EPIC-3693 review #6 - 2026-10-06 - deterministic seeded-local probe found that default metadata lookup ignored LL_HISTORY_DB before resolution; selected target now threads through the reached metadata helper. Actual formatter output has no source/session lineage, so state-level enrichment evidence and existing pipeline limitations are explicit. Follow-up Opus consult did not run at the existing task budget; implementation not performed.
 - EPIC-3693 review #4 - 2026-10-05 - direct-schema summary/decisions helpers now preserve selected local provenance so foreign remote cwd cannot re-resolve them or hide failure behind file fallback; ENH-3657 owns the earlier reader setup fix. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - complete summary fallback, selected messages root, exact SFT passthrough/quality-refusal semantics and ENH-3729 dependency added; implementation not performed
