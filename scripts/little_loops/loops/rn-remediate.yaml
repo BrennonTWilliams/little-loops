@@ -269,7 +269,7 @@ states:
     on_error: check_outcome
 
   check_complexity_pre_implement:
-    # ENH-2223: issue already passed check_readiness (confidence >= 85, outcome >= 75).
+    # ENH-2223: issue already passed check_readiness (confidence >= 85, outcome >= 65 by default; configured thresholds apply).
     # A low complexity score here does NOT imply content deficiency — route to the wire
     # check the same as high-score issues. gate_implement enforces a refine+wire pass for
     # above-minimal issues; --full-rewrite is not warranted for an already-ready issue.

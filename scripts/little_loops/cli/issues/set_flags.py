@@ -27,11 +27,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from little_loops.config.automation import ConfidenceGateConfig
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
     from little_loops.issue_parser import IssueInfo
 
-_DEFAULT_OUTCOME_THRESHOLD = 75
+_DEFAULT_OUTCOME_THRESHOLD = ConfidenceGateConfig().outcome_threshold
 
 _DECISION_NEEDED_PHRASES: tuple[str, ...] = (
     "open decision",
@@ -240,18 +242,15 @@ FLAG_RULES: tuple[FlagRule, ...] = _rules_for_threshold(_DEFAULT_OUTCOME_THRESHO
 
 
 def _resolve_outcome_threshold(config: BRConfig) -> int:
-    """Read ``commands.confidence_gate.outcome_threshold``, defaulting to 75."""
-    import json
+    """Return the loaded ``commands.confidence_gate.outcome_threshold``.
 
-    config_path = config.project_root / ".ll" / "ll-config.json"
+    Uses the already-loaded configuration (local overrides, alternate config
+    locations, dataclass default); falls back to the canonical default when the
+    value cannot be converted to ``int``.
+    """
     try:
-        raw = json.loads(config_path.read_text())
-        return int(
-            raw.get("commands", {})
-            .get("confidence_gate", {})
-            .get("outcome_threshold", _DEFAULT_OUTCOME_THRESHOLD)
-        )
-    except Exception:
+        return int(config.commands.confidence_gate.outcome_threshold)
+    except (TypeError, ValueError, OverflowError):
         return _DEFAULT_OUTCOME_THRESHOLD
 
 

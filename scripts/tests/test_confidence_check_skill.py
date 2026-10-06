@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+from little_loops.init.core import schema_default
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 SKILL_FILE = PROJECT_ROOT / "skills" / "confidence-check" / "SKILL.md"
@@ -875,3 +878,35 @@ class TestVerdictJsonTrailer:
             "findings_count",
         ):
             assert f'"{field}"' in line, f"VERDICT_JSON example must include the {field} field"
+
+
+class TestDocumentedOutcomeThresholdDefault:
+    """Documented outcome_threshold defaults must match the schema default (BUG-3757)."""
+
+    _KEY = "commands.confidence_gate.outcome_threshold"
+
+    def test_phase_4_5_default_matches_schema(self) -> None:
+        content = SKILL_FILE.read_text()
+        start = content.index("### Phase 4.5: Findings Write-Back")
+        end = content.find("\n###", start + 1)
+        match = re.search(r"outcome_threshold, default: (\d+)\)", content[start:end])
+        assert match is not None, "Phase 4.5 must state the outcome_threshold default"
+        assert int(match.group(1)) == schema_default(self._KEY)
+
+    def test_rubric_cap_default_matches_schema(self) -> None:
+        content = RUBRIC_FILE.read_text()
+        start = content.index("### Outcome Confidence Cap (ENH-3350)")
+        end = content.find("\n##", start + 1)
+        section = content[start:end]
+        default = schema_default(self._KEY)
+        assert f"(default {default})" in section
+        assert f"default cap value is {default - 1}" in section
+        assert "min(raw_sum, outcome_threshold − 1)" in section
+
+    def test_cli_reference_next_action_default_matches_schema(self) -> None:
+        content = (PROJECT_ROOT / "docs" / "reference" / "CLI.md").read_text()
+        start = content.index("#### `ll-issues next-action`")
+        end = content.find("\n#### ", start + 1)
+        match = re.search(r"\| `--outcome-threshold N` \| `(\d+)` \|", content[start:end])
+        assert match is not None, "next-action must document --outcome-threshold default"
+        assert int(match.group(1)) == schema_default(self._KEY)

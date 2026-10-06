@@ -421,7 +421,7 @@ The CLI writes idempotently: existing fields are overwritten, unrelated frontmat
 After presenting the output, determine whether there are findings to write back. Track `HAS_FINDINGS=false`; set to `true` if any of the following have content:
 - **Concerns** (present when readiness tier is PROCEED WITH CAUTION)
 - **Gaps to Address** (present when readiness score < 70)
-- **Outcome Risk Factors** (present when outcome confidence < config.commands.confidence_gate.outcome_threshold, default: 75)
+- **Outcome Risk Factors** (present when outcome confidence < config.commands.confidence_gate.outcome_threshold, default: 65)
 
 **Advisor consult on sub-threshold ll-auto runs (FEAT-3117)**: when `ll-auto` hits this
 same readiness score below `commands.confidence_gate.readiness_threshold` in its own

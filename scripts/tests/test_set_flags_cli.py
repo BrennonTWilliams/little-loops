@@ -427,3 +427,189 @@ class TestSetFlagsCLI:
             result = main_issues()
 
         assert result == 1
+
+
+_RULE_CASES = [
+    ("decision_needed", "There is an open decision about approach.", None),
+    ("missing_artifacts", "The helper module is not yet created.", None),
+    ("implementation_order_risk", "We should do test-first here.", None),
+    ("spike_needed", "There is no precedent for this.", 5),
+]
+
+
+class TestOutcomeThresholdResolution:
+    """set-flags must evaluate against the loaded confidence-gate threshold (BUG-3757)."""
+
+    @staticmethod
+    def _run(
+        project: Path,
+        issues_dir: Path,
+        *,
+        outcome: int,
+        flag: str = "decision_needed",
+        notes: str = "There is an open decision about approach.",
+        coverage: int | None = None,
+    ) -> bool:
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+        from little_loops.config import BRConfig
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        _write_issue(issue_file, outcome_confidence=outcome, score_test_coverage=coverage)
+        result = apply_flags_from_notes(BRConfig(project), "BUG-001", notes, dry_run=True)
+        return result.set_flags[flag]
+
+    @staticmethod
+    def _base(sample_config: dict[str, Any], threshold: Any = None) -> dict[str, Any]:
+        cfg = json.loads(json.dumps(sample_config))
+        gate = cfg.setdefault("commands", {}).setdefault("confidence_gate", {})
+        gate.pop("outcome_threshold", None)
+        if threshold is not None:
+            gate["outcome_threshold"] = threshold
+        return cfg
+
+    @pytest.fixture(autouse=True)
+    def _isolate_host_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+        monkeypatch.delenv("LL_STATE_DIR", raising=False)
+
+    @pytest.mark.parametrize(("flag", "notes", "coverage"), _RULE_CASES)
+    @pytest.mark.parametrize(("outcome", "expected"), [(64, True), (65, False), (70, False)])
+    def test_omitted_key_uses_canonical_default_65(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        flag: str,
+        notes: str,
+        coverage: int | None,
+        outcome: int,
+        expected: bool,
+    ) -> None:
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(
+            json.dumps(self._base(sample_config))
+        )
+        assert (
+            self._run(
+                temp_project_dir,
+                issues_dir,
+                outcome=outcome,
+                flag=flag,
+                notes=notes,
+                coverage=coverage,
+            )
+            is expected
+        )
+
+    @pytest.mark.parametrize(("flag", "notes", "coverage"), _RULE_CASES)
+    @pytest.mark.parametrize(("outcome", "expected"), [(74, True), (75, False)])
+    def test_explicit_75_keeps_74_75_boundary(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        flag: str,
+        notes: str,
+        coverage: int | None,
+        outcome: int,
+        expected: bool,
+    ) -> None:
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(
+            json.dumps(self._base(sample_config, 75))
+        )
+        assert (
+            self._run(
+                temp_project_dir,
+                issues_dir,
+                outcome=outcome,
+                flag=flag,
+                notes=notes,
+                coverage=coverage,
+            )
+            is expected
+        )
+
+    def test_no_config_file_uses_default(self, temp_project_dir: Path, issues_dir: Path) -> None:
+        assert self._run(temp_project_dir, issues_dir, outcome=64) is True
+        assert self._run(temp_project_dir, issues_dir, outcome=65) is False
+
+    @pytest.mark.parametrize(
+        ("base", "local", "outcome", "expected"),
+        [
+            (65, "outcome_threshold: 75", 70, True),
+            (75, "outcome_threshold: 65", 70, False),
+            (75, "outcome_threshold: null", 70, False),
+            (75, "outcome_threshold: null", 64, True),
+        ],
+    )
+    def test_local_override_governs(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        base: int,
+        local: str,
+        outcome: int,
+        expected: bool,
+    ) -> None:
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(
+            json.dumps(self._base(sample_config, base))
+        )
+        (temp_project_dir / ".ll" / "ll.local.md").write_text(
+            f"---\ncommands:\n  confidence_gate:\n    {local}\n---\n"
+        )
+        assert self._run(temp_project_dir, issues_dir, outcome=outcome) is expected
+
+    def test_root_level_config_location(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        (temp_project_dir / "ll-config.json").write_text(json.dumps(self._base(sample_config, 80)))
+        assert self._run(temp_project_dir, issues_dir, outcome=78) is True
+        assert self._run(temp_project_dir, issues_dir, outcome=80) is False
+
+    def test_host_selected_config_location(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("LL_HOOK_HOST", "codex")
+        (temp_project_dir / ".codex").mkdir()
+        (temp_project_dir / ".codex" / "ll-config.json").write_text(
+            json.dumps(self._base(sample_config, 80))
+        )
+        assert self._run(temp_project_dir, issues_dir, outcome=78) is True
+
+    def test_numeric_string_threshold_is_coerced(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(
+            json.dumps(self._base(sample_config, "75"))
+        )
+        assert self._run(temp_project_dir, issues_dir, outcome=74) is True
+        assert self._run(temp_project_dir, issues_dir, outcome=75) is False
+
+    def test_unconvertible_threshold_falls_back_to_65(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(
+            json.dumps(self._base(sample_config, "high"))
+        )
+        assert self._run(temp_project_dir, issues_dir, outcome=64) is True
+        assert self._run(temp_project_dir, issues_dir, outcome=65) is False
+
+    def test_post_load_file_change_does_not_alter_evaluation(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+        from little_loops.config import BRConfig
+
+        cfg_path = temp_project_dir / ".ll" / "ll-config.json"
+        cfg_path.write_text(json.dumps(self._base(sample_config, 75)))
+        _write_issue(issues_dir / "bugs" / "P0-BUG-001-critical-crash.md", outcome_confidence=70)
+        config = BRConfig(temp_project_dir)
+        cfg_path.write_text(json.dumps(self._base(sample_config, 60)))
+
+        result = apply_flags_from_notes(config, "BUG-001", "an open decision", dry_run=True)
+
+        assert result.set_flags["decision_needed"] is True

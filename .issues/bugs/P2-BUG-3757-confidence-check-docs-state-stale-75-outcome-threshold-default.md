@@ -3,7 +3,7 @@ id: BUG-3757
 title: Confidence-check outcome threshold drifts in docs and set-flags configuration
 type: BUG
 priority: P2
-status: open
+status: done
 testable: true
 discovered_date: '2026-10-05'
 parent: BUG-3754
@@ -22,6 +22,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
+completed_at: '2026-10-06T18:39:43Z'
 ---
 
 # BUG-3757: Confidence-check outcome threshold drifts in docs and set-flags configuration
@@ -139,12 +140,23 @@ Reviewed on 2026-10-06. Temporary-project probes reproduced 65 versus 75 with an
 
 Further review on 2026-10-06 inspected `main` at `77faacc66`. Probes confirmed null-removal, root/host-location and post-load re-read drift, plus existing numeric-string coercion. BUG-3756 is now done; its two stale readiness annotations remain. The focused six-file baseline passed **947 tests**. Opus via `/ll:advise` (`claude-opus-5-5`, confidence 0.85) supported a separate non-blocking readiness-reader follow-up and retaining integer coercion. Its dissent favored combining the user-visible consistency fixes; separate plans preserve their different fallback contracts. Accepted behavioral regression checks rather than brittle source/closure/identity scans. Retained the scoped CLI default check because next-action's documented 70 is a verified defect, despite the advisor's suggestion to omit it. No implementation changes were made.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-06
+- `set_flags._resolve_outcome_threshold()` now reads the loaded `BRConfig` (local overrides, root/host config, null removal) with `int()` coercion and fallback to the canonical default; `_DEFAULT_OUTCOME_THRESHOLD` derives from `ConfidenceGateConfig`.
+- Skill Phase 4.5 / rubric cap prose now 65 / 64; CLI reference `next-action` default 70 → 65; stale 85/75 comment and docstring in rn-remediate corrected; gemini/kimi-code/qwen mirrors regenerated.
+- Added parametrized regression tests (`TestOutcomeThresholdResolution`) and schema-tied doc assertions (`TestDocumentedOutcomeThresholdDefault`).
+- Verification: ruff and mypy clean; full suite 28892 passed, 8 errors in `test_libsql_integration.py::TestLive` (expired Hrana JWT — environmental, unrelated).
+
 ## Status
 
 **Open** | Created: 2026-10-06 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T18:39:43 - `b17c09e0-b058-4c1d-a9c5-9c834af307d2.jsonl`
+- `/ll:ready-issue` - 2026-10-06T18:30:43 - `cded3987-afd6-4a77-a324-da8747c6491d.jsonl`
 - `/ll:confidence-check` - 2026-10-06T18:21:47 - `225d913b-150f-4f37-9e25-fcb3cb3d0b0e.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:16:35 - `471d3a7a-54d3-4495-af46-a12400a91738.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T06:49:39 - `cede7154-079d-47b6-bd61-dd96bcbe90b1.jsonl`

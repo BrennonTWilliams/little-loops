@@ -814,7 +814,7 @@ class TestRemediationActions:
     def test_check_complexity_pre_implement_on_yes_routes_to_wire_check(self) -> None:
         """check_complexity_pre_implement routes both bands to check_wire_pre_implement (ENH-2223).
 
-        An issue that already passes the readiness gate (confidence >= 85, outcome >= 75)
+        An issue that already passes the readiness gate (configured thresholds; default 85/65)
         does not need --full-rewrite even if complexity is high. Both branches route
         to check_wire_pre_implement; ENH-2163 enforcement is applied by
         check_wire_pre_implement.on_no → gate_implement (BUG-2306).
