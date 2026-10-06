@@ -79,6 +79,8 @@ Canonicalize both stored and parser payloads with the same policy in Codex first
 
 ENH-3751 specifies per-line relational identity refusal and a separate usage-qualification rule: explicit source refresh may promote NULL from verified original evidence through replacement/rebuild, but must not remove/change a persisted marker. Replay never promotes qualification. Codex first-use certification compares pre-existing rows canonically and newly inserted rows literally to the sanitized source, so a missed insertion seam cannot be hidden by sanitizing the stored side during verification.
 
+ENH-3751 retains the existing source session-ID-set guard: appended lines cannot introduce a new session ID. Its comparison-only stored decoder converts corrupt zlib/UTF-8/JSON and duplicate-key/non-object input to the existing safe policy reasons, with suppressed exception context; replay codecs and ENH-3752's independent bounded maintenance decoder remain unchanged. Historical header-only PEM outputs provide the concrete policy-compatibility fixture. Deterministic invalid payloads abort ingest until the input is resolved, without automatic skipping or worker self-retry.
+
 If sanitization fails, never fall back to original content, advance a cursor past the failed record, or publish a success watermark. Roll back the local affected operation; already committed remote chunks may remain, but are sanitized and safe to deduplicate on retry. Diagnostics must not echo input or exception text containing it.
 
 ### 3. Provide explicit logical raw-row maintenance
