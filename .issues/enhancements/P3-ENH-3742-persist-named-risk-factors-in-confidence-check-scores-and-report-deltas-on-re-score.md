@@ -10,6 +10,8 @@ labels:
 - verification
 - confidence-check
 reconcile_attempted: true
+relates_to:
+- BUG-3757
 ---
 
 # ENH-3742: Persist named risk factors in confidence-check scores and report deltas on re-score
