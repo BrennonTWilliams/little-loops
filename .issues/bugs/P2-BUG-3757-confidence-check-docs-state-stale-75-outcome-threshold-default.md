@@ -37,7 +37,7 @@ Decomposed from BUG-3754. BUG-3756 owns rn-remediate score polarity and routing.
 ## Steps to Reproduce
 
 1. In a temporary project, omit `commands.confidence_gate.outcome_threshold` from `.ll/ll-config.json`. Load `BRConfig` and compare its `commands.confidence_gate.outcome_threshold` with `set_flags._resolve_outcome_threshold(config)`: observe 65 versus 75.
-2. Use a fresh issue with `outcome_confidence: 70` and an active decision signal in its current confidence notes. Run `ll-issues set-flags <ID> --dry-run`: the fallback 75 treats the issue as below threshold although the default gate is 65.
+2. Use a fresh issue with `outcome_confidence: 70` and an active decision signal in its current confidence notes. Run `ll-issues set-flags <ID> --dry-run`: the fallback 75 treats the issue as below threshold although the default gate is 65. <!-- ll-evidence-ok: `outcome_confidence: 70` is a hypothetical fresh-issue frontmatter value in a repro step, not a quote from `.ll/ll-config.json` -->
 3. Set base outcome 65 and a local Markdown override of 75. Load configuration again: the gate reports 75 while the flag resolver returns 65. At outcome 70 an eligible finding is consequently missed.
 4. Compare the skill's Phase 4.5 default and the rubric's cap prose with `ConfidenceGateConfig` and the schema; compare the CLI reference's 70 with `ll-issues next-action --help`.
 
