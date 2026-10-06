@@ -5,6 +5,84 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.167.0] - 2026-10-06
+
+### Added
+
+- **FEAT-3535**: Remote libSQL history backend via stdlib Hrana-over-HTTP client (`history.backend` config, `ll-session migrate`, remote ingestion watermark)
+- **FEAT-3594**: `continue-task` loop: run a continuation prompt until done with automatic handoff/resume
+- **FEAT-3681**: Extract reusable utility scorer from `ll-loop next-loop`
+- **FEAT-3686**: Brainstorm design spike: measure grid, dedup and batched-judge claims on baseline ideas
+- `ll-session redact` maintenance command and ingest-time sanitization of stored `raw_events` payloads (ENH-3743, ENH-3750, ENH-3751, ENH-3752)
+- Model hints: `model_hint` in skill/agent frontmatter resolved through loop dispatch, `ll-adapt`, `ll-loop` header, validate-time warnings and `ll-doctor` catalog check (ENH-3533, ENH-3547, ENH-3548, ENH-3638, ENH-3641)
+- Usage telemetry: Codex rollout/live ingestion, shared qualification core and coverage selectors, stored-usage cache rate (ENH-3532, ENH-3534, ENH-3543, ENH-3546, ENH-3549, ENH-3580, ENH-3647, ENH-3651, ENH-3655, ENH-3656, ENH-3723, ENH-3731, ENH-3748)
+- `ll-issues link --parent/--reparent`, `ll-issues advise-consult`, `ll-issues prep`, `ll-issues show` edge-status annotations, `ll-queue add` positional input (ENH-3749, ENH-3632, ENH-3630, ENH-3636, ENH-3643)
+- Opt-in `advise` second-model consults in `refine-to-ready-issue` and `prepare-issue` (ENH-3590, ENH-3626, ENH-3633)
+- `hooks.edit_batch_nudge` config toggle and tunables (ENH-3645)
+- Persist named risk factors in confidence-check scores and report deltas on re-score (ENH-3742)
+
+### Fixed
+
+- **BUG-3617**: `ll-init` version-mismatch install hint targets consumer project's `scripts/` dir
+- **BUG-3620**: Autodev design-gate-failed marker never cleared
+- **BUG-3622**: Executor skips rate-limit detection for states routed by `next:`
+- **BUG-3624**: Autodev `check_reconcile_needed` drops the contradiction trigger when format-check exits 1
+- **BUG-3627**, **BUG-3629**, **BUG-3634**: `diff_stall`/`action_stall` evaluators share state across runs and miss commits, staged, untracked and worktree changes
+- **BUG-3628**: FSM executor leaves stale `failure_terminal` capture on loop state re-entry
+- **BUG-3631**: Root-layout `.` src_dir/focus_dirs breaks prefix matching in several modules
+- **BUG-3635**: `manage-release` hard-codes little-loops version files in a consumer-shipped command
+- **BUG-3637**, **BUG-3695**: `refine-to-ready-issue` could not repair verify-claim verdicts or `DIRECTIVE_DRIFT`
+- **BUG-3640**: Generated host mirrors ship Claude model aliases as the model
+- **BUG-3644**: `orchestration.host_cli` ignored by `ll-loop run` and other `resolve_host()` callers
+- **BUG-3646**: Learning-state `/ll:explore-api` remedy dispatched on bare SDK path
+- **BUG-3652**, **BUG-3659**: Remote history backend call sites and hook dispatch crash under a dead endpoint
+- **BUG-3688**: Brainstorm loop reports success on a zero-idea run
+- **BUG-3689**: Autodev quality gate false-fails on inherited `LL_PYTHON` and terminal size
+- **BUG-3691**, **BUG-3708**, **BUG-3753**: `verify-issues`/format-check citation checking instability and stale-file false positives
+- **BUG-3696**, **BUG-3701**, **BUG-3724**: `claude-sonnet-5-5` missing from pricing and model tables; mixed-model usage priced at the last model
+- **BUG-3702**: `refine_followup` evidence snapshot vanishes from shared scratch dir
+- **BUG-3705**: `scratch-cleanup.sh` sweep exceeds its 5s hook timeout
+- **BUG-3715**, **BUG-3736**: `rebuild()` wipes retention summaries and replay-derived usage
+- **BUG-3726**: `reconcile-issue --from-verify-evidence` adds ACs for context-only inventory evidence
+- **BUG-3727**: Learning-target extractor treats Claude model IDs as external-API dependencies
+- **BUG-3735**: Scoped usage selection hides unverified overlap candidates
+- **BUG-3737**: Unescaped SQLite read-only URIs create or open the wrong database
+- **BUG-3738**, **BUG-3739**: `link-epics --apply` placeholder/misplacement churn; frontmatter keys after the closing fence silently ignored
+- **BUG-3754**, **BUG-3756**, **BUG-3757**: Confidence-check score polarity and outcome-threshold drift
+- **BUG-3755**: SQLite and OTel transports lose FSM loop identity
+- **BUG-3758**: SQLite route search omits destination and prefers legacy source
+- **BUG-3759**: OTel resume root overwritten without being ended
+- **BUG-3760**: Readiness readers ignore local overrides and alternate config paths
+- fix(fsm): resolve `session_jsonl` by reported session_id instead of mtime (BUG-3741)
+- fix(loop): route PLACEHOLDERS obligation to format-issue fallback (BUG-3740)
+- fix(issue-parser): preserve `learning_tests_required: []`; end option spans at bold-labelled directive paragraphs
+- fix(pre_done): clamp advisor timeout instead of skipping consult
+
+### Changed
+
+- **ENH-3590**, **ENH-3600**, **ENH-3618**, **ENH-3619**, **ENH-3621**, **ENH-3623**, **ENH-3625**: Autodev/prepare-issue rework: ledger driven from run records, `autodev_summary` extraction, policy dispatch loop
+- **ENH-3616**: `ll-init` detects src/test/focus dirs from the real layout
+- **ENH-3544**, **ENH-3545**: Typed runtime telemetry availability; labeled context-hook occupancy estimates
+- **ENH-3639**, **ENH-3653**, **ENH-3697**: Corpus/priority-regex gate tests pinned to frozen fixtures, symbols and the committed `.issues` tree
+- **ENH-3650**, **ENH-3678**, **ENH-3679**, **ENH-3698**, **ENH-3720**: History backend chokepoint (`HistoryTarget`), derive-version rebuild gate, lock-wait bounds, store-size rebuild gate, total-deadline budget
+- **ENH-3706**: `scratch-cleanup.sh` sweeps no-suffix files after 7 days
+- **ENH-3718**: Live-evaluate `reconcile-issue --from-verify-evidence` repair
+- **ENH-3725**: Model-specific cacheable prefix minimum for Sonnet 5.5
+- **ENH-3648**, **ENH-3649**: Token-usage field survey for remaining hosts; session-reader isolation gate
+- refactor(config): increase advisor timeout from 180s to 300s
+- refactor(skills): remove hardcoded model hints from skill frontmatter
+
+### Other
+
+- docs(guides): apply audit corrections across 20 guides (9afe509)
+- docs(event-schema): document `usage_contributions` field and invalid attribution reason (d3a122a)
+- docs(cli): document `ll-init` directory existence filtering (487daa1)
+- chore(gitignore): ignore generated host mirror builds; track learning-test records under `.ll/learning-tests` (8fca545, 5f9c9cb)
+- test(learning): record Anthropic API pricing, turso and zlib learning test results (1d7d8e9, 8c66d7d)
+- test: fix race in `test_kills_grandchild_in_same_group` (d140370)
+
+[1.167.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.166.0...v1.167.0
+
 ## [1.166.0] - 2026-09-27
 
 ### Added
