@@ -12,6 +12,12 @@ labels:
 reconcile_attempted: true
 relates_to:
 - BUG-3757
+confidence_score: 98
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3742: Persist named risk factors in confidence-check scores and report deltas on re-score
