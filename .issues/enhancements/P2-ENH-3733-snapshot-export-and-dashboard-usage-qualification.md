@@ -32,7 +32,7 @@ Decomposed from ENH-3723. Recorded Decision (commit `01747bb96`) makes legacy NU
 
 ## Current Behavior
 
-On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops/session_store/queries.py` qualifies only model coverage and per-column missingness. A partial/unknown row with numeric stored cost can supply canonical token/cost components. `_SnapshotTotals` accepts invalid/non-finite costs; the predefined dashboard query omits qualification reasons and NULL renders as an empty cell. Source schema is currently 60; computed snapshot tables are not source migrations.
+On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops/session_store/queries.py` qualifies only model coverage and per-column missingness. A partial/unknown row with numeric stored cost can supply canonical token/cost components. `_SnapshotTotals` accepts invalid/non-finite costs; the predefined dashboard query omits qualification reasons and NULL renders as an empty cell. A temporary-store probe with two valid `2**62` token contributors qualifies in the source reader but crashes snapshot export because the resulting Python integer exceeds SQLite's signed integer range. Source schema is currently 60; computed snapshot tables are not source migrations.
 
 ## Expected Behavior
 
@@ -41,6 +41,7 @@ On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops
 - Audit/coverage-selected observations and counts stay intact. No observations is empty/unavailable; qualified zero is zero. Missing/invalid/audit-only rows make dependent canonical values NULL with reasons, without claiming the remaining subset is complete. Valid tokens can remain numeric when cost alone is unavailable.
 - Normalize computed buckets with `row_channel` and `UNKNOWN_MODEL_BUCKET`; preserve original raw model/channel/provenance in observation exports. A source reader whose public grouping key remains NULL is compared through an explicit NULL-to-bucket mapping. Derived `mixed` is allowed in computed aggregate metadata, without storing it as producer provenance.
 - Generated raw/known audit subtotals apply the same valid-value and finite-sum rules as source `ObservationGroup` subtotals. Unknown-but-valid values remain labeled audit sums. Invalid values are not silently admitted or allowed to create non-finite SQL values; missing/invalid count meanings are documented and do not claim qualified completeness.
+- Check generated integer subtotals against SQLite's signed 64-bit range before binding. An unrepresentable raw/known token subtotal becomes NULL without losing observation rows/counts; if any canonical channel token subtotal overflows, all canonical token components for that model become unavailable with `snapshot_integer_overflow`. Cost remains independently qualified. This export representability failure does not make valid producer observations invalid or change shared qualification. Never round/clamp to fit, switch exact integers to REAL, or let the whole export crash.
 - New reason/version/label fields contain only approved bounded codes/literals. A lexical snake_case/length check alone is insufficient: an identifier-shaped source secret must become `unclassified`. Preserve existing approved observation columns (including already-allowlisted `session_id`/`invocation_id`); add no native request/turn IDs, raw links, paths, credentials or source-derived prose. The metadata change does not expand identity export permissions.
 - Keep existing public numeric fields. The snapshot has no rate column and gains none; cache-rate measured-only/zero-denominator criteria are source-reader parity controls. Custom SQL stays unchanged and is described as an audit tool: `SUM` over selected rows or NULLs does not certify a complete population.
 
@@ -64,7 +65,7 @@ Add exactly these aggregate metadata columns to `usage_coverage_audit`: `provena
 
 Reuse `_SnapshotTotals` for per-channel raw/coverage-selected contributions, with shared validity/finite-sum behavior. Track NULL versus present-invalid internally; if additional diagnostic count columns are necessary, add them consistently and document their meanings. Never change the shared `ObservationGroup.channel_subtotals()` shape to add cost.
 
-Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_REASONS` and the enumerated shared coverage reason codes. Unknown code → `unclassified`; stable sorted joins for coverage reasons. No arbitrary source text is admitted merely because it passes the old sanitizer.
+Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_REASONS`, the consumer-only `snapshot_integer_overflow` literal and the enumerated shared coverage reason codes. Unknown code → `unclassified`; stable sorted joins for coverage reasons. No arbitrary source text is admitted merely because it passes the old sanitizer. Shared qualification failures keep their existing precedence; use the export overflow reason only when shared token qualification otherwise succeeds.
 
 ### Signatures
 
@@ -82,6 +83,8 @@ Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_
 
 - Model-wide qualification cannot be derived from `selected_rows` alone, a channel subtotal or raw numeric stored cost. Shared qualification reason precedence is consumed unchanged.
 - Every canonical token component is NULL together when token qualification fails; cost uses its own result. Selected/audit counts and raw evidence remain diagnostic.
+- Qualification and export representability both precede canonical token publication. The bounded overflow exception is the only source/snapshot numeric-parity exception introduced here; the shared result and policy version are unchanged. Audit subtotal NULL may mean no valid values or an unrepresentable sum, not an invented missing/invalid contributor.
+- Create audit channel rows only for actual in-filter observations. A nonempty qualified channel whose observed components are all zero has numeric zero; an empty channel/model/window gains neither a row nor a fabricated zero. Dashboard availability requires a non-NULL canonical value as well as applicable model-scoped metadata.
 - Acquire source version and exported source rows from the same read snapshot; move `read_schema_version` inside the existing export transaction if needed. Generated raw/selected/audit tables must never describe different source commits.
 - Keep the recorded Option C and legacy/empty behavior. Unknown historical provenance, unresolved coverage and unpriced cost can legitimately leave an unscoped dashboard unavailable after implementation.
 
@@ -102,6 +105,7 @@ Use an explicit snapshot-export reason allowlist combining `USAGE_QUALIFICATION_
 
 - `scripts/tests/test_enh3543_snapshot_usage.py` — extend real `_source_db` fixtures for partial/unknown/mixed/unpriced/invalid rows, NULL model/channel, coexisting channel contributions, `since` and out-of-window overlap. Compare source `aggregate_usage`/`cost_attribution` token/cost qualification and audit subtotals on the same store; selected/raw rows and counts remain intact.
 - Assert all four token canonical fields change together, token/cost independence, unavailable vs zero, all-invalid audit values and finite-sum overflow; prove a complete channel cannot recertify an incomplete model. Compare qualification at the model scope, not a separately qualified channel.
+- Add two measured `2**62` contributors in one channel, a second complete channel of that model and an unaffected model: export succeeds, oversized raw/known subtotals are NULL, model-wide canonical tokens are NULL with the bounded overflow reason, and independently qualified costs remain numeric. Check the exact signed-64-bit boundary and insertion permutations without changing approved raw observations. Query generated fields rather than re-summing raw integers in predefined SQL.
 - Leak tests scan snapshot bytes for source/native-ID sentinels and inject both prose and a syntactically valid identifier-shaped sentinel into reason inputs; new code fields must become `unclassified`. Preserve existing approved identity columns rather than asserting that all session IDs vanished.
 - `scripts/tests/test_feat3304_artifact_dashboard.py` — allowlist hash/version lockstep, `PRAGMA table_info` order, policy version, empty/legacy/pre-v55 behavior, deterministic gzip bytes and actual predefined SQL execution on a real generated snapshot through stdlib SQLite. Require numeric zero, NULL cost plus visible unavailable reason, unknown-model bucket and model-wide taint cases; a substring assertion alone is insufficient.
 - `scripts/tests/js/feat3304/feat3304_dashboard_runtime.test.mjs` — execute the usage query/render against embedded snapshot bytes. Existing pytest Node gate runs wherever Node is available and skips gracefully when absent; `LL_REQUIRE_NODE=1` makes missing Node a failure. Do not misdescribe it as opt-in-only or add a CI workflow.
@@ -117,9 +121,9 @@ Bump `_SHAREABLE_ALLOWLIST_VERSION` with every allowlist edit and update `TestAl
 
 ## Acceptance Criteria
 
-- [ ] Source/snapshot token and cost qualification agree for measured/estimated/mixed, partial/unknown, invalid and unpriced contributor populations; rejected rows cannot create a canonical subset.
+- [ ] Source/snapshot token and cost qualification agree for measured/estimated/mixed, partial/unknown, invalid and unpriced contributor populations; rejected rows cannot create a canonical subset. Valid sums outside SQLite's integer range follow the documented consumer-only unavailable exception without crashing or rounding.
 - [ ] Full-identity coverage precedes filtering; window/channel/model controls preserve completeness, approved raw/selected evidence and observation counts. Logical NULL buckets and whole-model metadata are documented.
-- [ ] Canonical unavailable fields are NULL with bounded reasons; observed zero remains numeric zero. Generated audit subtotals obey shared validity/finite-sum rules without failing on invalid values.
+- [ ] Canonical unavailable fields are NULL with bounded reasons; observed zero remains numeric zero. Empty channels/models create no figures or artificial zeros. Generated audit subtotals obey shared validity/finite-sum/range rules without failing on invalid or unrepresentable values; overflow does not inflate missing/invalid counts.
 - [ ] New metadata is strictly allowlisted and leak-tested against both prose and identifier-shaped sentinels; approved existing observation identities remain unchanged.
 - [ ] Aggregate label, separate token/cost reasons and shared policy version travel on audit rows. Old snapshots are audit-only; empty new snapshots have neither figures nor a version row. No rate/page-stamp/payload/table additions.
 - [ ] Predefined SQL is executed in ordinary pytest against real generated snapshots and displays unavailable vs zero correctly; Node runtime rendering passes wherever supported. Custom SQL is unmodified and receives truthful completeness guidance.
@@ -148,6 +152,8 @@ No qualification-core change, new source-history migration, quality/derive-statu
 Historical missing-core checks in the log are superseded: ENH-3731/3748 exist on `main`. This review consolidates the active contract and sets size to Large instead of the stale Very Large estimate. Export/template/privacy integration remains unimplemented; re-run confidence for this contract before implementation. No new score is claimed.
 
 ## Session Log
+
+- Pre-implementation handoff review - 2026-10-06 - Reproduced a valid `2**63` source subtotal crashing SQLite snapshot binding. Added a bounded export-only representability guard, model-wide token taint with independent cost, range/permutation tests and exact unavailable-versus-empty semantics. Opus confidence 0.74 supported the overflow guard; its empty-channel zero proposal was rejected because no observation cannot certify zero. Targeted existing policy/lifecycle/reader/quality/workspace/dashboard/chokepoint suites: 293 passed. No implementation or readiness score claimed.
 
 - Pre-implementation review - 2026-10-06 - Rechecked `main`, consolidated obsolete option/research/wiring questions, corrected schema drift and the actual Node gate behavior, pinned four model-scoped metadata columns, strengthened reason allowlisting and added real predefined-SQL/read-snapshot tests. Retained Option C and approved existing identity columns; no rates or payload changes. Opus consult confidence 0.72; existing related suites: 188 passed. No implementation or readiness score claimed.
 
