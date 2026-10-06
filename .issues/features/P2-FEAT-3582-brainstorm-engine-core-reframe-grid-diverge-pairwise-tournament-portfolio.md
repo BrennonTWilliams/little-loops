@@ -18,6 +18,8 @@ reconcile_attempted: true
 blocked_by:
 - FEAT-3667
 - FEAT-3686
+blocks:
+- FEAT-3717
 ---
 
 # FEAT-3582: Brainstorm engine core: grid diverge, pairwise tournament, portfolio
