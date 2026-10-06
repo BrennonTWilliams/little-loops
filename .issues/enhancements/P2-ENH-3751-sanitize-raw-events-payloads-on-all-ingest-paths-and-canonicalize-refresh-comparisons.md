@@ -14,6 +14,8 @@ labels:
 decision_needed: false
 size: Large
 confidence_score: 95
+verify_verdict: CLAIMS_OUTDATED
+verify_evidence: "Integration Map (wiring pass): 'docs/reference/CLI.md ll-session refresh flags and safety (:4635-4650)' -> section now starts at line 4666 and spans to about 4695; Integration Map (wiring pass): 'recompress flags (:4693-4698), idempotent and byte-lossless' -> section now starts at line 4717 with the byte-lossless sentence at line 4729; Integration Map (wiring pass): 'll-session example block (~:4735-4754)' -> refresh/recompress examples now at lines 4769-4786; Documentation (Codebase Research Findings): 'CLI.md:4635-4659 documents ll-session refresh skip reporting' -> refresh section now at lines 4666-4695"
 outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
@@ -317,6 +319,7 @@ Re-assessed against the revised contract (type-sensitive comparison, safe stored
 - Prior pre-implementation critique rounds on this contract (history-context correction match) indicate the contract has churned; treat the Codex first-cursor literal/canonical split and the rollback-scope rules as the likeliest places for iteration.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-10-06T20:14:55 - `78d80ae4-e260-4b0c-9bb2-85e65c40ea76.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:45:56 - `466b925c-c989-4144-94bc-ff9597778e0e.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:26:53 - `afda5a75-36fd-4868-b330-ef24a018b110.jsonl`
 - `/ll:confidence-check` - 2026-10-06T09:21:57 - `efbe7654-b8cc-4b46-8b6e-54d1216778fc.jsonl`
