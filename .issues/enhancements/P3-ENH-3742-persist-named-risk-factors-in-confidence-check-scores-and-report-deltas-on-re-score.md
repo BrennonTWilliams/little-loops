@@ -29,8 +29,8 @@ This is additive to scoring: no rubric change, no threshold change, no migration
 - Confidence-check writes scalar scores and conditionally appends Notes when `HAS_FINDINGS` is true. A clean assessment or unchanged totals can hide changed risk composition.
 - `cmd_set_scores` in `scripts/little_loops/cli/issues/set_scores.py` writes supplied scalar fields without a lock/atomic writer. Its separate `clear_scores(path)` helper is locked and atomic but derives the lock with the default `.issues` basename.
 - The preparation-policy clear-before-rescore path must retain a future factor baseline. For a custom `tickets` base, current clear/update mutators can take different locks.
-- Canonical frontmatter already supports nested lists/maps. Factors can be stored there without an `IssueInfo` expansion or migration.
-- `apply_flags_from_notes` scans the entire latest Notes body, and its co-deliverable suppressor scans the original notes for filenames. Historical delta descriptions could activate or suppress flags. Open-question counting also scans Notes; consult trimming stops at H3 subheadings.
+- Frontmatter already supports nested lists/maps and legacy first-mapping/no-frontmatter updates. Factors can be stored there without an `IssueInfo` expansion or migration.
+- `apply_flags_from_notes` scans the entire latest Notes body, and its co-deliverable suppressor scans the original notes for filenames. Even legal IDs can match flag phrases: `absent`, `test-first`, `unprecedented`, `co-deliverable-tests`, and `submit-tests-absent`. Open-question counting also selects the latest Notes; consult trimming stops at H3 subheadings.
 
 ## Expected Behavior
 
@@ -55,13 +55,13 @@ The split removed exactly the risk the rubric cannot see. The qualitative layer 
 
 Use exact stable IDs and one last-recorded frontmatter list. The writer owns validation, baseline classification, comparison and atomic persistence; the skill assesses factors, reuses IDs and renders the writer's result. Keep scoring arithmetic, gates, thresholds and set-only flag behavior intact.
 
-**Decided Notes format:** `### Risk Factor Delta` contains backticked IDs, closed status labels and changed-field names only. Descriptions, criterion values, filenames, quotes and questions stay in the complete frontmatter records, CLI JSON and ordinary assessment output. Retain the narrow subsection exclusion in `set-flags` as a defense against generated-template drift. Do not add a general backtick mask or broaden unrelated open-question/consult trimming in this issue.
+**Decided Notes format:** `### Risk Factor Delta` contains backticked IDs, fixed labels/baseline notices and changed-field names only. Descriptions, criterion values, filenames, quotes and questions stay in the complete frontmatter records, CLI JSON and ordinary assessment output. The narrow subsection exclusion in `set-flags` is required because legal IDs can contain flag phrases as substrings. Do not restrict the valid ID vocabulary, add a general backtick mask or broaden unrelated open-question/consult trimming in this issue.
 
 ## Program Design
 
 ### Types
 
-One `risk_factors` list in canonical frontmatter, each mapping with exactly four required string fields:
+One `risk_factors` list in the frontmatter update target, each mapping with exactly four required string fields:
 
 ```yaml
 risk_factors:
@@ -89,18 +89,21 @@ Add planned `--risk-factors-file PATH` (`-` reads stdin) and `--json`/`-j` to `s
 | Valid complete array, including `[]` | Replace list; explicit empty is a known-empty baseline. Factor-only calls are allowed. |
 | Prior key absent | `baseline: absent`; `added`, `removed`, `retained` are `null`, not fabricated additions. |
 | Prior valid list, including `[]` | `baseline: present`; comparison fields are arrays, including empty arrays. |
-| Stored key present but malformed in parseable canonical YAML | Replace non-fatally; `baseline: malformed`, null comparisons, stderr `Warning: stored risk_factors baseline malformed; replaced`. Classify from raw canonical YAML, not the lenient reader's fallback. |
+| Stored key present but malformed in a parseable target mapping | Replace non-fatally; `baseline: malformed`, null comparisons, stderr `Warning: stored risk_factors baseline malformed; replaced` after successful persistence. Classify from the raw target YAML, not the lenient reader's fallback. |
 | `--clear`/`clear_scores()` | Remove only the six existing scalar keys; preserve valid/invalid factors. Exclusive with score/factor updates; JSON allowed. |
+| `--clear` with score/factor options | Exit 1 with an ordinary exclusivity error, without the factor-input prefix; do not read the factor payload or write the issue. |
 | Factor file/read/JSON/record-input failure | Exit 1, empty stdout, unchanged issue bytes, stderr begins `Error: invalid risk factors:`. No scalar scores are written. |
-| Unresolvable issue, invalid canonical YAML/mapping, lock/read/write failure | Exit 1, no success JSON, actionable stderr without the factor-input prefix, unchanged issue bytes. |
+| Unresolvable issue, invalid target YAML/mapping, lock/read/write failure | Exit 1, no success JSON or replacement claim, actionable stderr without the factor-input prefix, unchanged issue bytes. |
+
+Choose the same target as `update_frontmatter`: first `id`-bearing block, else first block. A valid mapping without `id` remains supported. With no frontmatter, the baseline is absent and successful updates retain the existing prepend behavior; clear is a no-op. An unterminated opening frontmatter fence is an operational error, not an absent baseline. Parse the selected raw YAML with `yaml.safe_load`, matching the update writer, and reject parse failures/non-mappings as operational errors. Do not classify a baseline through `BaseLoader` or its permissive fallback. Hand-edited non-string IDs such as unquoted `123`, `yes`, or `null` make a stored list malformed; writer-created quoted strings remain valid. Do not merge factors from a different frontmatter block or normalize legacy block layout here.
 
 Resolve the issue before reading input; validate caller factors before locking. One configured issue-tree lock covers baseline read → comparison → frontmatter update → atomic write. All scalar-only updates and configured clear calls use the same lock. `atomic_write(..., shared_mode=True)` preserves existing regular-file mode. Direct `clear_scores(path)` stays compatible via an optional keyword-only base-dir argument. Do not nest the non-reentrant clear helper inside an already-held lock.
 
-Handled command failures use exit 1; argparse usage errors retain their existing exit 2. The skill branches on the fixed factor-input stderr prefix, not exit 2. No score-range validation is added. Scores-only/clear need not validate the retained factor list; unsafe canonical YAML still fails without a partial write.
+Handled command failures use exit 1; argparse usage errors retain their existing exit 2. The skill branches on the fixed factor-input stderr prefix, not exit 2. No score-range validation is added. Scores-only/clear need not validate the retained factor list; unsafe target YAML still fails without a partial write. Error/no-write paths preserve exact issue bytes, including CRLF. Successful writes follow the existing writers' newline behavior; preserving newline style is not a new requirement.
 
 A no-update JSON call returns the `recorded: false` object, warns on stderr, exits 0 and writes nothing; read presence under the same lock. Factor-bearing success is emitted only after persistence succeeds. An identical assessment has unchanged retained records and no membership delta.
 
-The JSON object has resolved full `issue_id` and `risk_factors`. With factors recorded: `recorded: true`, `baseline: absent|present|malformed`, sorted assessed `factors`, and comparison fields above. Added entries are assessed records; removed entries are prior records. Retained entries contain the four assessed fields plus `changed_fields` in fixed `domain`, `criterion`, `description` order. Without factor input, emit only `recorded: false` and presence-based `baseline` under `risk_factors`.
+The JSON object has resolved full `issue_id` and `risk_factors`. Obtain identity from the resolved file using the existing `IssueParser(config).parse_file(path).issue_id` behavior, rather than echoing numeric/priority/stale-type input or requiring a frontmatter `id`. With factors recorded: `recorded: true`, `baseline: absent|present|malformed`, sorted assessed `factors`, and comparison fields above. Added entries are assessed records; removed entries are prior records. Retained entries contain the four assessed fields plus `changed_fields` in fixed `domain`, `criterion`, `description` order. Without factor input, emit only `recorded: false` and presence-based `baseline` under `risk_factors`.
 
 The lock serializes writer transactions, not the model assessment or later Notes edits. Concurrent writes compare against the latest set at commit time. Whole-skill serialization/stale-assessment rejection/transactional Notes are outside scope.
 
@@ -108,7 +111,7 @@ The lock serializes writer transactions, not the model assessment or later Notes
 
 - Existing `cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int` remains the writer entry point.
 - Proposed extension `clear_scores(path: Path, *, base_dir: str = ".issues") -> bool`; CLI and preparation policy pass the configured base.
-- Proposed private dataclasses/helpers in the writer module: `RiskFactor`, `RetainedRiskFactor`, `RiskFactorDelta`, `parse_risk_factors(raw: str)`, `diff_risk_factors(previous, assessed)`. Pure parsing/diff helpers have no I/O; malformed/absent baselines must remain distinguishable at the caller.
+- Proposed private dataclasses/helpers in the writer module: `RiskFactor`, `RetainedRiskFactor`, `RiskFactorDelta`, `parse_risk_factors(raw: str) -> list[RiskFactor]`, `diff_risk_factors(previous: list[RiskFactor], assessed: list[RiskFactor]) -> RiskFactorDelta`. Pure parsing/diff helpers have no I/O; malformed/absent baselines must remain distinguishable at the caller.
 
 ### Skill, Notes and Flags
 
@@ -116,8 +119,8 @@ The lock serializes writer transactions, not the model assessment or later Notes
 2. Read prior IDs during gathering, assess current evidence, and in non-check mode pass the complete factors with all six scores. Use stdin or an issue/run-unique payload file. Render the writer's JSON comparison without independently recomputing it.
 3. On a prefixed input rejection, repair/retry once. If still rejected, make a separate valid scores-only call, retain baseline and explicitly report `risk factors not recorded; delta unavailable`. Fallback succeeds only if that call succeeds. Other failures get no repair/fallback; report the persistence failure and continue other batch issues. Never claim a delta or write delta Notes after a failed factor write.
 4. `--check` keeps its existing output/exit behavior and performs no score/factor/Notes/staging/log/flag writes; it never invokes the mutating writer or claims a persisted comparison.
-5. Append one fresh Notes section when existing `HAS_FINDINGS` is true or a recorded present-baseline comparison has added/removed IDs. All-removed with unchanged totals still writes Notes. Clean first/malformed-baseline and retained-only runs report in ordinary output without empty Notes. Finding-bearing Notes include a recorded comparison even when membership is unchanged; missing/malformed baseline is labeled explicitly.
-6. Delta labels are exactly `Added`, `No longer reported`, `Retained`, and `Changed fields`, with backticked IDs and the fixed metadata-field names only. Never restate descriptions or criterion values in this subsection. Preserve Session Log/Resolved Concerns; removals do not create Resolved Concerns entries.
+5. Append one fresh Notes section when existing `HAS_FINDINGS` is true or a recorded present-baseline comparison has added/removed IDs. All-removed with unchanged totals still writes Notes. Clean first/malformed-baseline and retained-only runs report in ordinary output without empty Notes. Finding-bearing Notes include a recorded comparison even when membership is unchanged; missing/malformed baseline is labeled explicitly. Accept the existing latest-section consequence: a fresh delta-only Notes section supersedes older Notes for open-question counting. It adds no active question and does not mark any concern resolved; questions in other scanned sections still count. Clean runs that append nothing retain the previous selection.
+6. Put `Risk Factor Delta` last within the new Notes section, after any ordinary findings, and pin its template in `rubric.md`, not the line-limited skill. Use flat one-line bullets with membership labels `Added`, `No longer reported`, `Retained`, and `Changed fields`. Sort comma-separated IDs and backtick each one; use literal `none` for an empty comparison category. Emit one `Changed fields` bullet per changed retained ID with only `domain`, `criterion`, `description` in that order, or `none` if nothing changed. For null comparisons, emit only `- Baseline: none recorded` or `- Baseline: malformed, replaced`; do not fabricate empty membership arrays. Keep these baseline notices inside the excluded subsection rather than echoing the raw JSON state into ordinary findings. Never restate descriptions or criterion values in this subsection. Preserve Session Log/Resolved Concerns; removals do not create Resolved Concerns entries.
 7. Before both phrase matching and co-deliverable suppression, exclude every exact real H3 `Risk Factor Delta` subsection from default latest Notes and supplied `--from-notes`. Both consumers get the same filtered text. End at the next real H1/H2/H3 or EOF; H4 stays excluded. Closed fenced headings neither begin nor end exclusion. An uncertain unterminated-fence span is retained rather than swallowing later active findings. Preserve later active prose, legacy findings, numerical/direct-frontmatter prerequisites, and set-only semantics. Do not derive flags from factors or auto-clear flags on removal.
 
 ### Call Path
@@ -127,8 +130,8 @@ The lock serializes writer transactions, not the model assessment or later Notes
 ## Implementation Steps
 
 1. First land the independently testable lock fix: scalar writer to locked atomic write; clear helper configured base/mode; preparation-policy propagation. Add score writers to the mutator atomicity gate. Keep the helper backwards compatible.
-2. Add factor CLI/dataclasses/validation/diff/JSON behavior and transaction tests. No partial scalar write on rejected factor input or failed persistence.
-3. Add the narrow fence-aware flag exclusion and the fixed IDs-only Notes grammar. Characterize generated delta text against open-question and consult consumers; no changes to those consumers are required for this grammar. Consult hashes may include ID membership changes under the existing H3 trimming behavior; this is accepted, and no claim of Notes-hash invariance is made.
+2. Add factor CLI/dataclasses/validation/diff/JSON behavior and transaction tests, retaining legacy frontmatter targeting and resolved identity. No partial scalar write or false replacement warning on rejected factor input or failed persistence.
+3. Add the narrow fence-aware flag exclusion and pin the fixed Notes grammar in the rubric companion. Test legal phrase-bearing IDs and preserve matching outside the subsection. Characterize the delta-only latest-Notes effect and generated text against open-question and consult consumers; no changes to those consumers are required. Consult hashes may include ID membership changes under the existing H3 trimming behavior; this is accepted, and no claim of Notes-hash invariance is made.
 4. Before growing the 499/500-line skill, extract suitable existing detail to `rubric.md`/`reference.md` while keeping pinned Phase 4/4.5/4.6 and append-log anchors. Add factor collection/writer/fallback/notes instructions in all modes. Do not add another `python3 -c` prose marker or spawn site. Regenerate tracked host mirrors through `ll-adapt`.
 5. Update CLI/issue-metadata documentation and run relevant tests plus `python -m pytest scripts/tests/`. Finish with one bounded manual assessment/re-assessment proving stable IDs and removed-factor display at fixed totals; also assess an active cap with full dimension scores.
 
@@ -147,29 +150,29 @@ The lock serializes writer transactions, not the model assessment or later Notes
 
 - `scripts/little_loops/frontmatter.py` — existing canonical nested-list/map support; preserve unrelated fields/body and string-like slugs.
 - `scripts/little_loops/file_utils.py` — existing tree lock and mode-preserving atomic writer.
-- `scripts/little_loops/issue_parser.py` and `scripts/little_loops/cli/issues/advise_consult.py` — characterize IDs-only notes; no broader parser/trim change.
+- `scripts/little_loops/issue_parser.py` and `scripts/little_loops/cli/issues/advise_consult.py` — reuse existing resolved identity and characterize IDs-only notes, including the delta-only latest-Notes effect on open-question consumers; no broader parser/trim change.
 - `commands/reconcile-issue.md` and `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — clear preserves baseline; no rewrite required.
 - BUG-3757 shares the skill/rubric/flag writer. Prefer its small threshold correction first, then rebase this work; neither is a semantic blocker and no dependency cycle is added.
 
 ### Tests and Documentation
 
-- `scripts/tests/test_set_scores_cli.py`: file/stdin, alias, factor-only/scalar-only/no-update/clear, all JSON shapes, input reordering, changed metadata, absent/empty/malformed raw baselines, exact prefix/warning, invalid canonical YAML, operational failure and unchanged bytes. Validation rejects duplicate IDs, extra/missing/non-string fields, bad slugs/domains/criteria and multiline/long/blank descriptions. Include CRLF, Unicode and file modes.
-- `scripts/tests/test_frontmatter.py`: list-of-maps round trips (string IDs such as `123`, `null`, `true`, `yes`), unrelated status updates, noncanonical blocks and numeric-score parsing. Clear must preserve unindented factor lists and invalid baselines.
+- `scripts/tests/test_set_scores_cli.py`: file/stdin, alias, factor-only/scalar-only/no-update/clear, all JSON shapes, input reordering, changed metadata, absent/empty/malformed raw baselines, exact prefix/warning, invalid target YAML/mappings or unterminated headers, operational failure and unchanged bytes. Cover first mappings without `id`, no frontmatter, canonical target behind a score block, and the same full JSON identity for numeric/priority/stale-type inputs. Mixed clear/factor arguments must fail without reading stdin or using the repair prefix; failed writes must not claim a malformed baseline was replaced. Validation rejects duplicate IDs, extra/missing/non-string fields, bad slugs/domains/criteria and multiline/long/blank descriptions. Include Unicode, file modes and CRLF error/no-write byte checks; success uses existing newline behavior.
+- `scripts/tests/test_frontmatter.py`: list-of-maps round trips (string IDs such as `123`, `null`, `true`, `yes`), unrelated status updates, noncanonical blocks and numeric-score parsing. Test quoted IDs remain strings through later updates, while an unquoted non-string ID in a hand-edited stored list is classified malformed. Clear must preserve unindented factor lists and invalid baselines.
 - `scripts/tests/test_bug3150_issue_mutator_atomicity.py` and `scripts/tests/test_preparation_policy_writers.py`: scalar/clear shared lock, configured `tickets` base, actual clear-before-rescore baseline preservation, no nested lock, atomic/read/write/lock failure handling.
-- `scripts/tests/test_set_flags_cli.py`: both note-input paths, historical phrases and co-deliverable filenames, repeated/fenced/unterminated subsections, H4/next active heading, default latest Notes, direct frontmatter and set-only behavior.
-- `scripts/tests/test_issue_parser_unresolved.py`, `scripts/tests/test_ll_issues_advise_consult.py`: fixed IDs-only delta grammar adds no open-question signal or description/filename to consult context. Pin the accepted membership/hash behavior without changing trim semantics. This does not claim arbitrary description-bearing delta text is safe for every consumer.
-- `scripts/tests/test_confidence_check_skill.py`: threshold-independent collection, all modes, bounded repair versus operational failure, no-write check, clean membership-delta notes, fixed labels and field vocabulary. Assert that the emitted grammar has no flag signal phrases/filename tokens.
+- `scripts/tests/test_set_flags_cli.py`: both note-input paths, legal IDs `absent`, `test-first`, `co-deliverable`, `unprecedented` and compound `submit-tests-absent` inside the delta must not fire rules; the same phrases outside must still fire with existing prerequisites satisfied. Cover historical descriptions/co-deliverable filenames against template drift, baseline notices, repeated/fenced/unterminated subsections, H4/next active heading, default latest Notes, direct frontmatter and set-only behavior.
+- `scripts/tests/test_issue_parser_unresolved.py`, `scripts/tests/test_ll_issues_advise_consult.py`: fixed delta grammar adds no open-question signal or description/filename to consult context. An older question-bearing Notes section followed by a clean delta-only section yields zero Notes questions; a question in another scanned section remains counted. Pin the accepted membership/hash behavior without changing trim semantics. This does not claim arbitrary description-bearing delta text is safe for every consumer.
+- `scripts/tests/test_confidence_check_skill.py`: threshold-independent collection, all modes, bounded repair versus operational failure, no-write check, clean membership-delta notes, companion template wiring, final-subsection placement, fixed labels/baseline notices and field vocabulary. Assert no filename tokens or question signals; legal IDs need not be flag-phrase-free, so flag safety is verified behaviorally in the CLI tests.
 - Existing skill/companion/host freshness, docs-audience, prose, reference-wiring, ready-rubric and session-log gates. Keep Phase 4.5's existing check/findings/Notes tokens within its tested first 2000 chars and Phase 4/4.6 anchors intact. Mark proposed APIs/flags as planned until implemented rather than weakening citation gates.
 
 ## Acceptance Criteria
 
-1. Factor-bearing success persists the complete sorted list with supplied scores; absent, empty and omitted factor states are distinct. Unrelated metadata/body/mode survive, including later ordinary frontmatter updates.
+1. Factor-bearing success persists the complete sorted list with supplied scores; absent, empty and omitted factor states are distinct. Legacy no-frontmatter/first-mapping writes and resolved full identity remain supported. Unrelated metadata/body/mode survive, including later ordinary frontmatter updates; successful newline behavior follows existing writers.
 2. JSON is deterministic and follows the baseline/comparison contract; retained metadata changes differ from unchanged retained IDs. Output is emitted only after persistence succeeds.
 3. Fixed totals with membership changes render a real delta and fresh IDs-only Notes, including the final removal when `HAS_FINDINGS` is false. Threshold crossing alone never changes factor identity.
 4. Clear and scalar updates share the configured issue lock, preserve factors, remain compatible, and never make factors freshness/gate evidence.
-5. Invalid factor input writes nothing, exits 1 with the exact prefix; malformed stored baseline is replaced visibly/non-fatally. Operational/canonical-YAML failure gets no input-repair fallback or success JSON. Argparse usage errors retain exit 2.
-6. Delta history cannot activate/suppress flags through either note path; boundary controls preserve active findings and direct triggers. Generated IDs-only text has no question/filename effects. Existing true flags are not cleared.
-7. Single/auto/batch/sprint modes share the contract; check mode writes nothing. Existing Notes/Session Log/Resolved Concerns structure and latest-Notes selection remain intact.
+5. Invalid factor input writes nothing, exits 1 with the exact prefix; malformed stored baseline is replaced visibly/non-fatally only after successful persistence. Operational/target-YAML failure gets no input-repair fallback, replacement claim or success JSON. Mixed clear/update arguments use an ordinary exit-1 error. Argparse usage errors retain exit 2; all error/no-write paths preserve exact bytes.
+6. Delta history, including legal IDs containing flag phrases, cannot activate/suppress flags through either note path; boundary controls preserve active findings and direct triggers. Generated text has no open-question/filename effects; its flag-phrase effects are neutralized by subsection exclusion. Existing true flags are not cleared.
+7. Single/auto/batch/sprint modes share the contract; check mode writes nothing. Existing Notes/Session Log/Resolved Concerns structure and latest-section selection rule remain intact. A new delta-only Notes section becomes the selected current assessment and drops older Notes questions from the count, while questions in other scanned sections remain; no concern is automatically marked resolved.
 8. Existing scoring dimensions/allocations/caps/gates/thresholds stay unchanged. Collection covers active caps/hard gates with concrete independent risks. Relevant local tests and the bounded manual assessment/re-assessment pass; legacy issues need no migration.
 
 ## Impact
@@ -182,7 +185,9 @@ No continuous/weighted scoring, fuzzy matching, full factor history/reset, facto
 
 ## Review Notes
 
-Reviewed on 2026-10-06 against the current writer, configured-lock behavior and Notes consumers. Settled the previously open user-decision items as IDs-only Notes plus narrow subsection exclusion, avoiding broad parser/consult changes. Removed rejected and superseded conditional wiring instead of adding another plan layer. Clarified argparse versus handled command failures and kept baseline lifecycle/atomicity/fallback contracts. Opus supported these choices (confidence 0.72); its dissent considered the exclusion redundant with fixed IDs/vocabulary, retained here against generated-template drift. The focused baseline passed 338 tests with one optional skip. Cached scores/verdict were removed; this changed plan needs a fresh confidence assessment before automated implementation. No implementation edits were made.
+Reviewed on 2026-10-06 on `main` against the writer, raw frontmatter targeting, configured locks and Notes consumers. Read-only probes showed legal phrase-bearing IDs require subsection exclusion and a delta-only latest Notes section changes the open-question count from one to zero. Corrected the impossible lexical flag-safety requirement, pinned the companion template and baseline notices, preserved legacy writer shapes/resolved identity, and clarified error-prefix, replacement-warning and CRLF contracts. The latest-Notes consequence is accepted and explicitly characterized, without broadening parsers or interpreting removal as resolution.
+
+An Opus `/ll:advise` consult supported these corrections (confidence 0.80). Its dissent was that pinning the exact template might be overly prescriptive; retained because leaking raw baseline labels into ordinary findings can create flags. Remaining implementation risks are model adherence/ID stability and the documented latest-Notes effect on automation. The focused baseline passed all 486 tests; format/design checks passed, no required decision rules conflicted, and no proof requirement or hard blocker is declared. Cached scores/verdict remain absent; run a fresh confidence assessment before automated implementation. No implementation edits were made.
 
 ## Status
 
@@ -190,6 +195,7 @@ Reviewed on 2026-10-06 against the current writer, configured-lock behavior and 
 
 ## Session Log
 
+- `/ll:ready-issue` - 2026-10-06T18:21:33 - `225d913b-150f-4f37-9e25-fcb3cb3d0b0e.jsonl`
 - `/ll:confidence-check` - 2026-10-06T10:30:37 - `b5d4e644-cd2f-4e8d-a10e-c42db195622e.jsonl`
 - `/ll:verify-issues` - 2026-10-06T10:28:24 - `dc732f3d-151b-4f4f-aac7-173ab3aca287.jsonl`
 - `/ll:reconcile-issue` - 2026-10-06T10:26:19 - `eb8411d3-8f35-40aa-bced-e5eedef94d5f.jsonl`
