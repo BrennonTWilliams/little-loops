@@ -1294,11 +1294,20 @@ def check_format_gaps(
             suffix_match_candidates,
         )
 
+        # BUG-3753: only the blocking stale scan ignores historical Verification
+        # Notes; the ambiguity scan below keeps whole-file input.
         legacy_ref_status = classify_issue_refs(content, ref_index)
-        for ref, status in sorted(legacy_ref_status.items()):
+        active_content = _mask_historical_notes(content)
+        active_ref_status = (
+            legacy_ref_status
+            if active_content == content
+            else classify_issue_refs(active_content, ref_index)
+        )
+        for ref, status in sorted(active_ref_status.items()):
             if status == "stale":
                 gaps.stale_file_ref.append(ref)
-            elif status == "ambiguous":
+        for ref, status in sorted(legacy_ref_status.items()):
+            if status == "ambiguous":
                 candidates = sorted(suffix_match_candidates(ref, ref_index))
                 shown = ", ".join(candidates[:3])
                 if len(candidates) > 3:
@@ -1419,6 +1428,44 @@ def check_format_gaps(
     )
 
     return gaps
+
+
+_VERIFICATION_NOTES_H2_RE = re.compile(r"^##[ \t]+Verification Notes[ \t\r]*$", re.MULTILINE)
+_H1_H2_RE = re.compile(r"^#{1,2}[ \t]", re.MULTILINE)
+
+
+def _mask_historical_notes(content: str) -> str:
+    """Blank every exact ``## Verification Notes`` section (BUG-3753).
+
+    A correction note legitimately quotes the stale token it removed; scanning
+    that quote as a current claim re-flags the repaired issue. Spans run from
+    the heading to the next real (non-fenced) H1/H2 or EOF, are replaced with
+    equal-length whitespace (newlines kept) so offsets and lines are preserved,
+    and cover every occurrence. When an unpaired fence marker sits before a
+    candidate's end, its boundary is uncertain and the original text is kept.
+    """
+    from little_loops.text_utils import _LINE_FENCE_DELIMITER_RE, fence_spans, in_fence
+
+    candidates = list(_VERIFICATION_NOTES_H2_RE.finditer(content))
+    if not candidates:
+        return content
+    fences = fence_spans(content)
+    markers = list(_LINE_FENCE_DELIMITER_RE.finditer(content))
+    unpaired_start = markers[-1].start() if len(markers) % 2 else None
+    boundaries = [
+        m.start() for m in _H1_H2_RE.finditer(content) if not in_fence(m.start(), m.end(), fences)
+    ]
+    chars = list(content)
+    for cand in candidates:
+        if in_fence(cand.start(), cand.end(), fences):
+            continue
+        end = next((b for b in boundaries if b > cand.start()), len(content))
+        if unpaired_start is not None and unpaired_start < end:
+            continue
+        for i in range(cand.start(), end):
+            if chars[i] not in "\n\r":
+                chars[i] = " "
+    return "".join(chars)
 
 
 # ENH-2993: `### Codebase Research Findings` accumulates one block per

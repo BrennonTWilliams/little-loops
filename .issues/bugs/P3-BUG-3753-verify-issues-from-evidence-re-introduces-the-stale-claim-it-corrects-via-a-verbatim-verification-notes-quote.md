@@ -3,10 +3,11 @@ id: BUG-3753
 type: BUG
 title: Historical verification notes re-trigger blocking stale-file findings
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-06'
 captured_at: '2026-10-06T01:01:37Z'
+completed_at: '2026-10-06T18:22:19Z'
 confidence_score: 100
 outcome_confidence: 75
 score_complexity: 14
@@ -121,11 +122,22 @@ Reviewed on 2026-10-06. Settled omission versus advisory output, all-occurrence/
 
 BUG-3637, ENH-3690 and BUG-3695 are background for the existing correction flow.
 
+## Resolution
+
+**Fixed** — 2026-10-06
+
+- `check_format_gaps` now classifies blocking `stale_file_ref` against a copy of the file with every exact `## Verification Notes` H2 section masked (`_mask_historical_notes` in `issue_parser.py`); `ambiguous_file_ref` and shared `classify_issue_refs`/`extract_file_paths` keep whole-file input.
+- Unterminated fences leave a candidate's text intact (blocking preserved).
+- Tests: `scripts/tests/test_bug3753_historical_verification_notes.py` plus frozen fixture `scripts/tests/fixtures/issues/BUG-3753-stale-quote-in-verification-notes.md`; pins the command's paraphrase rule and the loop's one-attempt re-entry topology.
+- Docs: `docs/reference/CLI.md`, `docs/reference/API.md`.
+
 ## Status
 
 **Open** | Reviewed: 2026-10-06 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T18:22:19 - `471d3a7a-54d3-4495-af46-a12400a91738.jsonl`
+- `/ll:ready-issue` - 2026-10-06T18:11:03 - `741743bb-fbfa-48cc-bef2-a0fbf248b58c.jsonl`
 - `/ll:confidence-check` - 2026-10-06T18:08:39 - `f53c33ea-4b32-4695-9997-91e6e5833639.jsonl`
 - `/ll:confidence-check` - 2026-10-06T02:18:10 - `e2600ce5-ae49-45dd-9f4d-c7454cd772ad.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-06T02:14:49 - `dd470030-53a4-4ea7-a28e-a42612652be7.jsonl`

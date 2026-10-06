@@ -2788,7 +2788,12 @@ reference into a documented, gitignored-by-design directory (`thoughts/`,
 `untracked_by_design` (ENH-3000) instead of `stale` and is likewise never
 reported here — configurable via `issues.untracked_by_design`, which ships a
 non-empty default. Reporting only — a moved file can't be safely re-pointed
-without knowing intent.
+without knowing intent. References that appear only inside an exact
+`## Verification Notes` H2 section (through the next H1/H2 or end of file;
+every occurrence) are omitted from this blocking scan (BUG-3753), so a
+correction note that quotes the stale token it removed does not re-flag the
+repaired issue; the same path anywhere else still blocks. Only this class is
+narrowed — other checks still read the whole file.
 
 Also reports `ambiguous_file_ref` (ENH-2999): a file path reference classifies
 as `ambiguous` — the unrooted suffix matches more than one tracked file after
