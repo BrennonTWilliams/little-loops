@@ -1439,6 +1439,76 @@ class TestOTelTransport:
         assert resumed.parent is None, "resumed loop span should be a new root (no parent)"
         assert resumed.context.trace_id != first.context.trace_id
 
+    @pytest.mark.parametrize("replacing_event", ["loop_start", "loop_resume"])
+    def test_root_replacement_ends_live_spans_in_order(
+        self,
+        replacing_event: str,
+        test_provider: Any,
+        exporter: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """BUG-3759: start/resume end action -> state -> root before opening the new root."""
+        from opentelemetry.sdk.trace import SpanProcessor
+
+        calls: list[tuple[str, str]] = []
+
+        class Recorder(SpanProcessor):
+            def on_start(self, span: Any, parent_context: Any = None) -> None:
+                calls.append(("start", span.name))
+
+            def on_end(self, span: Any) -> None:
+                calls.append(("end", span.name))
+
+        test_provider.add_span_processor(Recorder())
+        t = OTelTransport(_tracer_provider=test_provider)
+        with caplog.at_level(logging.WARNING):
+            t.send({"event": "loop_start", "loop_name": "old"})
+            t.send({"event": "state_enter", "state": "old-state"})
+            t.send({"event": "action_start", "action": "old-action"})
+            del calls[:]
+            t.send({"event": replacing_event, "loop_name": "new"})
+            assert calls == [
+                ("end", "old-action"),
+                ("end", "old-state"),
+                ("end", "old"),
+                ("start", "new"),
+            ]
+            finished = exporter.get_finished_spans()
+            assert [s.name for s in finished] == ["old-action", "old-state", "old"]
+            assert finished[0].parent.span_id == finished[1].context.span_id
+            assert finished[1].parent.span_id == finished[2].context.span_id
+
+            # Stale children are cleared: events and new children go to the new root.
+            t.send({"event": "evaluate", "result": "continue"})
+            t.send({"event": "state_enter", "state": "new-state"})
+            t.send({"event": "loop_complete", "terminated_by": "terminal"})
+        t.close()
+
+        spans = {s.name: s for s in exporter.get_finished_spans()}
+        assert [e.name for e in spans["new"].events] == ["evaluate"]
+        assert not spans["old"].events and not spans["old-state"].events
+        assert spans["new-state"].parent.span_id == spans["new"].context.span_id
+        assert not [r for r in caplog.records if "ended span" in r.message]
+
+    def test_nested_loop_start_leaves_live_spans_open(
+        self, test_provider: Any, exporter: Any
+    ) -> None:
+        """BUG-3759: a depth > 0 loop_start must not replace the live root."""
+        t = OTelTransport(_tracer_provider=test_provider)
+        t.send({"event": "loop_start", "loop_name": "outer"})
+        t.send({"event": "state_enter", "state": "outer-state"})
+        t.send({"event": "action_start", "action": "outer-action"})
+        t.send({"event": "loop_start", "loop_name": "inner", "depth": 1})
+        assert exporter.get_finished_spans() == ()
+        t.send({"event": "action_complete"})
+        t.send({"event": "loop_complete", "terminated_by": "terminal"})
+        t.close()
+        assert [s.name for s in exporter.get_finished_spans()] == [
+            "outer-action",
+            "outer-state",
+            "outer",
+        ]
+
     def test_subloop_events_emit_single_warning(
         self, test_provider: Any, caplog: pytest.LogCaptureFixture
     ) -> None:

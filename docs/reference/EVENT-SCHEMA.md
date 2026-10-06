@@ -2063,8 +2063,8 @@ When `OTelTransport` is active (`events.transports: ["otel"]`), the following ev
 
 | Event | OTel action | Field used |
 |-------|-------------|------------|
-| `loop_start` | Opens root span (trace) | `loop_name` (falls through to default `"ll-loop"` — real payload key is `loop`) |
-| `loop_resume` | Closes all open spans; opens new root span | `loop_name` (falls through to default `"ll-loop"` — real payload key is `loop`) |
+| `loop_start` | Ends any open action → state → loop spans, then opens a loop root span. Inherits any ambient parent; parentless when none is active | `loop` (legacy `loop_name`, then default `"ll-loop"`) |
+| `loop_resume` | Same close-then-open lifecycle as `loop_start`. A real resume emits `loop_resume` then `loop_start`, so it exports two same-name loop spans; the first is childless and carries no completion status. Only the final loop span receives `ll.terminated_by` / `ll.final_status` | `loop` (legacy `loop_name`, then default `"ll-loop"`) |
 | `state_enter` | Opens child span of loop span | `state` → span name |
 | `action_start` | Opens grandchild span of state span | `action` → span name |
 

@@ -11967,8 +11967,8 @@ OTelTransport(
 
 | Event | Span action |
 |-------|-------------|
-| `loop_start` | Open root span (new trace). Name = `event["loop_name"]`. |
-| `loop_resume` | Close all open spans; open a new root span (new trace). |
+| `loop_start` | End any open action → state → loop spans, then open a loop span (inherits any ambient parent; a parentless root when none is active). Name = `event["loop"]`, falling back to legacy `loop_name`, then `"ll-loop"`. |
+| `loop_resume` | Same close-then-open lifecycle. A real resume emits `loop_resume` then `loop_start`, exporting two same-name loop spans (the first childless, no completion attributes); only the final one gets `ll.terminated_by` / `ll.final_status`. |
 | `state_enter` | Close prior state span + action span; open child of loop span. Name = `event["state"]`. |
 | `action_start` | Open grandchild of state span. Name = `event["action"]`. |
 | `action_complete` | Close action span. |

@@ -3,10 +3,11 @@ id: BUG-3759
 type: BUG
 title: OTel resume root is overwritten without being ended
 priority: P3
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-10-06'
 captured_at: '2026-10-06T09:07:03Z'
+completed_at: '2026-10-06T19:53:08Z'
 labels:
 - telemetry
 - transport
@@ -181,12 +182,18 @@ Additional review on 2026-10-06 at `46f696c4b` reproduced the defect through sav
 | architecture | `docs/reference/API.md` | OTel transport lifecycle and event → span mapping. |
 | reference | `docs/reference/EVENT-SCHEMA.md` | Span replacement lifecycle and OTel field mapping. |
 
+## Resolution
+
+**Fixed**: `OTelTransport._handle_loop_start` and `_handle_loop_resume` now share `_replace_loop_span`, which ends action → state → root before opening the replacement root. Added live saved-state resume regression, parameterized direct replacement-order test (recording `SpanProcessor`, duplicate-end guard), nested-start noninterference test, and updated both OTel reference mappings. Full suite: 28933 passed; 8 unrelated live-libsql errors (expired JWT).
+
 ## Status
 
-**Open** | Created: 2026-10-06 | Reviewed: 2026-10-06 | Priority: P3
+**Done** | Created: 2026-10-06 | Reviewed: 2026-10-06 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T19:53:08 - `992b3d42-15ab-4083-a358-68cb2e1e2f78.jsonl`
+- `/ll:ready-issue` - 2026-10-06T19:44:32 - `c7a502b8-f7cc-4f30-b3e6-6ab712adf219.jsonl`
 - `/ll:confidence-check` - 2026-10-06T19:27:10 - `faf2e2f0-abac-49b1-b171-601fdd02e926.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:23:36 - `rollout-2026-10-06T12-12-23-01a1126a-ab9e-7362-9b58-e87fb7718a10.jsonl`
 - `/ll:advise` - 2026-10-06T18:23:36 - `rollout-2026-10-06T12-12-23-01a1126a-ab9e-7362-9b58-e87fb7718a10.jsonl`

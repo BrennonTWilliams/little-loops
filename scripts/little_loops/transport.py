@@ -1783,10 +1783,13 @@ class OTelTransport:
     # ------------------------------------------------------------------
 
     def _handle_loop_start(self, event: dict[str, Any]) -> None:
-        loop_name = event_loop_name(event) or "ll-loop"
-        self._loop_span = self._tracer.start_span(loop_name)
+        self._replace_loop_span(event)
 
     def _handle_loop_resume(self, event: dict[str, Any]) -> None:
+        self._replace_loop_span(event)
+
+    def _replace_loop_span(self, event: dict[str, Any]) -> None:
+        """End any live action → state → root spans, then open a replacement root."""
         self._close_state_and_action()
         if self._loop_span is not None:
             self._loop_span.end()
