@@ -59,7 +59,7 @@ This slice reads only `cli_events` for FEAT-3713 sprint-recency evidence. FEAT-3
 
 ## Integration Map
 
-- New reader/request/availability types under the FEAT-3561 arena modules, using `session_store/db.py` target resolution and `session_store/backend.py` strict read-only connect/error seams. BUG-3737 supplies the literal file-URI repair independently; FEAT-3711 owns the no-ensure writable seam.
+- New reader/request/availability types under the FEAT-3561 arena modules, using `session_store/db.py` target resolution and `session_store/backend.py` strict read-only connect/error seams. BUG-3737 supplies the literal file-URI repair independently; FEAT-3711 consumes ENH-3752's landed no-ensure writable opener and owns the recommendation transactions over it.
 - FEAT-3713 requests only recent sprint CLI evidence; FEAT-3711 requests one project-scoped recommendation identity. Neither performs live SQL inside pure generators/feedback lookup. Recommendation request/schema integration is owned by FEAT-3711.
 - Focused read-only, query-plan/work-budget, transaction-consistency and degradation tests; `docs/reference/API.md` documents the request and partial-coverage contracts. No schema/manifest change in this slice.
 
@@ -77,7 +77,7 @@ This slice reads only `cli_events` for FEAT-3713 sprint-recency evidence. FEAT-3
 
 ### Signatures
 
-- `read_history_snapshot(store, *, as_of: datetime, requests: Sequence[HistoryReadRequest], now: Callable[[], datetime]) -> HistorySnapshot` — read-only, fail-soft; reads only the requested identities/time slices with independent budgets.
+- `read_history_snapshot(store, *, as_of: datetime, requests: Sequence[HistoryReadRequest], now: Callable[[], datetime]) -> HistorySnapshot` — read-only, fail-soft; reads only the requested identities/time slices with per-request work caps and **one shared read deadline**, not a new time budget for each request.
 
 ### Call Path
 
