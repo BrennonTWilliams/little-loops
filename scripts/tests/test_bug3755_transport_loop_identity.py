@@ -9,6 +9,7 @@ live ``loop_events`` row had a NULL loop name and every OTel loop span was named
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,19 @@ class TestSQLiteTransportLiveLoop:
         routes = [row for row in rows if row["transition"] == "route"]
         assert routes, "the loop emitted no route event"
         assert all(row["state"] == "work" for row in routes)
+
+    def test_route_rows_record_the_target_state(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        _run_loop(tmp_path, SQLiteTransport(db))
+        conn = sqlite3.connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT transition, state, to_state FROM loop_events ORDER BY id"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert ("route", "work", "done") in rows
+        assert all(to_state is None for transition, _, to_state in rows if transition != "route")
 
 
 @pytest.mark.skipif(not _HAS_OTEL_SDK, reason="opentelemetry-sdk not installed")

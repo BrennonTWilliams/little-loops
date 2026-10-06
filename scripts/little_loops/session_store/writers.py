@@ -3099,15 +3099,17 @@ class SQLiteTransport:
                             failure_terminal=bool(event.get("failure_terminal", False)),
                         )
                     retries = event.get("retries")
+                    to_state = event.get("to") if event_type == "route" else None
                     conn.execute(
-                        "INSERT INTO loop_events(ts, loop_name, state, transition, retries) "
-                        "VALUES(?, ?, ?, ?, ?)",
+                        "INSERT INTO loop_events(ts, loop_name, state, transition, retries, "
+                        "to_state) VALUES(?, ?, ?, ?, ?, ?)",
                         (
                             ts,
                             loop_name,
                             str(state) if state is not None else None,
                             event_type,
                             int(retries) if isinstance(retries, int) else None,
+                            str(to_state) if to_state is not None else None,
                         ),
                     )
                     _index(

@@ -3,7 +3,8 @@ id: 3755
 title: 'FSM events stamp ''loop'' but the SQLite and OTel transports read ''loop_name'': live loop telemetry loses its loop identity'
 type: BUG
 priority: P0
-status: open
+status: done
+completed_at: '2026-10-06T03:45:59Z'
 discovered_date: '2026-10-05'
 labels:
 - telemetry
@@ -34,3 +35,20 @@ Acceptance: (a) the sqlite and otel transports take the loop name from `loop`, f
 - ENH-2463 (done) noted that `loop_complete` once lacked `loop_name`; that predates ENH-3345's stamping and is a different gap.
 
 Verified against main 4c6be4c26 on 2026-10-05.
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-05
+- **Status**: Completed
+
+### Changes Made
+- `events.py`: `event_loop_name()` reads the executor-stamped `loop` key, falling back to `loop_name` for older payloads.
+- `transport.py`: `OTelTransport._handle_loop_start` and `_handle_loop_resume` name the loop span through it, so spans are named after the loop instead of `ll-loop`.
+- `session_store/writers.py`: `SQLiteTransport.send` records the loop name through it, so live `loop_events` rows are no longer NULL. A `route` row keeps `from` as `state` and records `to` in the new `to_state` column.
+- `session_store/schema.py`: schema v60 adds nullable `loop_events.to_state` through `_MIGRATIONS`; manifest regenerated; HISTORY_SESSION_GUIDE version table updated.
+- `scripts/tests/test_bug3755_transport_loop_identity.py`: drives a real `PersistentExecutor` through its event bus into both transports (fails without the fix); version assertions moved to 60.
+
+### Verification
+- New tests fail on the unfixed transports and pass with the fix.
+- Full suite: 28,644 passed. The 4 failures are unrelated to this change: two adapter `tsc` checks that need `node_modules` (absent in a fresh worktree), and two issue-corpus gates (ENH-3751/3752 prose dependencies, ENH-3700 evidence quotes).

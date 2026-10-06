@@ -1665,6 +1665,12 @@
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
+        },
+        {
+          "name": "to_state",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -3159,5 +3165,5 @@
       "type": "table"
     }
   },
-  "schema_version": 59
+  "schema_version": 60
 }

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 59
+SCHEMA_VERSION = 60
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1562,6 +1562,12 @@ _MIGRATIONS: list[str] = [
             WHERE channel IS NOT 'live' AND source_path IS NOT NULL
         )
         GROUP BY r.source_path HAVING MIN(r.line_no) > 1
+    """,
+    # v60 (BUG-3755): a ``route`` event carries its transition as from/to.
+    # ``state`` keeps the source state; ``to_state`` records the target. Rows
+    # written before v60, and every non-route event, keep NULL.
+    """
+    ALTER TABLE loop_events ADD COLUMN to_state TEXT;
     """,
 ]
 
