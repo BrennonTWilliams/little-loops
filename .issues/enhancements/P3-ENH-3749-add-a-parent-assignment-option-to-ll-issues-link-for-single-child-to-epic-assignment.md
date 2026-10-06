@@ -15,6 +15,12 @@ relates_to:
 - BUG-3738
 - BUG-3739
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3749: Add a parent-assignment option to ll-issues link for single child-to-EPIC assignment
@@ -169,6 +175,7 @@ Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Settl
 **Open** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T01:46:32 - `2fc077e6-f247-45dc-97b8-6729a8243496.jsonl`
 - `/ll:confidence-check` - 2026-10-06T01:09:31 - `c373be39-3ae5-465c-90da-c98a8ab828e9.jsonl`
 - `/ll:verify-issues` - 2026-10-06T01:07:52 - `6493c397-fb81-474b-97a7-2295ce48765a.jsonl`
 - `/ll:verify-issues` - 2026-10-06T01:06:23 - `10ca63b5-4074-4b4f-9add-57902bcfae70.jsonl`

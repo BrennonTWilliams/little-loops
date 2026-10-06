@@ -13,6 +13,12 @@ labels:
 - privacy
 - history
 decision_needed: false
+confidence_score: 75
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3751: Sanitize raw_events payloads on all ingest paths and canonicalize refresh comparisons
@@ -166,5 +172,24 @@ Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Disti
 
 **Open** | Created: 2026-10-05 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-05_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 63/100 → MODERATE (below outcome_threshold 65)
+
+### Concerns
+- Spec is otherwise implementation-ready: all cited symbols resolve (`_backfill_raw_events`, `_REMOTE_RAW_INSERT`, `_event_signature`, `_stored_signatures`, `_preserves_fields`, `_refresh_codex_usage_source`, `refresh_usage_source`) and test files exist.
+
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3750 (open). Cannot implement sanitizer integration until ENH-3750 supplies `sanitize_history_payload` and `HistoryRedactionResult` API.
+
+### Outcome Risk Factors
+- Wide caller blast radius: `_backfill_raw_events` is reached via `backfill_raw_events`, `backfill_incremental`, `refresh_raw_events`, `_refresh_codex_usage_source`, plus `backfill_worker` error formatting (6–10 dependents).
+- Cross-module transactional logic with shared state: rollback/watermark boundaries across local and remote chunks, plus both-column preservation in refresh comparisons, are moderate-depth changes spread across `lifecycle.py` and `usage_refresh.py`.
+- Rebuild-fingerprint gate (`test_enh3678_rebuild_derive_gate.py`) constrains where sanitization may be inserted; a misplaced seam forces a `REBUILD_DERIVE_VERSION` bump.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T01:46:34 - `2fc077e6-f247-45dc-97b8-6729a8243496.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T00:26:44 - `09ea1492-1a86-4cce-bf60-5f1435b6dea3.jsonl`

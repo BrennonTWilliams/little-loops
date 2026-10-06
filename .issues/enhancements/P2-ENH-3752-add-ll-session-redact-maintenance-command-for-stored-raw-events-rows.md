@@ -14,6 +14,12 @@ labels:
 - privacy
 - history
 decision_needed: false
+confidence_score: 75
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3752: Add ll-session redact maintenance command for stored raw_events rows
@@ -224,5 +230,19 @@ Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Added
 
 **Open** | Created: 2026-10-05 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-05_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 78/100 → MODERATE
+
+### Concerns
+- Spec is otherwise implementation-ready: cited seams (`recompress_raw_events`, `resolve_history_target`, `cli_event_context` in `cli/session.py`, `hrana_stub.py`) exist; `raw_redaction.py` and `test_raw_redaction.py` are intentionally new.
+
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3750 (open), ENH-3751 (open). Shipping order is ENH-3750 → ENH-3751 → ENH-3752; the CLI is unsafe to roll out before ENH-3751's compatibility wiring.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T01:46:34 - `2fc077e6-f247-45dc-97b8-6729a8243496.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T00:26:44 - `09ea1492-1a86-4cce-bf60-5f1435b6dea3.jsonl`

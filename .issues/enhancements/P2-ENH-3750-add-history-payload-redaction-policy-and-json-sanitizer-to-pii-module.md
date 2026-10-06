@@ -13,6 +13,12 @@ labels:
 learning_tests_required:
 - hypothesis
 decision_needed: false
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3750: Add history payload redaction policy and JSON sanitizer to the pii module
@@ -193,4 +199,5 @@ Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Added
 **Open** | Created: 2026-10-05 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-06T01:46:33 - `2fc077e6-f247-45dc-97b8-6729a8243496.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T00:26:44 - `09ea1492-1a86-4cce-bf60-5f1435b6dea3.jsonl`
