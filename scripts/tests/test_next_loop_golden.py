@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -162,7 +163,15 @@ class TestRawScores:
         assert set(history) == set(RAW_SCORES)
         for name, runs in history.items():
             got = next_loop._score_loop(runs, as_of=NOW, weights=DEFAULT_WEIGHTS)
-            assert got == RAW_SCORES[name], name
+            expected = RAW_SCORES[name]
+            # First tuple element is a float score; macos Python 3.11 builds
+            # (libm-dependent) and Linux Python 3.11/3.12 differ by 1 ULP on
+            # the gamma fixture. Subsequent elements are exact (success_rate
+            # is a rational ratio; last_started_at is a passthrough string).
+            assert math.isclose(got[0], expected[0], rel_tol=0, abs_tol=5e-17), (
+                f"{name}: score {got[0]!r} not within 5e-17 of {expected[0]!r}"
+            )
+            assert got[1:] == expected[1:], name
 
     def test_empty_runs_fast_path(self) -> None:
         assert next_loop._score_loop([], as_of=NOW, weights=DEFAULT_WEIGHTS) == (0.0, 1.0, None)
