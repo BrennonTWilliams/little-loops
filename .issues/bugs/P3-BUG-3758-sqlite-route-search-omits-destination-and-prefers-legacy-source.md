@@ -13,6 +13,7 @@ labels:
 - history-db
 relates_to:
 - BUG-3755
+- BUG-3759
 ---
 
 # BUG-3758: SQLite route search omits destination and prefers legacy source
@@ -70,7 +71,7 @@ to_state = event.get("to") if event_type == "route" else None
 
 Keep explicit row inserts, event identity handling, the lock, remote/local connection routing, and best-effort sink behavior. Change the content supplied by `SQLiteTransport.send`, not the shared `_index` helper. Reuse the producer-to-sink test module rather than creating a second harness for the same event path.
 
-Both corrections apply only to newly received routes. Existing structured rows and FTS entries are not rewritten: `rebuild()` excludes `loop_events` and the `loop` search kind, and historical repair is outside scope. Neither a migration nor a rebuild-derived fingerprint bump is justified; `SQLiteTransport.send` is outside the module-level function graph fingerprinted from `rebuild()`.
+Both corrections apply only to newly received routes. Existing structured rows and FTS entries are not rewritten: `rebuild()` excludes `loop_events` and the `loop` search kind, and historical repair is outside scope. There is no replay/reindex path that reconstructs route FTS content from stored `loop_events` rows; `_backfill_loops` indexes state snapshots as separate `backfill` events rather than replaying routes. Neither a migration nor a rebuild-derived fingerprint bump is justified; `SQLiteTransport.send` is outside the module-level function graph fingerprinted from `rebuild()`.
 
 ## Program Design
 
@@ -93,7 +94,7 @@ The existing signature stays intact.
 ## Implementation Steps
 
 1. Add failing regressions to the existing transport tests: a real `work` → terminal `done` route must be found by destination, and a conflicting synthetic source must use canonical `from` in both storage and search. Keep history and loop paths temporary; close transports in `finally`, including the live `_run_loop` helper if touched.
-2. Add a small parameterized writer matrix for absent/null `from` fallback, empty canonical source, absent/null endpoints, and self-transitions. Compare the payload before/after `send`. Include a non-route event carrying misleading `from`/`to` keys to prove those keys do not affect its row or FTS text. An extra non-string coercion case is optional if it fits the same matrix; do not add a new harness.
+2. Add a small parameterized writer matrix for absent/null `from` fallback, empty canonical source, absent/null endpoints, and self-transitions. In the empty-source case, supply `from=""` alongside a non-empty unique legacy `state`; assert the stored source is empty and that legacy token is absent from FTS content and search. Without the conflicting value, an incorrect truthiness fallback could pass. Compare the payload before/after `send`. Include a non-route event carrying misleading `from`/`to` keys to prove those keys do not affect its row or FTS text. An extra non-string coercion case is optional if it fits the same matrix; do not add a new harness.
 3. Prefer non-null `from` for routes and append `to_state` to the existing FTS components. Keep all changes within `SQLiteTransport.send`.
 4. Run the focused tests listed below, then `python -m pytest scripts/tests/`. Update the history guide's full-text search section and API session-store section with the new route contract and the new-writes-only limit. The API section currently labels the schema as 45 in prose and its import example; refresh those two references to the current v60 while touching that section.
 
@@ -101,6 +102,7 @@ The existing signature stays intact.
 
 - Use public `session_store.search(db, query=...)` for destination and canonical-source queries. For the existing terminal-target live fixture, assert a result with `content=f"{LOOP} work route done"`, `kind="loop"`, the expected `ref` and `.loops/<loop>.yaml` anchor. A nonterminal target may be indexed in `state_enter` and again as the source of a later route; even a result containing `route` can therefore be the wrong transition. Keep the terminal fixture and check exact content instead of adding another live harness.
 - Send the conflicting-source synthetic event alone to a fresh DB. Its FTS content must equal `"<loop> canonicalsource route uniquedestination"`, with the expected kind/ref/anchor. The rejected `legacysource` query must return no match; the preferred source and destination must each retrieve the route. Assert structured values via `recent(..., kind="loop")` or SQL separately from FTS results.
+- For `from=""` with `state="rejectedemptysource"` in an isolated DB, assert `state=""` in storage and exact FTS content `"<loop>  route <destination>"` (the existing join retains the empty component). Retrieve that content by the unique destination; searching for `rejectedemptysource` returns no match. Do not search for an empty string.
 - Verify `work route` still returns the route when the source does not change. Do not pin BM25 scores or rank ordering.
 - Verify NULL endpoint cases do not introduce the literal `None` into indexed content. A self-transition keeps both structured endpoints; do not require duplicate FTS tokens or a particular rank.
 
@@ -127,7 +129,7 @@ The existing signature stays intact.
 ## Acceptance Criteria
 
 - [ ] Destination search returns the specific real executor `work` → `done` route with exact FTS content `"<loop> work route done"` and the expected loop kind/ref/anchor. Its structured row remains `state=work`, `to_state=done`, `transition=route`. Existing `work route` phrase search still finds it.
-- [ ] An isolated conflicting-source route uses non-null `from` in the row and FTS; both selected endpoints retrieve that route and the rejected legacy source is absent from search. Absent/null `from` falls back to `state`; an empty but non-null `from` does not fall back.
+- [ ] An isolated conflicting-source route uses non-null `from` in the row and FTS; both selected endpoints retrieve that route and the rejected legacy source is absent from search. Absent/null `from` falls back to `state`. A separate empty-but-non-null `from` case with a conflicting non-empty legacy `state` stores the empty source, retains the existing empty-component join, and excludes the rejected legacy token from FTS content/search.
 - [ ] Missing/null endpoint semantics, self-transitions and input payload equality are covered; existing string conversion is preserved. No literal `None` is added to search content.
 - [ ] Non-route state/search behavior and NULL destinations remain unchanged even when `from`/`to` keys are supplied; existing completion-status mapping tests pass.
 - [ ] Schema remains v60 with no new migration/manifest or rebuild fingerprint churn; existing migration, replay-hold and endpoint-persistence tests pass. The existing rebuild-fingerprint gate passes unchanged; if it fails because of this fix, investigate and revise the plan instead of bumping the fingerprint to silence it. Neither historical structured rows nor historical FTS entries are rewritten or promised repair.
@@ -147,6 +149,12 @@ Reviewed on 2026-10-06. A temporary DB probe stored the destination, selected th
 Follow-up review on 2026-10-06 inspected `main` at `fec7d6462` in the repository-root worktree (`.`). Fresh temporary-DB probes reproduced both remaining defects. A separate nonterminal-target probe returned a `state_enter` hit and an outgoing route hit for the destination while the incoming route remained unsearchable, validating the need for exact-content assertions. The focused validation set passed **565 tests**; this is a baseline, not evidence that the pending fix is implemented. Format/design checks passed after correcting the query anchors; no outstanding dependency or proof requirement was found.
 
 `/ll:advise --signal user_requested --host claude-code --model opus` supported proceeding with this bounded writer change (confidence **0.85**). Its main risks were misleading impact claims, incomplete destination search across old runs, phrase-search regression if the destination is inserted mid-content, and accidental fingerprint churn. Incorporated its exact-content test plan, explicit empty-source rule, filename correction, and smaller test scope. Its dissent was that canonical precedence could be dropped because no in-tree producer emits conflicting keys; retain the small defensive correction, but describe that limitation explicitly. Filename-reference search found no references requiring updates. Review verdict: **CORRECTED — ready for implementation**. This review changes only the issue file.
+
+Additional review on 2026-10-06 at `46f696c4b` reproduced the legacy-source selection and missing destination search in a temporary DB. Strengthened the empty-source regression with a conflicting legacy value so it actually rejects truthiness fallback; confirmed that snapshot backfill is the only other loop FTS writer and that no route replay/reindex path needs updating. An Opus consult through `/ll:advise` (`user_requested`, confidence **0.80**) supported these bounded refinements. Its dissent favored optional non-string coercion coverage; retain that option without expanding the required matrix. The shared live/writer/OTel/persistence/query baseline passed **272 tests**; format and evidence checks were clean. This is review evidence, not an implemented fix.
+
+## Related
+
+- BUG-3759 — independent OTel span-lifetime fix. Both issues touch `_run_loop` in `scripts/tests/test_bug3755_transport_loop_identity.py` and separate sections of `docs/reference/API.md`. Whichever is implemented second should incorporate the first issue's edits; neither requires a dependency edge. Keep any new harness options keyword-only with defaults, preserve existing fresh-start callers, and use exception-safe teardown. Coordinate ownership of those shared files if implementation runs concurrently.
 
 ## Related Key Documentation
 

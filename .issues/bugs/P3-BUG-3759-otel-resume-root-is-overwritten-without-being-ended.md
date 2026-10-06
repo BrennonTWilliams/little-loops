@@ -12,6 +12,7 @@ labels:
 - transport
 relates_to:
 - BUG-3755
+- BUG-3758
 learning_tests_required:
 - opentelemetry-sdk
 ---
@@ -57,7 +58,7 @@ Consecutive resume/start events still open their documented roots; both are ende
 - `scripts/little_loops/transport.py` — ownership/lifetime of the active root in the start/resume handlers.
 - `scripts/tests/test_transport.py`, `TestOTelTransport` — direct replacement lifecycle/parentage with live descendants and explicit nested-start noninterference.
 - `scripts/tests/test_bug3755_transport_loop_identity.py`, `_run_loop` / `TestOTelTransportLiveLoop` — extend the existing producer-to-sink harness with saved-state resume setup and observation before teardown; do not copy it into a second harness.
-- `docs/reference/EVENT-SCHEMA.md`, **OTel Transport Field Mapping**, and `docs/reference/API.md`, **OTelTransport / Event → span mapping** — short lifecycle clarification: start also closes old spans; real resume exports two same-name roots, including a childless resume root; only the final root gets completion attributes/status. Correct stale naming text only on the touched rows (`loop` → legacy `loop_name` → `"ll-loop"`, already shipped with BUG-3755).
+- `docs/reference/EVENT-SCHEMA.md`, **OTel Transport Field Mapping**, and `docs/reference/API.md`, **OTelTransport / Event → span mapping** — short lifecycle clarification: start also closes old spans; real resume exports two same-name loop spans, including a childless resume span; only the final loop span gets completion attributes/status. Correct stale naming text only on the touched rows (`loop` → legacy `loop_name` → `"ll-loop"`, already shipped with BUG-3755). Remove the touched rows' unconditional "new trace" wording and explain that each loop span inherits any ambient parent, becoming a parentless root when no parent is active; preserve the existing context policy.
 
 ### Dependent Files
 
@@ -100,9 +101,9 @@ Existing signatures stay intact. Start follows resume's existing close-before-re
 
 ## Implementation Steps
 
-1. Extend the existing live-executor harness to resume a saved interrupted `LoopState`, and add the failing span-conservation regression before shutdown.
+1. Extend the existing live-executor harness to resume a saved interrupted `LoopState`, and add the failing span-conservation regression before shutdown. Make new harness options keyword-only with defaults; preserve all existing fresh-start callers and ensure teardown runs in `finally`, even if the pre-shutdown assertions fail. Incorporate BUG-3758's helper edits if they have landed first.
 2. Apply close-before-replace to start while preserving resume's existing lifecycle, naming, producer contracts, final status assignment, and provider shutdown.
-3. Add direct replacement coverage with live descendants; verify closure order, no duplicate ending, parentage/event routing after replacement, and nested-start noninterference.
+3. Add direct replacement coverage with live descendants; use a test-local recording `SpanProcessor` on the injected provider to verify old action end → old state end → old root end → replacement root start. Retain the separate duplicate-end warning/spy guard: processor callbacks alone cannot detect repeated `end()` calls. Verify parentage/event routing after replacement and nested-start noninterference.
 4. Update the two OTel reference mappings, then run the transport/persistence suites and full local suite.
 
 ## Impact
@@ -127,14 +128,14 @@ Existing signatures stay intact. Start follows resume's existing close-before-re
 
 ## Test Plan
 
-Use the existing in-memory exporter with `SimpleSpanProcessor`, which exports synchronously in end order. Compare the number of finished spans **before close** with the number of recorded depth-0 span-opening events, and identify the two same-name roots by span ID and parentage; do not collapse spans into a name dictionary. An optional test-only `SpanProcessor` can record start/end IDs if needed for additional diagnosis, but is not required by this fix. The synchronous callbacks and ended-span flushing are documented in the [OpenTelemetry Python SDK reference](https://opentelemetry-python.readthedocs.io/en/stable/sdk/trace.html#opentelemetry.sdk.trace.SpanProcessor).
+Use the existing in-memory exporter with `SimpleSpanProcessor`, which exports synchronously in end order. Compare the number of finished spans **before close** with the number of recorded depth-0 span-opening events, and identify the two same-name roots by span ID and parentage; do not collapse spans into a name dictionary. In the direct replacement test, add a test-local recording `SpanProcessor` whose `on_start`/`on_end` callbacks only record span IDs and callback order; assert the sequence after `send()` returns, outside the callbacks. This establishes close-before-open without relying on wall-clock end/start timestamp inequalities, which can be affected by clock adjustments. The integration test's event/span conservation check supplies the separate live-producer regression; it does not need a timestamp assertion or an additional processor. The synchronous callbacks and ended-span flushing are documented in the [OpenTelemetry Python SDK reference](https://opentelemetry-python.readthedocs.io/en/stable/sdk/trace.html#opentelemetry.sdk.trace.SpanProcessor).
 
 Pin the local provider to `ALWAYS_ON` sampling. Run parentless-root assertions in an empty `Context`, restoring it afterward; do not install a global tracer provider or require different trace IDs. Use `caplog` to reject transport exception warnings and the SDK's duplicate-end warning (`Calling end() on an ended span`). If end-call spies are used instead, keep them local to the lifecycle test; exporter counts alone cannot detect duplicate calls.
 
 | Case | Required evidence |
 |---|---|
-| Actual saved-state resume | Exactly two exported same-name root IDs, with the childless resume root first and the completed start root last. The resume root's end time is at or before the start root's start time. Finished-span count equals recorded span-opening events before close; only start root has completion status/attributes and parents resumed state spans. |
-| Existing root/state/action → replacement (`loop_start` and `loop_resume`, parameterized) | Immediately after replacement, finished spans are old action → old state → old root, and the new root is still open. Old root end time is at or before new root start time. No duplicate ending; old spans retain original parents. New state/action attach to the replacement; an intervening span event goes to the new root, not an old child. |
+| Actual saved-state resume | Exactly two exported same-name root IDs, with the childless resume root first and the completed start root last. Finished-span count equals recorded span-opening events before close; only start root has completion status/attributes and parents resumed state spans. |
+| Existing root/state/action → replacement (`loop_start` and `loop_resume`, parameterized) | Immediately after replacement, finished spans are old action → old state → old root, and the new root is still open. Recording callbacks prove those three ends precede replacement start, in that order. No duplicate ending; old spans retain original parents. New state/action attach to the replacement; an intervening span event goes to the new root, not an old child. |
 | Nested `loop_start` (`depth > 0`) | Extend the existing depth-filter test with live outer state/action spans and assert that the original root and descendants remain open and unchanged. Drive through `send()`, not private handlers. |
 | Fresh-start execution | Existing producer-to-sink and outcome/hierarchy tests stay green; one completed loop root with valid state/action parentage. |
 
@@ -145,11 +146,11 @@ For new SDK-backed regressions, skip if either `opentelemetry-sdk` or the OTLP g
 ## Acceptance Criteria
 
 - [ ] A real resume → event-bus → OTel regression observes `loop_resume` → `loop_start` and exports exactly two distinct same-name root IDs. Finished-span count equals recorded depth-0 span-opening events after completion **before** shutdown; no transport dispatch/teardown exception is logged.
-- [ ] The replaced resume root ends before the start root opens, is exported first, is childless, stays `StatusCode.UNSET`, and has neither `ll.terminated_by` nor `ll.final_status`. Resumed state/action spans attach to the start root, which receives the actual completion attributes/status.
-- [ ] Separate live-descendant replacement coverage for both `loop_start` and `loop_resume` proves action → state → old root closure before the new root opens, no duplicate `end()` calls, original child parentage, and valid new child parentage/event routing after replacement. The new root remains open until completion.
+- [ ] The replaced resume root is exported first, is childless, stays `StatusCode.UNSET`, and has neither `ll.terminated_by` nor `ll.final_status`. Resumed state/action spans attach to the start root, which receives the actual completion attributes/status. Close-before-open is proven by the direct callback-order regression below rather than a wall-clock timestamp comparison.
+- [ ] Separate live-descendant replacement coverage for both `loop_start` and `loop_resume` proves action → state → old root end → new root start ordering through a test-local recording processor, no duplicate `end()` calls through the separate warning/spy guard, original child parentage, and valid new child parentage/event routing after replacement. The new root remains open until completion.
 - [ ] A `depth > 0` `loop_start` sent through `send()` leaves the live parent root and descendants open. Fresh-start execution and existing OTel naming, outcome mapping, and nested-event filtering tests pass; ambient-parent behavior in production is unchanged.
 - [ ] Producer event shapes, ordering, and stable resumed run IDs retain their current contracts. This fix adds no database migration and is independently implementable from BUG-3755 and BUG-3758.
-- [ ] Both OTel reference mappings briefly describe close-before-replace on start/resume and the consecutive two-root resume lifecycle; touched naming rows accurately reflect the already-installed naming fallback.
+- [ ] Both OTel reference mappings briefly describe close-before-replace on start/resume and the consecutive two-span resume lifecycle; touched naming rows accurately reflect the already-installed naming fallback. The touched rows do not promise a new trace: they describe ambient-parent inheritance and parentless roots when no parent is active, without changing production propagation or requiring a new propagation test.
 - [ ] New regression tests reuse temporary history/persistence isolation, an in-memory provider with explicit sampling/context and exception-safe teardown, and skip if either the SDK or OTLP gRPC exporter is absent; no network exporter is invoked. Provider shutdown, general interrupted-close cleanup, and overlapping action-start replacement remain outside this issue. The transport/persistence suites and `python -m pytest scripts/tests/` pass.
 
 ## Review Notes
@@ -160,10 +161,12 @@ Implementation-readiness review on `main` at `fec7d6462` (2026-10-06) reproduced
 
 `/ll:advise --signal user_requested --host claude-code --model opus` (task budget scoped to BUG-3759) returned **ready after trimming**, confidence **0.85**. Adopted its event-driven conservation check, direct-send test split, explicit nested-start protection, and removal of unrelated repeated-close/dependency-guard refactoring requirements. Its dissent allowed a processor-based conservation probe but found no correctness reason to reopen the chosen two-root behavior. Kept an empty test context because `start_span()` inherits an ambient parent, so unconditional `parent is None` assertions otherwise depend on the test environment; no trace-ID or production propagation change is required. Risks remain increased visible childless-root counts and EventBus swallowing transport exceptions, addressed by documentation and log assertions.
 
+Additional review on 2026-10-06 at `46f696c4b` reproduced the defect through saved-state resume: **4 spans opened, 3 finished before close**, with the abandoned resume root still recording. A separate in-memory probe confirmed that an active ambient parent produces the same trace ID, so the touched API rows must not promise a new trace. An Opus consult through `/ll:advise` (`user_requested`, confidence **0.80**) supported callback-order evidence for direct replacement, accurate context wording, and additive shared-harness changes. Its dissent considered timestamp assertions defensible as secondary evidence; omit them from the required regression because ordered callbacks prove the intended behavior directly. Keep the separate duplicate-end guard because SDK callbacks suppress repeated endings. The shared live/writer/OTel/persistence/query baseline passed **272 tests**, the learning target remains proven, and format/evidence checks were clean. These are review results; no implementation changes were made.
+
 ## Related
 
 - BUG-3755 — completed identity repair; extend its live producer-to-sink harness to observe both same-name roots directly.
-- BUG-3758 — unrelated route persistence follow-up from the same review.
+- BUG-3758 — independent route FTS destination indexing and defensive source-precedence fix. Both issues touch `_run_loop` in `scripts/tests/test_bug3755_transport_loop_identity.py` and separate sections of `docs/reference/API.md`. Whichever is implemented second should incorporate the first issue's edits; neither requires a dependency edge. Preserve existing fresh-start callers with defaulted keyword-only harness options and exception-safe teardown. Coordinate ownership of those shared files if implementation runs concurrently.
 
 ## Related Key Documentation
 
