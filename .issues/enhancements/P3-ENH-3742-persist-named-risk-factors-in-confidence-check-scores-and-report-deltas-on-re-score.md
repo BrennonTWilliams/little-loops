@@ -201,6 +201,7 @@ An Opus `/ll:advise` consult supported these corrections (confidence 0.80). Its 
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-06T19:12:05 - `29fac8c6-a710-46f3-a018-797c39cd9a98.jsonl`
 - `/ll:ready-issue` - 2026-10-06T18:21:33 - `225d913b-150f-4f37-9e25-fcb3cb3d0b0e.jsonl`
 - `/ll:confidence-check` - 2026-10-06T10:30:37 - `b5d4e644-cd2f-4e8d-a10e-c42db195622e.jsonl`
 - `/ll:verify-issues` - 2026-10-06T10:28:24 - `dc732f3d-151b-4f4f-aac7-173ab3aca287.jsonl`
