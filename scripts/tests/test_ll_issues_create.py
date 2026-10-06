@@ -689,3 +689,119 @@ class TestSharedAllocatorIdWidth:
         )
         assert created.id == "BUG-001"
         assert "P3-BUG-001-padded.md" == created.path.name
+
+
+def _children_helper(
+    content: str, child_id: str = "FEAT-9", title: str = "New thing"
+) -> str | None:
+    from little_loops.cli.issues.create import _append_child_to_epic_children
+
+    return _append_child_to_epic_children(content, child_id, title)
+
+
+class TestAppendChildToEpicChildren:
+    """Placement/spacing/outcome contract of the shared Children helper (BUG-3738)."""
+
+    BULLET = "- **FEAT-9** — New thing (open)"
+
+    def test_no_heading_returns_none(self) -> None:
+        assert _children_helper("# E\n\n## Child Issues\n- x\n") is None
+
+    def test_adjacent_bullets_stay_adjacent(self) -> None:
+        out = _children_helper("# E\n\n## Children\n\n- **FEAT-1** — a\n- **FEAT-2** — b\n")
+        assert out == (
+            "# E\n\n## Children\n\n- **FEAT-1** — a\n- **FEAT-2** — b\n" + self.BULLET + "\n"
+        )
+
+    def test_inserts_before_subsection_and_after_continuations(self) -> None:
+        content = (
+            "## Children\n\n- **FEAT-1** — a\n  wrapped\n  - nested\n\n  para\n\n"
+            "### Notes\n\nprose\n\n## Status\nx\n"
+        )
+        out = _children_helper(content)
+        assert out is not None
+        assert "  para\n" + self.BULLET + "\n\n### Notes\n\nprose\n\n## Status\nx\n" in out
+
+    def test_empty_section(self) -> None:
+        assert _children_helper("## Children\n") == "## Children\n\n" + self.BULLET + "\n"
+
+    def test_heading_at_eof_without_newline(self) -> None:
+        assert _children_helper("## Children") == "## Children\n\n" + self.BULLET
+
+    def test_prose_only_section_inserts_first_with_separator(self) -> None:
+        out = _children_helper("## Children\nintro prose\n\n## Status\n")
+        assert out == "## Children\n\n" + self.BULLET + "\n\nintro prose\n\n## Status\n"
+
+    def test_no_final_newline_preserved(self) -> None:
+        out = _children_helper("## Children\n- **FEAT-1** — a")
+        assert out == "## Children\n- **FEAT-1** — a\n" + self.BULLET
+
+    def test_crlf_preserved(self) -> None:
+        out = _children_helper("## Children\r\n\r\n- **FEAT-1** — a\r\n\r\n### N\r\n")
+        assert out == (
+            "## Children\r\n\r\n- **FEAT-1** — a\r\n" + self.BULLET + "\r\n\r\n### N\r\n"
+        )
+
+    def test_existing_entry_returns_content_unchanged(self) -> None:
+        content = "## Children\n\n- **FEAT-9** — dup\n"
+        assert _children_helper(content) == content
+
+    def test_mention_elsewhere_and_partial_id_do_not_count(self) -> None:
+        content = "FEAT-9 in prose\n## Children\n\n- **FEAT-90** — other\n"
+        out = _children_helper(content)
+        assert out is not None and self.BULLET in out
+
+    def test_fenced_example_ignored(self) -> None:
+        content = "## Children\n\n```\n- **FEAT-5** — x\n```\n- **FEAT-1** — a\n\nTail\n"
+        out = _children_helper(content)
+        assert out == (
+            "## Children\n\n```\n- **FEAT-5** — x\n```\n- **FEAT-1** — a\n"
+            + self.BULLET
+            + "\n\nTail\n"
+        )
+
+    def test_lazy_continuation_is_ambiguous(self) -> None:
+        from little_loops.cli.issues.create import AmbiguousChildrenSection
+
+        with pytest.raises(AmbiguousChildrenSection):
+            _children_helper("## Children\n- **FEAT-1** — a\nlazy text\n")
+
+    def test_title_whitespace_collapsed(self) -> None:
+        out = _children_helper("## Children\n", title="a\n# b\n  c")
+        assert out is not None and "- **FEAT-9** — a # b c (open)" in out
+
+
+class TestParentWiringLockAndAmbiguity:
+    """create_issue parent wiring: lock + ambiguity tolerance (BUG-3738)."""
+
+    def test_ambiguous_children_section_skips_wiring_but_creates_child(
+        self, project: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        config = _config(project)
+        epic = create_issue(config, IssueSpec(type="EPIC", title="Umbrella", variant="full"))
+        text = epic.path.read_text(encoding="utf-8")
+        ambiguous = text.replace("## Children\n", "## Children\n- **FEAT-1** — a\nlazy\n", 1)
+        assert ambiguous != text
+        epic.path.write_text(ambiguous, encoding="utf-8")
+
+        child = create_issue(config, IssueSpec(type="ENH", title="Thing", parent=epic.id))
+
+        assert child.path.exists()
+        assert epic.path.read_text(encoding="utf-8") == ambiguous
+        assert "skipped ## Children wiring" in capsys.readouterr().err
+
+    def test_parent_append_waits_for_mutation_lock(self, project: Path) -> None:
+        from little_loops.file_utils import acquire_lock, issue_lock_path
+
+        config = _config(project)
+        epic = create_issue(config, IssueSpec(type="EPIC", title="Umbrella", variant="full"))
+        before = epic.path.read_text(encoding="utf-8")
+
+        def fast_timeout(path: Path, timeout: float = 10.0):  # type: ignore[no-untyped-def]
+            return acquire_lock(path, timeout=0.2)
+
+        with acquire_lock(issue_lock_path(epic.path, ".issues")):
+            with patch("little_loops.file_utils.acquire_lock", fast_timeout):
+                with pytest.raises(TimeoutError):
+                    create_issue(config, IssueSpec(type="ENH", title="Thing", parent=epic.id))
+        assert epic.path.read_text(encoding="utf-8") == before

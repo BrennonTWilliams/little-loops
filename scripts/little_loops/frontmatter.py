@@ -6,10 +6,11 @@ used by issue_parser, sync, and issue_history modules.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import textwrap
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -469,6 +470,135 @@ def update_frontmatter(content: str, updates: dict[str, Any]) -> str:
     existing.update(updates)
     fm_text = yaml.dump(existing, default_flow_style=False, sort_keys=False).strip()
     return f"{content[:body_start]}{fm_text}{content[body_end:]}"
+
+
+_PLAIN_SCALAR_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.\-]*")
+_NON_SCALAR_STARTS = ("[", "{", "|", ">", "&", "*", "!")
+
+
+def _split_scalar_comment(rest: str, key: str) -> tuple[str, str, str]:
+    """Split the text after ``key:`` into ``(lead, value_text, tail)``.
+
+    ``lead`` is the whitespace after the colon, ``value_text`` the raw scalar
+    (quotes included, possibly empty) and ``tail`` any trailing comment with
+    its leading whitespace. Raises ``ValueError`` for non-scalar values
+    (flow collections, block scalars, anchors, tags) and malformed quoting.
+    """
+    stripped = rest.lstrip(" \t")
+    lead = rest[: len(rest) - len(stripped)]
+    if stripped.startswith("#"):
+        return lead, "", stripped
+    if stripped.startswith(_NON_SCALAR_STARTS):
+        raise ValueError(f"frontmatter key {key!r} has a non-scalar value")
+    if stripped[:1] in ("'", '"'):
+        quote = stripped[0]
+        i = 1
+        while i < len(stripped):
+            if quote == '"' and stripped[i] == "\\":
+                i += 2
+                continue
+            if stripped[i] == quote:
+                if quote == "'" and stripped[i + 1 : i + 2] == "'":
+                    i += 2
+                    continue
+                break
+            i += 1
+        else:
+            raise ValueError(f"frontmatter key {key!r} has an unterminated quoted value")
+        value_text, tail = stripped[: i + 1], stripped[i + 1 :]
+        if tail.strip() and not tail.lstrip().startswith("#"):
+            raise ValueError(f"frontmatter key {key!r} has trailing text after its value")
+        return lead, value_text, tail
+    comment = re.search(r"[ \t]+#", stripped)
+    if comment:
+        return lead, stripped[: comment.start()], stripped[comment.start() :]
+    return lead, stripped, ""
+
+
+def upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str:
+    """Set single-line scalar frontmatter keys without reserializing the block.
+
+    Unlike :func:`update_frontmatter`, only the targeted ``key: value`` lines
+    change; every other byte (comments, flow lists, quoting, key order, long
+    titles) survives. Edits are bounded to the canonical (``id``-bearing)
+    block, or the first block when none carries an ``id``. A key whose merged
+    value already equals the requested one is left untouched, preserving its
+    original quote/comment representation. Missing keys are appended to the
+    block; content with no frontmatter gets a minimal block prepended. A
+    trailing comment on a replaced line is kept.
+
+    Raises:
+        ValueError: on an unterminated/malformed block, mixed line endings,
+            a multiline/collection value or duplicate entry for a key being
+            changed, a value that is not a single line, or when the result
+            does not merge to the requested values (e.g. a later block
+            shadows the update).
+    """
+    values = dict(updates)
+    for key, value in values.items():
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"frontmatter value for {key!r} must be a single line")
+
+    crlf = "\r\n" in content
+    if crlf:
+        if "\n" in content.replace("\r\n", ""):
+            raise ValueError("mixed line endings; refusing to edit frontmatter")
+        work = content.replace("\r\n", "\n")
+    else:
+        work = content
+
+    def emit(value: str) -> str:
+        return value if _PLAIN_SCALAR_RE.fullmatch(value) else json.dumps(value)
+
+    blocks = _iter_frontmatter_blocks(work)
+    if not blocks:
+        if work.startswith("---"):
+            raise ValueError("unterminated or malformed frontmatter block")
+        new_block = "\n".join(f"{k}: {emit(v)}" for k, v in values.items())
+        result = f"---\n{new_block}\n---\n{work}"
+    else:
+        merged = _merge_blocks(blocks)
+        pending = {k: v for k, v in values.items() if merged.get(k) != v}
+        target = _canonical_frontmatter_block(blocks) or blocks[0]
+        body_start, body_end = target.body_span
+        body = work[body_start:body_end]
+        lines = body.split("\n") if body else []
+        additions: list[str] = []
+        for key, value in pending.items():
+            key_re = re.compile(rf"^{re.escape(key)}[ \t]*:(.*)$")
+            hits = [i for i, line in enumerate(lines) if key_re.match(line)]
+            if len(hits) > 1:
+                raise ValueError(f"duplicate frontmatter key {key!r}")
+            if not hits:
+                if key in target.data:
+                    raise ValueError(f"frontmatter key {key!r} uses unsupported syntax")
+                additions.append(f"{key}: {emit(value)}")
+                continue
+            idx = hits[0]
+            nxt = lines[idx + 1] if idx + 1 < len(lines) else ""
+            if nxt[:1] in (" ", "\t") and nxt.strip():
+                raise ValueError(f"frontmatter key {key!r} has a multiline value")
+            rest = key_re.match(lines[idx]).group(1)  # type: ignore[union-attr]
+            lead, value_text, tail = _split_scalar_comment(rest, key)
+            if not value_text and not tail.strip() and nxt.lstrip(" \t").startswith("- "):
+                raise ValueError(f"frontmatter key {key!r} has a multiline value")
+            prefix = lines[idx][: len(lines[idx]) - len(rest)]
+            if tail and not tail[:1].isspace():
+                tail = "  " + tail
+            lines[idx] = f"{prefix}{lead or ' '}{emit(value)}{tail}"
+        lines.extend(additions)
+        result = f"{work[:body_start]}{chr(10).join(lines)}{work[body_end:]}"
+        if not body and additions:
+            result = f"{work[:body_start]}{chr(10).join(lines)}\n{work[body_end:]}"
+
+    check = _merge_blocks(_iter_frontmatter_blocks(result))
+    for key, value in values.items():
+        if check.get(key) != value:
+            raise ValueError(
+                f"frontmatter key {key!r} does not resolve to {value!r} after update "
+                "(shadowed by another block or malformed entry)"
+            )
+    return result.replace("\n", "\r\n") if crlf else result
 
 
 def remove_frontmatter_keys(content: str, keys: Iterable[str]) -> str:

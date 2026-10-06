@@ -79,11 +79,13 @@ questions:
         description: "orphan title — epic title"
 ```
 
-`ll-issues link-epics --apply` applies every proposal at or above `THRESHOLD` — it
-has no single-pair apply. If the user accepts only a subset, raise `THRESHOLD` to
-just above the highest rejected proposal's score before A3, so `--apply` picks up
-exactly the accepted set. If nothing is selected, report `No assignments made.` and
-stop.
+`ll-issues link-epics --apply` applies the single highest-ranked EPIC for **every** orphan
+at or above `THRESHOLD`; it has no single-pair apply, and a score threshold cannot represent
+an arbitrary accepted subset or select a non-top EPIC. Run A3 only when the user accepts all
+proposals. If they accept only some, or want a different EPIC than the top-ranked one, do
+not run `--apply`; tell them those assignments need a manual edit of the orphan's
+`parent:`/`epic:` and the EPIC's `## Children` section. If nothing is selected, report
+`No assignments made.` and stop.
 
 **Auto (`--auto`)**: skip the prompt, go straight to A3.
 
@@ -93,8 +95,15 @@ stop.
 ll-issues link-epics --mode assign --apply --json ${THRESHOLD:+--threshold "$THRESHOLD"}
 ```
 
-This writes `parent:`/`epic:` on each orphan and appends to the target EPIC's
-`## Children` section (idempotent — safe to re-run). Stage the touched files:
+This writes `parent:`/`epic:` on each orphan and appends `- **ID** — <title> (open)` to the
+target EPIC's `## Children` section (idempotent — reapplying a pair changes nothing). An
+EPIC with no exact `## Children` heading is left untouched and its pair carries
+`"children_wired": false` in `applied`. Pairs that cannot be applied appear in the
+JSON `rejected` list (`reason`: `conflicting_parent`, `ambiguous_children_section`,
+`lock_timeout`, `metadata_unsafe`, `write_failed`) and the command exits 1; report them.
+A `write_failed` rejection means the orphan was linked but the EPIC bullet was not
+written — re-running `link-epics --apply` will **not** repair it (the orphan is no longer
+parentless); run `ll-issues epic-consistency --fix <EPIC>`. Stage the touched files:
 
 ```bash
 git add -u {{config.issues.base_dir}}/

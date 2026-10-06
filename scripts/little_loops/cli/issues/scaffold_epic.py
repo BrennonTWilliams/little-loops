@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from little_loops.cli.issues.create import (
     _VALID_TYPES,
+    AmbiguousChildrenSection,
     CreatedIssue,
     IssueSpec,
     _append_child_to_epic_children,
@@ -128,7 +129,14 @@ def scaffold_epic(
                     variant="minimal",
                 )
                 child_content = _render_issue_content(config, child_spec, child_id, now)
-                updated = _append_child_to_epic_children(epic_content, child_id, child.title)
+                try:
+                    updated = _append_child_to_epic_children(epic_content, child_id, child.title)
+                except AmbiguousChildrenSection as exc:
+                    print(
+                        f"Warning: {epic_id}: skipped ## Children wiring for {child_id} ({exc})",
+                        file=sys.stderr,
+                    )
+                    updated = None
                 if updated is not None:
                     epic_content = updated
 

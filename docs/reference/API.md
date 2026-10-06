@@ -1611,10 +1611,19 @@ def deep_synthesize_clusters(
 ### apply_assignment
 
 ```python
-def apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path) -> None
+def apply_assignment(
+    proposal: EpicProposal,
+    *,
+    orphan_path: Path,
+    epic_path: Path,
+    child_title: str | None = None,
+    base_dir: str = ".issues",
+) -> bool
 ```
 
-Writes the orphan-side frontmatter (both `parent:` and `epic:` — the corpus convention is both fields, not `parent:` alone) and appends to the EPIC-side `## Children` section. Idempotent: re-running with the same proposal is a no-op on the EPIC body if the child is already listed. `--apply` is unsupported for `synthesize` mode — EPIC creation belongs to `scaffold_epic`, not this subcommand.
+Writes the orphan-side `parent:` and `epic:` (the corpus convention is both fields, not `parent:` alone) via `little_loops.frontmatter.upsert_frontmatter_scalars()` — only those two entries change — and appends `- **ID** — <title> (open)` to the EPIC's exact `## Children` section, after the last child bullet and before any `###` subsection. The whole pair (re-read both files, validate, compute, write) runs under one issue-tree mutation lock; unchanged content is never rewritten, so reapplying the same pair is a no-op. Line endings, final-newline state, and file modes are preserved. `--apply` is unsupported for `synthesize` mode — EPIC creation belongs to `scaffold_epic`, not this subcommand.
+
+The orphan is written first. If the EPIC write then fails, the orphan carries the parent but the EPIC lacks the bullet; the CLI no longer re-proposes it, so repair it with `ll-issues epic-consistency --fix <EPIC>` (calling `apply_assignment()` again directly also repairs it).
 
 **Parameters:**
 
@@ -1623,6 +1632,12 @@ Writes the orphan-side frontmatter (both `parent:` and `epic:` — the corpus co
 | `proposal` | `EpicProposal` | Accepted assignment |
 | `orphan_path` | `Path` | Path to the orphan issue file |
 | `epic_path` | `Path` | Path to the EPIC issue file |
+| `child_title` | `str \| None` | Bullet title; defaults to the orphan's frontmatter title, then H1, then filename stem |
+| `base_dir` | `str` | Issues base directory name, used to locate the mutation lock |
+
+**Returns:** `False` when the EPIC has no exact `## Children` heading (the orphan frontmatter was written, the EPIC body was not), else `True`.
+
+**Raises:** `ConflictingParent` (a `ValueError`) when the orphan already has a different `parent:`/`epic:`; `little_loops.cli.issues.create.AmbiguousChildrenSection` (a `ValueError`) when the Children list extent is unclear (e.g. a lazy continuation paragraph); `ValueError` for frontmatter that cannot be edited safely; `TimeoutError` on lock contention; `OSError` on write failure. In every case except a failed second write, both files are left byte-identical.
 
 ---
 
@@ -7401,6 +7416,7 @@ Shared YAML-subset frontmatter read/write utilities used by issue_parser, sync, 
 | `strip_frontmatter` | Remove YAML frontmatter block, returning the body |
 | `update_frontmatter` | Merge updates into (or create) the YAML frontmatter block |
 | `remove_frontmatter_keys` | Delete keys from every frontmatter block, leaving the body untouched |
+| `upsert_frontmatter_scalars` | Set single-line scalar keys in the canonical block without reserializing it (BUG-3738) |
 
 ### parse_frontmatter
 
@@ -7498,6 +7514,28 @@ byte-for-byte.
 - `keys` - Frontmatter keys to remove
 
 **Returns:** Content with the keys removed from all frontmatter blocks.
+
+### upsert_frontmatter_scalars
+
+```python
+def upsert_frontmatter_scalars(
+    content: str, updates: Mapping[str, str]
+) -> str
+```
+
+Span-preserving counterpart to `update_frontmatter` for single-line scalar keys.
+Only the targeted `key: value` lines change; comments, flow lists, quoting,
+Unicode, and key order elsewhere survive byte-for-byte. Edits are bounded to the
+canonical (`id`-bearing) block, or the first block when none has an `id`. A key
+whose merged value already equals the requested one is left untouched, a trailing
+comment on a replaced line is kept, missing keys are appended to the block, and
+content with no frontmatter gets a minimal block prepended. LF/CRLF files keep
+their line endings.
+
+**Raises:** `ValueError` on an unterminated block, mixed line endings, a
+multiline/collection value or duplicate entry for a key being changed, a
+multi-line `updates` value, or when the result does not merge to the requested
+values (for example a later block shadows the update).
 
 **Example:**
 ```python

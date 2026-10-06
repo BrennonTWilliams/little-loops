@@ -165,36 +165,106 @@ def _stage(paths: list[str], repo_root: Path) -> bool:
     return True
 
 
+class AmbiguousChildrenSection(ValueError):
+    """The ``## Children`` list extent cannot be determined without guessing."""
+
+
+_CHILD_BULLET_RE = re.compile(r"[-*][ \t]+\*{0,2}(?:BUG|FEAT|ENH|EPIC)-\d+(?!\w)")
+_SUBSECTION_RE = re.compile(r"[ \t]{0,3}#{3,6}[ \t]")
+_LIST_MARKER_RE = re.compile(r"[ \t]*(?:[-*+]|\d+[.)])[ \t]")
+
+
 def _append_child_to_epic_children(content: str, child_id: str, child_title: str) -> str | None:
     """Append a child bullet to an EPIC's ``## Children`` section.
 
-    Returns the updated content, or None if no ``## Children`` heading is
-    found (create() then skips this wiring silently — only EPIC parents have
-    this section).
+    Three outcomes: ``None`` when there is no exact ``## Children`` heading
+    (callers skip the body write); *content* unchanged when *child_id* is
+    already an actual entry of that section; otherwise the updated content.
+    The bullet goes after the last child bullet (and its continuations)
+    that precedes any ``###`` subsection, or at the top of the section when
+    there is none. Line endings and the final-newline state are preserved.
+
+    Raises:
+        AmbiguousChildrenSection: when a lazy continuation paragraph follows
+            the last child bullet, so its extent cannot be determined.
     """
-    lines = content.splitlines()
-    heading_idx = None
-    for i, line in enumerate(lines):
-        if line.strip() == _CHILDREN_HEADING:
-            heading_idx = i
-            break
-    if heading_idx is None:
+    from little_loops.cli.issues.epic_consistency import find_children_section, iter_child_entries
+    from little_loops.frontmatter import _mask_fenced_code
+
+    bounds = find_children_section(content)
+    if bounds is None:
         return None
+    start, end = bounds
+    if any(e.issue_id == child_id for e in iter_child_entries(content[start:end])):
+        return content
 
-    insert_at = len(lines)
-    for j in range(heading_idx + 1, len(lines)):
-        if lines[j].startswith("## "):
-            insert_at = j
+    title = " ".join(child_title.split())
+    cr = "\r" if "\r\n" in content else ""
+    bullet = f"- **{child_id}** — {title} (open)" + cr
+    blank = cr
+
+    section = content[start:end]
+    if not section:  # heading is the unterminated last line of the file
+        return f"{content}{cr}\n{blank}\n{bullet.rstrip(chr(13))}"
+    rest = section[1:]
+    masked_rest = _mask_fenced_code(content)[start + 1 : end]
+    terminated = rest == "" or rest.endswith("\n")
+    pieces = rest.split("\n")[:-1] if terminated else rest.split("\n")
+    masked = masked_rest.split("\n")[: len(pieces)]
+
+    def is_blank(text: str) -> bool:
+        return not text.strip()
+
+    def indented(text: str) -> bool:
+        return text.startswith(("  ", "\t"))
+
+    limit = next(
+        (i for i, m in enumerate(masked) if _SUBSECTION_RE.match(m)),
+        len(pieces),
+    )
+    last_bullet = next(
+        (i for i in range(limit - 1, -1, -1) if _CHILD_BULLET_RE.match(masked[i])),
+        None,
+    )
+
+    if last_bullet is None:
+        at = 1 if pieces and is_blank(pieces[0]) else 0
+        new_pieces = [] if at else [blank]
+        new_pieces.append(bullet)
+        if at < len(pieces) and not is_blank(pieces[at]):
+            new_pieces.append(blank)
+        pieces[at:at] = new_pieces
+    else:
+        last = last_bullet
+        j = last + 1
+        while j < limit:
+            line = pieces[j]
+            if is_blank(line):
+                k = j + 1
+                while k < limit and is_blank(pieces[k]):
+                    k += 1
+                if k < limit and indented(pieces[k]):
+                    last, j = k, k + 1
+                    continue
+                break
+            if indented(line):
+                last, j = j, j + 1
+                continue
+            lazy = (
+                j == last + 1
+                and is_blank(masked[j]) is False
+                and not _LIST_MARKER_RE.match(line)
+                and not _SUBSECTION_RE.match(masked[j])
+                and not masked[j].lstrip().startswith("#")
+            )
+            if lazy:
+                raise AmbiguousChildrenSection(
+                    f"lazy continuation after {pieces[last_bullet].strip()!r}"
+                )
             break
+        pieces.insert(last + 1, bullet)
 
-    # Trim trailing blank lines within the section before inserting, then
-    # keep exactly one blank line after the new bullet.
-    while insert_at > heading_idx + 1 and lines[insert_at - 1].strip() == "":
-        insert_at -= 1
-
-    bullet = f"- **{child_id}** — {child_title} (open)"
-    new_lines = lines[:insert_at] + [bullet, ""] + lines[insert_at:]
-    return "\n".join(new_lines)
+    return content[: start + 1] + "\n".join(pieces) + ("\n" if terminated else "") + content[end:]
 
 
 def _is_full_body(body: str, include_common: list[str]) -> bool:
@@ -630,11 +700,23 @@ def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None)
 
         parent_path = _resolve_issue_id(config, spec.parent)
         if parent_path is not None:
-            parent_content = parent_path.read_text(encoding="utf-8")
-            updated = _append_child_to_epic_children(parent_content, created.id, spec.title)
-            if updated is not None:
-                parent_path.write_text(updated, encoding="utf-8")
-                staged_paths.append(str(parent_path))
+            from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
+
+            # Taken after allocate_and_write_issue released .id-alloc.lock; never nested in it.
+            with acquire_lock(issue_lock_path(parent_path, config.issues.base_dir)):
+                with open(parent_path, encoding="utf-8", newline="") as f:
+                    parent_content = f.read()
+                try:
+                    updated = _append_child_to_epic_children(parent_content, created.id, spec.title)
+                except AmbiguousChildrenSection as exc:
+                    print(
+                        f"Warning: {spec.parent}: skipped ## Children wiring ({exc})",
+                        file=sys.stderr,
+                    )
+                    updated = None
+                if updated is not None and updated != parent_content:
+                    atomic_write(parent_path, updated, shared_mode=True)
+                    staged_paths.append(str(parent_path))
 
     if spec.stage:
         _stage(staged_paths, config.project_root)

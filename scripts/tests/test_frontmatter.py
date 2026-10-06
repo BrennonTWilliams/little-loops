@@ -708,3 +708,79 @@ Body.
         assert has_multiple_frontmatter_blocks(content) is False
         fm = parse_frontmatter(content)
         assert fm == {"id": "BUG-9004", "status": "open"}
+
+
+class TestUpsertFrontmatterScalars:
+    """upsert_frontmatter_scalars: span-preserving scalar edits (BUG-3738)."""
+
+    UPDATES = {"parent": "EPIC-1", "epic": "EPIC-1"}
+
+    def _up(self, content: str, updates: dict[str, str] | None = None) -> str:
+        from little_loops.frontmatter import upsert_frontmatter_scalars
+
+        return upsert_frontmatter_scalars(content, updates or self.UPDATES)
+
+    def test_adds_missing_keys_without_reserializing_neighbours(self) -> None:
+        content = '---\nid: FEAT-1\ngoals: [2]  # keep\ntitle: "Ünï x"\n---\n\n# T\n'
+        out = self._up(content)
+        assert out == (
+            '---\nid: FEAT-1\ngoals: [2]  # keep\ntitle: "Ünï x"\nparent: EPIC-1\n'
+            "epic: EPIC-1\n---\n\n# T\n"
+        )
+
+    def test_replaces_null_keeping_trailing_comment(self) -> None:
+        out = self._up("---\nid: FEAT-1\nparent: null  # none yet\nepic:\n---\n")
+        assert "parent: EPIC-1  # none yet\n" in out
+        assert "epic: EPIC-1\n" in out
+
+    def test_same_value_preserves_representation(self) -> None:
+        content = "---\nid: FEAT-1\nparent: 'EPIC-1'  # c\nepic: \"EPIC-1\"\n---\nbody\n"
+        assert self._up(content) == content
+
+    def test_no_frontmatter_prepends_block(self) -> None:
+        assert self._up("# T\n", {"parent": "EPIC-1"}) == "---\nparent: EPIC-1\n---\n# T\n"
+
+    def test_empty_block(self) -> None:
+        assert self._up("---\n---\n\nb", {"parent": "EPIC-1"}) == "---\nparent: EPIC-1\n---\n\nb"
+
+    def test_crlf_preserved(self) -> None:
+        out = self._up("---\r\nid: FEAT-1\r\n---\r\n\r\n# T\r\n", {"parent": "EPIC-1"})
+        assert out == "---\r\nid: FEAT-1\r\nparent: EPIC-1\r\n---\r\n\r\n# T\r\n"
+
+    def test_mixed_line_endings_rejected(self) -> None:
+        with pytest.raises(ValueError, match="mixed line endings"):
+            self._up("---\r\nid: FEAT-1\n---\n")
+
+    def test_edits_canonical_block_only(self) -> None:
+        content = "---\nscore_x: 1\n---\n---\nid: FEAT-1\nstatus: open\n---\nbody\n"
+        out = self._up(content, {"parent": "EPIC-1"})
+        assert out.startswith(
+            "---\nscore_x: 1\n---\n---\nid: FEAT-1\nstatus: open\nparent: EPIC-1\n"
+        )
+
+    def test_later_block_null_shadowing_rejected(self) -> None:
+        content = "---\nid: FEAT-1\n---\n---\nparent: null\n---\nbody\n"
+        with pytest.raises(ValueError, match="does not resolve"):
+            self._up(content, {"parent": "EPIC-1"})
+
+    @pytest.mark.parametrize(
+        "block",
+        [
+            "id: FEAT-1\nparent: [EPIC-2]\n",
+            "id: FEAT-1\nparent:\n  - EPIC-2\n",
+            "id: FEAT-1\nparent: |\n  EPIC-2\n",
+            "id: FEAT-1\nparent: EPIC-2\nparent: EPIC-3\n",
+            'id: FEAT-1\nparent: "EPIC-2\n',
+        ],
+    )
+    def test_non_scalar_or_duplicate_rejected(self, block: str) -> None:
+        with pytest.raises(ValueError):
+            self._up(f"---\n{block}---\n", {"parent": "EPIC-1"})
+
+    def test_unterminated_block_rejected(self) -> None:
+        with pytest.raises(ValueError, match="unterminated"):
+            self._up("---\nid: FEAT-1\n", {"parent": "EPIC-1"})
+
+    def test_multiline_value_rejected(self) -> None:
+        with pytest.raises(ValueError, match="single line"):
+            self._up("---\nid: FEAT-1\n---\n", {"parent": "A\nB"})

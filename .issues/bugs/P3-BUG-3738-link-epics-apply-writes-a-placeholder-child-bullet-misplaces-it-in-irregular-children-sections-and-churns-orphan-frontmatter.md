@@ -4,10 +4,11 @@ type: BUG
 title: 'link-epics --apply writes a placeholder child bullet, misplaces it in irregular
   ## Children sections, and churns orphan frontmatter'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T18:53:54Z'
+completed_at: '2026-10-06T00:05:58Z'
 labels:
 - issues
 - link-epics
@@ -77,7 +78,7 @@ Verified on branch `main` on 2026-10-05:
 
 Improve the existing `_append_child_to_epic_children()` helper and reuse it from `apply_assignment()` through a deferred import. Its current callers in create and scaffold already share it, and create has no import of link_epics. A new generic Markdown framework or a rewrite of the consistency fixer is unnecessary.
 
-**Shared recognizer (coordinate with BUG-3739).** Both issues need the same pure, fence-aware Children grammar: exact-heading section selection, bullet/H3–H6 entry recognition, whole-ID matching. Do not write it twice. Whichever issue lands first creates it in `scripts/little_loops/cli/issues/epic_consistency.py` as public helpers (`find_children_section(content) -> tuple[int, int] | None` and `iter_child_entries(section_text) -> list[ChildEntry]`, with `ChildEntry` carrying the ID, kind, and source span) and repoints `_section_bounds`/`_parse_children_body` at them; the other adopts them. This issue's writer-only logic (placement after the last bullet and its continuations, spacing, ambiguity rejection) stays in `create.py` and builds on those helpers. Land the two issues serially, not under parallel workers: both edit `link_epics.py`, `epic_consistency.py`, `docs/reference/CLI.md`, `COMMANDS.md`, and `skills/link-epics/SKILL.md`.
+**Shared recognizer (coordinate with BUG-3739).** Both issues need the same pure, fence-aware Children grammar: exact-heading section selection, bullet/H3–H6 entry recognition, whole-ID matching. Do not write it twice. **Landed in `cda52e0eb`:** the recognizer now exists in `scripts/little_loops/cli/issues/epic_consistency.py` as public helpers (`find_children_section(content) -> tuple[int, int] | None` and `iter_child_entries(section_text) -> list[ChildEntry]`, with `ChildEntry` carrying the ID, kind, and source span) and the consistency checker already uses them. This issue adopts them and does not recreate them; `link_epics._section_bounds` (still its own heading regex) is replaced by `find_children_section` in the apply path. This issue's writer-only logic (placement after the last bullet and its continuations, spacing, ambiguity rejection) stays in `create.py` and builds on those helpers. Land the two issues serially, not under parallel workers: both edit `link_epics.py`, `epic_consistency.py`, `docs/reference/CLI.md`, `COMMANDS.md`, and `skills/link-epics/SKILL.md`.
 
 **Locking.** `apply_assignment()` wraps its whole pair operation (re-read both files, validate, compute both texts, write) in one `acquire_lock(issue_lock_path(orphan_path, base_dir))`. The lock is tree-wide and non-reentrant (`flock` contends within a process), so a single acquisition per pair covers both files, nothing inside the block may call another lock holder (`session_log`, `set-status`, `link`), and `cmd_link_epics` locks per pair, never around the whole run. `TimeoutError` becomes a rejected pair. `create_issue` wraps its parent-EPIC read-append-write in the same `acquire_lock(issue_lock_path(parent_path, base_dir))`, after the `.id-alloc.lock` hold has ended, never nested inside it, and writes with `atomic_write(..., shared_mode=True)`. Without this, the Expected Behavior claim that `create --parent` cannot interleave is false. `scaffold_epic` writes a brand-new EPIC with `open(..., "x")` and needs no change. This is one wrapper plus one test, so it stays in this issue; if implementation shows it needs more than that, split it into its own ENH and also cover `fix_epic`, which has the same omission.
 
@@ -144,7 +145,7 @@ upsert_frontmatter_scalars(content: str, updates: Mapping[str, str]) -> str
 
 - `scripts/little_loops/cli/issues/link_epics.py` — title plumbing, scoped duplicate handling, per-pair lock, preflight/conditional writes, one-winner apply bookkeeping, and `rejected`/continue-and-report handling with exit code 1.
 - `scripts/little_loops/cli/issues/create.py` — shared Children helper's placement, three-outcome contract (`None` / unchanged / `AmbiguousChildrenSection`), fence awareness, and source preservation; `create_issue` catches the ambiguous case and skips wiring with a warning, and takes the issue-tree mutation lock around its parent-EPIC append.
-- `scripts/little_loops/cli/issues/epic_consistency.py` — only if this issue lands first: create the shared `find_children_section`/`iter_child_entries` recognizer (see Proposed Solution); otherwise adopt BUG-3739's.
+- `scripts/little_loops/cli/issues/epic_consistency.py` — no recognizer work needed: `find_children_section`/`iter_child_entries`/`ChildEntry` already landed (`cda52e0eb`); import them from here.
 - `scripts/little_loops/frontmatter.py` — add scalar upsert; reuse `_iter_frontmatter_blocks` and `_canonical_frontmatter_block` selection semantics without changing general YAML-dump behavior.
 
 ### Dependent Files
@@ -176,7 +177,7 @@ No new setting, dependency, or host invocation.
 ## Implementation Steps
 
 1. Add temporary-tree regressions for the observed placement/churn/duplicate defects and two-EPIC contradictory assignment.
-2. Check whether BUG-3739 has landed the shared Children recognizer; if not, create it in `epic_consistency.py` first (small prerequisite commit with its own tests). Then improve the existing shared Children helper according to the Decision Rules (three outcomes; create/scaffold catch the ambiguous case) and wire apply's title/duplicate behavior to it.
+2. Adopt the already-landed shared Children recognizer (`find_children_section`/`iter_child_entries` in `epic_consistency.py`, `cda52e0eb`); no prerequisite commit is needed. Improve the existing shared Children helper according to the Decision Rules (three outcomes; create/scaffold catch the ambiguous case) and wire apply's title/duplicate behavior to it.
 3. Add preserving scalar upsert and preflight both sides inside the per-pair lock; reject conflicting metadata, preserve modes/newlines, and skip identical writes.
 4. Keep all proposed alternatives but apply only the first ranked pair per orphan. Add continue-and-report with the `rejected` list, `children_wired`, and exit code 1; update result bookkeeping and user-facing contracts.
 5. Run the focused tests above, then the authoritative `python -m pytest scripts/tests/`, lint and type checks for changed Python, and mirror checks when skill text changes.
@@ -189,7 +190,7 @@ No new setting, dependency, or host invocation.
 - [ ] Orphan bytes outside updated parent/epic entries, LF/CRLF style, final newline, and existing file modes are preserved. Null, missing, already-correct, malformed, duplicate-key, and multi-block inputs have explicit tests.
 - [ ] Each pair applies under the issue-tree lock with both files re-read under it; lock timeout, ambiguous Children sections, conflicting metadata, and write failures reject only that pair (listed in `rejected`, exit 1) while later orphans still apply. The no-heading skip is visible in apply output. Create/scaffold never fail over an ambiguous Children section.
 - [ ] Docs state the real recovery path (`epic-consistency --fix`) and no document or skill claims that re-running `link-epics --apply` repairs a partial write.
-- [ ] The shared Children recognizer exists once (in `epic_consistency.py`) and is used by this writer, BUG-3739's reader/index, and the consistency checker.
+- [ ] The shared Children recognizer exists once (in `epic_consistency.py`; already landed in `cda52e0eb`) and is used by this writer, BUG-3739's reader/index, and the consistency checker.
 - [ ] With multiple matches, only the highest-ranked EPIC is applied/listed for each orphan; ties are deterministic and all alternatives remain in `proposals`. Existing conflicting relationships cause no writes for the rejected pair and a visible nonzero result.
 - [ ] Create/scaffold/MCP child wiring retains the no-heading contract; the focused regression suites and full local test suite pass, with docs and skill mirrors describing the final behavior.
 
@@ -210,9 +211,34 @@ Used `/ll:advise --signal user_requested --host claude-code --model opus` for cr
 
 2026-10-05 (second pre-implementation review, with `/ll:advise --signal user_requested --host claude-code --model fable`, confidence **0.82**): verified in code that `is_orphan()` makes the conflicting-parent path race-only, that `apply_assignment()` is the only issue mutator without `acquire_lock(issue_lock_path(...))`, that orphan-first ordering means CLI reapply cannot recover a partial write, and that the shared helper had a single `None` channel for several outcomes. Adopted: honest recovery story (orphan-first retained; fixer is `epic-consistency --fix`), per-pair lock with under-lock re-validation (kept in this issue — one wrapper plus one test; split into its own ENH if it grows, and cover `fix_epic` there), continue-and-report with a flat `rejected` reason list, three-outcome helper contract with create/scaffold never failing over wiring, visible no-heading skip, and a single shared Children recognizer landed by whichever of this issue/BUG-3739 goes first (serial landing, not parallel). Follow-up not in scope: a parent-assignment option for `ll-issues link` (single-pair assignment and the remedy for children-listed drift). Advisor dissent (lock may belong in its own issue since `fix_epic` shares the gap) is handled by the split-if-it-grows condition. Confidence/outcome scores predate these edits; re-run `/ll:confidence-check` before implementation.
 
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-10-05
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/frontmatter.py`: new `upsert_frontmatter_scalars()` — span-preserving single-line scalar upsert bounded to the canonical block (CRLF-safe, rejects multiline/duplicate/shadowed entries).
+- `scripts/little_loops/cli/issues/create.py`: `_append_child_to_epic_children()` rewritten on the shared `find_children_section`/`iter_child_entries` recognizer (three outcomes, `AmbiguousChildrenSection`, placement before subsections, byte/newline-preserving); `create_issue` wraps the parent-EPIC append in the issue-tree lock, writes with `atomic_write(shared_mode=True)`, and tolerates ambiguous sections.
+- `scripts/little_loops/cli/issues/scaffold_epic.py`: tolerates `AmbiguousChildrenSection` (warn + skip body write).
+- `scripts/little_loops/cli/issues/link_epics.py`: `apply_assignment()` now locked per pair, title bullets, conflict rejection, preserving writes, no-op reapply; `cmd_link_epics` applies one winner per orphan with continue-and-report (`rejected` key, `children_wired: false`, exit 1).
+- Tests: `test_frontmatter.py`, `test_ll_issues_create.py`, `test_link_epics_cli.py`.
+- Docs: `docs/reference/{CLI,API,COMMANDS}.md`, `skills/link-epics/SKILL.md`.
+
+### Deviations
+- `apply_assignment()` returns `bool` (children wired) rather than `None`, so the CLI can flag `children_wired: false`.
+- `skills/capture-issue/SKILL.md` Phase 4c (manual update-existing path) still describes inserting a missing `## Children` section; left unchanged, as it is a separate hand-edit path, not the `create --parent` helper.
+
+### Verification Results
+- Tests: PASS for all touched suites; full suite 28418 passed, 1 failed (`test_verify_evidence` corpus gate on ENH-3700, untouched file) and 8 errors (`test_libsql_integration` live-endpoint tests) — both unrelated to this change
+- Lint: PASS
+- Types: PASS
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P3
+**Completed** | Created: 2026-10-05 | Priority: P3
 
 ## Confidence Check Notes
 
@@ -233,6 +259,8 @@ Re-scored after the second pre-implementation review, which added the lock, `rej
 - Coordination with BUG-3739 in the same command (candidate filtering and payload keys in `cmd_link_epics`): land serially and test the combined output.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T00:05:57 - `fc42cbbf-006d-4634-929d-b960b7ebdf31.jsonl`
+- `/ll:ready-issue` - 2026-10-05T23:49:31 - `f8067c93-8b28-43bf-a1c4-30200a4c6f5b.jsonl`
 - `/ll:confidence-check` - 2026-10-05T23:26:53 - `dfedb32a-de04-4382-86b8-3c6cab5d9da5.jsonl`
 - `/ll:confidence-check` - 2026-10-05T21:03:15 - `a064a912-bbb2-49a6-9207-e4cd54b3663a.jsonl`
 - `/ll:ready-issue` - 2026-10-05T20:18:56 - `3e2de759-3a68-4bde-a95a-631efbd7d020.jsonl`

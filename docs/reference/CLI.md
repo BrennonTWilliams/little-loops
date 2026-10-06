@@ -3238,12 +3238,25 @@ visualizes existing *dependency-edge* relationships, not text similarity.
 |---------------|-------------|
 | `--mode assign\|synthesize` | `assign` (default) scores orphans against existing open EPICs; `synthesize` union-find clusters orphans against each other |
 | `--threshold <N>` | Minimum score to include; default `config.issues.link_epics.min_score` |
-| `--apply` | Write accepted `assign`-mode proposals (`parent:`/`epic:` frontmatter + EPIC `## Children` append); unsupported for `--mode synthesize` (exits 1) — EPIC creation from clusters is not implemented by this subcommand |
+| `--apply` | Apply the single top-ranked `assign`-mode proposal per orphan (`parent:`/`epic:` frontmatter + EPIC `## Children` bullet `- **ID** — <title> (open)`); lower-ranked alternatives stay in `proposals` but are not written. Unsupported for `--mode synthesize` (exits 1) — EPIC creation from clusters is not implemented by this subcommand |
 | `--deep` | `--mode synthesize` only (exits 1 otherwise); adds one batched LLM-adjudicated clustering pass over the full orphan list (capped at 40), merged with the Jaccard clusters (ENH-2979). Above the cap, prints a warning and falls back to Jaccard-only output plus a `"deep": {"skipped": "too_many_orphans", "count": N}` JSON key. `--deep`-sourced clusters carry `evidence` (cited quotes, capped at 3) and `source` (`jaccard`/`deep`/`merged`) |
-| `--json` | Output as JSON: `{"proposals": [...], "applied": [...]}` (assign) or `{"clusters": [...], "applied": []}` (synthesize) |
+| `--json` | Output as JSON: `{"proposals": [...], "applied": [...], "rejected": [...]}` (assign) or `{"clusters": [...], "applied": []}` (synthesize) |
 | `--config` | Path to project root |
 
-`--apply` is idempotent — re-running is a no-op on any pair already applied.
+`--apply` is idempotent — reapplying a pair changes neither file. Only the orphan's `parent:`/`epic:`
+entries are edited (comments, quoting, and other fields are preserved); line endings and file modes
+survive. Each pair is applied under the issue-tree mutation lock. An EPIC with no exact `## Children`
+heading is left untouched: the orphan is still linked, the pair appears in `applied` with
+`"children_wired": false`, and the text output notes the skipped body write.
+
+A pair that cannot be applied — the orphan already has a different `parent:`/`epic:`
+(`conflicting_parent`), the EPIC's Children list is ambiguous (`ambiguous_children_section`),
+the lock timed out (`lock_timeout`), the orphan's frontmatter cannot be edited safely
+(`metadata_unsafe`), or a write failed (`write_failed`) — is listed in `rejected`
+(`{"orphan_id", "epic_id", "reason", "detail"}`) and on stderr. Remaining orphans are still
+applied, and the command exits 1. A rejected pair does not fall through to a lower-ranked EPIC.
+If the EPIC write fails after the orphan was written, the orphan is no longer parentless and is
+not re-proposed; repair the EPIC with `ll-issues epic-consistency --fix <EPIC>`.
 
 **Examples:**
 ```bash

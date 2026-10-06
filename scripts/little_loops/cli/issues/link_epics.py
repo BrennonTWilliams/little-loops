@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
 
 _ORPHAN_TYPE_PREFIXES = frozenset({"BUG", "FEAT", "ENH"})
-_CHILDREN_HEADING_RE = re.compile(r"^##\s+Children\s*$", re.MULTILINE)
 
 # ENH-2979 --deep: no single-call LLM site in this codebase batches more than
 # a few dozen structured items per request; above this, chunking risks
@@ -522,55 +521,96 @@ def deep_synthesize_clusters(
     return _merge_clusters(jaccard_clusters, deep_clusters, by_id), None
 
 
-def _section_bounds(content: str, heading_re: re.Pattern[str]) -> tuple[int, int] | None:
-    """Return (body_start, body_end) byte offsets for a ``## Heading`` section."""
-    match = heading_re.search(content)
-    if not match:
-        return None
-    start = match.end()
-    next_match = re.search(r"^##\s", content[start:], re.MULTILINE)
-    end = start + next_match.start() if next_match else len(content)
-    return start, end
+class ConflictingParent(ValueError):
+    """The orphan already carries a different ``parent:``/``epic:`` assignment."""
 
 
-def apply_assignment(proposal: EpicProposal, *, orphan_path: Path, epic_path: Path) -> None:
-    """Write the orphan-side frontmatter and EPIC-side ``## Children`` append.
+def _read_raw(path: Path) -> str:
+    """Read *path* without universal-newline conversion (CRLF survives a round trip)."""
+    with open(path, encoding="utf-8", newline="") as f:
+        return f.read()
 
-    Writes both `parent:` and `epic:` on the orphan (corpus convention is
-    both fields, not `parent:` alone). Idempotent: re-running with the same
-    proposal is a no-op on the EPIC body if the child is already listed.
+
+def _fallback_title(content: str, path: Path) -> str:
+    """Frontmatter title, then H1 text, then the filename stem."""
+    from little_loops.frontmatter import parse_frontmatter
+
+    fm_title = parse_frontmatter(content.replace("\r\n", "\n")).get("title")
+    if isinstance(fm_title, str) and fm_title.strip():
+        return fm_title
+    h1 = re.search(r"^#[ \t]+(?:[A-Z]+-\d+[ \t]*[:\u2014-][ \t]*)?(\S.*?)[ \t]*\r?$", content, re.M)
+    return h1.group(1) if h1 else path.stem
+
+
+def apply_assignment(
+    proposal: EpicProposal,
+    *,
+    orphan_path: Path,
+    epic_path: Path,
+    child_title: str | None = None,
+    base_dir: str = ".issues",
+) -> bool:
+    """Write the orphan's ``parent:``/``epic:`` and the EPIC's ``## Children`` bullet.
+
+    The whole pair (re-read both files, validate, compute both texts, write)
+    runs under one issue-tree mutation lock. Only the two assignment entries
+    of the orphan change, and unchanged content is never rewritten, so
+    reapplying the same pair is a no-op. The orphan is written first; if the
+    EPIC write then fails, ``ll-issues epic-consistency --fix`` repairs the
+    drift.
 
     Args:
         proposal: The accepted assignment.
         orphan_path: Path to the orphan issue file.
         epic_path: Path to the target EPIC issue file.
+        child_title: Title for the Children bullet; defaults to the orphan's
+            frontmatter title, H1, or filename stem.
+        base_dir: Issues base directory name, used to locate the mutation lock.
+
+    Returns:
+        False when the EPIC has no exact ``## Children`` heading (the orphan
+        frontmatter was still written, the EPIC body was not); True otherwise.
+
+    Raises:
+        ConflictingParent: the orphan already has a different parent/epic.
+        AmbiguousChildrenSection: the EPIC's Children list extent is unclear.
+        ValueError: the orphan's frontmatter cannot be edited safely.
+        TimeoutError: the mutation lock could not be acquired.
+        OSError: a write failed.
     """
-    from little_loops.file_utils import atomic_write
-    from little_loops.frontmatter import update_frontmatter
+    from little_loops.cli.issues.create import _append_child_to_epic_children
+    from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
+    from little_loops.frontmatter import parse_frontmatter, upsert_frontmatter_scalars
 
-    orphan_content = orphan_path.read_text(encoding="utf-8")
-    new_orphan_content = update_frontmatter(
-        orphan_content, {"parent": proposal.epic_id, "epic": proposal.epic_id}
-    )
-    atomic_write(orphan_path, new_orphan_content)
+    with acquire_lock(issue_lock_path(orphan_path, base_dir)):
+        orphan_text = _read_raw(orphan_path)
+        epic_text = _read_raw(epic_path)
 
-    epic_content = epic_path.read_text(encoding="utf-8")
-    if re.search(rf"\b{re.escape(proposal.orphan_id)}\b", epic_content):
-        return
+        current = parse_frontmatter(orphan_text.replace("\r\n", "\n"))
+        for field_name in ("parent", "epic"):
+            value = current.get(field_name)
+            if value is not None and value != proposal.epic_id:
+                raise ConflictingParent(f"{proposal.orphan_id} already has {field_name}: {value}")
 
-    bullet = f"- **{proposal.orphan_id}** — (added by link-epics --apply)"
-    bounds = _section_bounds(epic_content, _CHILDREN_HEADING_RE)
-    if bounds is None:
-        new_content = epic_content.rstrip("\n") + "\n\n## Children\n\n" + bullet + "\n"
-    else:
-        start, end = bounds
-        section_body = epic_content[start:end]
-        stripped = section_body.rstrip("\n")
-        sep = "\n" if stripped.strip() else ""
-        new_section_body = stripped + sep + "\n" + bullet + "\n"
-        new_content = epic_content[:start] + new_section_body + epic_content[end:]
+        title = child_title if child_title else _fallback_title(orphan_text, orphan_path)
+        new_orphan = upsert_frontmatter_scalars(
+            orphan_text, {"parent": proposal.epic_id, "epic": proposal.epic_id}
+        )
+        appended = _append_child_to_epic_children(epic_text, proposal.orphan_id, title)
+        new_epic = epic_text if appended is None else appended
 
-    atomic_write(epic_path, new_content)
+        if new_orphan != orphan_text:
+            atomic_write(orphan_path, new_orphan, shared_mode=True)
+        if new_epic != epic_text:
+            try:
+                atomic_write(epic_path, new_epic, shared_mode=True)
+            except OSError as exc:
+                raise OSError(
+                    f"{proposal.orphan_id} was assigned to {proposal.epic_id} but the EPIC "
+                    f"## Children write failed ({exc}); run "
+                    f"`ll-issues epic-consistency --fix {proposal.epic_id}` to repair"
+                ) from exc
+    return appended is not None
 
 
 def add_link_epics_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:
@@ -654,29 +694,80 @@ def cmd_link_epics(config: BRConfig, args: argparse.Namespace) -> int:
         epics = [i for i in all_issues if i.issue_id.startswith("EPIC-")]
         proposals = propose_assignments(orphans, epics, threshold=threshold)
         applied: list[dict] = []
+        rejected: list[dict] = []
         if apply:
+            from little_loops.cli.issues.create import AmbiguousChildrenSection
+
             by_id = {i.issue_id: i for i in all_issues}
+            # Proposals are ranked best-first; apply only the top EPIC per orphan.
+            winners: dict[str, EpicProposal] = {}
             for proposal in proposals:
+                winners.setdefault(proposal.orphan_id, proposal)
+            for proposal in winners.values():
                 orphan_info = by_id.get(proposal.orphan_id)
                 epic_info = by_id.get(proposal.epic_id)
                 if orphan_info is None or epic_info is None:
                     continue
-                apply_assignment(proposal, orphan_path=orphan_info.path, epic_path=epic_info.path)
-                applied.append(proposal.to_dict())
+                reason = ""
+                detail = ""
+                wired = True
+                try:
+                    wired = apply_assignment(
+                        proposal,
+                        orphan_path=orphan_info.path,
+                        epic_path=epic_info.path,
+                        child_title=orphan_info.title,
+                        base_dir=config.issues.base_dir,
+                    )
+                except ConflictingParent as exc:
+                    reason, detail = "conflicting_parent", str(exc)
+                except AmbiguousChildrenSection as exc:
+                    reason, detail = "ambiguous_children_section", str(exc)
+                except ValueError as exc:
+                    reason, detail = "metadata_unsafe", str(exc)
+                except TimeoutError as exc:
+                    reason, detail = "lock_timeout", str(exc)
+                except OSError as exc:
+                    reason, detail = "write_failed", str(exc)
+                if reason:
+                    rejected.append(
+                        {
+                            "orphan_id": proposal.orphan_id,
+                            "epic_id": proposal.epic_id,
+                            "reason": reason,
+                            "detail": detail,
+                        }
+                    )
+                    print(
+                        f"Rejected {proposal.orphan_id} -> {proposal.epic_id}: {reason}: {detail}",
+                        file=sys.stderr,
+                    )
+                    continue
+                entry = proposal.to_dict()
+                if not wired:
+                    entry["children_wired"] = False
+                applied.append(entry)
 
         if as_json:
             print_json(
                 {
                     "proposals": [p.to_dict() for p in proposals],
                     "applied": applied,
+                    "rejected": rejected,
                 }
             )
         else:
             for p in proposals:
                 print(f"{p.orphan_id} -> {p.epic_id}: {p.score:.3f} ({p.tier})")
             if apply:
+                for entry in applied:
+                    if entry.get("children_wired") is False:
+                        print(
+                            f"Note: {entry['epic_id']} has no '## Children' heading; "
+                            f"{entry['orphan_id']} frontmatter updated, EPIC body not written."
+                        )
                 print(f"\nApplied {len(applied)} proposal(s).")
-        return 0
+        return 1 if rejected else 0
 
     # mode == "synthesize"
     clusters = synthesize_clusters(orphans, min_score=threshold)

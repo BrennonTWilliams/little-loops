@@ -190,6 +190,144 @@ class TestApplyAssignment:
         assert body.count("FEAT-1") == 1
 
 
+_EPIC_TEXT = (
+    "---\nid: EPIC-1\ntitle: Container\nstatus: open\n---\n\n# EPIC-1: Container\n\n"
+    "## Children\n\n- **FEAT-7** — Existing (open)\n  wrapped note\n\n### Notes\n\nSee FEAT-1 here.\n\n"
+    "## Status\n\n**Open**\n"
+)
+_ORPHAN_TEXT = (
+    "---\nid: FEAT-1\ntitle: Orphan Feature\ngoals: [2]  # keep\nstatus: open\n---\n\n"
+    "# FEAT-1: Orphan Feature\n"
+)
+
+
+def _pair(tmp_path: Path, orphan: str = _ORPHAN_TEXT, epic: str = _EPIC_TEXT) -> tuple[Path, Path]:
+    orphan_path = tmp_path / "orphan.md"
+    epic_path = tmp_path / "epic.md"
+    orphan_path.write_bytes(orphan.encode())
+    epic_path.write_bytes(epic.encode())
+    return orphan_path, epic_path
+
+
+def _proposal(epic_id: str = "EPIC-1"):
+    from little_loops.cli.issues.link_epics import EpicProposal
+
+    return EpicProposal(orphan_id="FEAT-1", epic_id=epic_id, score=0.9, tier="HIGH")
+
+
+class TestApplyAssignmentHardening:
+    """BUG-3738: precise, preserving, lock-guarded pair writes."""
+
+    def test_title_bullet_placed_before_notes_and_orphan_churn_free(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.link_epics import apply_assignment
+
+        orphan_path, epic_path = _pair(tmp_path)
+        assert apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path) is True
+
+        assert epic_path.read_text() == _EPIC_TEXT.replace(
+            "  wrapped note\n", "  wrapped note\n- **FEAT-1** — Orphan Feature (open)\n"
+        )
+        assert orphan_path.read_text() == _ORPHAN_TEXT.replace(
+            "status: open\n---", "status: open\nparent: EPIC-1\nepic: EPIC-1\n---"
+        )
+        assert "added by link-epics" not in epic_path.read_text()
+
+    def test_prose_mention_does_not_suppress_insertion(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.link_epics import apply_assignment
+
+        orphan_path, epic_path = _pair(tmp_path)
+        apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        assert "- **FEAT-1** —" in epic_path.read_text()
+
+    def test_reapply_is_byte_identical_and_writes_nothing(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.link_epics import apply_assignment
+
+        orphan_path, epic_path = _pair(tmp_path)
+        apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        snapshot = (orphan_path.read_bytes(), epic_path.read_bytes())
+        with patch("little_loops.file_utils.atomic_write") as writer:
+            apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        writer.assert_not_called()
+        assert (orphan_path.read_bytes(), epic_path.read_bytes()) == snapshot
+
+    def test_missing_heading_leaves_epic_untouched(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.link_epics import apply_assignment
+
+        epic = "---\nid: EPIC-1\n---\n\n# E\n\n## Child Issues\n- x\n"
+        orphan_path, epic_path = _pair(tmp_path, epic=epic)
+        assert apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path) is False
+        assert epic_path.read_text() == epic
+        assert "parent: EPIC-1" in orphan_path.read_text()
+
+    def test_crlf_and_mode_preserved(self, tmp_path: Path) -> None:
+        import os
+
+        from little_loops.cli.issues.link_epics import apply_assignment
+
+        orphan_path, epic_path = _pair(
+            tmp_path,
+            _ORPHAN_TEXT.replace("\n", "\r\n"),
+            _EPIC_TEXT.replace("\n", "\r\n"),
+        )
+        os.chmod(orphan_path, 0o644)
+        os.chmod(epic_path, 0o664)
+        apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        for path in (orphan_path, epic_path):
+            raw = path.read_bytes()
+            assert b"\r\n" in raw and b"\n" not in raw.replace(b"\r\n", b"")
+        assert os.stat(orphan_path).st_mode & 0o777 == 0o644
+        assert os.stat(epic_path).st_mode & 0o777 == 0o664
+
+    def test_conflicting_parent_rejected_without_writes(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.link_epics import ConflictingParent, apply_assignment
+
+        orphan = _ORPHAN_TEXT.replace("status: open\n", "status: open\nparent: EPIC-2\n")
+        orphan_path, epic_path = _pair(tmp_path, orphan)
+        with pytest.raises(ConflictingParent, match="parent: EPIC-2"):
+            apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        assert orphan_path.read_text() == orphan
+        assert epic_path.read_text() == _EPIC_TEXT
+
+    def test_title_fallbacks(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.link_epics import apply_assignment
+
+        orphan_path, epic_path = _pair(tmp_path, orphan="---\nid: FEAT-1\n---\n\n# FEAT-1\n")
+        apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        assert "- **FEAT-1** — FEAT-1 (open)" in epic_path.read_text()
+
+    def test_lock_timeout_leaves_files_untouched(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.link_epics import apply_assignment
+
+        orphan_path, epic_path = _pair(tmp_path)
+        with patch("little_loops.file_utils.acquire_lock", side_effect=TimeoutError("busy")):
+            with pytest.raises(TimeoutError):
+                apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        assert orphan_path.read_text() == _ORPHAN_TEXT
+        assert epic_path.read_text() == _EPIC_TEXT
+
+    def test_second_write_failure_names_remedy_and_direct_reapply_repairs(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.cli.issues.link_epics import apply_assignment
+        from little_loops.file_utils import atomic_write
+
+        orphan_path, epic_path = _pair(tmp_path)
+
+        def flaky(path: Path, content: str, *a: Any, **kw: Any) -> None:
+            if path == epic_path:
+                raise OSError("disk full")
+            atomic_write(path, content, *a, **kw)
+
+        with patch("little_loops.file_utils.atomic_write", flaky):
+            with pytest.raises(OSError, match="epic-consistency --fix EPIC-1"):
+                apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        assert "parent: EPIC-1" in orphan_path.read_text()
+        assert epic_path.read_text() == _EPIC_TEXT
+
+        apply_assignment(_proposal(), orphan_path=orphan_path, epic_path=epic_path)
+        assert "- **FEAT-1** — Orphan Feature (open)" in epic_path.read_text()
+
+
 class TestLinkEpicsCLI:
     """Integration tests for the ll-issues link-epics dispatch/CLI surface."""
 
@@ -717,3 +855,158 @@ class TestLinkEpicsConfigSchema:
 
         cfg = IssuesConfig.from_dict({"link_epics": {"min_score": 0.6}})
         assert cfg.link_epics.min_score == 0.6
+
+
+class TestApplyOneWinnerAndRejections:
+    """BUG-3738: one EPIC per orphan, continue-and-report on rejections."""
+
+    def _run(self, temp_project_dir: Path, *cli_args: str) -> int:
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "link-epics", *cli_args, "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            return main_issues()
+
+    def _setup(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+
+    def _epic(self, issues_dir: Path, num: int, title: str) -> Path:
+        return _write_issue(
+            issues_dir,
+            "epics",
+            f"P2-EPIC-{num}-e.md",
+            f"---\nid: EPIC-{num}\ntitle: {title}\nstatus: open\n---\n# EPIC-{num}: {title}\n\n"
+            "## Children\n\n",
+        )
+
+    def _orphan(self, issues_dir: Path, num: int, title: str) -> Path:
+        return _write_issue(
+            issues_dir,
+            "features",
+            f"P2-FEAT-{num}-o.md",
+            f"---\nid: FEAT-{num}\ntitle: {title}\nstatus: open\n---\n# FEAT-{num}: {title}\n",
+        )
+
+    def test_only_top_ranked_epic_applied_but_all_proposals_listed(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        epics_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._setup(temp_project_dir, sample_config)
+        orphan = self._orphan(issues_dir, 1, "loop automation")
+        strong = self._epic(issues_dir, 1, "loop automation")
+        weak = self._epic(issues_dir, 2, "loop automation workflow tracker")
+
+        code = self._run(temp_project_dir, "--threshold", "0.4", "--apply", "--json")
+        out = json.loads(capsys.readouterr().out)
+
+        assert code == 0
+        assert len(out["proposals"]) == 2
+        assert [a["epic_id"] for a in out["applied"]] == ["EPIC-1"]
+        assert out["rejected"] == []
+        assert "- **FEAT-1** — loop automation (open)" in strong.read_text()
+        assert "FEAT-1" not in weak.read_text()
+        assert "parent: EPIC-1" in orphan.read_text()
+
+    def test_missing_children_heading_flagged_in_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        epics_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._setup(temp_project_dir, sample_config)
+        self._orphan(issues_dir, 1, "loop automation")
+        epic = _write_issue(
+            issues_dir,
+            "epics",
+            "P2-EPIC-1-e.md",
+            "---\nid: EPIC-1\ntitle: loop automation\nstatus: open\n---\n# EPIC-1: x\n",
+        )
+        before = epic.read_text()
+        self._run(temp_project_dir, "--threshold", "0.4", "--apply", "--json")
+        out = json.loads(capsys.readouterr().out)
+        assert out["applied"][0]["children_wired"] is False
+        assert epic.read_text() == before
+
+    def test_rejected_pair_does_not_stop_later_orphans(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        epics_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._setup(temp_project_dir, sample_config)
+        bad = self._orphan(issues_dir, 1, "loop automation")
+        good = self._orphan(issues_dir, 2, "loop automation")
+        epic = self._epic(issues_dir, 1, "loop automation")
+        epic.write_text(
+            epic.read_text().replace("## Children\n\n", "## Children\n- **FEAT-7** — a\nlazy\n")
+        )
+        # Make FEAT-1 hit a conflicting parent discovered under the lock.
+        real = __import__("little_loops.cli.issues.link_epics", fromlist=["x"]).apply_assignment
+
+        def racing(proposal, **kw):  # type: ignore[no-untyped-def]
+            if proposal.orphan_id == "FEAT-1":
+                bad.write_text(
+                    bad.read_text().replace("status: open", "status: open\nparent: EPIC-9")
+                )
+            return real(proposal, **kw)
+
+        with patch("little_loops.cli.issues.link_epics.apply_assignment", racing):
+            code = self._run(temp_project_dir, "--threshold", "0.4", "--apply", "--json")
+        out = json.loads(capsys.readouterr().out)
+
+        assert code == 1
+        reasons = {r["orphan_id"]: r["reason"] for r in out["rejected"]}
+        assert reasons["FEAT-1"] == "conflicting_parent"
+        # FEAT-2 hits the lazy-continuation EPIC section and is rejected too, but was still attempted.
+        assert reasons["FEAT-2"] == "ambiguous_children_section"
+        assert out["applied"] == []
+        assert "parent: EPIC-1" not in good.read_text()
+
+    def test_partial_write_orphan_not_reproposed_and_fixer_repairs(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        epics_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._setup(temp_project_dir, sample_config)
+        orphan = self._orphan(issues_dir, 1, "loop automation")
+        epic = self._epic(issues_dir, 1, "loop automation")
+        from little_loops.file_utils import atomic_write
+
+        def flaky(path: Path, content: str, *a: Any, **kw: Any) -> None:
+            if path.resolve() == epic.resolve():
+                raise OSError("disk full")
+            atomic_write(path, content, *a, **kw)
+
+        with patch("little_loops.file_utils.atomic_write", flaky):
+            code = self._run(temp_project_dir, "--threshold", "0.4", "--apply", "--json")
+        out = json.loads(capsys.readouterr().out)
+        assert code == 1 and out["rejected"][0]["reason"] == "write_failed"
+        assert "parent: EPIC-1" in orphan.read_text()
+
+        self._run(temp_project_dir, "--threshold", "0.4", "--json")
+        assert json.loads(capsys.readouterr().out)["proposals"] == []
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "epic-consistency", "EPIC-1", "--fix", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            main_issues()
+        capsys.readouterr()
+        assert "FEAT-1" in epic.read_text()
