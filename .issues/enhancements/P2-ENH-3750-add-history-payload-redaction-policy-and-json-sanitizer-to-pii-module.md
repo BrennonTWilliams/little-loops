@@ -3,8 +3,9 @@ id: ENH-3750
 title: Add history payload redaction policy and JSON sanitizer to the pii module
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-10-05'
+completed_at: '2026-10-06T02:25:10Z'
 parent: ENH-3743
 labels:
 - security
@@ -124,6 +125,10 @@ def sanitize_history_payload(
 
 Only decoded JSON objects/arrays and JSON scalar types are accepted under the dict root; reject unsupported objects/cycles/non-string keys and non-finite numeric values safely. Error messages/args/attributes contain only the fixed reason; suppress input-bearing exception chains with `raise ... from None`. Test `str`, `repr`, and formatted tracebacks, since the backfill worker prints exceptions.
 
+### Deviations
+
+- 2026-10-06: Signatures, result/error types and call path match. Additive public constants were also exported from `little_loops.pii` (`HISTORY_RULE_IDS`, `HISTORY_PLACEHOLDERS`, `HISTORY_CREDENTIAL_FIELD_ALIASES`, `HISTORY_ERROR_REASONS`, `HISTORY_REGISTERED_HOSTS`, `HISTORY_CLAUDE_SHAPED_HOSTS`) so docs and tests pin the finite tables. The history policy uses anchored variants of the scanner's JWT and email patterns (the existing email regex rescans quadratically on long local-part runs); `CREDENTIAL_RULES` itself is unchanged.
+
 ### Call Path
 
 The new sanitizer -> context/path classification -> recursive-content policy with bounded traversal -> fresh result. ENH-3751 will call it between `iter_events` and serialization; ENH-3752 will call it after decoding each stored column. The pure helpers import no database/backend/host runner and never print.
@@ -168,11 +173,11 @@ Default history policy has no opt-out or new config in this issue. No database s
 
 ## Acceptance Criteria
 
-- [ ] Every supported family has positive/near-miss coverage; complete/truncated/escaped/legacy PEM and decoded Unicode matches are removed without partial credential remnants.
-- [ ] Determinism, idempotence, zero second-pass counts, valid serialization, no mutation, collision rejection and structure preservation pass for generated and explicit cases.
-- [ ] Supplied host/event context protects verified replay fields without broad name-based exemptions; opaque exceptions are narrow and spoof-resistant; numeric/UUID/hash/base64 near misses survive.
-- [ ] Identity, key-collision, invalid-shape and resource failures expose only fixed codes, including formatted tracebacks; large input work is bounded and never silently bypasses redaction.
-- [ ] Existing scanner/SFT APIs, placeholders, version/hash and top-level exports are unchanged; policy/coverage/API docs and `python -m pytest scripts/tests/` pass.
+- [x] Every supported family has positive/near-miss coverage; complete/truncated/escaped/legacy PEM and decoded Unicode matches are removed without partial credential remnants.
+- [x] Determinism, idempotence, zero second-pass counts, valid serialization, no mutation, collision rejection and structure preservation pass for generated and explicit cases.
+- [x] Supplied host/event context protects verified replay fields without broad name-based exemptions; opaque exceptions are narrow and spoof-resistant; numeric/UUID/hash/base64 near misses survive.
+- [x] Identity, key-collision, invalid-shape and resource failures expose only fixed codes, including formatted tracebacks; large input work is bounded and never silently bypasses redaction.
+- [x] Existing scanner/SFT APIs, placeholders, version/hash and top-level exports are unchanged; policy/coverage/API docs and `python -m pytest scripts/tests/` pass.
 
 ## Scope Boundaries
 
@@ -194,10 +199,21 @@ Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Added
 - ENH-3751
 - ENH-3752
 
+## Resolution
+
+**Completed** 2026-10-06.
+
+- `scripts/little_loops/pii.py`: added `redact_history_text`, `sanitize_history_payload`, `HistoryRedactionResult`, `HistorySanitizationError`, `HISTORY_REDACTION_VERSION = 1`, the finite rule/placeholder/alias tables, and a root-anchored per-host protocol/opaque path registry (iterative traversal, depth/node budgets, fixed-point text redaction, linear-time patterns).
+- `scripts/tests/test_pii.py`: per-family positive/near-miss fixtures, per-host protected/opaque/spoof cases, safe-error canary assertions, multi-MB adversarial scaling, and Hypothesis properties.
+- `docs/reference/API.md`: documented API, policy, aliases, placeholders, context and error contract, coverage limits.
+- Verification: `ruff check scripts/`, `mypy scripts/little_loops/` clean; full suite 28642 passed. Unrelated pre-existing failures: `test_verify_evidence.py::TestRepoGate` (ENH-3700 evidence spans) and `test_libsql_integration.py::TestLive` (expired live-endpoint JWT).
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P2
+**Done** | Created: 2026-10-05 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-06T02:25:10 - `5db80f3c-73fe-46fb-9f6a-4895cd04bae7.jsonl`
+- `/ll:ready-issue` - 2026-10-06T02:07:10 - `18e6dcf7-52fd-4a37-bb84-e71544975088.jsonl`
 - `/ll:confidence-check` - 2026-10-06T01:46:33 - `2fc077e6-f247-45dc-97b8-6729a8243496.jsonl`
 - `/ll:issue-size-review` - 2026-10-06T00:26:44 - `09ea1492-1a86-4cce-bf60-5f1435b6dea3.jsonl`

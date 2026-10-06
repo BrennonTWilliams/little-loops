@@ -53,7 +53,7 @@ pip install little-loops
 | `little_loops.session_log` | Session log linking for issue files |
 | `little_loops.file_utils` | Shared file I/O utilities (atomic writes) |
 | `little_loops.text_utils` | Text extraction utilities for issue content |
-| `little_loops.pii` | PII detection and redaction utilities (`detect_pii`, `redact_pii`, `apply_pii_action`) |
+| `little_loops.pii` | PII detection and redaction utilities (`detect_pii`, `redact_pii`, `apply_pii_action`) and the session-history payload policy (`redact_history_text`, `sanitize_history_payload`) |
 | `little_loops.cli` | CLI entry points (package) |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
@@ -8472,6 +8472,97 @@ from little_loops.pii import scan_text
 
 scan_text("key: AKIA" + "A" * 16)  # -> [CredentialFinding(rule="aws_access_key", line=1, fingerprint=...)]
 ```
+
+### History payload redaction
+
+A separate, pure policy for decoded session-history JSON. It never changes the
+scanner/SFT functions above, their placeholders, `CREDENTIAL_SCANNER_VERSION`
+or `credential_rules_sha`, and is exported from `little_loops.pii` only (not
+from the top-level `little_loops` package).
+
+```python
+HISTORY_REDACTION_VERSION: int = 1  # bump on history semantics changes
+
+def redact_history_text(text: str) -> str
+def sanitize_history_payload(
+    payload: dict[str, Any], *, host: str | None = None, event_type: str | None = None
+) -> HistoryRedactionResult
+
+@dataclass(frozen=True)
+class HistoryRedactionResult:
+    payload: dict[str, Any]   # fresh copy; never aliases or mutates the input
+    counts: dict[str, int]    # per-rule replacement counts, nonzero only
+
+class HistorySanitizationError(ValueError):
+    reason: str               # one of HISTORY_ERROR_REASONS
+```
+
+`redact_history_text` accepts any string and is idempotent. `sanitize_history_payload`
+walks decoded JSON (dicts, lists, `str`/`int`/`float`/`bool`/`None`) and redacts
+strings **and mapping keys**; numbers, booleans and nulls are never changed and
+regex substitution never runs over serialized JSON, so credentials written as
+Unicode escapes are found after decoding. Output is deterministic, keeps
+insertion order and nonsecret key spelling, and a second pass returns an equal
+payload with empty `counts`.
+
+**Rules and replacements** (rule ID = `counts` key; enclosing matches win and a
+replaced span is not counted again as a nested match):
+
+| Rule ID | Replacement |
+|---------|-------------|
+| `private_key_pem` | Whole complete block (`PRIVATE KEY`, `RSA`/`EC`/`DSA`/`OPENSSH`/`PGP`/`ENCRYPTED` forms), or BEGIN-to-end of text if truncated, becomes `[PRIVATE_KEY_PEM]`. Also absorbs a legacy `[PRIVATE_KEY_PEM]` still followed by key material and/or an END line. A public-key or certificate header is not a private key. |
+| `bearer_credential` | `Bearer` scheme kept (any case); an 8+ character token68 credential becomes `[BEARER_CREDENTIAL]`. |
+| `uri_userinfo` | Userinfo and its `@` are removed from `scheme://user:pw@host…`; scheme, host (including IPv6), port, path, query and fragment are untouched. No placeholder is inserted into the authority. |
+| `credential_field` | The whole string value of an explicit credential name becomes `[CREDENTIAL_FIELD]` (quoted values keep their quotes). |
+| `aws_access_key`, `github_token`, `anthropic_key`, `slack_token`, `jwt`, `email`, `phone`, `ssn` | The existing `[TYPE]` placeholder. |
+
+**Credential names** (`HISTORY_CREDENTIAL_FIELD_ALIASES`, exact after ASCII
+lowercasing and removing `_`/`-`, so `apiKey` and `API-KEY` match): `api_key`,
+`api_token`, `access_token`, `refresh_token`, `auth_token`, `id_token`,
+`authorization`, `proxy_authorization`, `password`, `passwd`, `private_key`,
+`client_secret`, `secret_access_key`, `aws_secret_access_key`,
+`aws_access_key_id`. There are no substring or bare `key`/`id`/`token`/`secret`
+matches; `input_tokens`, `max_tokens`, UUIDs, hashes and base64-looking text are
+ordinary. In a payload, a nonempty string value of such a key — or every string
+leaf under a list/object value — is replaced regardless of entropy. In free text,
+quoted values end at the closing quote or the end of the line; unquoted values end
+at whitespace, a quote, `,`, `;`, `&`, `)`, `}` or a backslash (an
+`authorization` value may be `<scheme> <token>`).
+
+**Placeholders**: exactly the strings in `HISTORY_PLACEHOLDERS` are preserved with a
+zero count; a placeholder-like string with extra text is still scanned.
+
+**Context.** `host` and `event_type` are supplied by the caller (the session
+parser's host and event type); the policy never reads them from the payload.
+For a registered host (`HISTORY_REGISTERED_HOSTS`) and event type it protects a
+finite set of root-anchored protocol fields that usage replay reads — Claude-shaped
+records (`sessionId`, `uuid`, `parentUuid`, `type`, `timestamp`, `version`,
+`message.id`/`model`/`role`, and `message.content[*].id` / `tool_use_id` when the
+sibling `type` is `tool_use` / `tool_result`); native Codex payloads (`session_meta`
+`id`, `turn_context` `turn_id`/`model`, `event_msg` `type`/`turn_id`,
+`token_usage_record` `thread_id`/`turn_id`/`response_id`); and Kimi `type` /
+`timestamp`. Normalized Codex exec records (`assistant`/`user`) use the Claude-shaped
+set. A same-named field anywhere else (for example inside tool input) is scanned
+normally. Protected strings are still scanned: if the policy would change one, it
+raises `unsafe_identity` instead of keeping the secret or silently altering replay.
+Opaque base64 values — thinking `signature`, `redacted_thinking` `data`, base64 image
+`source.data`, Codex reasoning `encrypted_content` — are kept verbatim only at those
+verified paths and only when they have the expected base64 shape; adjacent plaintext
+is still scanned. Unknown or missing host/event type means no exemptions (generic
+JSON use is supported but carries no replay-preservation guarantee).
+
+**Errors.** `HistorySanitizationError.reason` is one of `invalid_payload`
+(non-dict root, unsupported object, non-string key, cycle, non-finite float),
+`key_collision` (a rewritten key equals another key — keys are never merged,
+dropped or suffixed), `unsafe_identity`, or `resource_limit` (nesting deeper than
+200, more than 10 million nodes, or a string that does not reach a fixed point).
+The message, `args`, `repr`, attributes and traceback contain only that code —
+never matched text, key spelling or a payload path.
+
+**Coverage limits.** Supported-match removal is not universal secret detection: no
+entropy detector, no inspection of encoded or encrypted content, and non-string
+credential values (numbers, booleans) are outside V1. Matching is linear in input
+size (no nested or backtracking-heavy patterns), so multi-megabyte strings are safe.
 
 ---
 
