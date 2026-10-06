@@ -12,13 +12,6 @@ labels:
 - privacy
 - history
 decision_needed: false
-verify_verdict: VALID
-confidence_score: 95
-outcome_confidence: 63
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 10
 size: Large
 ---
 
@@ -42,7 +35,7 @@ Verified on branch `main` on 2026-10-05:
 
 - New payload inserts are sanitized by default, once per event, before JSON serialization, packing, or adding bytes to an outbound remote batch. Both new columns get identical sanitized bytes. Pass the source's verified `host` and `event.type` to the sanitizer; Claude's separate path uses `host='claude-code'` and the original record's type.
 - Build relational metadata and producer qualification from the original verified event, retaining the exact session/source/line/ordinal/type/timestamp/usage-contract behavior. The policy must preserve required payload fields so replay from sanitized rows gives the same identities, counters, and qualification.
-- Certification and refresh compare canonical sanitized payloads with the same context on both sides. Keep structural attribution checks and `_preserves_fields` active. Include both stored columns in preservation/parity decisions; never overwrite a nonsecret field unique to `parsed_json` merely because `raw_line` matches the source.
+- Certification and refresh compare canonical sanitized payloads with the same context on both sides. Keep structural attribution checks and `_preserves_fields` active. Before canonicalizing payloads, keep relational host/type/session/usage qualification checks active. Include both stored columns in preservation/parity decisions; never overwrite a nonsecret field unique to `parsed_json` merely because `raw_line` matches the source.
 - An unchanged source is a no-op after canonicalization, including legacy plaintext vs redacted rows and historical differences caused solely by supported secret spans. This certifies semantic compatibility, not storage compliance. Existing plaintext rows are upgraded explicitly by ENH-3752's maintenance command; canonical equality alone must not claim they were scrubbed.
 - If a legitimate parser upgrade adds fields while retaining every canonical field in either stored column, refresh may replace both with the sanitized source payload. Divergence that would lose nonsecret data refuses replacement. Nonsecret value changes, missing keys, or changed list positions/lengths remain refusal conditions.
 - Policy extensions work when source/stored representations reach the same current fixed point and historical placeholders remain recognized. An incompatible policy change refuses safely rather than disabling field checks.
@@ -56,7 +49,7 @@ Persisting redacted rows without changing equality checks would break Codex firs
 
 Use the ENH-3750 result payload at the shared serialization site in `_backfill_raw_events` and at Claude's separate insert. Keep original event objects for metadata/qualification and source-byte proofs. Counts are not persisted as new metadata in this issue.
 
-Add a small internal canonicalization helper in `usage_refresh` taking decoded payload plus `host`/`event_type`; both source and stored signatures use it. For rows, context comes from relational host/event type, not ambient configuration or a user-controlled nested discriminator. Canonicalize both payload columns independently and apply `_preserves_fields` to each before any source delete. The unchanged test compares decoded canonical objects, not compressed bytes or incidental JSON whitespace/order. The post-insert check must still prove the new rows and both columns match the expected sanitized source representation.
+Add a small internal canonicalization helper in `usage_refresh` taking decoded payload plus `host`/`event_type`; both source and stored signatures use it. For rows, context comes from relational host/event type, not ambient configuration or a user-controlled nested discriminator. Canonicalize both payload columns independently and apply `_preserves_fields` to each before any source delete. The unchanged test compares decoded canonical objects, not compressed bytes or incidental JSON whitespace/order. The post-insert check must prove that both decoded columns equal the expected sanitized source object **before applying another sanitization pass to the inserted columns**. A canonical-only post-check could hide a missed insertion seam by turning newly inserted plaintext into the expected object in memory. Test both the semantic legacy pre-check and literal sanitized post-insert representation; only supported matched spans may differ from the original.
 
 Use the same policy/context in `_refresh_codex_usage_source` first-cursor certification; include stored column parity rather than certifying only `raw_line`. Leave line coverage, attribution, inode/device, offsets, raw-byte tail digests, and final file-change witnesses intact. Neither canonicalization nor maintenance changes what those witnesses prove.
 
@@ -197,7 +190,7 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
 1. Add insert/context/failure tests for the shared local/remote path and separate Claude insert.
 2. Wire sanitization before serialization/packing and ensure rollback/watermark boundaries remain safe.
-3. Add canonical source/stored comparisons, both-column preservation, and Codex certification tests, including legacy no-op and extension behavior.
+3. Add canonical source/stored comparisons, both-column preservation, and Codex certification tests, including legacy no-op and extension behavior. Source and each stored column use their verified context independently; relational context/identity mismatches still refuse. Keep a separate decoded post-insert equality check so canonicalization cannot conceal newly persisted plaintext.
 4. Verify replay/usage/tool-linkage parity, update contradictory comments/docs, run focused regressions and the full local suite.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -218,8 +211,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - [ ] Each of the three SQL sites uses the same context-aware policy; decompressed stored/outbound columns contain no planted supported match and new columns have identical bytes, with nested/array/escaped fixtures.
 - [ ] Replay identities, usage totals/qualification, tool linkage and dedup are stable; source byte digests/offset/inode/line/watermark contracts remain intact.
-- [ ] Canonical Codex certification and refresh accept sanitized/mixed legacy rows and compatible policy extensions; unchanged is no-write and explicitly does not scrub legacy plaintext.
-- [ ] Both stored columns participate in field preservation; true nonsecret field/value/list loss still refuses before writes; successful replacement/post-check uses the sanitized source in both columns.
+- [ ] Canonical Codex certification and refresh accept sanitized/mixed legacy rows and compatible policy extensions; sanitizer fixed-point/idempotence is covered for source and already-redacted rows. Unchanged is no-write and explicitly does not scrub legacy plaintext.
+- [ ] Both stored columns participate in field preservation; true nonsecret field/value/list loss and relational context/identity changes refuse before writes. Successful insertion/replacement checks both decoded columns against the sanitized source without re-sanitizing the inserted value to hide plaintext.
 - [ ] Local failures roll back and remote failures publish no success boundary; prior committed remote chunks are sanitized and retry deduplicates safely; errors/tracebacks contain no canary secret.
 - [ ] Relevant docs, focused regressions, rebuild-fingerprint gate, and `python -m pytest scripts/tests/` pass.
 
@@ -237,6 +230,8 @@ Raw payload inserts and certification/refresh comparisons only. No historical cl
 ## Review Notes
 
 Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Distinguished semantic certification from storage compliance, required preservation of both columns, and made local rollback/remote partial-commit behavior explicit. Fail-safe source rejection is retained deliberately; a placeholder payload would not preserve replay. ENH-3752 now waits for this compatibility wiring.
+
+Follow-up review on 2026-10-06 reaffirmed the distinction between semantic legacy compatibility and storage compliance. Added an uncanonicalized decoded post-insert assertion: canonicalizing new rows during verification could mask a missed sanitization seam. Preserve relational context/type/identity checks ahead of payload equivalence. Opus supported both-column canonical legacy comparison and idempotence coverage (consult confidence 0.72). Generic unknown-context sanitizer behavior remains the existing policy, with no claim of registered-protocol protection; ENH-3752 independently refuses unsupported maintenance pairs through its registry query. Cached scores/verdict were cleared for a fresh assessment of the reviewed plan. No implementation edits were made.
 
 ## Blocked By
 

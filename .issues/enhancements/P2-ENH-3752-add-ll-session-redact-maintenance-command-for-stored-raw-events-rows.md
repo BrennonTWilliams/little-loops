@@ -7,7 +7,6 @@ status: open
 discovered_date: '2026-10-05'
 parent: ENH-3743
 blocked_by:
-- ENH-3750
 - ENH-3751
 labels:
 - security
@@ -15,13 +14,6 @@ labels:
 - history
 decision_needed: false
 unproven_mechanism: true
-verify_verdict: VALID
-confidence_score: 75
-outcome_confidence: 74
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 25
 size: Very Large
 ---
 
@@ -48,7 +40,7 @@ Verified on branch `main` on 2026-10-05:
 - Capture `MAX(id)` once and keyset-scan `id > last_scanned_id AND id <= snapshot_max_id ORDER BY id` with a row limit. Process both columns independently, using the row's host/event type for the ENH-3750 context. Handle legacy TEXT, compressed BLOB, missing original files, compacted rows, and differing payload columns.
 - If neither decoded column changes, preserve both original values byte-for-byte; do not normalize JSON whitespace/order, recompress, or merge columns opportunistically. Preserve each column's TEXT/BLOB storage type when changing it. If either column is corrupt/undecodable/invalid/unsafe, leave the whole row unchanged, record a fixed reason, and continue the bounded scan with `complete=false`.
 - Update payload columns in place only. IDs, source/session attribution, host/basis, type/timestamp/positions, ordinal, usage contract, compaction/summary links, source cursors, and ingest/derive watermarks remain unchanged. No delete/reinsert, original-file ingestion, automatic rebuild, pruning or VACUUM.
-- Dry-run performs zero database/telemetry/progress/schema writes. It uses strict read-only target access and refuses missing/stale stores with migration guidance. `changed=0`; `would_change` and rule counts describe candidates that passed validation. Apply must also avoid silently creating a wrong target; migration is an explicit separate operation.
+- Dry-run performs zero logical database/telemetry/progress/schema writes; main DB and WAL bytes remain unchanged. SQLite lock/shared-memory (`-shm`) bookkeeping needed to read a live WAL is allowed and is not counted as a logical write. It uses strict read-only target access and refuses missing/stale stores with migration guidance. `changed=0`; `would_change` and rule counts describe candidates that passed validation. Apply must also avoid silently creating a wrong target; migration is an explicit separate operation.
 - Interrupted/backend-failed/conflicted runs remain incomplete with nonzero exit; previously committed batches remain safe. Every new invocation rescans with the current policy, so restarting needs no durable checkpoint/one-time sanitized marker.
 
 ## Motivation
@@ -59,31 +51,38 @@ New default-on writes do not remove existing plaintext. A logical scrub needs tr
 
 ### Bounded scan and guarded persistence
 
-Put the maintenance core in a new sibling module rather than growing `lifecycle.py` or editing replay helpers. Preflight the exact resolved target/schema, capture its snapshot, then decode/sanitize rows outside long-held write locks. Enforce both row-count and byte/decompressed-payload/depth bounds; oversized or invalid rows get a safe `resource_limit`/decode reason, not truncated content or an unbounded allocation.
+Put the maintenance core in a new sibling module rather than growing `lifecycle.py` or editing replay helpers. Preflight the exact resolved target/schema, capture its snapshot, then decode/sanitize rows outside long-held write locks. Enforce row-count and byte/decompressed-payload/depth bounds before payload materialization. A row-count LIMIT alone is insufficient: Hrana reads the full response and SQLite can fail while decoding malformed TEXT before a per-row handler runs.
 
-Use short SQLite transactions and the backend-neutral `conn.executemany` remote surface (selected Option A). Remote write subchunks are at most `min(batch_size, 200)` rows and have an explicit serialized-request byte budget including old guard values, new BLOB encodings and protocol overhead. A single row exceeding the supported budget is a reported failure; do not bypass the bound. Local read/work batches also have a byte bound, not only a row limit. No change to the shared decompression/rebuild functions is required: enforce checked decompression in the maintenance path and retain existing codec semantics.
+Decided client bounds (named constants with rationale comments, not new user settings): stored payload cap 1 MiB per column; decoded payload cap 4 MiB per column; at most 8 rows in a value-returning page, additionally limited by positive `batch_size`; at most 8 MiB of retained original/new candidate values; at most 8 MiB per serialized outbound write request, including protocol/SQL overhead. The read response bound is 32 MiB: 8 × 2 × 1 MiB × base64 expansion plus bounded metadata/envelope headroom. Validate the actual wire-size bound in the stub; do not infer TEXT wire size from UTF-8 length. `--batch` is a row ceiling, not permission to bypass internal byte/page bounds. Process one decoded row at a time and release decoded objects before retaining the next candidate. Validate prospective rewritten bytes against the same stored/decoded caps before scheduling a write, so successful output remains maintainable on a later run; output growth past a cap is a row `resource_limit` failure. Oversized rows are failures, never silently truncated.
 
-Guard each update against the exact fetched payload values AND the context used to sanitize them; bind original TEXT/BLOB types without reserialization:
+Use one keyset SELECT per value page with `typeof(column)`, `length(CAST(column AS BLOB))`, and a guarded value projection: `CASE WHEN length(CAST(column AS BLOB)) <= CAP THEN CAST(column AS BLOB) END`. Do this for both payload columns in the same statement; the value and length check share its snapshot. Return TEXT as BLOB bytes too, preserving the original SQL type tag for later writes. This avoids UTF-8 decode failure in SQLite's page fetch and bounds Hrana TEXT escaping by using base64 BLOB values. Bound host/event-type projections to 256 bytes each and validate/decode them without exposing arbitrary context text. A NULL value due to an over-cap column is `resource_limit`, not JSON null. Reject unsupported SQL storage classes as row problems. Advance keyset progress for rejected rows. These bounds cover client/wire allocations, not the DB engine's transient page/row reads; no engine-memory guarantee is made.
+
+For compressed BLOBs, use checked `decompressobj` output bounded to decoded-cap + 1 (the extra byte detects overflow). Require EOF and no unconsumed/unused data; truncated, trailing-garbage or concatenated streams refuse rather than silently normalize. TEXT and decompressed bytes require strict UTF-8, JSON object roots, unique object keys and finite JSON numbers. Catch decode/JSON/recursion errors with finite content-free reasons. The existing sanitizer depth/node limits remain active; do not claim they bound allocations before JSON decoding. No separate nesting scanner or shared codec rewrite is needed.
+
+Use short SQLite transactions and the backend-neutral `conn.executemany` remote surface (selected Option A). Remote write subchunks are at most `min(batch_size, 200)` rows and have an explicit serialized-request byte budget including old guard values, new TEXT/BLOB encodings, escaping/base64 expansion and protocol overhead; use a conservative measured upper bound and pin it against captured wire requests. A single row exceeding the supported budget is a reported failure; do not bypass the bound. Local read/work batches also have a byte bound, not only a row limit. No change to the shared decompression/rebuild functions is required: enforce checked decompression in the maintenance path and retain existing codec semantics.
+
+Guard each update against the fetched byte representation, original SQL storage type AND the context used to sanitize it. Bind guard payloads as BLOB bytes; bind replacement values as the original TEXT/BLOB type:
 
 ```sql
 UPDATE raw_events SET raw_line = ?, parsed_json = ?
-WHERE id = ? AND raw_line IS ? AND parsed_json IS ?
+WHERE id = ? AND typeof(raw_line) = ? AND CAST(raw_line AS BLOB) IS ?
+  AND typeof(parsed_json) = ? AND CAST(parsed_json AS BLOB) IS ?
   AND host IS ? AND event_type IS ?
 ```
 
 Each primary-key statement can affect at most one row; candidates contain unique IDs. `rowcount == candidate_count` proves the whole batch applied. Reject impossible counts (negative/greater than candidates) as a backend invariant failure. A short count is a known committed batch with guard misses, not a rollback; a transport failure may have an unknown commit outcome. Do not call `conn.client.batch` directly or assume `commit`/`rollback` undoes remote chunks.
 
-On a short acknowledgement or ambiguous remote outcome, re-read every candidate (including context) and classify:
+On a short acknowledgement or ambiguous remote outcome, re-read every candidate with the same bounded projections (including SQL storage types and context) and classify:
 
 | Current state | Action |
 |---|---|
-| Exact desired payload and unchanged context | `reconciled`; no own-write/per-rule attribution inferred |
-| Exact original payload and context | One bounded guarded per-row retry via `execute`; acknowledgement of 1 has exact attribution; another miss is re-read once |
-| Different payload/context | Conflict; leave it untouched and report incomplete |
+| Exact desired bytes, desired SQL types and unchanged context | `reconciled`; no own-write/per-rule attribution inferred |
+| Exact original bytes, SQL types and context | One bounded guarded per-row retry via `execute`; acknowledgement of 1 has exact attribution; another miss is re-read once |
+| Different bytes/type/context | Conflict; leave it untouched and report incomplete |
 | Missing row | Vanished/conflict; do not claim it was sanitized |
 | Read/retry outcome unavailable | Unconfirmed; stop safely with incomplete report |
 
-Never retry against newly observed arbitrary payloads or overwrite a source refresh. Do not retry forever. Under SQLite apply the same guard discipline; update and acknowledgement counts become durable only after local commit, and a rolled-back batch contributes zero committed changes.
+Never retry against newly observed arbitrary payloads or overwrite a source refresh. Do not retry forever. A second zero acknowledgement is incomplete even if a later read again shows the original: record a conflict and stop retrying that row. Concurrent ABA changes can explain this, so a later read is not proof that the guard implementation is broken. Impossible acknowledgement counts stop the run as backend invariant failures. Under SQLite apply the same guard discipline; update and acknowledgement counts become durable only after local commit, and a rolled-back batch contributes zero committed changes.
 
 ### Report and count semantics
 
@@ -97,9 +96,11 @@ Keep `last_scanned_id`, snapshot boundary and bounded reason-only row problems i
 
 ### CLI, context, and rollout
 
-Run the redact dispatch outside `cli_event_context` for both apply and dry-run, using parsed command selection so global `--db` before `redact` works. Do not refactor other command telemetry in this issue. Use strict read-only opens for preview; apply requires the existing/current schema and a writable backend connection to that same resolved target. Keep `redact` out of `_REMOTE_REFUSALS` and do not use `resolve_history_db` or `refuse_on_remote` on this path. Positive `--batch` is validated in the CLI and public API (reject bool/zero/negative values).
+Run the redact dispatch outside `cli_event_context` for both apply and dry-run, using parsed command selection so global `--db` before `redact` works. Do not refactor other command telemetry in this issue. Use strict read-only opens for preview; never use `immutable=1` to bypass WAL visibility or sidecar bookkeeping; apply requires the existing/current schema and a writable backend connection to that same resolved target. Keep `redact` out of `_REMOTE_REFUSALS` and do not use `resolve_history_db` or `refuse_on_remote` on this path. Positive `--batch` is validated in the CLI and public API (reject bool/zero/negative values).
 
-Pass known stored host/event type even when `host_basis` is null; do not promote attribution. For missing/unknown host context that cannot support replay-safe policy application, leave the row unchanged with `unsupported_context`. Never guess the ambient host or silently apply generic mode and claim replay safety.
+Pass known stored host/event type even when `host_basis` is null; do not promote attribution. Use a new public boolean context-support query in `little_loops.pii`, derived directly from the existing protocol-rule registry. Proposed API: `is_replay_safe_history_context(*, host: str | None, event_type: str | None) -> bool`. It returns true exactly when the registry supplies replay-protecting rules: string context for Claude-shaped/Kimi hosts, and registered native/normalized Codex types. Unknown Codex types, missing/non-string context and unregistered hosts are false, even if the host alone is registered. This issue owns the additive query; it changes neither sanitizer generic behavior, policy semantics/version nor the closed sanitizer-error vocabulary. Do not duplicate a Codex type list or call private registry functions from maintenance.
+
+Unsupported context leaves the whole row unchanged with `unsupported_context`, advances `scanned`, increments `failed`, and makes `complete=false`. Never guess the ambient host or apply generic mode while claiming replay safety. Known stored context is required even for an otherwise no-op row: an unsupported row is not certified scrubbed. Report this refusal visibly without echoing the unknown values.
 
 JSON mode emits exactly one report/error object on stdout, including incomplete runs; human guidance belongs on stderr. Failures expose row ID, payload-column name and finite reason codes only, not source/session IDs, arbitrary keys, raw backend exceptions or content-bearing tracebacks. Return 1 for incomplete/backend failures; interruption must not emit a successful complete report. Reports identify local path or remote provider/project without auth material.
 
@@ -165,7 +166,7 @@ def redact_raw_events(
 ) -> RawRedactionReport: ...
 ```
 
-`scanned` counts each fetched row once; `would_change` counts valid candidate rows rather than columns, in both modes; confirmed counters advance after commit/acknowledgement. Failure before a snapshot is obtained raises a safe `HistoryError` for the CLI's single structured error object. Expected per-row failures return the incomplete report, not a traceback.
+`scanned` counts each projected keyset row once, including over-cap/unsupported rows; `would_change` counts valid candidate rows rather than columns, in both modes; confirmed counters advance after commit/acknowledgement. Failure before a snapshot is obtained raises a safe `HistoryError` for the CLI's single structured error object. Expected per-row failures return the incomplete report, not a traceback. A backend failure after scanning begins returns the accrued incomplete report with a fixed reason; it must not discard confirmed prior-batch counts. `last_scanned_id` is the last actually observed row ID, not necessarily the snapshot maximum when concurrent deletions leave gaps. Completion means no eligible rows remain through the snapshot bound, with no recorded failures/conflicts/unconfirmed work.
 
 ### Call Path
 
@@ -176,7 +177,7 @@ def redact_raw_events(
 _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
 - **Sanitizer result carries no `changed` signal**: `HistoryRedactionResult` (`pii.py`) has only `payload` and `counts`. Every call returns a freshly built, equal-but-not-identical payload (pinned by `test_pii.py::test_returns_fresh_payload_without_mutating_or_aliasing_input`), so `counts == {}` is the only valid "unchanged" test. Comparing `json.dumps(result.payload)` to stored text is invalid — stored TEXT may differ in whitespace/key order, which would break the byte-for-byte no-op rule.
-- **Context-support rule inputs (for `unsupported_context`)**: `pii._protocol_rules` does not read `HISTORY_REGISTERED_HOSTS` (its only consumer is a `test_pii.py` parity assertion against `_PARSERS`); it switches on `HISTORY_CLAUDE_SHAPED_HOSTS` and the literals `"kimi-code"` / `"codex"`, and returns no exemptions when `host` or `event_type` is not a `str`. Claude-shaped hosts and `kimi-code` ignore `event_type`; only `codex` dispatches on it, and an unknown codex `event_type` gets no exemptions despite a registered host. A host-membership check alone therefore does not cover that case — the caller must decide how unknown codex event types are classified.
+- **Context-support rule inputs (for `unsupported_context`)**: `pii._protocol_rules` does not read `HISTORY_REGISTERED_HOSTS` (its only consumer is a `test_pii.py` parity assertion against `_PARSERS`); it switches on `HISTORY_CLAUDE_SHAPED_HOSTS` and the literals `"kimi-code"` / `"codex"`, and returns no exemptions when `host` or `event_type` is not a `str`. Claude-shaped hosts and `kimi-code` ignore `event_type`; only `codex` dispatches on it, and an unknown codex `event_type` gets no exemptions despite a registered host. A host-membership check alone therefore does not cover that case — the decided context-support query rejects unknown Codex types; no maintenance-local type list is introduced.
 - **Sanitizer limits and failure surface**: `_MAX_DEPTH=200`, `_MAX_NODES=10_000_000`, `_MAX_PASSES=8`; failures are exactly the four `HISTORY_ERROR_REASONS` (`invalid_payload`, `key_collision`, `unsafe_identity`, `resource_limit`), raised with a suppressed cause so the exception carries only the code. Only `type(payload) is dict` is accepted as a root (`int`, `dict` subclasses → `invalid_payload`). `RecursionError` maps to `resource_limit`. These codes are already a content-free vocabulary the row-problem `reason` field can reuse for sanitizer-originated failures.
 - **Decompression is unchecked everywhere**: `writers._unpack_payload` holds the only `zlib.decompress` call under `scripts/`; a repo-wide search finds no `decompressobj`/`max_length` precedent. A byte-bounded decompression path is net-new, and `zlib.error` / `UnicodeDecodeError` from the existing codec are unwrapped, so any new reason code for them is the maintenance path's own vocabulary.
 
@@ -184,6 +185,8 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
 ### Files to Add/Modify
 
+- `scripts/little_loops/pii.py` — additive registry-derived context-support query, no sanitizer semantics/version change.
+- `scripts/tests/test_pii.py` — registered/unknown pair query contract, including unknown Codex types.
 - `scripts/little_loops/session_store/raw_redaction.py` (new file) — maintenance/report core; avoids sharing `lifecycle.py` edits with ENH-3751.
 - `scripts/little_loops/session_store/__init__.py` — imports and `__all__` exports.
 - `scripts/little_loops/cli/session.py` — parser, dispatch before telemetry, imports, module subcommand list/epilog, safe single-document reporting.
@@ -275,16 +278,16 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 - **Strict preview seams**: `connect_readonly` (`session_store/backend.py`) never creates or migrates, but its local backend does **not** check the schema version (a missing file raises `HistoryUnavailable`; a stale file opens fine). Stale/missing detection must come from `schema._current_version(conn)` (0 when `meta` is absent), as `_main_migrate` and `doctor.py` probe it. Remote read-only (`LibsqlConnection(read_only=True)`) refuses non-read SQL client-side and tolerates behind/ahead stores.
 - **Strict apply seams**: local writable access through `schema.connect` / `open_history` ensures and migrates the schema — it would create or upgrade a target, contradicting the "no silently-created wrong target" requirement. `sqlite_file_uri(path, mode="rw")` (non-creating) exists but is currently used only in `test_sqlite_uri.py`. Remote `LibsqlBackend.connect` does not migrate; a write-intent access check raises `HistoryUnsupported(operation="write")` for behind/ahead/unstamped stores, with `ll-session migrate` guidance already in the message.
 - **Target typing**: `resolve_history_target` returns `LocalTarget`/`RemoteTarget`; an explicit non-default path is always local, and a default-shaped path with `LL_HISTORY_DB` unset and a backend config returns remote. `_resolve_once` honors an already-absolute `Path` verbatim (BUG-3181). `HistoryTarget` is importable from `session_store/backend.py` / `targets.py` but is **not** re-exported by `session_store/__init__.py`, which matters for the `db: Path | str | HistoryTarget` signature.
-- **Sanitizer is present, ingest wiring is not**: ENH-3750's API landed in `little_loops/pii.py` (`sanitize_history_payload(payload: dict, *, host, event_type) -> HistoryRedactionResult`, `HISTORY_REDACTION_VERSION`, `HISTORY_ERROR_REASONS`, `HistorySanitizationError.reason`); a tree-wide search finds no non-test caller, so ENH-3751's ingest wiring is absent. It takes a decoded `dict` (non-dict roots raise `invalid_payload`), its `counts` are per-span keyed by rule ID (not per column), and it does **not** raise on an unregistered host/event type — it silently applies no protocol exemptions. The `unsupported_context` refusal in this issue therefore cannot come from the sanitizer; the caller must test `host` against `HISTORY_REGISTERED_HOSTS` itself.
+- **Sanitizer is present, ingest wiring is not**: ENH-3750's API landed in `little_loops/pii.py` (`sanitize_history_payload(payload: dict, *, host, event_type) -> HistoryRedactionResult`, `HISTORY_REDACTION_VERSION`, `HISTORY_ERROR_REASONS`, `HistorySanitizationError.reason`); a tree-wide search finds no non-test caller, so ENH-3751's ingest wiring is absent. It takes a decoded `dict` (non-dict roots raise `invalid_payload`), its `counts` are per-span keyed by rule ID (not per column), and it does **not** raise on an unregistered host/event type — it silently applies no protocol exemptions. The `unsupported_context` refusal in this issue therefore cannot come from the sanitizer; the caller needs the registry-derived support query specified above; a host-membership check alone is insufficient for Codex.
 - **Codec facts**: `writers._pack_payload` is a bare zlib stream (no marker/header); `_unpack_payload(bytes)` is an unchecked `zlib.decompress(...).decode("utf-8")` with no size/depth bound and unwrapped `zlib.error`/`UnicodeDecodeError`. `raw_line`/`parsed_json` are declared `TEXT NOT NULL` but hold TEXT or BLOB by SQLite dynamic typing; for per-line hosts `raw_line` is re-serialized JSON, so both columns must tolerate non-object/non-JSON content as a row problem rather than an exception. `host`, `event_type` are `NOT NULL` in the schema, so the "missing/unknown host" case is an unregistered value, not NULL.
 - **Remote batch facts**: `LibsqlConnection.executemany` → `HranaClient.execute_many` runs begin / conditional steps / commit in one request and returns only the summed `affected_row_count` (per-step counts are not exposed); a failing step raises and rolls back the whole batch. `commit`/`rollback` are no-ops. `hrana.py` has no request-size limit or byte budget anywhere (`json.dumps` of the full body; BLOBs base64-encoded; integers as strings); `lifecycle._REMOTE_INSERT_CHUNK = 200` is the only chunk constant. Deadline checks run in `_guard` and `_post`.
 - **Test-fixture facts**: `HranaStub.stall_body` sleeps after execution (the write is already committed before the reply), and `stub.db` is directly writable for interleaving; no existing test combines `stall_body` with a guarded UPDATE, and the one stall test is `@pytest.mark.no_parallel`. `test_remote_callers_bug3652.py::TestResolveHistoryDbCallerGate` allowlists `("cli/session.py", "main_session")` on the premise that it refuses via `refuse_on_remote` before resolving — adding a `resolve_history_db` call on the redact path would invalidate that reasoning. `_REMOTE_REFUSALS` lives in `session_store/backend.py` (not `cli/session.py`) and has no `redact` key; `test_remote_operation_matrix.py::_REJECTED` is where `recompress` is pinned as rejected.
-- **No precedent for the core mechanism**: no existing guarded `UPDATE raw_events` exists (`recompress_raw_events` updates by `id` alone), and there is no keyset scan over `raw_events` (`lifecycle._derive_usage_incremental_conn` reads `MAX(id)` then `id > checkpoint` with no upper bound or limit, persisting the checkpoint in `meta`). No site binds a BLOB parameter into an `IS ?` guard over the Hrana path.
+- **No precedent for the core mechanism**: no existing guarded `UPDATE raw_events` exists (`recompress_raw_events` updates by `id` alone), and there is no keyset scan over `raw_events` (`lifecycle._derive_usage_incremental_conn` reads `MAX(id)` then `id > checkpoint` with no upper bound or limit, persisting the checkpoint in `meta`). No site binds a BLOB parameter into an `IS ?` guard over the Hrana path; the new guard additionally checks the original SQL type.
   ⚠ Unproven mechanism — typed BLOB `IS ?` guards over Hrana unexercised
 
 _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
-- **`raw_events` shape**: 14 columns after all migrations — `id`, `ts`, `session_id` (nullable), `host`, `source_path`, `line_no`, `event_type`, `raw_line`, `parsed_json`, `compacted`, `summary_node_id`, `host_basis`, `ordinal`, `usage_contract` (`schema.py`; current `SCHEMA_VERSION = 59`). Indexes: unique `(source_path, line_no)`, `(session_id, ts)`, `(host, ts)`; no triggers. An `id`-ordered keyset scan rides the rowid primary key, so no secondary index participates.
+- **`raw_events` shape**: 14 columns after all migrations — `id`, `ts`, `session_id` (nullable), `host`, `source_path`, `line_no`, `event_type`, `raw_line`, `parsed_json`, `compacted`, `summary_node_id`, `host_basis`, `ordinal`, `usage_contract` (`schema.py`; current `SCHEMA_VERSION = 60`). Indexes: unique `(source_path, line_no)`, `(session_id, ts)`, `(host, ts)`; no triggers. An `id`-ordered keyset scan rides the rowid primary key, so no secondary index participates.
 - **Column-divergence reality**: current writers (`lifecycle._backfill_raw_events`, both local and `_REMOTE_RAW_INSERT`, plus the Claude-live incremental insert) bind the identical packed value to `raw_line` and `parsed_json`, for every host. Columns can differ only in legacy rows (pre-ENH-3422 per-line hosts stored `raw_line` as the verbatim source line) and after `recompress_raw_events`, which packs each column independently — so a row can legitimately hold one TEXT and one BLOB column. Independent per-column handling is a hard requirement, not a theoretical one.
 - **Reader asymmetry**: replay and certification read only `raw_line` (`_usage_raw_cursor`, the rebuild raw-events cursor, the Codex first-cursor SELECT, `usage_refresh._stored_signatures`); `parsed_json` is read only by `usage_refresh.refresh_raw_events`' unchanged-source comparison. Redacting `parsed_json` differently from `raw_line` therefore affects refresh status but not replay input.
 - **Row deletion/re-keying paths (what "vanished" can mean)**: local `refresh_raw_events` deletes by `source_path` and re-inserts, producing new AUTOINCREMENT ids above any captured snapshot; local `prune` deletes compacted rows. Both are refused on remote (`refuse_on_remote` / `_REMOTE_REFUSALS`), and the only remote `raw_events` writes found are `INSERT OR IGNORE` statements. Consequence: on remote, a guard miss comes from another redactor or an out-of-band writer, never from a refresh delete; locally, vanished candidates are reachable.
@@ -296,8 +299,8 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add local/remote report/guard/count tests, including strict preview and concurrency/timeout attribution cases.
-2. Implement bounded independent column decoding and keyset scanning with safe per-row problems.
+1. First prove typed BLOB guards through the public backend and `HranaStub`: mixed original TEXT/BLOB, equal bytes with different SQL types, exact/missing guards, short summed counts, committed-but-lost acknowledgement, and bounded reconciliation. Assert BLOB/base64 guard wire encoding as well as stored outcomes. Keep `unproven_mechanism: true` until this evidence exists; a passing stub establishes client/protocol behavior, not provider deployment behavior. Then add the report/strict-preview/concurrency tests.
+2. Implement the single-statement bounded BLOB projections, SQL-type-preserving independent decoding, strict JSON/codec checks and keyset progress with safe per-row problems. Add the registry-derived public context query and its tests in `pii.py`/`test_pii.py`.
 3. Implement short local transactions and Option A remote batches with exact-value/context guards, bounded reconciliation/retry and truthful counters.
 4. Add package exports and no-telemetry CLI dispatch with safe JSON/error/exit behavior.
 5. Document the logical guarantee, counts/uncertainty and rollout order; run focused backend/CLI/parity gates and `python -m pytest scripts/tests/`.
@@ -332,14 +335,22 @@ _Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
 
 - [ ] Both TEXT/BLOB columns are scrubbed independently with original types/unchanged bytes preserved; rerun makes zero writes; metadata/links/cursors/watermarks are identical and no original files are required.
 - [ ] Preview performs no payload/schema/progress/telemetry writes or target creation, resolves the actual requested/configured store, and rejects invalid batch sizes safely.
-- [ ] Guards bind exact original values/types and context; concurrent changes/deletions, short counts, impossible counts, ambiguous commits and bounded retries never overwrite another writer or fabricate per-rule attribution.
+- [ ] Guards bind exact original bytes/SQL types and context; concurrent changes/deletions, short counts, impossible counts, ambiguous commits and bounded retries never overwrite another writer or fabricate per-rule attribution.
 - [ ] Reports separate confirmed/lower-bound writes, unattributed changes, reconciled state and exact count availability; row failures/unconfirmed work make the scan incomplete/nonzero with content-free diagnostics and bounded memory/work/requests.
 - [ ] Snapshot/keyset/interruption behavior is rerunnable and truthfully bounded; help/docs/JSON state the observation boundary, raw-only exclusions and ENH-3751-before-maintenance rollout.
 - [ ] Post-scrub refresh/certification/replay remains compatible; package/doc/remote operation gates and `python -m pytest scripts/tests/` pass.
 
+### Required Boundary Cases
+
+- Exactly-at-cap and cap+1 stored/decoded values, decompression bombs, truncated/trailing/concatenated streams, invalid UTF-8 stored as TEXT/BLOB, duplicate JSON keys, non-object/non-finite JSON and excessive nesting; rejected whole rows remain byte/type stable and progress advances.
+- Captured local/remote queries never return an over-cap payload. Captured read/write requests establish the declared byte ceilings, including new TEXT escaping and guard base64 overhead; a large `--batch` does not bypass them. Concurrent growth between reads cannot bypass the in-statement projection.
+- No-op and failed columns preserve independent bytes/types. Equal TEXT/BLOB bytes with a changed SQL type fail the guard. Supported Claude/Kimi and known Codex pairs work; unknown Codex/host rows refuse without exposing context.
+- Preview preserves main DB/WAL bytes and emits no logical DB, schema, telemetry or progress mutation. Explicitly allow only SQLite shared-memory/lock bookkeeping needed for a consistent live-WAL read; no immutable-WAL shortcut or target creation.
+- Failed post-snapshot runs preserve accrued confirmed counts and return one incomplete JSON report; second guard misses never loop. No global cleanliness or exact attribution is inferred from reconciliation.
+
 ## Scope Boundaries
 
-Logical raw-column cleanup only. No physical secure erase, derived/FTS/live cleanup, source rewrite/re-ingestion, automatic rebuild/VACUUM, whole-table snapshot isolation, durable resume token, schema migration, backend wrapper redesign, exact per-rule attribution from summed partial counts, or guarantee covering later concurrent writes.
+Logical raw-column cleanup only. No physical secure erase, engine-memory bound, derived/FTS/live cleanup, source rewrite/re-ingestion, automatic rebuild/VACUUM, whole-table snapshot isolation, durable resume token, schema migration, backend wrapper redesign, exact per-rule attribution from summed partial counts, or guarantee covering later concurrent writes.
 
 ## Impact
 
@@ -351,6 +362,8 @@ Logical raw-column cleanup only. No physical secure erase, derived/FTS/live clea
 ## Review Notes
 
 Reviewed on `main`, 2026-10-05, with `/ll:advise` using `claude-opus-5-5`. Added the ENH-3751 blocker, strict no-write preview, typed/context guards, explicit bounded reconciliation, and truthful lower-bound counters. Retained Option A on the guarded backend surface rather than expanding Hrana wrappers or attributing writes from later observations. No automated derived cleanup is implied.
+
+Follow-up review on 2026-10-06 (Opus confidence 0.72) settled registry-derived unknown-context refusal, in-statement BLOB projections, SQL-type guards, fixed byte limits, strict corrupt-row handling, and live-WAL preview bookkeeping. Removed the completed sanitizer dependency; ingest compatibility remains a hard blocker. Retained the existing summed-rowcount backend API and conservative attribution rather than expanding per-statement results. A second miss is a bounded conflict, not proof of a broken guard, because concurrent ABA changes are possible. Cached scores/verdict were cleared; proof and fresh assessment remain implementation prerequisites. No implementation edits were made.
 
 ## Blocked By
 
@@ -370,7 +383,7 @@ _Added by `/ll:confidence-check` on 2026-10-06_
 ### Concerns
 - Spec is otherwise implementation-ready: cited seams (`recompress_raw_events`, `resolve_history_target`, `connect_readonly`, `sqlite_file_uri(mode="rw")`, `cli_event_context`, `sanitize_history_payload`, `hrana_stub.py`) exist; `raw_redaction.py` and `test_raw_redaction.py` are intentionally new. Program Design gate, parity, claim and structure checks are clean.
 
-- Body `## Blocked By` section lists only ENH-3751 while frontmatter `blocked_by` lists ENH-3750 and ENH-3751 (`check-design` warns; frontmatter wins) — drop or update the stale body section.
+- Dependency metadata was corrected during review: only ENH-3751 remains unresolved; ENH-3750 is completed. The prior readiness assessment is historical and needs re-running after this revised plan.
 
 ### Gaps to Address
 - Unresolved `blocked_by`: ENH-3751 (open); ENH-3750 is done. `sanitize_history_payload` has no non-test caller yet, so ingest wiring is absent. Shipping order is ENH-3750 → ENH-3751 → ENH-3752; the CLI is unsafe to roll out before ENH-3751's compatibility wiring (Codex first-cursor certification compares plaintext source against stored payloads).

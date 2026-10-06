@@ -93,7 +93,7 @@ The threshold change did not update every consumer. The static flag rules and a 
 
 - `scripts/little_loops/config/automation.py` and `scripts/little_loops/config-schema.json` already default to 65; reuse them without changing the gate.
 - `scripts/little_loops/config/core.py` already merges local overrides; this fix consumes that result.
-- ENH-3742 also edits the skill/rubric and `set_flags.py`. Coordinate shared-file changes; neither fix requires the other to land first.
+- ENH-3742 also edits the skill/rubric and `set_flags.py`. Prefer this small threshold fix before ENH-3742, then rebase its shared-file work. Keep this skill edit line-neutral so it fits the current 499/500-line limit; no semantic hard dependency or cycle is needed.
 
 ### Tests and Documentation
 
@@ -115,7 +115,7 @@ The existing flag/skill suites and mirror/docs-audience gates remain required. T
 
 ## Review Notes
 
-Reviewed on 2026-10-06. Temporary-project probes reproduced 65 versus 75 with an omitted key and 75 versus 65 with a local override. The pre-change rn-remediate, confidence-check and set-flags suites passed together (287 tests); their current coverage does not catch these cases. An Opus `/ll:advise` consult supported including the runtime resolver and canonical default (confidence 0.75). P2 is retained because omitted keys/local overrides are affected rather than all configured projects, although incorrect flags can feed DECIDE/WIRE routing. Coordinate shared-file edits with ENH-3742; the fixes have no hard dependency. No implementation changes were made during this review.
+Reviewed on 2026-10-06. Temporary-project probes reproduced 65 versus 75 with an omitted key and 75 versus 65 with a local override. The pre-change rn-remediate, confidence-check and set-flags suites passed together (287 tests); their current coverage does not catch these cases. An Opus `/ll:advise` consult supported including the runtime resolver and canonical default (confidence 0.75). P2 is retained because omitted keys/local overrides are affected rather than all configured projects, although incorrect flags can feed DECIDE/WIRE routing. Coordinate shared-file edits with ENH-3742; the fixes have no hard dependency. Follow-up review on 2026-10-06 reconfirmed both cases in fresh temporary projects (65/75 for an omitted key, 75/65 for a local override). The merged telemetry work does not affect this bug. Prefer landing this small fix before ENH-3742 and rebase shared skill/rubric/flag edits; its skill changes must remain line-neutral. The broader 338-test baseline passed with one optional skip. No implementation changes were made during this review.
 
 ## Status
 

@@ -1,213 +1,123 @@
 ---
 id: BUG-3753
 type: BUG
-title: verify-issues --from-evidence re-introduces the stale claim it corrects via
-  a verbatim Verification Notes quote
+title: Historical verification notes re-trigger blocking stale-file findings
 priority: P3
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-06'
 captured_at: '2026-10-06T01:01:37Z'
-verify_verdict: VALID
-confidence_score: 90
-outcome_confidence: 79
-score_complexity: 18
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
 ---
 
-# BUG-3753: verify-issues --from-evidence re-introduces the stale claim it corrects via a verbatim Verification Notes quote
+# BUG-3753: Historical verification notes re-trigger blocking stale-file findings
 
 ## Summary
 
-`/ll:verify-issues --from-evidence` (the `correct_claims` state of `refine-to-ready-issue`) repairs a stale claim in place, then writes a `## Verification Notes` entry that quotes the stale token verbatim. `ll-issues format-check` scans that note, so the follow-up `--check` flags the same finding again. The one-attempt claim-correction budget is already spent, so the loop routes to `record_gate_unmet` and fails.
+A `verify-issues --from-evidence` correction can remove a stale current claim and quote it in `## Verification Notes`. The whole-file blocking file-reference scan then flags that historical token again, spending the loop's one correction attempt. A paraphrase/post-write-check instruction already landed; the remaining work is a narrow deterministic scan boundary plus regression coverage.
 
 ## Current Behavior
 
-Observed in run `refine-to-ready-issue-20261005T180418` on ENH-3742 (23 iterations, failed):
+The ENH-3742 run `refine-to-ready-issue-20261005T180418` failed after correcting a slash-joined file shorthand and quoting it in Verification Notes. The subsequent check found the quote, exhausted the claim-correction budget and recorded `gate_unmet`.
 
-1. First `--check` returned `CLAIMS_OUTDATED`: a slash-joined shorthand for several file names in a Tests bullet was read as a nonexistent path (`stale_file_ref`).
-2. `correct_claims` rewrote the bullet correctly, then wrote a Verification Notes entry that quoted the original slash-joined token verbatim.
-3. The second `--check` flagged that note as the same `stale_file_ref`; its `verify_evidence` named the Verification Notes quote.
-4. `check_claim_correction_budget` (counter `lt 2`, one attempt per run) was exhausted, so the run ended `failed` with `gate_unmet`.
+`commands/verify-issues.md` already contains the paraphrase and post-write `format-check` rule from `310db44bb`; tracked host mirrors carry it. The affected issue was manually corrected. However, `scripts/little_loops/issue_parser.py`, `check_format_gaps`, still calls `classify_issue_refs(content, ref_index)` on the entire file. `normalize_structure` consumes directive gaps, so it does not repair this stale-file finding.
 
 ## Expected Behavior
 
-A correction pass never leaves behind a note that re-triggers the finding it fixed: notes paraphrase stale citations, and the pass confirms `ll-issues format-check <ID>` is clean of findings it introduced before finishing.
+Only references in exact historical `## Verification Notes` sections are omitted from the legacy blocking `stale_file_ref` scan. The same stale path anywhere outside those sections still blocks. The command keeps its paraphrase/post-write verification rule. No new loop state, correction attempt, advisory class or output schema is added.
 
 ## Steps to Reproduce
 
-1. Take an issue whose Tests bullet uses a slash-joined shorthand for several file names (ENH-3742 at the time of the run).
-2. Run `ll-loop run refine-to-ready-issue` on it; the first `--check` returns `CLAIMS_OUTDATED` (`stale_file_ref`).
-3. `correct_claims` runs `/ll:verify-issues --from-evidence`, rewrites the bullet, and writes a `## Verification Notes` entry quoting the original token.
-4. The second `--check` flags that note with the same `stale_file_ref`; `check_claim_correction_budget` is exhausted and the loop ends `failed` / `gate_unmet`.
+1. Freeze the original ENH-3742 correction-note case from git history, excluding unrelated transient verdict evidence.
+2. Run `check_format_gaps`/`format-check` against it and observe a blocking stale path appearing only in Verification Notes.
+3. Move or duplicate the same path into Current Behavior: it must remain blocking after this fix.
 
-## Motivation
+## Root Cause
 
-A single self-inflicted finding is terminal for the whole `refine-to-ready-issue` run: the claim-correction budget allows one attempt, so a 23-iteration run is lost to a note the correction pass itself wrote. The failure depends on model compliance with an unwritten rule, which is the kind of defect that recurs silently across every consuming project that runs the loop.
+The legacy reference aggregation has no historical-section boundary. A note quoting a repaired token therefore behaves as a current claim. The scan also prefers planned-new mentions anywhere in the document, so historical declarations can affect current classification.
 
 ## Proposed Solution
 
-**Decision (pre-implementation review, `/ll:advise`, 2026-10-06): scope the `format-check` scan — design 2.** The blocking `stale_file_ref` scan in `check_format_gaps` excludes the exact `## Verification Notes` H2, because that section is a historical record of what was wrong, not a current-state claim. This makes the failure impossible regardless of model compliance. The prose rule is kept as a secondary defense.
+Inside `check_format_gaps`, compute fence-aware spans for every exact ATX H2 `Verification Notes` section. Use a copy with those spans masked by equal-length whitespace/newlines for the legacy stale-reference classification; do not change shared `classify_issue_refs` or `extract_file_paths`.
 
-Already landed in `310db44bb` (committed):
+Apply these decided rules:
 
-- `commands/verify-issues.md`: paragraph "Verification Notes must not re-introduce the finding" before §4.1 (paraphrase, never quote; post-write `format-check`, reword and re-run until clean, also under `--from-evidence`), plus a clarifying comment at the `FROM_EVIDENCE` flag parse.
-- Host mirrors regenerated with `ll-adapt`.
-- ENH-3742's offending note reworded by hand and its stale verdict cleared.
+- Accept the exact heading with trailing whitespace; H3, suffixed/variant titles, and fenced heading text do not start an exemption.
+- A section ends at the next real H1 or H2, or EOF. H3/H4 subsections stay inside the historical section. Cover every occurrence, not only the latest one.
+- Preserve source offsets and line breaks. Quoted headings in a closed fence neither start nor end a span. If an unterminated fence makes a candidate exemption's boundary uncertain, retain that candidate's original text for the blocking scan; do not swallow the remaining document.
+- Remove historical mentions before aggregating/classifying references. A stale path also mentioned elsewhere still blocks. A planned-new declaration appearing only in the historical span cannot exempt an unmarked active mention.
+- Omit historical-only stale references rather than invent an advisory report. Keep the existing whole-file `ambiguous_file_ref` scan and the other structural/citation/symbol/line/CLI checks intact. This issue fixes the demonstrated stale-file feedback loop, not every possible historical claim type.
 
-To implement:
-
-- In `check_format_gaps` (`issue_parser.py`, the `classify_issue_refs(content, ref_index)` call), drop references that occur only under an exact `## Verification Notes` H2 (not H3, not variant wording) from the blocking `stale_file_ref` scan. Keep the filter inside `check_format_gaps`, not in the shared `classify_issue_refs`/`extract_file_paths`. Consider reporting such refs as advisory rather than discarding them.
-- Contract: a stale path under `## Verification Notes` yields no blocking finding; the same path under `## Current Behavior` still blocks.
-- Keep a text-pin test on the command text as a secondary check only.
-
-Rejected: a new loop state after `correct_claims` (design 1). It still depends on the LLM rewording the note, and adds a state, a budget, four `max_steps == 113` pin updates and doc churn.
-
-Dissent recorded: excluding a section from a blocking check is a policy change every `format-check` consumer inherits (`rn-remediate` `ensure_formatted`, CLI users); a loop-local guard has a smaller blast radius. The broader alternative is making the blocking scan section-aware overall, as `citations.py` already is (it treats Tests-section refs as advisory while the legacy whole-file scan blocks on them).
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
-
-- Status correction: the command-text rule is no longer uncommitted — it landed in `310db44bb` (`docs(verify-issues): clarify verification notes must not re-introduce findings`), and the paragraph is present at `commands/verify-issues.md:567` and in the gemini/qwen/kimi-code mirrors. The remaining open work is the regression test (AC 2) and the optional deterministic guard; AC 1/3 depend on the guard decision.
-- Constraint on the guard choice: the rule currently depends on model compliance, and `normalize_structure` cannot catch a regression because it reads only `directive_gaps` from `format-check --format json`, not `stale_file_ref`. Whichever route is taken (a post-`correct_claims` probe state, or narrowing `check_format_gaps`), it must let a genuinely stale citation outside `## Verification Notes` still block, and the claim-correction budget (one attempt per run) must not be spent by a note the pass itself wrote.
-
-## Integration Map
-
-### Files to Modify
-- `commands/verify-issues.md` - paraphrase-not-quote rule and post-write `format-check` (already applied, commit 310db44bb)
-- `scripts/little_loops/issue_parser.py` - `check_format_gaps` exact-H2 exemption (chosen design; supersedes the optional loop state below)
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` - NOT modified under the chosen design (loop-state guard rejected); retained in wiring notes below for reference
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — if the loop-guard option is taken: `correct_claims` (`next: normalize_structure`, `on_error: normalize_structure`) is the only edge to re-route, and the new state's own `on_yes`/`on_no`/`on_error` must route to `normalize_structure` or `clear_verify_verdict`; also update the header routing comment (`VERIFY:CLAIMS_OUTDATED` bullet) and the `max_steps` history comment [Agent 2 finding]
-- `scripts/little_loops/issue_parser.py` — if the scan-scoping option is taken: add the section filter inside `check_format_gaps` at the `classify_issue_refs(content, ref_index)` call (`:1297`, whole-file legacy `stale_file_ref` scan), not inside the shared `classify_issue_refs`/`extract_file_paths` in `text_utils.py`; `## Verification Notes` appears nowhere under `scripts/little_loops/` today, so there is no existing carve-out to adjust [Agent 1, 2, 3 findings]
-- `.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md` — host mirrors already carry the paragraph from `310db44bb`; re-run `ll-adapt --host <gemini|kimi-code|qwen|codex> --apply` after any further `commands/verify-issues.md` edit (codex bridge `skills/ll-verify-issues/SKILL.md` only changes if the description does) [Agent 1, 2 findings]
-
-### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` - `correct_claims` and `check_claim_correction_budget` states invoke the command
-- `scripts/little_loops/issue_parser.py` - `check_format_gaps` scans `## Verification Notes` for citation tokens
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/issue_parser.py` — correction to the line above: the blocking `stale_file_ref` comes from the whole-file `classify_issue_refs` scan in `check_format_gaps` (`:1297`), not a Verification Notes–specific scan; `citations.py:_regions` (`_CURRENT_STATE_H2`, `_ADVISORY_H2`) does not cover that section [Agent 1, 2 findings]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `normalize_structure` (runs after `correct_claims`) already calls `ll-issues format-check <ID> --format json` but reads only `directive_gaps`, so it is blind to `stale_file_ref`; a guard state needs its own probe on `stale_file_ref` [Agent 2 finding]
-- `scripts/little_loops/loops/rn-remediate.yaml` — `ensure_formatted` runs `ll-issues format-check` with `evaluate: exit_code`; blocking `stale_file_ref` already routes to `format_issue` there, and a scan-scope change alters its behavior [Agent 2 finding]
-- `scripts/little_loops/cli/issues/format_check.py` — `format-check` CLI (`stale_file_ref` rendering, `examined_refs` collector, exit code `1 if gaps.has_blocking_gaps`); consumer of any `check_format_gaps` scoping change [Agent 1, 2 findings]
-- `commands/verify-issues.md` — check B8 (`8. **Citation findings via format-check`) consumes the same `format-check` output and is skipped under `--from-evidence` [Agent 2 finding]
-
-### Similar Patterns
-- `scripts/tests/test_bug3708_verify_issues_b8.py` - contract tests asserting verify-issues command structure (model for the regression test)
-
-### Tests
-- `scripts/tests/test_bug3708_verify_issues_b8.py` - extend or add a sibling asserting the paraphrase and post-write-check rule
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — closest existing home for the new contract test: `TestClaimsOutdatedVerdict` (`:128`, e.g. `test_section_4_has_in_place_correction_rule` `:180`) already slices `### 4. Update Issue Files` → `### 4.1`; slice from `**Verification Notes must not re-introduce the finding.**` (`commands/verify-issues.md:567`) to `### 4.1`, assert on whitespace-flattened text ("paraphrase", "ll-issues format-check", "--from-evidence"). Alternatively a new `test_bug3753_*.py` using `VERIFY_CMD`/`_body()`/`_flat()` from `test_bug3708_verify_issues_b8.py` (`:27`, `:38`, `:43`). No test currently pins the rule or mentions `Verification Notes` [Agent 3 finding]
-- `scripts/tests/test_wiring_skills_and_commands.py` — `test_host_artifacts_are_not_stale` (`:489`, gemini/kimi-code/qwen/codex/omp) fails until `ll-adapt --apply` is re-run after any `commands/verify-issues.md` edit; this file also pins verify-issues strings (`[ -f .ll/decisions.yaml ]`, `Bash(ll-code:*)`, `Causal / identity claims`) that rewording must keep [Agent 2, 3 findings]
-- `scripts/tests/test_builtin_loops.py` — `TestRefineToReadyDispatch` (`PRE_TABLE["VERIFY:CLAIMS_OUTDATED"]`) and `test_all_validate_as_valid_fsm` (`:77`) validate any new state's reachability and routing; no test asserts `correct_claims` fields (`next`, `on_error`, `action` containing `--from-evidence`) — add a routing test if a guard state is added [Agent 3 finding]
-- `scripts/tests/test_format_probe_routing.py` — `_run(state, tmp_path, payload, counter)` runs a state's real shell action with a fake `ll-issues`; model for a behavioral test of a new guard state [Agent 2, 3 findings]
-- `scripts/tests/test_bug3695_directive_drift_repair.py` — `run_refine_to_ready` (via `autodev_harness.py`) drives the loop end-to-end and asserts exact state order for the `reconcile_issue` path; model for an end-to-end `correct_claims` path test [Agent 3 finding]
-- `max_steps == 113` pins — break only if the guard state bumps the budget; update all four together: `scripts/tests/test_builtin_loops.py:1884`, `scripts/tests/test_bug3695_directive_drift_repair.py:292`, `scripts/tests/test_autodev_proof_reentry.py:131`, `scripts/tests/test_advise_ready_gate.py:216` [Agent 3 finding]
-- `scripts/tests/test_ll_issues_format_check.py::TestStaleFileRef` (`:696`), `scripts/tests/test_citation_checks.py`, `scripts/tests/test_head_corpus.py` and the `scripts/tests/fixtures/issues/bug32*_corpus/` fixtures — may break only if `check_format_gaps` scoping is changed; a scoping change needs a case with a stale path under `## Verification Notes` plus a control case in `## Current Behavior` proving the filter is narrow [Agent 3 finding]
-
-### Documentation
-- `docs/reference/CLI.md` (`format-check` section), `docs/reference/API.md`, `scripts/little_loops/loops/README.md` — describe the `## Verification Notes` exemption (design 2 changes `check_format_gaps` behavior)
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/guides/LOOPS_REFERENCE.md` — "Claim-verification gate chain (ENH-3031, ENH-3604)" `VERIFY:CLAIMS_OUTDATED` row and the `normalize_structure` re-entry paragraph name `check_claim_correction_budget` → `correct_claims` → `record_gate_unmet`; update only if a guard state is added [Agent 2 finding]
-- `docs/reference/CLI.md` — `ll-issues format-check` section (`stale_file_ref` paragraph; "`/ll:verify-issues` check B8 consumes this output", pinned by `test_bug3708_verify_issues_b8.py::TestCliDocNamesConsumer`); update only if `check_format_gaps` scoping changes. The class-list strings in `cli/issues/format_check.py` and `cli/issues/__init__.py` (`format-check` usage line) move with it [Agent 2 finding]
-
-### Configuration
-- N/A
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-10-06 — based on codebase analysis:_
-
-- Re-verified at HEAD (`3dffa9e11`): every `path:line` citation in this section and the Wiring-pass additions still resolves (`issue_parser.py:1297` `classify_issue_refs(content, ref_index)`, `commands/verify-issues.md:567`, `test_enh3250…:128/:180`, the four `max_steps == 113` pins, `test_wiring_skills_and_commands.py:489`). The recent `cli/issues/__init__.py` change (`--parent/--reparent`) did not touch the `format-check` usage line (`:184`).
-- Consumers and writers the Map above omits: `scripts/little_loops/cli/issues/check_verify_verdict.py` (`CLAIMS_OUTDATED` verdict consumer — `check_claim_correction_budget` routes on it), `clear_verify_verdict.py` and `arm_proposal_revision.py` (read/clear `verify_evidence`), `scripts/little_loops/cli/verify_evidence.py`; `commands/ready-issue.md:378` also appends verification notes (does not write the `## Verification Notes` heading, so is outside this bug's trigger); `commands/reconcile-issue.md:126` mentions `--from-evidence` but does not invoke the correction pass.
-- Only `refine-to-ready-issue.yaml:658` (`correct_claims`, `--auto --from-evidence`) invokes the correction pass; the other `verify-issues` call is `--check --auto` at `:552`. No other loop is exposed to this failure.
-- The stale-quote trigger is also covered by existing fixtures that carry a `## Verification Notes` heading (`scripts/tests/fixtures/issues/bug3293_corpus/BUG-3293.md`, `bug3295_corpus/{BUG-1616,FEAT-3308}.md`, `bug3285_corpus/{FEAT-2186,ENH-2967}.md`); any `check_format_gaps` scoping change must keep `test_head_corpus.py` expectations on these stable or update them deliberately.
-- Further tests that load `refine-to-ready-issue.yaml` and can break on a new state or routing change: `test_autodev_loop.py`, `test_autodev_scores_freshness.py`, `test_autodev_decision_gate.py`, `test_autodev_characterization.py`, `test_spike_verdict_routing.py`, `test_prepare_issue.py`, `test_concurrency.py`, plus `test_ll_issues_next_obligation.py` / `test_ll_issues_check_verify_verdict.py` for `CLAIMS_OUTDATED`. `docs/reference/API.md` (`stale_file_ref`, 5 hits) and `scripts/little_loops/loops/README.md` also describe `format-check` and move with a scoping change.
-- Invariant for any `check_format_gaps` scoping: `test_symbol_claims.py` and `test_citation_checks.py` also exercise `stale_file_ref`; a section-level exemption must stay narrow to `## Verification Notes` so a genuinely stale path elsewhere still blocks.
-
-## Implementation Steps
-
-1. (Done) Command-text rule landed in `310db44bb`; host mirrors in sync.
-2. Write failing tests first (TDD): `TestStaleFileRef` narrow case (stale path under `## Verification Notes` → no blocking finding), control case (`## Current Behavior` → blocks), negative case (H3/variant heading → blocks), and the frozen ENH-3742 fixture.
-3. Implement the exact-H2 filter inside `check_format_gaps` (not in the shared `classify_issue_refs`/`extract_file_paths`); decide advisory-report vs drop.
-4. Add the ordering pin test (`clear_verify_verdict` before the re-check) and the secondary text-pin test on the command text.
-5. Review corpus fixtures / `test_head_corpus.py`; update docs (`CLI.md`, `API.md`, loops `README.md`, `format_check.py` class-list strings if touched).
-6. Optional: harness test with stubbed slash commands for the `correct_claims` path.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Add the contract test in `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` (`TestClaimsOutdatedVerdict`) or a sibling `test_bug3753_*.py`, following the `VERIFY_CMD`/`_body()`/`_flat()` slice pattern of `test_bug3708_verify_issues_b8.py`
-- If `commands/verify-issues.md` is edited again, run `ll-adapt --host <gemini|kimi-code|qwen|codex> --apply` so `test_host_artifacts_are_not_stale` passes, and keep the strings pinned by `test_wiring_skills_and_commands.py`
-- If adding a guard state after `correct_claims` in `refine-to-ready-issue.yaml`: probe `ll-issues format-check <ID> --format json` for `stale_file_ref` (not `directive_gaps`, which `normalize_structure` reads), route `correct_claims.next`/`on_error` through it, satisfy MR-7/9/10/11 and `${context.run_dir}` artifacts, and update the header routing/`max_steps` comments
-- If the guard state bumps `max_steps`, update the four `== 113` pins (`test_builtin_loops.py:1884`, `test_bug3695_directive_drift_repair.py:292`, `test_autodev_proof_reentry.py:131`, `test_advise_ready_gate.py:216`)
-- If adding the guard state, add a routing test for `correct_claims` and a behavioral test in the `test_format_probe_routing.py` `_run()` style; update `docs/guides/LOOPS_REFERENCE.md` gate-chain table
-- If instead scoping `check_format_gaps`: filter inside `check_format_gaps` (not `classify_issue_refs`/`extract_file_paths`, shared with `test_dependency_mapper.py`/`test_text_utils.py`); add narrow/control cases to `test_ll_issues_format_check.py::TestStaleFileRef`; update `docs/reference/CLI.md` `format-check` section
+Keep the existing loop path `correct_claims` → `normalize_structure` → `clear_verify_verdict` → `verify_issue`. Clearing transient `verify_evidence` before the independent re-check is necessary: a token in canonical frontmatter remains outside the exemption. Pin this topology and the one-attempt budget; do not imply a direct `check_format_gaps` → budget call path.
 
 ## Program Design
 
 ### Types
 
-- `VERIFY_CMD: Path` — `commands/verify-issues.md`, read by the secondary text-pin test
+A private list of historical `(start, end)` spans; existing `FormatGaps` fields and JSON output remain unchanged.
 
 ### Signatures
 
-- `check_format_gaps(...)` in `issue_parser.py` — gains a filter excluding refs found only under an exact `## Verification Notes` H2 from the blocking `stale_file_ref` list
-- `test_stale_path_under_verification_notes_not_blocking() -> None` — narrow case; paired with a control (`## Current Behavior` blocks) and a negative (H3/variant heading blocks)
-- `test_verification_notes_paraphrase_rule_present() -> None` — secondary: command text carries the paraphrase-not-quote rule and post-write `ll-issues format-check` instruction, including under `--from-evidence`
+`check_format_gaps(issue_path, templates_dir=None, issue_statuses=None, ref_index=None, symbol_index=None, cli_index=None, *, examined_refs=None, project_root=None) -> FormatGaps`
+
+The existing signature (annotations abbreviated above) stays intact; only the legacy blocking stale-file classification input is narrowed. Any new span/masking helper is private. Shared extraction APIs retain whole-file behavior.
 
 ### Call Path
 
-`correct_claims` -> `/ll:verify-issues --from-evidence` -> `check_format_gaps` -> `check_claim_correction_budget`
+Correction command writes the note → loop normalizes and clears transient verdict evidence → independent verification invokes `cmd_format_check` → `check_format_gaps` → scoped legacy `classify_issue_refs` returns no self-created stale-file blocker.
 
-## Impact
+## Implementation Steps
 
-- **Priority**: P3 - burns a full refine-to-ready run, but only when a correction note quotes a stale citation; the command-text fix is already in place
-- **Effort**: Medium - behavior change in `check_format_gaps`, new unit/fixture tests, docs (`docs/reference/CLI.md`, `docs/reference/API.md`, `scripts/little_loops/loops/README.md`), corpus fixture review
-- **Risk**: Medium - `format-check` is shared (`rn-remediate` `ensure_formatted`, CLI users, check B8); the exemption must stay narrow so genuinely stale paths elsewhere still block
-- **Breaking Change**: No
+1. Write behavioral tests for historical-only stale paths and the active/same-path control; implement the narrow fence-aware input mask.
+2. Test repeated sections, H3 content, H1/H2 termination, variant/fenced headings, unterminated fences and historical planned-new declarations. Keep ambiguity and shared extraction behavior characterized.
+3. Pin the landed command instruction and the real loop re-entry topology/budget. Use a frozen minimal reproduction derived from the historical issue; do not require that an entire unrelated issue has zero format gaps.
+4. Review citation corpus expectations and explain the narrow omission in CLI/API documentation. Run focused format/citation/command/topology suites, then the full local suite.
 
-## Root Cause
+## Integration Map
 
-- `commands/verify-issues.md` §4 / §4.1 instruct the pass to record what was wrong, with no rule against quoting path, symbol or line citations verbatim.
-- Check B8 (format-check citations) is skipped under `--from-evidence`, so the pass never re-runs `ll-issues format-check` after writing its own note.
-- `normalize_structure` runs `format-check --fix`, but `stale_file_ref` is not auto-fixable, so nothing repairs the note afterwards.
-- `check_claim_correction_budget` allows exactly one correction per run, so one self-inflicted failure is terminal.
-- **Main defect:** `check_format_gaps` runs a whole-file `classify_issue_refs` scan with no section awareness, so `## Verification Notes` — a historical record — is graded as current-state claims. (`citations.py` is section-aware and treats Tests-section refs as advisory; the legacy scan blocks on them.)
-- **Ordering:** the pass's `format-check` consult (check B8) happens before the note is written, so the model never sees the finding its own note introduces.
-- `verify_evidence` frontmatter also carries the stale token unquoted (matched by the standalone-path pattern); it is safe only because `clear_verify_verdict` runs before the re-check. That ordering must be pinned by a test.
+### Files to Modify
+
+- `scripts/little_loops/issue_parser.py` — private historical masking inside `check_format_gaps`.
+- `scripts/tests/test_ll_issues_format_check.py` — narrow scan and boundary regressions.
+- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` or a new sibling test module — command instruction pin.
+- `scripts/tests/test_builtin_loops.py` — existing-loop topology and correction-budget pin only.
+- A minimal fixture under `scripts/tests/fixtures/issues/` (new file) — frozen stale-quote reproduction.
+- `docs/reference/CLI.md`, `docs/reference/API.md` — exact blocking-scan exemption.
+
+### Dependent Files
+
+- `scripts/little_loops/text_utils.py` — reuse fence helpers; shared reference classification/extraction must retain their contracts.
+- `scripts/little_loops/issues/citations.py` — existing section-aware/advisory checks remain unchanged.
+- `scripts/little_loops/cli/issues/format_check.py` — current output fields/exit logic remain intact.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` and `scripts/little_loops/loops/rn-remediate.yaml` — consumers benefit from the same scoped blocker; no YAML edit/budget increase.
+- `commands/verify-issues.md` and host mirrors — rule already landed. Regenerate mirrors only if further source prose changes are necessary.
 
 ## Acceptance Criteria
 
-- [ ] `check_format_gaps` does not report a blocking `stale_file_ref` for a path that appears only under an exact `## Verification Notes` H2; a control case with the same stale path under `## Current Behavior` still blocks (unit tests in `test_ll_issues_format_check.py::TestStaleFileRef`).
-- [ ] The filter matches the exact H2 only — an H3 or variant heading does not widen the exemption (negative test).
-- [ ] A frozen fixture of ENH-3742's content with the original offending note (from git history) produces no blocking findings.
-- [ ] A test pins that `clear_verify_verdict` precedes the re-check `verify_issue` in `refine-to-ready-issue.yaml`.
-- [ ] Existing corpus expectations (`test_head_corpus.py`, `bug3285`/`bug3293`/`bug3295` fixtures) are stable or updated deliberately.
-- [ ] Secondary: a text-pin test asserts the command text carries the paraphrase and post-write `format-check` rule.
-- [ ] Optional: a harness test with stubbed slash commands shows `correct_claims` followed by the re-check does not reach `record_gate_unmet`.
+- [ ] A stale path only in exact historical H2 sections creates no blocking `stale_file_ref`; the same path outside them still blocks, even when also present or marked planned-new inside them.
+- [ ] All section/fence/repetition boundaries above are covered; uncertain unterminated-fence spans retain blocking behavior.
+- [ ] Existing ambiguity, structural, symbol, line and CLI checks remain intact, and shared reference extraction is unchanged.
+- [ ] The minimal frozen reproduction verifies the stale-file behavior; existing corpus changes are reviewed explicitly rather than broad expectations weakened.
+- [ ] Tests pin the command's paraphrase/post-write rule and the loop's normalize → clear transient verdict → independent re-check ordering with the existing one-attempt correction budget.
+- [ ] Focused and full local suites pass. Documentation describes omission from this blocking scan without promising all historical findings are exempt.
+
+## Impact
+
+- **Priority**: P3 — a terminal correction feedback loop with an existing prose mitigation.
+- **Effort**: Small/Medium — narrow parser behavior, regressions and documentation.
+- **Risk**: Medium — all format-check consumers inherit the exemption; active-reference controls constrain it.
+- **Breaking Change**: No output/schema/loop change.
+
+## Review Notes
+
+Reviewed on 2026-10-06. Settled omission versus advisory output, all-occurrence/fence boundaries, active duplicate mentions and historical planned-new declarations. Removed rejected loop-state wiring from the active plan and corrected the call path. Opus supported the narrow exemption (confidence 0.72), with dissent favoring advisory visibility. Cached scores/verdict were cleared because this specification changed; historical assessments are not current readiness evidence. No implementation changes were made.
 
 ## Related
 
-BUG-3637 (introduced `correct_claims`), ENH-3690, BUG-3695.
-
-## Related Key Documentation
-
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+BUG-3637, ENH-3690 and BUG-3695 are background for the existing correction flow.
 
 ## Status
 
-**Open** | Created: 2026-10-06 | Priority: P3
-
+**Open** | Reviewed: 2026-10-06 | Priority: P3
 
 ## Session Log
 - `/ll:confidence-check` - 2026-10-06T02:18:10 - `e2600ce5-ae49-45dd-9f4d-c7454cd772ad.jsonl`

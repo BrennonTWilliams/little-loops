@@ -32,7 +32,7 @@ Review reproduction on main `3286729a2`: an interrupted saved state resumed thro
 
 ## Expected Behavior
 
-Both span-opening events keep their documented behavior of opening a root. Before a start/resume replaces an active root, its open state/action descendants and the root are ended. Every root created for the normal resumed execution is therefore exported; no span is abandoned merely by overwriting its reference. State/action children attach to the current root, and the final root retains completion attributes/status. A root replaced before completion keeps its existing unset status.
+Both span-opening events keep their documented behavior of opening a root. Before a start/resume replaces an active root, its open state/action descendants and the root are ended. Every root created for the normal resumed execution is therefore exported; no span is abandoned merely by overwriting its reference. State/action children attach to the current root, and the final root retains completion attributes/status. A root replaced before completion keeps its existing unset status and receives no completion attributes. Close order is action → state → root; each live descendant is ended once before the replacement starts, without reparenting any already-created child.
 
 This issue owns closing spans before root replacement. It does not require removing or renaming producer events, changing their run IDs, or changing the schema. Both producer events are consumed by other sinks and should keep their established behavior.
 
@@ -49,7 +49,7 @@ Apply the existing resume handler's close-before-replace lifecycle to `loop_star
 ### Files to Modify
 
 - `scripts/little_loops/transport.py` — ownership/lifetime of the active root in the start/resume handlers.
-- `scripts/tests/test_transport.py` and a real-resume producer-to-sink regression module under `scripts/tests/` — created/ended root accounting and lifecycle/parentage checks.
+- `scripts/tests/test_transport.py` and `scripts/tests/test_bug3755_transport_loop_identity.py` (extend the existing producer-to-sink harness) — created/ended root accounting and lifecycle/parentage checks.
 - `docs/reference/EVENT-SCHEMA.md` and `docs/reference/API.md` — trace lifecycle wording if the consecutive-event behavior needs clarification.
 
 ### Dependent Files
@@ -104,10 +104,14 @@ Existing signatures stay intact. Start follows resume's existing close-before-re
 ## Acceptance Criteria
 
 - [ ] A real resume → event-bus → OTel regression test proves every transport-created root is ended/exported after completion, including the root opened for `loop_resume`.
-- [ ] The test asserts distinct exported resume/start root IDs, state/action parentage under the start root, and final outcome attributes/status on that root; checking names alone is insufficient. The replaced resume root remains unset and has no completion attributes.
+- [ ] The test asserts distinct exported resume/start root IDs, the replaced root ended before the next root starts, action/state/root close ordering and exactly-once ending of pre-existing descendants, state/action parentage under the start root, and final outcome attributes/status on that root; checking names alone is insufficient. The replaced resume root remains unset and has no completion attributes.
 - [ ] Fresh-start execution and an existing-root → resume sequence retain valid state/action parentage and end their spans; existing OTel outcome and nested-event filtering tests pass.
 - [ ] Producer event shapes, ordering, and stable resumed run IDs retain their current contracts. This fix adds no database migration and is independently implementable from BUG-3755 and BUG-3758.
-- [ ] Regression tests use temporary history/persistence paths, an in-memory exporter, and skip if either the SDK or OTLP gRPC exporter is absent; no network exporter is invoked. The transport/persistence suites and full local suite pass.
+- [ ] Repeated `close()` after completion must not produce duplicate exported spans; general interrupted-close cleanup and overlapping action-start replacement remain outside this issue. Regression tests use temporary history/persistence paths, an in-memory exporter, and skip if either the SDK or OTLP gRPC exporter is absent; no network exporter is invoked. The transport/persistence suites and full local suite pass.
+
+## Review Notes
+
+Reviewed on 2026-10-06 after BUG-3755 merged. The identity helper is now installed, but start still overwrites an active root without ending it, so this remains independent open work. An in-memory start/resume sequence probe created two roots and exported one; the replaced resume root was still recording after completion. Reuse the merged producer-to-sink harness; add close-order/span-ID accounting rather than another harness. Opus supported explicit unset status, closure before replacement and completion attributes only on the current root (confidence 0.72). General close-on-interruption/action-replacement changes are outside this fix. No implementation edits were made.
 
 ## Related
 
