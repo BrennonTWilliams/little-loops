@@ -252,6 +252,7 @@ class TestBuiltinLoopFiles:
             "sft-corpus",
             "recursive-refine",
             "html-anything",
+            "html-webapp-generator",
             "html-website-generator",
             "sprint-refine-and-implement",
             "svg-image-generator",
@@ -9360,6 +9361,171 @@ class TestHtmlWebsiteGeneratorLoop:
         """Loop must define max_steps and timeout."""
         assert data.get("max_steps", 0) > 0
         assert data.get("timeout", 0) > 0
+
+
+class TestHtmlWebAppGeneratorLoop:
+    """Structural tests for the html-webapp-generator single-viewport FSM loop (FEAT-3589)."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "html-webapp-generator.yaml"
+
+    @pytest.fixture
+    def data(self) -> dict:
+        assert self.LOOP_FILE.exists(), f"Loop file not found: {self.LOOP_FILE}"
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    def test_required_top_level_fields(self, data: dict) -> None:
+        """Loop must have name, initial, input_key, artifact_versioning_ok, and states fields."""
+        assert data.get("name") == "html-webapp-generator"
+        assert data.get("initial") == "plan"
+        assert data.get("input_key") == "description"
+        assert data.get("artifact_versioning_ok") is True, (
+            "Loop must carry artifact_versioning_ok: true at top level "
+            "or TestValidatorWarningBudget's artifact-versioning category fails."
+        )
+        assert isinstance(data.get("states"), dict)
+
+    def test_required_states_exist(self, data: dict) -> None:
+        """Wrapper must include plan, run_gen_eval, smoke_test, viewport_gate, vision_gate, done, failed."""
+        required = {"plan", "run_gen_eval", "smoke_test", "viewport_gate", "vision_gate", "done", "failed"}
+        actual = set(data["states"].keys())
+        missing = required - actual
+        assert not missing, f"Missing states: {missing}"
+
+    def test_inline_generate_evaluate_score_states_removed(self, data: dict) -> None:
+        """Inline generate, evaluate, and score states must be absent in the thin wrapper."""
+        states = set(data["states"].keys())
+        assert "generate" not in states, "generate state must be removed in thin wrapper"
+        assert "evaluate" not in states, "evaluate state must be removed in thin wrapper"
+        assert "score" not in states, "score state must be removed in thin wrapper"
+
+    def test_done_state_is_terminal(self, data: dict) -> None:
+        """done state must have terminal: true."""
+        assert data["states"].get("done", {}).get("terminal") is True
+
+    def test_failed_state_is_terminal(self, data: dict) -> None:
+        """failed state must have terminal: true."""
+        assert data["states"].get("failed", {}).get("terminal") is True
+
+    def test_run_gen_eval_delegates_to_generator_evaluator(self, data: dict) -> None:
+        """run_gen_eval must delegate to oracles/generator-evaluator oracle sub-loop."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("loop") == "oracles/generator-evaluator", (
+            f"run_gen_eval.loop should be 'oracles/generator-evaluator', got {state.get('loop')!r}"
+        )
+
+    def test_run_gen_eval_with_bindings_present(self, data: dict) -> None:
+        """run_gen_eval with: must bind run_dir, generate_prompt, rubric, and pass_threshold."""
+        state = data["states"].get("run_gen_eval", {})
+        with_ = state.get("with", {})
+        assert "run_dir" in with_, f"run_gen_eval.with must contain 'run_dir', got {list(with_.keys())}"
+        assert "generate_prompt" in with_, "run_gen_eval.with must contain 'generate_prompt'"
+        assert "rubric" in with_, "run_gen_eval.with must contain 'rubric'"
+        assert "pass_threshold" in with_, "run_gen_eval.with must contain 'pass_threshold'"
+
+    def test_run_gen_eval_routes_to_smoke_test_on_yes(self, data: dict) -> None:
+        """run_gen_eval must route to smoke_test when sub-loop succeeds (ALL_PASS)."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_yes") == "smoke_test"
+
+    def test_run_gen_eval_routes_to_failed_on_failure(self, data: dict) -> None:
+        """run_gen_eval must route to failed when sub-loop fails or exhausts iterations."""
+        state = data["states"].get("run_gen_eval", {})
+        assert state.get("on_no") == "failed"
+        assert state.get("on_error") == "failed"
+
+    def test_plan_routes_to_run_gen_eval(self, data: dict) -> None:
+        """plan must route to run_gen_eval (not generate) in the thin wrapper."""
+        state = data["states"].get("plan", {})
+        assert state.get("next") == "run_gen_eval"
+
+    def test_smoke_test_routes_to_viewport_gate(self, data: dict) -> None:
+        """smoke_test must route to viewport_gate (FEAT-3589; smoke pass hands off to the viewport gate)."""
+        state = data["states"].get("smoke_test", {})
+        assert state.get("on_yes") == "viewport_gate"
+
+    def test_viewport_gate_is_shell_state(self, data: dict) -> None:
+        """viewport_gate must be a shell action_type running Playwright geometry probes."""
+        state = data["states"].get("viewport_gate", {})
+        assert state.get("action_type") == "shell"
+        action = state.get("action", "") or ""
+        assert "VIEWPORT_PASS" in action, "viewport_gate action must print VIEWPORT_PASS on success"
+        assert "VIEWPORT_FAIL" in action, "viewport_gate action must print VIEWPORT_FAIL on failure"
+
+    def test_viewport_gate_routes_to_vision_gate_on_pass(self, data: dict) -> None:
+        """viewport_gate must route to vision_gate on pass and run_gen_eval on fail."""
+        state = data["states"].get("viewport_gate", {})
+        assert state.get("on_yes") == "vision_gate"
+        assert state.get("on_no") == "run_gen_eval"
+
+    def test_viewport_gate_routes_harness_fault_to_failed(self, data: dict) -> None:
+        """viewport_gate on_error must route to failed (harness fault, not regenerate)."""
+        state = data["states"].get("viewport_gate", {})
+        assert state.get("on_error") == "failed"
+
+    def test_viewport_gate_evaluates_on_viewport_pass_token(self, data: dict) -> None:
+        """viewport_gate must use output_contains against the VIEWPORT_PASS token."""
+        state = data["states"].get("viewport_gate", {})
+        evaluate = state.get("evaluate") or {}
+        assert evaluate.get("type") == "output_contains"
+        assert evaluate.get("pattern") == "VIEWPORT_PASS"
+
+    def test_context_has_viewports_default(self, data: dict) -> None:
+        """context block must declare viewports (default 1440x900 1024x768 375x667)."""
+        ctx = data.get("context", {})
+        assert "viewports" in ctx
+        assert ctx["viewports"] == "1440x900 1024x768 375x667", (
+            "Default viewports must match the FEAT-3589 spec; per-run overrides are runtime-only."
+        )
+
+    def test_context_has_design_tokens_and_guidance(self, data: dict) -> None:
+        """context block must declare design_tokens_context and design_guidance_context."""
+        ctx = data.get("context", {})
+        assert "design_tokens_context" in ctx
+        assert "design_guidance_context" in ctx
+
+    def test_generate_prompt_requires_app_shell_and_no_doc_scroll(self, data: dict) -> None:
+        """Generator prompt must require no document-level scroll AND app-shell layout."""
+        state = data["states"].get("run_gen_eval", {})
+        prompt = state.get("with", {}).get("generate_prompt", "") or ""
+        assert "100dvh" in prompt, "Generator prompt must require 100dvh on root container"
+        assert "document-level scroll" in prompt, (
+            "Generator prompt must require no document-level scroll on html/body."
+        )
+        assert "app-shell" in prompt.lower(), (
+            "Generator prompt must require app-shell layout."
+        )
+        assert "overflow: hidden" in prompt, (
+            "Generator prompt must warn against using overflow:hidden on body as a scroll workaround."
+        )
+        assert "[inert]" in prompt or "aria-hidden" in prompt, (
+            "Generator prompt must require closed off-canvas drawers to be hidden semantically, "
+            "not via translation off-screen (which the viewport gate treats as a visible overflow)."
+        )
+
+    def test_rubric_includes_layout_fit_criterion(self, data: dict) -> None:
+        """Rubric must score a layout_fit criterion (single-viewport fit at every viewport)."""
+        state = data["states"].get("run_gen_eval", {})
+        rubric = state.get("with", {}).get("rubric", "") or ""
+        assert "layout_fit" in rubric, (
+            "Rubric must score a layout_fit criterion — the core webapp differentiator."
+        )
+
+    def test_max_steps_covers_both_gate_caps(self, data: dict) -> None:
+        """max_steps must cover the both-gates accept-at-cap worst path (27 steps)."""
+        # Worst path: 3 viewport_gate fail rounds (9) + 3 vision_gate fail rounds (12) + 1 final
+        # accept cycle (plan->run_gen_eval->smoke_test->viewport_gate-accept->vision_gate) + done (1)
+        # = 24+ steps; use 28 as buffer.
+        max_steps = data.get("max_steps", 0)
+        assert max_steps >= 27, (
+            f"max_steps must be >= 27 to cover the both-gates accept-at-cap worst path; got {max_steps}"
+        )
+
+    def test_scope_isolates_to_run_dir(self, data: dict) -> None:
+        """Loop scope must reference ${context.run_dir} (MR-3 artifact isolation)."""
+        scope = data.get("scope") or []
+        assert any("${context.run_dir}" in s for s in scope), (
+            "Loop scope must isolate artifacts to ${context.run_dir} (MR-3 compliance)."
+        )
 
 
 class TestSvgImageGeneratorLoop:
@@ -19886,6 +20052,7 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/harness-optimize.yaml", "context.targets", "ENH-3358"),
     ("loops/html-anything.yaml", "captured.run_dir.output", "ENH-3358"),
     ("loops/html-anything.yaml", "context.artifact_mode", "ENH-3358"),
+    ("loops/html-webapp-generator.yaml", "context.viewports", "FEAT-3589"),
     ("loops/incremental-refactor.yaml", "context.test_cmd", "ENH-3358"),
     ("loops/integrate-sdk.yaml", "context.target", "ENH-3358"),
     ("loops/interactive-component-generator.yaml", "captured.current_id.output", "ENH-3358"),

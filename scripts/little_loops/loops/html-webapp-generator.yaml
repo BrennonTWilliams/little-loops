@@ -1,0 +1,558 @@
+name: html-webapp-generator
+category: harness
+input_key: description
+required_inputs: ["description"]
+# index.html is the single deliverable; latest-wins overwrite is intentional.
+artifact_versioning_ok: true
+description: |
+  Generator-evaluator harness for single-viewport HTML webapp creation.
+  Accepts a natural language description via loop_input and iteratively
+  generates and refines a self-contained app-shell HTML/CSS/JS artifact using
+  Playwright CLI evaluation. The artifact must fill the viewport (100dvh)
+  with no document-level scroll at every configured viewport size — overflow
+  is confined to internal scroll panes. Enforced by a non-LLM `viewport_gate`
+  state, not just prompt wording. Thin wrapper over
+  oracles/generator-evaluator (ENH-1869); FEAT-3589.
+initial: plan
+# MR-3 artifact isolation: scope to the per-run dir; the wrapper writes only
+# brief.md, index.html, critique.md, screenshot.png, .viewport_rounds,
+# .vision_rounds under ${context.run_dir}.
+scope:
+  - "${context.run_dir}"
+# Both gates (viewport_gate, vision_gate) can route back to run_gen_eval up to 3
+# rounds each. Worst case with both caps exhausted: 3x(run_gen_eval, smoke_test,
+# viewport_gate fail) + 3x(run_gen_eval, smoke_test, viewport_gate accept,
+# vision_gate fail) + final accept cycle + done = 27 steps. 28 has a 1-step
+# buffer; 7200s (=2h) covers the gate probe latency at three viewports.
+max_steps: 28
+timeout: 7200
+
+# HARNESS: Context variables control quality threshold and gate viewport set.
+context:
+  description: ""             # populated from loop_input via input_key: description
+  pass_threshold: 6           # minimum score per criterion (1-10) to pass
+  design_tokens_context: ""   # runner-injected; resolved semantic token values or empty
+  design_guidance_context: "" # runner-injected; DESIGN.md prose body or empty
+  # Space-separated WxH entries; parsed inside viewport_gate. Malformed entries
+  # are skipped with a warning; zero valid viewports is a harness fault.
+  viewports: "1440x900 1024x768 375x667"
+
+states:
+
+  plan:
+    # HARNESS: Planner phase — expands the one-line description into an
+    # app-shell design brief. The brief must call out the app-shell layout
+    # (header / sidebar / main panes) and the responsive-collapse plan so the
+    # generator has direction on the first iteration; viewport_gate enforces
+    # the geometry deterministically after generation.
+    action_type: prompt
+    action: |
+      Create directory ${context.run_dir} if it does not already exist.
+
+      Write a design brief to ${context.run_dir}/brief.md for the following
+      single-viewport webapp:
+      "${context.description}"
+
+      The brief must include:
+      - **App-shell layout**: header (top bar), primary navigation (sidebar
+        or top tabs), main content area; identify which panes scroll
+        internally (e.g. message list, table body) versus which stay fixed.
+      - **Visual identity**: specific color palette (hex values), typeface
+        choices, overall mood and tone
+      - **Responsive-collapse plan**: at narrow viewports (<= 768px) the
+        sidebar must become an off-canvas drawer hidden via a menu button
+        (closed state must use [inert], [hidden], [aria-hidden="true"], or
+        visibility: hidden, never translation-only off-screen); multi-column
+        grids must collapse to a single column; tables must allow horizontal
+        scroll inside their own pane.
+      - **Unique creative angle**: what makes the app feel distinctive and
+        memorable? Avoid AI-slop patterns
+      - **Anti-patterns to avoid**: purple gradients on white cards,
+        unmodified stock components, generic hero sections, `overflow:
+        hidden` on `body` (clips content off-screen), translation-only
+        hiding of off-canvas drawers (false-fails the viewport gate at
+        mobile size)
+
+      ${context.design_guidance_context}
+
+      If design guidance is provided above, honor its Do's and Don'ts and
+      any stated visual intent when writing the brief.
+
+      Be specific and opinionated. The generator will use this brief as its
+      primary reference.
+    next: run_gen_eval
+
+  run_gen_eval:
+    # HARNESS: Thin-wrapper delegation — runs generate -> evaluate (Playwright
+    # screenshot) -> score (LLM rubric) inside oracles/generator-evaluator
+    # until ALL_PASS or max_iterations. Routes to smoke_test on success;
+    # failed on error or exhausted retries (ENH-1869).
+    loop: oracles/generator-evaluator
+    with:
+      run_dir: "${context.run_dir}"
+      generate_prompt: |
+        Read ${context.run_dir}/brief.md for the design brief.
+
+        A previous iteration may have written ${context.run_dir}/critique.md.
+        If that file exists, read it and address every issue in its "Issues
+        to Address" section specifically and completely. If it does not
+        exist, proceed silently — do not narrate the check.
+
+        ${context.design_tokens_context}
+
+        ${context.design_guidance_context}
+
+        Write a single self-contained HTML file to
+        ${context.run_dir}/index.html that:
+        - Implements the app-shell layout from the brief (header +
+          navigation + main content area) sized to the viewport (use
+          `100dvh` on the root container, not `100vh` — `100dvh` adapts to
+          mobile browser chrome)
+        - Has NO document-level scroll (`html`, `body` must not scroll the
+          page itself). Internal scroll panes (message lists, sidebars,
+          tables) are allowed and encouraged.
+        - Embeds all CSS and JavaScript inline (no external dependencies,
+          no CDN links)
+        - Responds to the configured viewports via responsive collapse:
+          at narrow widths the sidebar becomes an off-canvas drawer with a
+          menu button (closed state must use [inert], [hidden],
+          [aria-hidden="true"], or `visibility: hidden` — NEVER translation
+          off-screen, which the viewport gate treats as a visible overflow
+          at mobile size); multi-column grids collapse to a single column;
+          tables allow horizontal scroll inside their own pane.
+        - Achieves a distinctive, museum-quality aesthetic — avoid AI-slop
+          patterns (generic gradients, unmodified Bootstrap components, stock
+          imagery placeholders, bland sans-serif on white backgrounds)
+        - Achieves functional clarity — a user should understand the app's
+          primary purpose within 5 seconds and the primary task should be
+          completable.
+        - If design tokens are provided above, use their semantic names and
+          resolved values for colors; do not invent new color values
+          outside the token palette
+        - If design guidance is provided above, follow its Do's and Don'ts
+          in place of (or in addition to) the generic anti-slop guidance
+        - If critique exists, resolves every specific issue before
+          introducing new ideas
+
+        Do NOT use `overflow: hidden` on `body` to suppress page scroll —
+        it clips content off-screen without preventing it; the viewport gate
+        detects content overflowing even under overflow:hidden via
+        scrollHeight. Use the app-shell sizing approach above instead.
+      rubric: |
+        Read the screenshot at ${context.run_dir}/screenshot.png to view the
+        generated webapp. Also read ${context.run_dir}/brief.md to recall
+        the design intent.
+
+        Score the webapp on each criterion from 1 to 10 and write the
+        evaluation to ${context.run_dir}/critique.md using this exact format:
+
+        ```
+        # Evaluation
+
+        design_quality: N/10 — [explanation: does the app-shell feel like a
+          coherent visual whole? Strong color/typography/pane combination
+          creates a distinct product identity.]
+        layout_fit: N/10 — [explanation: at every viewport, does the
+          primary content fit without document scroll? Are the primary
+          regions visible and is sensible content clipped rather than
+          primary content? Does the responsive collapse work at narrow
+          widths — sidebar becomes an off-canvas drawer, grids collapse,
+          tables scroll inside their own pane?]
+        craft: N/10 — [explanation: typography hierarchy, spacing
+          consistency, color harmony, contrast ratios, pixel-level attention
+          to pane boundaries and interactive affordances.]
+        functionality: N/10 — [explanation: can users understand what the
+          app does and complete the primary task within 5 seconds?]
+
+        ## Issues to Address
+        [Specific, actionable critique for the generator. List each
+         problem concisely so the generator can address it directly on
+         the next pass. If all scores meet threshold, write "No issues —
+         all criteria pass."]
+        ```
+
+        Score ONLY what is visible in the full-page screenshot. Do NOT
+        invent "cannot be verified from this image" issues — the screenshot
+        is full-page, so every section is present. If some detail is
+        genuinely off-screen, that is not a scoring criterion and must not
+        lower any score or block passing.
+
+        After writing the file, evaluate the scores:
+        - design_quality weight: 2x (threshold 6)
+        - layout_fit weight: 2x (threshold 6)
+        - craft weight: 1x (threshold 6)
+        - functionality weight: 1x (threshold 6)
+
+        The pass/fail decision is a pure function of the four numeric
+        scores ONLY. A non-empty "Issues to Address" list is advisory
+        polish for the next pass and MUST NOT prevent passing. If ALL
+        four individual scores are >= 6, output exactly: ALL_PASS (even
+        when issues remain listed). Otherwise output: ITERATE
+      pass_threshold: 6
+    on_yes: smoke_test
+    on_no: failed
+    on_error: failed
+
+  smoke_test:
+    # HARNESS: Shell-level functional verification after LLM scoring.
+    # Runs Playwright to check for JS console errors and meaningful text
+    # content before accepting the artifact. Decoupling routing from the
+    # LLM prompt prevents self-certification inflation — an LLM may claim
+    # ALL_PASS without actually processing the screenshot when multimodal
+    # input is unavailable.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
+      esac
+      export ABS_DIR
+      NODE_PATH="$(npm root -g)" node -e "
+      const { chromium } = require('@playwright/test');
+      (async () => {
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        await page.goto('file://' + process.env.ABS_DIR + '/index.html');
+        await page.waitForTimeout(1500);
+        const textLen = await page.evaluate(() => document.body.innerText.trim().length);
+        await browser.close();
+        // Artifact-quality failures exit 0 so the evaluator returns 'no' (regenerate).
+        // Only harness failures (below) exit non-zero -> 'error' -> failed.
+        if (textLen < 20) { console.log('FAIL:minimal_content'); process.exit(0); }
+        if (errors.length > 0) { console.log('FAIL:js_errors:', errors.join('; ')); process.exit(0); }
+        console.log('SMOKE_PASS');
+      })().catch(e => { console.error('SMOKE_FAIL:', e.message); process.exit(1); });
+      "
+    evaluate:
+      type: output_contains
+      pattern: "SMOKE_PASS"
+    on_yes: viewport_gate
+    # A bad artifact is worth another generate pass...
+    on_no: run_gen_eval
+    # ...but a harness fault (node/Playwright missing, unreadable path) means we could
+    # not test the artifact at all. Regenerating cannot fix that, and each retry burns a
+    # full generate+evaluate cycle, so fail loudly instead of spinning until timeout.
+    on_error: failed
+
+  viewport_gate:
+    # HARNESS: Non-LLM single-viewport enforcement (FEAT-3589).
+    # Iterates the configured `viewports` (default 1440x900, 1024x768, 375x667)
+    # and at each one: (i) checks `document.documentElement.scrollHeight <=
+    # window.innerHeight` and `scrollWidth <= innerWidth` (page-level
+    # overflow); (ii) checks the bounding boxes of visible interactive
+    # elements not inside a scrollable ancestor to catch content clipped
+    # inside `overflow: hidden` containers. Elements inside semantically
+    # hidden subtrees ([inert], [hidden], [aria-hidden="true"], visibility:
+    # hidden) are excluded so a closed off-canvas drawer hidden that way
+    # does not false-fail at 375x667.
+    #
+    # Per-app probe geometry: the page-level check fires when scrollHeight
+    # > innerHeight EVEN under `body{overflow:hidden}` (scrollHeight counts
+    # overflowed content) — do NOT propose `overflow: hidden` on body as a
+    # workaround; use 100dvh + app-shell layout sizing instead.
+    #
+    # FAIL routing (artifact-quality) prints `FAIL:...` and exits 0 ->
+    # on_no: run_gen_eval. After appending per-viewport measurements to
+    # critique.md under "## Issues to Address (viewport gate, round N)" so
+    # the regenerate pass can address them. .viewport_rounds counter caps
+    # ping-pong at 3; at the cap, accept with a warning line carrying the
+    # failing per-viewport measurements (best-effort enforcement — never
+    # spins until timeout, never silently ships an overflowing page).
+    #
+    # Harness faults (node/Playwright missing, unreadable artifact path,
+    # zero valid viewports) exit non-zero -> on_error: failed.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
+      esac
+      if [ ! -f "$ABS_DIR/index.html" ]; then
+        echo "VIEWPORT_FAIL: index.html missing in $ABS_DIR"; exit 1
+      fi
+      VIEWPORTS="${context.viewports}"  # ll-lint: mr11-ok(context.viewports) FEAT-3589 - multi-token string passed via env var to inline JS (not embedded in a bash command)
+      export ABS_DIR VIEWPORTS
+      NODE_PATH="$(npm root -g)" node - <<'JS'
+      const { chromium } = require('@playwright/test');
+      const path = require('path');
+      const fs = require('fs');
+      (async () => {
+        const raw = (process.env.VIEWPORTS || '').trim();
+        if (!raw) { console.error('VIEWPORT_FAIL: empty viewports list'); process.exit(2); }
+        const valid = [];
+        const malformed = [];
+        for (const tok of raw.split(/\s+/)) {
+          const m = tok.match(/^(\d+)x(\d+)$/);
+          if (m) valid.push([parseInt(m[1]), parseInt(m[2])]);
+          else if (tok) malformed.push(tok);
+        }
+        if (malformed.length) {
+          console.warn('viewport_gate: skipping malformed viewport entries: ' + malformed.join(' '));
+        }
+        if (valid.length === 0) {
+          console.error('VIEWPORT_FAIL: zero valid viewports after parsing');
+          process.exit(2);
+        }
+        const absDir = process.env.ABS_DIR;
+        const browser = await chromium.launch();
+        const results = [];
+        for (const [w, h] of valid) {
+          const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+          const page = await ctx.newPage();
+          await page.goto('file://' + path.join(absDir, 'index.html'));
+          await page.waitForTimeout(300);
+          // 1. Document-level overflow. Works even under body{overflow:hidden}
+          // because scrollHeight counts overflowed content.
+          const docOverflow = await page.evaluate(() => {
+            const h = document.documentElement.scrollHeight;
+            const w = document.documentElement.scrollWidth;
+            return {
+              scrollHeight: h, scrollWidth: w,
+              innerHeight: window.innerHeight, innerWidth: window.innerWidth,
+              hOverflow: h - window.innerHeight, wOverflow: w - window.innerWidth,
+            };
+          });
+          // 2. Interactive-element overflow check, excluding semantically
+          // hidden subtrees and elements inside scrollable ancestors.
+          const interactOverflow = await page.evaluate(() => {
+            const sel = 'button, a, input, select, textarea, [role="button"]';
+            const all = [...document.querySelectorAll(sel)];
+            const isScrollable = (el) => {
+              let n = el.parentElement;
+              while (n && n !== document.body) {
+                const ov = getComputedStyle(n).overflow;
+                const ovx = getComputedStyle(n).overflowX;
+                const ovy = getComputedStyle(n).overflowY;
+                if ((ov === 'auto' || ov === 'scroll' || ovx === 'auto' || ovx === 'scroll' || ovy === 'auto' || ovy === 'scroll')) {
+                  const ch = n.clientHeight, sh = n.scrollHeight;
+                  if (sh > ch + 1) return true;
+                }
+                n = n.parentElement;
+              }
+              return false;
+            };
+            const isSemanticallyHidden = (el) => {
+              let n = el;
+              while (n && n !== document.documentElement) {
+                if (n.hasAttribute && (n.hasAttribute('inert') || n.hasAttribute('hidden') || n.getAttribute('aria-hidden') === 'true')) return true;
+                const v = getComputedStyle(n).visibility;
+                if (v === 'hidden') return true;
+                n = n.parentElement;
+              }
+              return false;
+            };
+            const visible = (el) => {
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              };
+            const offenders = [];
+            for (const el of all) {
+              if (isSemanticallyHidden(el)) continue;
+              if (!visible(el)) continue;
+              if (isScrollable(el)) continue;
+              const r = el.getBoundingClientRect();
+              const out = [];
+              if (r.right > window.innerWidth + 0.5) out.push('right=' + r.right.toFixed(1) + '>' + window.innerWidth);
+              if (r.bottom > window.innerHeight + 0.5) out.push('bottom=' + r.bottom.toFixed(1) + '>' + window.innerHeight);
+              if (r.left < -0.5) out.push('left=' + r.left.toFixed(1) + '<0');
+              if (r.top < -0.5) out.push('top=' + r.top.toFixed(1) + '<0');
+              if (out.length) offenders.push({ tag: el.tagName.toLowerCase(), id: el.id || null, cls: el.className || null, overflow: out });
+            }
+            return offenders;
+          });
+          await ctx.close();
+          const overflow = (docOverflow.hOverflow > 0.5 || docOverflow.wOverflow > 0.5);
+          const interactFail = interactOverflow.length > 0;
+          results.push({
+            viewport: [w, h],
+            docOverflow, interactOverflow,
+            overflow, interactFail,
+            pass: !overflow && !interactFail,
+          });
+        }
+        await browser.close();
+        const allPass = results.every(r => r.pass);
+        const rcFile = path.join(absDir, '.viewport_rounds');
+        const crit = path.join(absDir, 'critique.md');
+        let rc = 0;
+        try { rc = parseInt(fs.readFileSync(rcFile, 'utf8').trim(), 10) || 0; } catch (_) { rc = 0; }
+        const ROUND_CAP = 3;
+        function docOverflowStr(d) {
+          return 'scrollH=' + d.scrollHeight + '/innerH=' + d.innerHeight + ' (overflow ' + d.hOverflow + 'px) + scrollW ' + d.scrollWidth + '/innerW ' + d.innerWidth + ' (overflow ' + d.wOverflow + 'px)';
+        }
+        const lines = [];
+        for (const r of results) {
+          const [w, h] = r.viewport;
+          const tag = r.pass ? 'PASS' : 'FAIL';
+          lines.push('viewport_gate ' + tag + ' ' + w + 'x' + h + ': docOverflow=' + docOverflowStr(r.docOverflow) + ', interactiveOverflows=' + r.interactOverflow.length);
+          if (r.interactOverflow.length) {
+            for (const o of r.interactOverflow.slice(0, 5)) {
+              lines.push('  - <' + o.tag + (o.id ? '#' + o.id : '') + (o.cls ? '.' + String(o.cls).split(/\s+/).join('.') : '') + '> ' + o.overflow.join(' '));
+            }
+            if (r.interactOverflow.length > 5) lines.push('  - ... (' + (r.interactOverflow.length - 5) + ' more)');
+          }
+        }
+        if (allPass) {
+          console.log('VIEWPORT_PASS');
+          process.exit(0);
+        }
+        if (rc >= ROUND_CAP) {
+          // Accept-at-cap (matches vision_gate precedent): emit VIEWPORT_PASS
+          // substring so the FSM's output_contains routes to on_yes
+          // (vision_gate). The detailed measurements stay on stdout so the
+          // violation lands in the run log.
+          console.log('VIEWPORT_PASS: round cap (' + ROUND_CAP + ') reached, accepting with warnings:');
+          for (const l of lines) console.log(l);
+          process.exit(0);
+        }
+        fs.writeFileSync(rcFile, String(rc + 1));
+        const block = ['', '## Issues to Address (viewport gate, round ' + (rc + 1) + ')'];
+        for (const l of lines) block.push('- ' + l);
+        fs.appendFileSync(crit, block.join('\n') + '\n');
+        console.log('VIEWPORT_FAIL:');
+        for (const l of lines) console.log(l);
+        process.exit(0);
+      })().catch(e => { console.error('VIEWPORT_FAIL:', e.message); process.exit(1); });
+      JS
+    evaluate:
+      type: output_contains
+      pattern: "VIEWPORT_PASS"
+    on_yes: vision_gate
+    on_no: run_gen_eval
+    on_error: failed
+
+  vision_gate:
+    # HARNESS: Optional external-vision evaluator (ENH: VISION_* env wiring).
+    # Decouples *aesthetic* scoring from the host LLM's self-grade — the
+    # same anti-self-certification motive behind smoke_test, but for visual
+    # quality rather than functional sanity. An independent vision model
+    # scores the screenshot against the rubric; criteria below threshold
+    # are appended to critique.md and the loop routes back to run_gen_eval
+    # to refine + re-score.
+    #
+    # GRACEFUL DEGRADATION: this state is a no-op pass unless VISION_BASE_URL,
+    # VISION_MODEL and VISION_API_KEY are all set. The runner does NOT
+    # auto-load .env and ${env.X} hard-fails when unset, so the check is
+    # done in-shell by sourcing .env. API/parse/network errors also pass
+    # (never block shipping a functionally-sound artifact on an optional
+    # gate). A per-run round cap (.vision_rounds in run_dir) bounds
+    # refine/re-score ping-pong.
+    action_type: shell
+    action: |
+      RUN_DIR="${context.run_dir}"
+      case "$RUN_DIR" in
+        /*) ABS_DIR="$RUN_DIR" ;;
+        *) ABS_DIR="$(pwd)/$RUN_DIR" ;;
+      esac
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -z "$${VISION_BASE_URL:-}" ] || [ -z "$${VISION_MODEL:-}" ] || [ -z "$${VISION_API_KEY:-}" ]; then
+        echo "VISION_PASS: skipped (VISION_* env not configured)"; exit 0
+      fi
+      if [ ! -f "$ABS_DIR/screenshot.png" ]; then
+        echo "VISION_PASS: skipped (no screenshot.png)"; exit 0
+      fi
+      export ABS_DIR
+      python3 <<'PY'
+      import os, re, sys, json, base64, urllib.request
+      abs_dir = os.environ["ABS_DIR"]
+      shot = os.path.join(abs_dir, "screenshot.png")
+      rc_file = os.path.join(abs_dir, ".vision_rounds")
+      crit = os.path.join(abs_dir, "critique.md")
+      ROUND_CAP = 3
+      try:
+          rc = int(open(rc_file).read().strip())
+      except Exception:
+          rc = 0
+      if rc >= ROUND_CAP:
+          print("VISION_PASS: round cap (%d) reached, accepting" % ROUND_CAP); sys.exit(0)
+      try:
+          with open(shot, "rb") as f:
+              b64 = base64.b64encode(f.read()).decode()
+      except Exception:
+          print("VISION_PASS: screenshot unreadable (%s)" % e); sys.exit(0)
+      base = os.environ["VISION_BASE_URL"].rstrip("/")
+      endpoint = base if base.endswith("completions") else base + "/chat/completions"
+      rubric = (
+          "You are a strict, impartial design critic. Study the attached "
+          "screenshot of a generated single-viewport webapp and score it "
+          "1-10 on each:\n"
+          "- design_quality: does it read as a coherent visual whole?\n"
+          "- layout_fit: at every viewport, does primary content fit "
+          "without document scroll? Does the responsive collapse work at "
+          "narrow widths?\n"
+          "- craft: typography hierarchy, spacing consistency, color "
+          "harmony, contrast.\n"
+          "- functionality: is the app's primary purpose clear within 5 "
+          "seconds?\n"
+          "Threshold: every criterion must be >= 6.\n"
+          'Reply with ONE JSON object only, no prose: {"scores": '
+          '{"design_quality": N, "layout_fit": N, "craft": N, '
+          '"functionality": N}, "issues": ["specific actionable fix", ...]}'
+      )
+      payload = {
+          "model": os.environ["VISION_MODEL"],
+          "temperature": 0.2,
+          "max_tokens": 900,
+          "messages": [{"role": "user", "content": [
+              {"type": "text", "text": rubric},
+              {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+          ]}],
+      }
+      req = urllib.request.Request(
+          endpoint, data=json.dumps(payload).encode(),
+          headers={"Authorization": "Bearer " + os.environ["VISION_API_KEY"],
+                   "Content-Type": "application/json"})
+      try:
+          with urllib.request.urlopen(req, timeout=120) as r:
+              content = json.load(r)["choices"][0]["message"]["content"]
+      except Exception as e:
+          print("VISION_PASS: vision API error (%s), not blocking" % e); sys.exit(0)
+      m = re.search(r"\{.*\}", content, re.S)
+      try:
+          data = json.loads(m.group(0)) if m else {}
+          scores = data.get("scores", {}) or {}
+          issues = data.get("issues", []) or []
+      except Exception:
+          print("VISION_PASS: unparseable vision verdict, not blocking"); sys.exit(0)
+      failing = {k: v for k, v in scores.items()
+                 if isinstance(v, (int, float)) and v < 6}
+      print("VISION scores: " + json.dumps(scores))
+      if not failing:
+          print("VISION_PASS"); sys.exit(0)
+      open(rc_file, "w").write(str(rc + 1))
+      lines = ["", "## Issues to Address (external vision critique, round %d)" % (rc + 1)]
+      for k, v in failing.items():
+          lines.append("- %s scored %s/10 (below threshold 6)" % (k, v))
+      for i in issues:
+          lines.append("- %s" % i)
+      with open(crit, "a") as f:
+          f.write("\n".join(lines) + "\n")
+      print("VISION_FAIL: %d criteria below threshold" % len(failing))
+      PY
+    evaluate:
+      type: output_contains
+      pattern: "VISION_PASS"
+    on_yes: done
+    on_no: run_gen_eval
+    # ENH-2825: a vision gate that errors has not passed.
+    on_error: failed
+
+  done:
+    # HARNESS: Terminal state — reached when all criteria pass or
+    # max_iterations exhausted. The final webapp is at
+    # ${context.run_dir}/index.html. The last critique (with final scores)
+    # is at ${context.run_dir}/critique.md.
+    terminal: true
+
+  failed:
+    # HARNESS: Failure terminal — reached when the sub-loop or
+    # smoke_test/viewport_gate errors out. Signals an explicit failure so
+    # the outer loop / log reader can distinguish "loop bailed cleanly"
+    # from "loop is still iterating". The last artifacts (brief.md, any
+    # partial index.html, the last critique.md if one was written) remain
+    # in ${context.run_dir} for inspection.
+    terminal: true

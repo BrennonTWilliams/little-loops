@@ -1578,6 +1578,7 @@ run_eval → score_results → analyze_failures
 | `hitl-compare` | Human-in-the-loop comparison harness — reads whitespace-separated inputs (file paths or raw text), extracts candidate review items with 2+ options, prunes implementation-level micro-decisions, and generates a self-contained interactive HTML page with comparison controls, write-in custom options, and an "Export selections" affordance |
 | `hitl-md` | Human-in-the-loop single-document review harness — reads a markdown file (or raw text), decomposes it into GP-TSM saliency-modulated segments with per-segment confidence scores, and generates a self-contained interactive HTML page with natural markdown rendering, inline saliency highlights, a lightweight low-confidence cue (dotted underline + badge), click/focus-triggered popover edit controls (delete / insert-before / insert-after / inline-edit / flag-for-AI), a "Copy AI prompt" control for flagged segments, and a "Copy updated markdown" reconstruction control. Final HTML is copied to `./hitl-md-review.html` in the run directory for quick access. |
 | `html-website-generator` | Generator-evaluator harness for single-page HTML website creation — accepts a one-line description and iteratively generates, screenshots, and refines HTML/CSS/JS via Playwright CLI |
+| `html-webapp-generator` | Generator-evaluator harness for single-viewport HTML webapp creation — accepts a one-line description and iteratively generates a self-contained app-shell `index.html` (header + sidebar + main panes) sized to the viewport (100dvh) with no document-level scroll at every configured viewport size. Internal scroll panes are allowed; a non-LLM `viewport_gate` Playwright probe enforces the geometry (works under `body{overflow:hidden}`, excludes semantically-hidden subtrees so closed off-canvas drawers do not false-fail at mobile size). Delegates generation to `oracles/generator-evaluator`; uses the same `smoke_test` and `vision_gate` thin-wrapper pattern as `html-website-generator`. |
 | `svg-image-generator` | Generator-evaluator harness for SVG icon and illustration creation — accepts a one-line description and iteratively generates, screenshots, and refines a self-contained SVG via Playwright CLI |
 | `openscad-model-generator` | Generator-evaluator harness for parametric OpenSCAD model creation — accepts a natural language part description and iteratively generates and refines a .scad file via multi-angle CLI renders (iso/front/top), scoring against a CAD rubric (correctness, completeness, printability, parametrics) |
 | `interactive-component-generator` | Fan-out generator-evaluator harness for self-contained interactive HTML — profiles a NL brief or referenced data file, ideates many candidate components (data-viz idioms + widgets), ranks them, builds the best 3–5 each via `oracles/generator-evaluator`, smoke-tests each, then selects the best 1–3 and composes them into one self-contained `index.html` (configurable shadow / scope-css / scoped isolation) |
@@ -1597,7 +1598,7 @@ run_eval → score_results → analyze_failures
 | `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --context concept="how a transformer attends"` | <!-- ll-audience-ok: pip install -e targets the AutoFigure demo dependency, not little-loops -->
 | `workflow-generator` | Meta-loop that lowers a prose brief into a reusable, validated FSM-loop YAML artifact via sequential compiler-lowering passes (intent capture → state-graph sketch → evaluator attachment → routing-table resolution → artifact emission → optional adversarial minimum-coupling shrink); every LLM pass is paired with a non-LLM `exit_code` gate (MR-1); HITL-gated promotion copies the validated artifact to the project loops dir |
 
-For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, `rlhf-animated-svg`, `openscad-model-generator`, and `interactive-component-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
+For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `html-webapp-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, `rlhf-animated-svg`, `openscad-model-generator`, and `interactive-component-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
 
 > **Design rule: Playwright failure routing.** In any harness that uses Playwright for screenshot capture, route the `evaluate` state's `on_no` and `on_error` to the `score` state (LLM-only evaluation) — never back to `generate`. Routing to `generate` creates an infinite cycle: `generate` routes unconditionally back to `evaluate`, which fails again, repeating until `max_steps` is exhausted with zero useful output. Routing forward to `score` lets the evaluator assess the HTML source directly and produce actionable critique even when no screenshot is available. After ENH-1869, these states (`evaluate`, `score`) live inside `oracles/generator-evaluator`; the rule applies to the oracle's internal state machine, not the calling thin-wrapper loops.
 
@@ -1609,7 +1610,7 @@ For background on the GAN-style generator-evaluator architecture used by `html-w
 
 **Supported artifact types**: `html-email`, `html-social-card`, `html-presentation`, `html-resume`, `html-invoice`, `html-dashboard`, `html-component`, `html-poster`, `html-website`
 
-**When to use**: When you need a polished HTML artifact other than a generic website — especially when platform constraints are binary (inline styles for email clients, exact dimensions for social cards, print safety for résumés). For a plain website, `html-website-generator` is simpler; `html-anything` is the right choice when the artifact type determines the evaluation criteria.
+**When to use**: When you need a polished HTML artifact other than a generic website — especially when platform constraints are binary (inline styles for email clients, exact dimensions for social cards, print safety for résumés). For a plain website, `html-website-generator` is simpler; for a single-viewport app shell (header + sidebar + main) use `html-webapp-generator`; `html-anything` is the right choice when the artifact type determines the evaluation criteria.
 
 **Usage:**
 
@@ -1679,7 +1680,7 @@ For `html-social-card`:
 - Per-criterion thresholds (not a weighted average) are enforced in `score`: a platform constraint at threshold 8 can't be masked by a high aesthetic score at threshold 6.
 - If Playwright is unavailable, the `evaluate` state's `on_error` route falls back to `score` directly for LLM-only evaluation of the HTML source.
 - The loop runs up to 20 iterations with a 2-hour timeout (`max_steps: 20`, `timeout: 7200`).
-- For a plain website, `html-website-generator` is simpler (no artifact classification step). Use `html-anything` when the artifact type determines which platform constraints to enforce.
+- For a plain website, `html-website-generator` is simpler (no artifact classification step); for a single-viewport app shell use `html-webapp-generator`. Use `html-anything` when the artifact type determines which platform constraints to enforce.
 - To customize criteria for a specific artifact type, install locally (`ll-loop install html-anything`) and edit the `plan` state's rubric design rules.
 
 ### `hitl-compare` — Human-in-the-Loop Comparison Harness
@@ -1859,6 +1860,76 @@ plan → generate → capture
 - If Playwright is unavailable (missing binary, permission error), the `evaluate` state's `on_no` route falls back to `generate`, which then proceeds to `score` using LLM-only judgment of the HTML source rather than a screenshot.
 - The loop runs up to 12 iterations with a 1-hour timeout (`max_steps: 12`, `timeout: 3600`).
 - To customize the design criteria or scoring weights, install the loop locally (`ll-loop install html-website-generator`) and edit the `score` state's prompt.
+
+### `html-webapp-generator` — Single-Viewport Webapp Harness
+
+> **Prerequisites**: [Playwright CLI](https://playwright.dev/) must be installed (`npm install -g playwright && npx playwright install chromium`, or `pip install playwright && playwright install chromium`).
+
+**Technique**: Variant of the GAN-style generator-evaluator pattern specialized for app-shell webapps. The same `plan → run_gen_eval (delegates to oracles/generator-evaluator) → smoke_test → vision_gate → done` flow runs, but with two extra constraints:
+
+  1. The generator prompt mandates an **app-shell layout** (header + sidebar + main panes) sized to the viewport with `100dvh`, no document-level scroll. Internal scroll panes (message lists, sidebars, tables) are allowed; the generator must add responsive collapse at narrow widths so the same shell fits at 1440x900, 1024x768, and 375x667.
+  2. A new **non-LLM `viewport_gate`** state runs *between* `smoke_test` and `vision_gate`: a Playwright probe at each configured viewport checks `documentElement.scrollHeight <= innerHeight` (page-level overflow) AND bounding boxes of visible interactive elements (excluding elements inside scrollable ancestors and semantically-hidden subtrees `[inert]` / `[hidden]` / `[aria-hidden="true"]` / `visibility: hidden`). This catches content clipped inside `overflow: hidden` containers — even under `body{overflow:hidden}` — that would otherwise ship as a "successful" build with a broken layout at mobile size.
+
+**When to use**: When you want a self-contained HTML webapp (header / sidebar / main) that fills the viewport at every configured size with no document scroll — a kanban board, settings panel, dashboard, message viewer, etc. For a *scrolling* single-page website use `html-website-generator`; for an artifact type the LLM picks (dashboard, social card, email) use `html-anything`. For a single-page résumé/poster/email/webapp where the type is implied by the brief and viewport-fit matters, `html-webapp-generator` is the deterministic choice.
+
+**Usage:**
+
+```bash
+ll-loop run html-webapp-generator "a kanban board for a 4-person team"
+```
+
+Override per-run:
+
+```bash
+# Use a custom viewport set (any "WxH" tokens; bad entries are skipped with a warning)
+ll-loop run html-webapp-generator "settings panel" \
+  --context viewports="1024x768 768x1024"
+```
+
+**Context variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `description` | (from `loop_input`) | Natural language webapp description — passed as the positional argument |
+| `run_dir` | runner-injected | Per-run artifact directory (`.loops/runs/html-webapp-generator-{instance_id}/`) for `index.html`, `brief.md`, `critique.md`, `screenshot.png`, `.viewport_rounds`, `.vision_rounds`; created automatically. Override with `--context run_dir=path/`. |
+| `design_tokens_context` | runner-injected | Resolved semantic design-token values (empty string when `design_tokens.enabled: false` or tokens path is missing). |
+| `design_guidance_context` | runner-injected | Prose body of a project's `DESIGN.md` (Do's/Don'ts, visual intent); empty string when absent or `use_design_tokens: false`. |
+| `pass_threshold` | `6` | Minimum score per criterion (1–10); **all four** criteria must clear this value |
+| `viewports` | `"1440x900 1024x768 375x667"` | Space-separated `WxH` tokens measured at every state iteration. Malformed entries are skipped with a warning; only a zero-valid-viewports list is a harness fault. |
+
+**FSM flow:**
+
+```
+plan → run_gen_eval (loop: oracles/generator-evaluator)
+        ├─ ALL_PASS → smoke_test
+        │              ├─ SMOKE_PASS → viewport_gate
+        │              │                ├─ VIEWPORT_PASS → vision_gate
+        │              │                │                  ├─ VISION_PASS / skipped → done
+        │              │                │                  └─ VISION_FAIL → run_gen_eval (with critique)
+        │              │                ├─ VIEWPORT_FAIL → run_gen_eval (with critique, round++)
+        │              │                └─ VIEWPORT_FAIL: round cap reached → accept → done
+        └─ ITERATE  → run_gen_eval
+        └─ FAILED / errored → failed
+```
+
+**Evaluation criteria** (all four must meet `pass_threshold`):
+
+| Criterion | Weight | What it checks |
+|-----------|--------|----------------|
+| `design_quality` | 2× | Does the app-shell feel like a coherent visual whole with distinct product identity? |
+| `layout_fit` | 2× | At every configured viewport, does the primary content fit without document scroll? Are the primary regions visible? Does the responsive collapse work at narrow widths (sidebar → off-canvas drawer, grids → single column, tables → horizontal scroll inside their own pane)? |
+| `craft` | 1× | Typography hierarchy, spacing consistency, color harmony, contrast ratios, pixel-level attention to pane boundaries and interactive affordances |
+| `functionality` | 1× | Can a user understand the app's purpose and complete the primary task within 5 seconds? |
+
+**Notes:**
+
+- **Pass/fail is a pure function of the four numeric scores** — same as `html-website-generator`: `ALL_PASS` fires whenever all four criteria clear `pass_threshold`, even if the scorer's "Issues to Address" list is non-empty.
+- **`viewport_gate` semantics** (FEAT-3589): geometric pass = `documentElement.scrollHeight <= innerHeight` AND `scrollWidth <= innerWidth` AND every visible interactive element (not inside a scrollable ancestor, not inside a semantically-hidden subtree) has its bounding box within the viewport. Body-level `overflow: hidden` does NOT fool the gate — `scrollHeight` counts clipped content. On fail, the gate appends per-viewport measurements to `critique.md` under `## Issues to Address (viewport gate, round N)` so the regenerate pass can address them, and routes back to `run_gen_eval`. Round cap (`.viewport_rounds`, default `3`) accepts-at-cap (matches `vision_gate` precedent) so the loop never spins until timeout on a stubborn page; on accept-at-cap the cap message contains `VIEWPORT_PASS` so the FSM routes to `on_yes` (vision_gate) and the per-viewport measurements stay on stdout.
+- **Off-canvas drawer caveat**: a closed drawer hidden only via `transform: translateX(-100%)` (translation off-screen) is *not* excluded by the gate and *will* fail at mobile size — the drawer sits outside the window with its links still in the DOM. The generator prompt requires closed drawers to use `[inert]`, `[hidden]`, `[aria-hidden="true"]`, or `visibility: hidden` so the gate treats the subtree as semantically hidden.
+- **`vision_gate`** — optional external-vision aesthetic scoring: same `VISION_*` env wiring as `html-website-generator`; degrades gracefully when absent.
+- The HTML file embeds all CSS and JavaScript inline so it renders correctly under a `file://` URL without a web server.
+- The loop runs up to 28 iterations with a 2-hour timeout (`max_steps: 28`, `timeout: 7200`) — sized to cover both gates (`viewport_gate` + `vision_gate`) exhausting their 3-round caps in sequence (worst path 27 steps).
+- To customize the design criteria or scoring weights, install the loop locally (`ll-loop install html-webapp-generator`) and edit the `run_gen_eval.with.{generate_prompt, rubric}` block.
 
 ### `svg-image-generator` — GAN-Style SVG Creation Loop
 
