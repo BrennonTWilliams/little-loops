@@ -18,6 +18,38 @@ relates_to:
 - FEAT-3722
 - ENH-3678
 parent: EPIC-3710
+confidence_score: 95
+outcome_confidence: 66
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: broad-site-enumeration
+  domain: outcome
+  criterion: complexity_breadth
+  description: About 25 change sites across CLI, config, schema, docs, presets, packaging
+    and tests.
+- id: checkpoint-choices-open
+  domain: outcome
+  criterion: ambiguity
+  description: Perf opt-in flag name, sample-vs-fixture remedy and go/pause judgment
+    are left to implementation.
+- id: cross-module-snapshot-logic
+  domain: outcome
+  criterion: complexity_depth
+  description: Pure snapshot, identity inventory and refinement adapters over shared
+    parser, template and graph state.
+- id: prior-review-corrections
+  domain: outcome
+  criterion: history_corrections
+  description: Two history-context corrections matched, both pre-implementation contract
+    critiques.
+- id: shared-config-contract-surface
+  domain: outcome
+  criterion: change_surface
+  description: Shared next root-key allowlist and config schema change; four blocked
+    follow-ons freeze this contract.
 ---
 
 # FEAT-3561: ll-next core with deterministic cross-verb recommendations
@@ -168,7 +200,7 @@ FEAT-3681 is done and its `_NEXT_ROOT_KEYS` currently contains only `loop_histor
 
 ### Files to Modify
 
-- New `little_loops.cli.next` module and pure snapshot/candidate-generator/selection modules; `scripts/pyproject.toml` entry point; CLI registration/permissions in `scripts/little_loops/init/writers.py` and the `Authorize all` preset in `skills/configure/areas.md` (both are enforced by `ll-verify-cli-allowlist`); `scripts/little_loops/config-schema.json` and `config/{features,core,__init__}.py` for consumed extensions to FEAT-3681's `next` object.
+- New CLI module `scripts/little_loops/cli/next.py` (`main_next`, exported from `cli/__init__.py`) and a new pure domain package `scripts/little_loops/next_arena/` — the shared seams FEAT-3769/3711/3713/3721 extend in place, so these paths are fixed here: `registry.py` (verb registry and canonical order), `actions.py` (tagged-union `action_spec`, grammar/parser/canonicalization, `action_fingerprint`), `state.py` (`ProjectState` and the all-status source inventory/captured-policy collection), `axes.py` (bounded curves and axis adapters), `candidates.py` (`assess_candidates`, `generate_candidates`), `selection.py` (`select_candidates`, round-robin fill), `render.py` (human/JSON/explain output) and `output-schema.json` (generated, drift-tested, declared in `package_data.PACKAGE_DATA_ASSETS` as `("next_arena", "output-schema.json")`). Internal helpers and test files are left to implementation (tests follow the `scripts/tests/test_feat3561_*.py` convention); `scripts/pyproject.toml` entry point `ll-next = "little_loops.cli:main_next"`; CLI registration/permissions in `scripts/little_loops/init/writers.py` and the `Authorize all` preset in `skills/configure/areas.md` (both are enforced by `ll-verify-cli-allowlist`); `scripts/little_loops/config-schema.json` and `config/{features,core,__init__}.py` for consumed extensions to FEAT-3681's `next` object.
 - Shared content-based refinement/formatting and source adapters around `cli/issues/next_action.py`, `issue_parser.py`, `issue_template.py`, `issues/program_design.py`, `session_log.py` and the dependency graph; capture templates/cutover policy once and adapt new consumers without changing the old commands' policy or output.
 - Extend the captured source inventory with anchored filename-number groups; test emitted operands against `issue_parser.resolve_issue_path` without duplicating its production selection policy or changing existing callers.
 - Generated JSON Schema asset for recommendation and explanation output under `scripts/little_loops/` so the wheel includes it; use `importlib.resources` for runtime access and declare it in `package_data.PACKAGE_DATA_ASSETS` if runtime-read. The event-only schemas under `docs/reference/schemas/` do not provide installed-package inclusion. Update `docs/reference/CLI.md`, `CONFIGURATION.md`, `API.md`.
@@ -276,3 +308,21 @@ A user runs `ll-next` and each available action bucket gets a first-round opport
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
+
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 66/100 → MODERATE
+
+### Risk Factor Delta
+- Added: none
+- No longer reported: `files-to-modify-unnamed`
+- Retained: `broad-site-enumeration`, `checkpoint-choices-open`, `cross-module-snapshot-logic`, `prior-review-corrections`, `shared-config-contract-surface`
+- Changed fields: none
+
+## Session Log
+- `/ll:confidence-check` - 2026-10-07T20:10:39 - `19789399-b723-497f-93b5-d0e097ae01b5.jsonl`
+- `/ll:confidence-check` - 2026-10-07T20:07:48 - `19789399-b723-497f-93b5-d0e097ae01b5.jsonl`
