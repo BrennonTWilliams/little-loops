@@ -78,7 +78,7 @@ Reuse `search_index` rows of kind `usage` and the BUG-3736 hold marker.
 
 - Existing search reader and schema stay unchanged unless an actual missing reconstruction field requires an append-only migration. Inspect the existing usage-search writer before choosing preservation or reconstruction; preserve the existing indexed-channel set.
 - ENH-3744 owns hold release/replacement. Its future transitions are regression controls here, not a hard blocker on restoring Stage 1 search evidence. This issue is independent of canonical numeric publication but remains required for epic closure.
-- BUG-3761 adds normalized survivor-aware exclusions for tool/correction search entries in the same `rebuild()` DELETE. Preserve those exclusions when implementing usage search retention, and keep the kinds independent in regression tests. Coordinate the derive fingerprint/version update with that patch. BUG-3766 separately covers live skill telemetry; neither related bug is a prerequisite of this usage-search repair.
+- BUG-3761 is done: `scripts/little_loops/session_store/lifecycle.py:1838` re-indexes surviving tools/corrections after the blanket search-kind deletion and suppresses their replay twins; it does not add survivor exclusions to that DELETE. Preserve this restoration when implementing usage search retention, and keep the kinds independent in regression tests. BUG-3766 separately covers live skill telemetry and a subsequent derive-version bump. Neither related bug is a prerequisite or imposes a landing order here; whichever patch lands later must retain earlier preservation logic and update its own derivation fingerprint/version together.
 
 ### Tests
 
@@ -109,3 +109,4 @@ Out of scope: prune/replay preservation, freshness, reader admission.
 ## Session Log
 
 - Pre-implementation epic review - 2026-10-05 - Temporary-store rebuild retained two usage observations but reduced usage search entries from two to zero. Added concrete index/reader ownership, sanitization, replacement and rollback controls; kept search independent of numeric publication and required for epic closure. No implementation or new score is claimed.
+- BUG-3766 pre-implementation review - 2026-10-06 - Corrected the BUG-3761 integration note to the landed blanket-delete/survivor-reindex behavior and removed the obsolete shared-rollout assumption. No usage-search implementation is claimed.
