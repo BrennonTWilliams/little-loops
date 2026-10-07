@@ -16,6 +16,33 @@ decision_needed: false
 relates_to:
 - BUG-3761
 - ENH-3747
+confidence_score: 95
+outcome_confidence: 70
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
+risk_factors:
+- id: bug3761-scaffold-shared-with-enh3747
+  domain: readiness
+  criterion: duplicate_implementations
+  description: BUG-3761 survivor re-index/suppression scaffolding already exists and
+    ENH-3747 shares search deletion; later lander must preserve the other's logic.
+- id: rebuild-classification-matching-contract
+  domain: outcome
+  criterion: complexity_depth
+  description: Migration plus in-transaction legacy classification and one-to-one
+    twin matching change the rebuild contract with shared state.
+- id: schema-version-literal-fanout
+  domain: outcome
+  criterion: complexity_breadth
+  description: ~13 change sites incl. 33 SCHEMA_VERSION==60 assertions across four
+    test files, manifest, fingerprint and the BUG-3736 downgrade fixture.
+- id: skill-reader-consistency
+  domain: outcome
+  criterion: change_surface
+  description: Six dependent readers (session skill stats, doctor_trim, logs, hooks,
+    action, worker) must stay consistent with preserved rows and suppressed counts.
 ---
 
 # BUG-3766: Rebuild wipes live skill telemetry and completion fields
@@ -184,6 +211,7 @@ ENH-3747 shares search deletion/re-indexing but has no required landing order wi
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T01:54:59 - `7c74451d-fd76-4629-88f0-c83252b1303a.jsonl`
 - `/ll:advise` - 2026-10-07T01:47:11 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:refine-issue` - 2026-10-07T01:47:10 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:capture-issue` - 2026-10-07T00:55:44 - `62355c4f-23ba-4c6f-bf44-9fe87ad6e7af.jsonl`
