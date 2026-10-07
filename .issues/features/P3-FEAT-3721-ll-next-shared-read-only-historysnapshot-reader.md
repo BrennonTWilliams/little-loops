@@ -131,6 +131,8 @@ A ready sprint can be recommended while its recent history is partial or unavail
 
 - 2026-10-06: An in-memory lookalike-table probe changed the intended range plan from integer-primary-key search to full scan plus temporary sort; a TEXT key also invalidates numeric-span visit bounds. Opus critique (0.80) corroborated a cheap per-request physical-shape check inside the existing transaction/deadline. Additional metadata probes confirmed plain/AUTOINCREMENT rowid aliases pass while INT, DESC, composite and WITHOUT ROWID keys expose primary-key indexes and fail. Replaced column-only compatibility wording with consumed-column/key compatibility; no migration, new index or runtime plan-string dependency is added.
 
+- 2026-10-07: Reviewed the current target resolver, literal-path/deadline backend, CLI argument/completion producer and integer-primary-key schema against this contract; no new material reader gap or scope change found. Recommendation BINARY predicate/conflict semantics remain owned by FEAT-3711 with its migration/real lookup fixtures. Opus's epic consult ("CONDITIONAL PROCEED", 0.82) retained the four-child order and local-only reader. Preserve the core checkpoint and existing per-request availability/work bounds; this records review, not implementation or passing acceptance evidence.
+
 ## Status
 
 **Open** | Created: 2026-10-04 | Priority: P3
