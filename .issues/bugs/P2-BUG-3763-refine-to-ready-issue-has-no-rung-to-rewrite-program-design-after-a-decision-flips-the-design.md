@@ -4,10 +4,11 @@ type: BUG
 title: refine-to-ready-issue has no rung to rewrite Program Design after a decision
   flips the design
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T00:49:18Z'
+completed_at: '2026-10-07T02:48:34Z'
 verify_verdict: VALID
 relates_to:
 - BUG-3764
@@ -100,13 +101,13 @@ Provide a repair owner for selected-decision propagation without broadening ordi
 
 ### Exhaustion routing
 
-Insert a shell state named `check_residual_decision_drift` on `check_reconcile_limit.on_no`, before `check_gate_refine_limit`; leave `.on_error` unchanged. It matches only when `ll-issues check-verify-verdict <ID> --directive-drift` succeeds and the current artifact's `verify_evidence` is a nonempty string containing a complete `Program Design:` or `Impact:` item in the existing `; `-separated contract. A qualifying item starts with that exact canonical prefix and contains nonempty drift and correction text (`<section>: <drift> -> <correction>`). A section named only in another item's correction tail is not a match. Resolve the target with `ll-issues path`, read frontmatter through the existing parser, and validate the value's type and item shape explicitly; never stringify a list or mapping. The parser is permissive, so successful parsing alone does not establish valid evidence. Do not inspect free-form model stdout or route from raw format-check candidates. Use the existing shell-exit convention:
+Insert a shell state named `check_residual_decision_drift` on `check_reconcile_limit.on_no`, before `check_gate_refine_limit`; leave `.on_error` unchanged. It matches only when `ll-issues check-verify-verdict <ID> --directive-drift` succeeds and the current artifact's `verify_evidence` is a nonempty string containing a complete `Program Design:` or `Impact:` item in the existing `; `-separated contract. A qualifying item starts with that exact canonical prefix and contains nonempty drift and correction text (`<section>: <drift> -> <correction>`). A section named only in another item's correction tail is not a match. Resolve the target with `ll-issues path`, read frontmatter through the existing parser, and validate the value's type and item shape explicitly; never stringify a list or mapping. Grammatical apostrophes/contractions, quotes, colons and escaped backslashes are legal evidence payloads; an odd apostrophe count alone is not an ambiguous boundary. The parser is permissive, so successful parsing alone does not establish valid evidence. Do not inspect free-form model stdout or route from raw format-check candidates. Use the existing shell-exit convention:
 
 - Exit 0 (match): go directly to `record_gate_unmet`, preserving the existing `GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE` tag and `directive_drift_nonconvergence` evidence reference.
-- Exit 1 (ordinary no-match, absent/non-string/malformed item or unsupported prefix): retain the existing fallback to `check_gate_refine_limit`.
-- Exit 2+ (probe/path/read failure or ambiguous item boundaries): go directly to `record_gate_unmet` with retained stderr and a diagnostic under the run directory. Include the capture in terminal reporting and diagnostic prompts/backstop evidence; this route bypasses `diagnose`, so capture alone is insufficient. Do not spend an additive retry when protection cannot be assessed, or claim a failed probe positively established decision drift.
+- Exit 1 (ordinary no-match, absent/non-string/empty evidence or an unambiguous item list without a complete canonical design/estimate item): retain the existing fallback to `check_gate_refine_limit`.
+- Exit 2+ (probe/path/read failure, a malformed canonical Program Design/Impact item such as a missing separator or empty drift/correction, or ambiguous item boundaries): go directly to `record_gate_unmet` with retained stderr and a diagnostic under the run directory. Include the capture in terminal reporting and diagnostic prompts/backstop evidence; this route bypasses `diagnose`, so capture alone is insufficient. Do not spend an additive retry when protection cannot be assessed, or claim a failed probe positively established decision drift.
 
-Keep producer and consumer item prefixes/delimiters identical and pin them together. BUG-3764 must paraphrase payload text containing the literal item delimiter `; ` rather than embed quoted pseudo-items; ambiguous legacy delimiter-containing evidence must fail with a diagnostic, not be certified as a clean no-match. A malformed/non-string evidence value without an ambiguous item boundary remains the ordinary no-match case above.
+Keep producer and consumer item prefixes/delimiters identical and pin them together. BUG-3764 must paraphrase payload text containing the literal item delimiter `; ` or structural separator ` -> ` rather than embed quoted pseudo-items. Assess actual delimiter ambiguity before an early no-canonical-prefix return, including quoted delimiter-containing AC-only evidence; ambiguous legacy boundaries must fail with a diagnostic rather than be certified as a clean no-match. Unsupported ordinary prefixes alone retain fallback, and quote/apostrophe parity is not a grammar rule. A malformed canonical design/estimate item fails diagnostically because the guard cannot assess protection; absent/non-string/empty evidence remains ordinary no-match.
 
 Update `record_gate_unmet`'s human text and comments: this new early exit exhausts the applicable reconcile budget while the additive counter can still be zero. Describe unresolved design/estimate drift, an incomplete repair or insufficient eligible sources; do not claim the shared refine budget was spent or limit the explanation to AC/Step edits. Stable tags and the closed `gate_unmet` class remain unchanged.
 
@@ -127,6 +128,7 @@ Review on 2026-10-06 selected this narrow variant of original Option A. Full ref
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — reconciliation exhaustion currently enters the shared increment-before-command retry counter. A refusal after `refine_followup` starts cannot refund it.
 - `commands/reconcile-issue.md` — the process and output repeat the old section scope; its score-cleanup trigger currently says only "rewrote at least one directive section", which would miss an Impact-only edit without an explicit update.
 - The guard is a routing backstop, not semantic proof or edit permission. Multiple decision groups and the permissive frontmatter parser require the separate eligibility and evidence-shape checks above.
+- BUG-3764's 2026-10-06 review and `/ll:advise` with Opus (confidence 0.74) tighten the shared evidence boundary: ordinary punctuation is legal, actual delimiter ambiguity is assessed before fallback, and malformed canonical design/estimate items fail diagnostically because protection cannot be assessed. This resolves the earlier contract/code disagreement over no-arrow evidence; it does not change ordinary AC-only fallback or grant rewrite authority.
 - A second Opus review on 2026-10-06 supported the narrow combined plan at confidence 0.75 and identified the probe-error additive fallback as a remaining contradictory-write path. This review changes that guard error route to diagnostic `gate_unmet` without requiring ENH-3765 to land first; ordinary AC-only no-match fallback remains intact.
 
 ## Integration Map
@@ -158,9 +160,9 @@ Review on 2026-10-06 selected this narrow variant of original Option A. Full ref
 - Successful scripted repair: one flagged reconcile, normalize, clear old verdict/evidence, fresh VALID verdict, fresh scores and `done`; assert additive retry count remains zero.
 - Persistent section-named design/estimate drift: one reconcile, exhaustion guard, `record_gate_unmet`, closed `gate_unmet` class and existing non-convergence evidence; no `refine_followup`, no decomposition.
 - Earlier ineligible AC-route reconcile, then discovered design drift: explicit exhaustion without an extra repair or counter reset.
-- Ordinary AC-only DIRECTIVE_DRIFT, empty/non-string/malformed-item evidence, VALID plus AC-route exhaustion, NON_VALID/`VERIFY:other` and missing verdict retain their documented fallback behavior. Probe/path/read errors and ambiguous item boundaries terminate with a diagnostic instead of additive retry; preserve `check_reconcile_limit.on_error` unchanged.
+- Ordinary AC-only DIRECTIVE_DRIFT, empty/non-string evidence and unambiguous unsupported prefixes, VALID plus AC-route exhaustion, NON_VALID/`VERIFY:other` and missing verdict retain their documented fallback behavior. Probe/path/read errors, malformed canonical design/estimate items and ambiguous item boundaries terminate with a diagnostic instead of additive retry; preserve `check_reconcile_limit.on_error` unchanged.
 - Contract fixtures for no flag, another verdict, empty evidence, absent/ambiguous selection, insufficient winner detail, `--check`, no-op scores and provenance preservation.
-- Guard cases for non-string evidence, section-only items, canonical prefixes mentioned only in a correction tail, quoted delimiter/pseudo-item ambiguity, valid mixed items and 2+ probe/path/read failures with persisted diagnostics. Pin producer/consumer prefixes together. Check governing versus unrelated/conflicting decision groups and stale/currently resolved evidence separately.
+- Guard cases for non-string/empty evidence, unsupported ordinary prefixes, malformed canonical section-only/no-arrow/empty-drift-or-correction items, canonical prefixes mentioned only in a correction tail, quoted delimiter/pseudo-item ambiguity (including AC-only evidence), legal grammatical apostrophes/quotes/colons/backslashes, valid mixed items and 2+ probe/path/read failures with persisted diagnostics. Pin producer/consumer prefixes together. Check governing versus unrelated/conflicting decision groups and stale/currently resolved evidence separately.
 - Program Design-only and Impact-only repairs each clear all six scores and move only resolved concerns; refusal/no-op/marker-only and check-mode passes preserve scores. Check-mode reports an eligible design-only/Impact-only plateau without edits.
 - Opt-in model evaluation on disposable copies verifies actual Program Design/Impact edits and protected-byte preservation. Scripted effects establish routing, not model compliance or convergence.
 
@@ -227,9 +229,18 @@ This issue owns reconcile repair capability and loop exhaustion routing. BUG-376
 - `docs/reference/COMMANDS.md` — reconcile command contract.
 - `docs/reference/CLI.md` — verdict query and typed run records.
 
+## Resolution
+
+**Fixed** | 2026-10-06
+
+- `commands/reconcile-issue.md`, `skills/ll-reconcile-issue/SKILL.md`: `--from-verify-evidence` extended with a conditional design/estimate propagation carve-out (Program Design directives, Impact Effort/Risk) — selection/rationale eligibility, re-read entailment, protected-content rules, fourth evidence-target role, design-only/Impact-only score lifecycle, check-mode plateau, `SECTIONS_REWRITTEN` rows.
+- `refine-to-ready-issue.yaml`: new `check_residual_decision_drift` on `check_reconcile_limit.on_no` (match / probe-or-ambiguity error → `record_gate_unmet`; ordinary no-match → `check_gate_refine_limit`); `record_gate_unmet` text + retained diagnostic; diagnose/backstop captures. `max_steps` kept at 113.
+- Tests: `test_bug3763_decision_drift_repair.py` (real-child routing, guard matrix, contract pins), updated `test_bug3695_directive_drift_repair.py` / `test_builtin_loops.py`. Docs: `COMMANDS.md`, `LOOPS_REFERENCE.md`.
+- Not done: the opt-in live model evaluation of actual Program Design/Impact edit quality (Implementation Step 4) — scripted effects prove routing only. Full suite: 1 unrelated float-precision golden failure (`test_next_loop_golden`) and 8 live-libsql endpoint errors.
+
 ## Status
 
-**Open** | Created: 2026-10-07 | Priority: P2
+**Done** | Created: 2026-10-07 | Priority: P2
 
 ## Confidence Check Notes
 
@@ -249,6 +260,8 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 - Baseline: none recorded
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T02:48:34 - `08782c41-4f7a-4fc5-8e93-08d1ab621160.jsonl`
+- `/ll:ready-issue` - 2026-10-07T02:35:32 - `7d5da459-c025-453c-8574-0bc28529441e.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:59:32 - `46b6f9fa-ff1d-4adc-917b-97222f85316f.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:56:29 - `07f0fbdf-7493-4e19-9704-1bfc9798a017.jsonl`
 - `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`

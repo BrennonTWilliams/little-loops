@@ -41,7 +41,9 @@ category: issue-management
 #     record_hedge_skip appends HEDGES to refine-to-ready-skip-obligations (reset in
 #     resolve_issue) and re-enters route_pre_score_obligation, which now passes --skip HEDGES.
 #     check_reconcile_limit (ENH-3248: 1 reconcile attempt/run)   → (on_yes, 1st) reconcile_issue → normalize_structure
-#                                                                  → (on_no, 2nd)  check_gate_refine_limit
+#                                                                  → (on_no, 2nd)  check_residual_decision_drift (BUG-3763)
+#       check_residual_decision_drift: section-named Program Design/Impact drift → record_gate_unmet;
+#         probe error → record_gate_unmet (diagnostic); otherwise → check_gate_refine_limit
 #   BUG-3551: three counter states share one refine budget (refine-to-ready-refine-count,
 #   one refine_followup per run) and differ only in where exhaustion goes:
 #     check_refine_limit      (from route_score_obligation: low score) → exhausted: breakdown_issue
@@ -822,8 +824,79 @@ states:
       operator: lt
       target: 2
     on_yes: reconcile_issue
-    on_no: check_gate_refine_limit  # BUG-3551
+    on_no: check_residual_decision_drift  # BUG-3763 (was check_gate_refine_limit, BUG-3551)
     on_error: check_gate_refine_limit
+
+  check_residual_decision_drift:
+    # BUG-3763: reconcile is spent and DIRECTIVE_DRIFT persists. When the current
+    # verify_evidence names Program Design / Impact (decision-derived design or
+    # estimate drift), additive refine_followup cannot rewrite it — spending the
+    # shared refine budget on it only prolongs a doomed run — so exit straight to
+    # record_gate_unmet. Ordinary AC/Step drift keeps the additive fallback.
+    # Exit 0: complete canonical `Program Design: <drift> -> <correction>` or
+    #         `Impact: ...` item at an item START (a section named only inside
+    #         another item's correction tail does not match).
+    # Exit 1: ordinary no-match (not drift, absent/non-string/empty/malformed
+    #         evidence, unsupported prefixes) -> existing additive fallback.
+    # Exit 2+: probe/path/read failure or ambiguous item boundary (a `; ` inside a
+    #         quoted payload) -> record_gate_unmet with a persisted diagnostic.
+    #         Protection cannot be assessed, so never spend an additive retry.
+    # The item prefixes/`; ` delimiter pin the verify-issues DIRECTIVE_DRIFT
+    # producer contract (commands/verify-issues.md) — change them together.
+    action: |
+      DIAG="${context.run_dir}/residual-decision-drift-diagnostic"
+      fail() { printf '%s\n' "$1" | tee "$DIAG" >&2; exit 2; }
+      ID=${captured.issue_id.output:shell}
+      ll-issues check-verify-verdict "$ID" --directive-drift >/dev/null 2>&1
+      RC=$?
+      [ "$RC" -eq 1 ] && exit 1
+      [ "$RC" -eq 0 ] || fail "check-verify-verdict --directive-drift probe failed (exit $RC) for $ID"
+      FILE=$(ll-issues path "$ID" 2>/dev/null) || fail "ll-issues path failed for $ID"
+      [ -n "$FILE" ] && [ -r "$FILE" ] || fail "issue file unreadable for $ID: $FILE"
+      LL_FILE="$FILE" python3 - 2>"$DIAG" << 'PYEOF'
+      import os
+      import sys
+
+      try:
+          from little_loops.frontmatter import parse_frontmatter
+
+          with open(os.environ["LL_FILE"], encoding="utf-8") as fh:
+              ev = parse_frontmatter(fh.read()).get("verify_evidence")
+      except Exception as exc:  # noqa: BLE001 - any read/parse failure is a probe error
+          print(f"read/parse failure: {exc}", file=sys.stderr)
+          sys.exit(2)
+      if not isinstance(ev, str) or not ev.strip():
+          sys.exit(1)
+      prefixes = ("Program Design: ", "Impact: ")
+      items = ev.split("; ")
+      if not any(i.startswith(prefixes) for i in items):
+          sys.exit(1)
+      for i in items:
+          # A `; ` inside a quoted payload splits one item into fragments: an odd
+          # quote count or a fragment with no `<section>: ... -> ...` shape.
+          if i.count("'") % 2 or ": " not in i or "->" not in i:
+              print(f"ambiguous item boundary near: {i[:120]!r}", file=sys.stderr)
+              sys.exit(2)
+      for i in items:
+          if not i.startswith(prefixes):
+              continue
+          drift, _, fix = i.split(": ", 1)[1].partition(" -> ")
+          if drift.strip(" '") and fix.strip(" '"):
+              sys.exit(0)
+      sys.exit(1)
+      PYEOF
+      RC=$?
+      if [ "$RC" -le 1 ]; then rm -f "$DIAG"; exit "$RC"; fi
+      printf 'verify_evidence could not be assessed for %s (exit %s)\n' "$ID" "$RC" >> "$DIAG"
+      cat "$DIAG" >&2
+      exit 2
+    action_type: shell
+    # BUG-2726 pattern: stderr reaches the diagnose prompt / backstop evidence.
+    capture: check_residual_decision_drift
+    fragment: shell_exit
+    on_yes: record_gate_unmet
+    on_no: check_gate_refine_limit
+    on_error: record_gate_unmet
 
   reconcile_issue:
     # ENH-3248: self-referential rewrite rung. the ACCEPTANCE_CRITERIA obligation's failure
@@ -1299,8 +1372,17 @@ states:
     # BUG-3695: DIRECTIVE_DRIFT still persisted after the one flagged reconcile
     # means B6 enumeration or the repair did not converge. Surface that as a
     # distinct line + evidence ref (no new legacy_class: LEGACY_CLASSES is closed).
+    # BUG-3763: also reached directly from check_residual_decision_drift (match or
+    # probe error) with the ADDITIVE counter possibly still zero: the applicable
+    # reconcile repair is spent, not the shared refine budget. The tag and the
+    # closed gate_unmet class are unchanged.
     action: |
-      echo "[GATE_UNMET]" ${captured.issue_id.output:shell} "- a structure gate (verify verdict, placeholders, Program Design, or acceptance criteria) still fails after this run's refine budget; not decomposing. Fix the gate finding, then re-run."
+      echo "[GATE_UNMET]" ${captured.issue_id.output:shell} "- a structure gate (verify verdict, placeholders, Program Design, or acceptance criteria) still fails after this run's repair budget (the one reconcile pass and/or the shared refine budget); not decomposing. Unresolved decision-derived design/estimate drift means the repair was incomplete or the recorded selection lacked source detail. Fix the gate finding, then re-run."
+      DIAG="${context.run_dir}/residual-decision-drift-diagnostic"
+      if [ -s "$DIAG" ]; then
+        echo "[GATE_UNMET:DIAGNOSTIC]" ${captured.issue_id.output:shell} "- residual decision-drift guard could not assess verify_evidence; no additive retry was spent:"
+        cat "$DIAG"
+      fi
       EV=""
       RN=$(cat ${context.run_dir}/refine-to-ready-reconcile-attempts 2>/dev/null || echo 0)
       if [ "$RN" -ge 1 ] && ll-issues check-verify-verdict ${captured.issue_id.output:shell} --directive-drift >/dev/null 2>&1; then
@@ -1486,6 +1568,7 @@ states:
       - check_gate_refine_limit: ${captured.check_gate_refine_limit.stderr?}
       - check_hedge_attempts:   ${captured.check_hedge_attempts.stderr?}
       - check_reconcile_limit:  ${captured.check_reconcile_limit.stderr?}
+      - check_residual_decision_drift: ${captured.check_residual_decision_drift.stderr?}
       - breakdown_issue:        ${captured.breakdown_issue.stderr?}
       - confidence_check (sub-loop — no stderr channel; event stream instead):
       The text between the markers below is a CONF_CHECK_EVENTS_1Y6B record of a sub-loop confidence-check run.
@@ -1572,6 +1655,7 @@ states:
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.exit_code?:shell}'
         printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.exit_code?}'
         printf 'check_reconcile_limit: %s\n' '${captured.check_reconcile_limit.exit_code?}'
+        printf 'check_residual_decision_drift: %s\n' '${captured.check_residual_decision_drift.exit_code?}'
         printf 'issue_id: %s\n' '${captured.issue_id.exit_code?:shell}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.exit_code?:shell}'
         printf '\n--- classify_failure verdicts (BUG-2826) ---\n'
@@ -1582,6 +1666,7 @@ states:
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.failure_type?}'
         printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.failure_type?}'
         printf 'check_reconcile_limit: %s\n' '${captured.check_reconcile_limit.failure_type?}'
+        printf 'check_residual_decision_drift: %s\n' '${captured.check_residual_decision_drift.failure_type?}'
         printf 'issue_id: %s\n' '${captured.issue_id.failure_type?}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.failure_type?}'
         printf '\n--- stderr tails ---\n'

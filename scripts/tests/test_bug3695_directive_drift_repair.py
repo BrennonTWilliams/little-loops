@@ -287,7 +287,8 @@ class TestFlagReachesOnlyReconcileIssue:
         limit = st["check_reconcile_limit"]
         assert limit["evaluate"]["target"] == 2
         assert limit["on_yes"] == "reconcile_issue"
-        assert limit["on_no"] == "check_gate_refine_limit"
+        assert limit["on_no"] == "check_residual_decision_drift"  # BUG-3763
+        assert limit["on_error"] == "check_gate_refine_limit"
         assert st["reconcile_issue"]["next"] == "normalize_structure"
         assert data["max_steps"] == 113
 
