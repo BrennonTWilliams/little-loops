@@ -4,10 +4,11 @@ type: ENH
 title: refine_followup gap-analysis adds contradictory Option B restatement beside
   rejected Option A
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T00:49:19Z'
+completed_at: '2026-10-07T03:00:41Z'
 relates_to:
 - BUG-3763
 - BUG-3764
@@ -208,9 +209,19 @@ This issue owns additive command protection and reporting. BUG-3763 owns the act
 - `docs/reference/COMMANDS.md` — refine flags and gap-analysis behavior.
 - `docs/guides/LOOPS_REFERENCE.md` — callers and shared retry budget.
 
+## Resolution
+
+**Completed** | 2026-10-06
+
+- `commands/refine-issue.md`: new Step 2.7 Gap-Analysis Write Guard (structured `format-check` preflight, containing-H2 + Impact Effort/Risk protection, indeterminate-preflight handling, informational `GAP_ANALYSIS:REVIEW_REQUIRED` line, lifecycle rules); embargo cross-references in Steps 3.1, 3.9, 5a, 5c, 6, 6.7 and the Step 8 report.
+- Tests: `TestGapAnalysisWriteGuard` contract pins and `TestFormatCheckGapAnalysisGuardCandidates` executable candidate fixtures; spawn-site inventory line pin updated (187 → 224).
+- `docs/reference/COMMANDS.md` updated; gemini/qwen/kimi-code mirrors regenerated via `ll-adapt`.
+- Not run: the opt-in disposable model-editing evaluation (byte-identity of protected H2s) — string-presence pins do not prove model behavior.
+- Full suite: 2 unrelated failures at the time (`test_next_loop_golden` float-precision, pre-existing on a clean tree; the spawn-site pin, since fixed) plus libsql live-endpoint errors.
+
 ## Status
 
-**Open** | Created: 2026-10-07 | Priority: P3
+**Completed** | Created: 2026-10-07 | Priority: P3
 
 ## Confidence Check Notes
 
@@ -230,6 +241,8 @@ _Added by `/ll:confidence-check` on 2026-10-06_
 - Baseline: none recorded
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T03:00:40 - `176faefe-11e7-4e5d-9bef-a730100bc5b8.jsonl`
+- `/ll:ready-issue` - 2026-10-07T02:49:37 - `306dff79-8432-4462-9183-0b3b1971862e.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:58:06 - `2e049e0f-fd3f-4dfe-ade3-b2323845a2d1.jsonl`
 - `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:format-issue` - 2026-10-07T00:51:36 - `9aaef30f-0230-47c7-ac7f-df1e0deadca8.jsonl`
