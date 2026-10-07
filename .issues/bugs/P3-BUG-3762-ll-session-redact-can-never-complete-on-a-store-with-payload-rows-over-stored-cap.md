@@ -1,5 +1,5 @@
 ---
-id: 3762
+id: BUG-3762
 title: ll-session redact can never complete on a store with payload rows over STORED_CAP
 type: BUG
 priority: P3
@@ -48,3 +48,35 @@ Either every row is actually scanned, or the report clearly separates rows that 
 - [ ] Page and request byte bounds stay enforced (existing `TestWireBounds` still passes).
 - [ ] Ingest-time behavior for payloads over the cap is confirmed and covered by a test; if it stores unsanitized data, that path is fixed too.
 - [ ] Tests use a synthetic over-cap row (clean and dirty variants) and fail on the current code.
+
+## Program Design
+
+### Types
+
+- `RawRedactionProblem.reason: str` — gains an `unverifiable_oversize` outcome (distinct from `resource_limit`) carrying row id and stored/decoded sizes
+- `max_row_bytes: int | None` — opt-in per-row decoded bound for oversized rows; `None` keeps the current `STORED_CAP`/`DECODED_CAP` behavior
+
+### Signatures
+
+- `redact_raw_events(db: Path | str | HistoryTarget = DEFAULT_DB_PATH, *, batch_size: int = 2000, dry_run: bool = False, max_row_bytes: int | None = None) -> RawRedactionReport`
+- `_plan_column(col: _Col, host: str, event_type: str) -> tuple[bytes | None, dict[str, int]]` — oversized branch routes to the single-row path instead of refusing
+- `_print_redact_report(report: RawRedactionReport) -> None` — names oversize rows and the remedy instead of "rerun"
+
+### Call Path
+
+`_main_redact` -> `redact_raw_events` -> `_plan_row` -> `_plan_column` -> `decode_payload`
+
+## Impact
+
+- **Priority**: P3 - `ll-session redact` cannot report `complete: true` on affected stores, but only for stores with over-cap payload rows and no data is lost or leaked by the refusal
+- **Effort**: Medium - reuses `_fetch_one` and the single-row write path; new work is bounded chunked fetch plus report changes and an ingest-time (ENH-3751) check
+- **Risk**: Medium - touches redaction completeness; must keep `TestWireBounds` page/request bounds intact
+- **Breaking Change**: No
+
+## Status
+
+**Open** | Created: 2026-10-06 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-10-06T23:51:15 - `a0ac9893-a394-4fc1-a6b5-800ff281d815.jsonl`
