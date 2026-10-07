@@ -179,6 +179,12 @@ from little_loops.session_store.sessions import (
     parse_pi_transcript,
     parse_qwen_session,
 )
+from little_loops.session_store.usage_source_state import (
+    ObservationWitness,
+    SourceDeriveCompletion,
+    read_observation_witness,
+    read_source_derive_completion,
+)
 from little_loops.session_store.writers import (
     HookEventCompletion,
     HostLayout,
@@ -266,6 +272,10 @@ __all__ = [
     "backfill_usage_incremental",
     "refresh_usage_source",
     "usage_source_freshness",
+    "SourceDeriveCompletion",
+    "ObservationWitness",
+    "read_source_derive_completion",
+    "read_observation_witness",
     "recompress_raw_events",
     "redact_raw_events",
     "RawRedactionProblem",

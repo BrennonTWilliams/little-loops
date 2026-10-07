@@ -23,10 +23,12 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 import subprocess
 import threading
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -34,7 +36,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import little_loops.session_store as _pkg
 from little_loops.host_runner import project_child_env, resolve_host
-from little_loops.pii import sanitize_history_payload
+from little_loops.pii import HistorySanitizationError, sanitize_history_payload
 from little_loops.session_store.backend import (
     HistoryError,
     connect_readonly,
@@ -58,8 +60,29 @@ from little_loops.session_store.usage_proof_scope import (
     UsageProofLimit,
     collect_usage_proof_scope,
 )
+from little_loops.session_store.usage_source_state import (
+    REFUSAL_CODES,
+    AcquisitionWitness,
+    SourceScope,
+    has_prior_semantic_success,
+    invalidate_usage_dependencies,
+    pending_obligations,
+    read_source_head,
+    storage_available,
+)
+from little_loops.session_store.usage_source_tracking import (
+    Attempt,
+    account_physical_lines,
+    begin_attempt,
+    finalize_source_refresh,
+    has_sticky_rejection,
+    record_failure_only,
+    record_held_pending,
+    record_rejections,
+    sticky_rejection_lines,
+    verify_claude_prefix,
+)
 from little_loops.session_store.writers import (
-    USAGE_NOT_HELD_SQL,
     SkillReplaySurvivor,
     UsageReplayHolds,
     _backfill_assistant_messages,
@@ -843,9 +866,11 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
     event, under the handle's verified host and the event's type, before
     serialization, packing, or queuing a remote batch; metadata and usage
     qualification still come from the original event. A sanitizer failure
-    propagates (``HistorySanitizationError``) and persists nothing further.
+    propagates (``HistorySanitizationError``) and persists nothing further. ENH-3745:
+    a failure is tagged with its source (``ll_failed_source``) so the public owner, after
+    its full rollback, can persist a content-free diagnostic. Physical-line accounting of
+    rejected lines is the owner's call (:func:`_account_ingested_sources`).
     """
-    from little_loops.session_store.claude_usage import claude_transcript_contract
 
     remote = not hasattr(conn, "create_function")
     count = 0
@@ -863,42 +888,41 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
 
     for handle in handles:
         source_path = str(handle.path)
-        for event in iter_events(handle):
-            serialized = json.dumps(
-                sanitize_history_payload(
-                    event.payload, host=handle.host, event_type=event.type or "unknown"
-                ).payload
-            )
-            session_id = event.payload.get("sessionId") or handle.session_id
-            usage_contract = claude_transcript_contract(
-                event.payload, host=handle.host, host_basis="handle"
-            )
-            packed = _pack_payload(serialized)
-            if remote:
-                pending.append(
-                    (
-                        event.timestamp,
-                        session_id,
-                        handle.host,
-                        source_path,
-                        event.line_no,
-                        event.ordinal,
-                        event.type or "unknown",
-                        packed,
-                        packed,
-                        usage_contract,
-                        session_id,
-                        event.line_no,
-                    )
-                )
-                if len(pending) >= _REMOTE_INSERT_CHUNK:
-                    count += _flush()
-                continue
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO raw_events"
-                "(ts, session_id, host, host_basis, source_path, line_no, ordinal, event_type,"
-                " raw_line, parsed_json, usage_contract)"
-                " VALUES(?, ?, ?, 'handle', ?, ?, ?, ?, ?, ?, ?)",
+        try:
+            count += _ingest_handle_events(conn, handle, remote, pending, _flush)
+        except Exception as exc:
+            exc.ll_failed_source = source_path  # type: ignore[attr-defined]
+            raise
+    if remote:
+        count += _flush()
+    return count
+
+
+def _ingest_handle_events(
+    conn: sqlite3.Connection,
+    handle: SessionHandle,
+    remote: bool,
+    pending: list[tuple[Any, ...]],
+    flush: Callable[[], int],
+) -> int:
+    """Insert one handle's sanitized events (the body of :func:`_backfill_raw_events`)."""
+    from little_loops.session_store.claude_usage import claude_transcript_contract
+
+    count = 0
+    source_path = str(handle.path)
+    for event in iter_events(handle):
+        serialized = json.dumps(
+            sanitize_history_payload(
+                event.payload, host=handle.host, event_type=event.type or "unknown"
+            ).payload
+        )
+        session_id = event.payload.get("sessionId") or handle.session_id
+        usage_contract = claude_transcript_contract(
+            event.payload, host=handle.host, host_basis="handle"
+        )
+        packed = _pack_payload(serialized)
+        if remote:
+            pending.append(
                 (
                     event.timestamp,
                     session_id,
@@ -910,12 +934,119 @@ def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle])
                     packed,
                     packed,
                     usage_contract,
-                ),
+                    session_id,
+                    event.line_no,
+                )
             )
-            count += cur.rowcount
-    if remote:
-        count += _flush()
+            if len(pending) >= _REMOTE_INSERT_CHUNK:
+                count += flush()
+            continue
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO raw_events"
+            "(ts, session_id, host, host_basis, source_path, line_no, ordinal, event_type,"
+            " raw_line, parsed_json, usage_contract)"
+            " VALUES(?, ?, ?, 'handle', ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event.timestamp,
+                session_id,
+                handle.host,
+                source_path,
+                event.line_no,
+                event.ordinal,
+                event.type or "unknown",
+                packed,
+                packed,
+                usage_contract,
+            ),
+        )
+        count += cur.rowcount
     return count
+
+
+_ACCOUNTED_HOSTS = frozenset({"claude-code", "codex"})
+
+
+def _account_ingested_source(conn: sqlite3.Connection, handle: SessionHandle) -> None:
+    """Record a just-ingested source's rejected physical lines in the caller's transaction.
+
+    Source-local failure evidence (ENH-3745) alongside the successful inserts; the caller
+    owns commit/rollback. Only line-oriented hosts have physical-line semantics; a missing
+    or unreadable file simply records nothing.
+    """
+    if handle.host not in _ACCOUNTED_HOSTS or not storage_available(conn):
+        return
+    try:
+        accounting = account_physical_lines(handle.path)
+    except OSError:
+        return
+    if not accounting.rejected:
+        return
+    attempt = begin_attempt(conn, str(handle.path), _USAGE_DERIVE_VERSION, host=handle.host)
+    if attempt is not None:
+        record_rejections(conn, attempt, accounting)
+
+
+def _account_ingested_sources(conn: sqlite3.Connection, handles: list[SessionHandle]) -> None:
+    """Record every ingested source's rejected lines in the caller's open transaction."""
+    if not hasattr(conn, "create_function"):  # remote stores have no physical-line semantics
+        return
+    for handle in handles:
+        _account_ingested_source(conn, handle)
+
+
+def _note_ingestion_failure(
+    db: Path | str, exc: BaseException, paths: list[tuple[Path, str]]
+) -> None:
+    """After a public ingestion owner fully rolled back, persist a content-free diagnostic.
+
+    *paths* are the ``(source, host)`` candidates of the failed call. A sanitizer refusal is
+    attributed to the tagged source (``ll_failed_source``); a decode failure to every
+    candidate whose physical accounting shows one -- including header acquisition that
+    failed before any handle existed, with explicitly unknown session scope. Best effort:
+    the original exception always propagates and failure to record never becomes success.
+    """
+    chain = [exc, exc.__cause__, exc.__context__]
+    refused = next((e for e in chain if isinstance(e, HistorySanitizationError)), None)
+    decode = any(isinstance(e, UnicodeDecodeError) for e in chain)
+    if refused is None and not decode:
+        return
+    try:
+        conn = _pkg.connect(db)
+    except Exception:
+        return
+    try:
+        targets: list[tuple[Path, str]] = []
+        failed = getattr(exc, "ll_failed_source", None)
+        if refused is not None:
+            targets = [(p, h) for p, h in paths if str(p) == failed]
+        else:
+            targets = list(paths)
+        attempts = [
+            (path, begin_attempt(conn, str(path), _USAGE_DERIVE_VERSION, host=host))
+            for path, host in targets
+            if host in _ACCOUNTED_HOSTS
+        ]
+    finally:
+        conn.close()
+    for path, attempt in attempts:
+        if refused is not None:
+            record_failure_only(
+                lambda: _pkg.connect(db),
+                attempt,
+                reason="sanitization_refused",
+                refusal_code=_refusal_code(refused),
+            )
+            continue
+        reason, line, offset = _first_rejected(path)
+        if line is None:
+            continue  # this candidate had no physical decode failure of its own
+        record_failure_only(
+            lambda: _pkg.connect(db),
+            attempt,
+            reason=reason,
+            first_line_no=line,
+            first_offset=offset,
+        )
 
 
 def backfill_raw_events(
@@ -946,21 +1077,29 @@ def backfill_raw_events(
         raise ValueError("backfill_raw_events: pass jsonl_files or handles, not both")
     effective_host = host if host is not None else resolve_host().name
     if handles is None:
-        handles = handles_from_paths(jsonl_files or [], effective_host)
+        try:
+            handles = handles_from_paths(jsonl_files or [], effective_host)
+        except UnicodeDecodeError as exc:
+            # Path-to-handle/header acquisition failed before a handle or transaction exists.
+            _note_ingestion_failure(db, exc, [(Path(p), effective_host) for p in jsonl_files or []])
+            raise
+    candidates = [(h.path, h.host) for h in handles]
     conn = _pkg.connect(db)
     try:
         filtered = (
             [h for h in handles if h.updated_at >= since_ts] if since_ts is not None else handles
         )
         count = _backfill_raw_events(conn, filtered)
+        _account_ingested_sources(conn, filtered)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES(?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (_watermark_key(db), _now()),
         )
         conn.commit()
-    except Exception:
+    except Exception as exc:
         conn.rollback()
+        _note_ingestion_failure(db, exc, candidates)
         raise
     finally:
         conn.close()
@@ -1314,12 +1453,132 @@ def _usage_raw_cursor(
     )
 
 
-def _set_usage_derive_checkpoint(conn: sqlite3.Connection) -> None:
-    """Commit usage replay version and high-water mark with its derived rows."""
-    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
+_SQLITE_INT_MAX = 2**63 - 1
+
+
+@dataclass(frozen=True)
+class _CheckpointState:
+    """Validated reading of the usage derive checkpoint (ENH-3745).
+
+    ``status`` is ``valid`` (current-version, non-negative, sequence-consistent floor),
+    ``absent`` (both keys missing), or one bounded failure: ``partial`` (one key
+    missing), ``version_changed``, ``invalid`` (malformed value), ``contradictory``
+    (floor above the allocation sequence) or ``sequence_unprovable`` (a positive floor
+    with no usable allocation sequence). ``floor`` is set only when ``valid``.
+    """
+
+    status: str
+    floor: int | None = None
+
+    @property
+    def valid(self) -> bool:
+        return self.status == "valid"
+
+
+def _checkpoint_int(value: object) -> int | None:
+    """Strict non-negative signed-64-bit integer reading of a stored metadata value."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str):
+        if not (value.isascii() and value.isdigit()):
+            return None
+        number = int(value)
+    else:
+        return None
+    return number if 0 <= number <= _SQLITE_INT_MAX else None
+
+
+def _raw_event_sequence(conn: sqlite3.Connection) -> tuple[bool, int | None]:
+    """``(table_readable, seq)`` for ``raw_events``'s allocation sequence (None = no usable row)."""
+    try:
+        row = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = 'raw_events'").fetchone()
+    except sqlite3.Error:
+        return False, None
+    if row is None:
+        return True, None
+    return True, _checkpoint_int(row[0])
+
+
+def _read_usage_checkpoint(conn: sqlite3.Connection) -> _CheckpointState:
+    """Classify the committed usage derive checkpoint without converting unchecked text.
+
+    The version is compared before the raw ID is converted. The allocation sequence may
+    only *reject* a floor (above it) or leave a positive floor unprovable; it never
+    raises a floor or proves that anything was processed.
+    """
+    rows = dict(
+        conn.execute(
+            "SELECT key, value FROM meta WHERE key IN "
+            "('usage_derive_version', 'usage_derive_raw_id')"
+        ).fetchall()
+    )
+    has_version = "usage_derive_version" in rows
+    has_raw_id = "usage_derive_raw_id" in rows
+    if not has_version and not has_raw_id:
+        return _CheckpointState("absent")
+    if has_version != has_raw_id:
+        return _CheckpointState("partial")
+    if rows["usage_derive_version"] != _USAGE_DERIVE_VERSION:
+        return _CheckpointState("version_changed")
+    floor = _checkpoint_int(rows["usage_derive_raw_id"])
+    if floor is None:
+        return _CheckpointState("invalid")
+    readable, seq = _raw_event_sequence(conn)
+    if floor > 0:
+        if not readable or seq is None:
+            return _CheckpointState("sequence_unprovable")
+        if floor > seq:
+            return _CheckpointState("contradictory")
+    return _CheckpointState("valid", floor)
+
+
+def _usage_bootstrap_eligible(conn: sqlite3.Connection) -> bool:
+    """Whether a store with no checkpoint is pristine enough for a first-enable replay.
+
+    Requires no replay-derived (non-live) observations, no replay holds and no prior
+    successful semantic boundary. Live-only observations and ingestion-only source
+    tracking, pending or failure rows do not block it.
+    """
+    if conn.execute("SELECT 1 FROM usage_events WHERE channel IS NOT 'live' LIMIT 1").fetchone():
+        return False
+    if conn.execute("SELECT 1 FROM usage_replay_holds LIMIT 1").fetchone():
+        return False
+    return not has_prior_semantic_success(conn)
+
+
+@dataclass(frozen=True)
+class _DeriveDisposition:
+    """Bounded outcome of one incremental derive (ENH-3745).
+
+    ``status`` is ``derived`` (the scan ran under valid or bootstrap proof) or
+    ``skipped`` (checkpoint proof is missing or unusable; nothing was touched).
+    ``reason`` is a bounded checkpoint status for a skip. ``scanned_bound`` is the raw ID
+    through which retained rows were actually scanned (None when skipped).
+    ``held_skipped`` maps a held source to the ``(first, last)`` raw IDs of appended
+    rows the replay writer skipped; those stay pending until ENH-3770.
+    """
+
+    status: str
+    count: int = 0
+    reason: str | None = None
+    scanned_bound: int | None = None
+    held_skipped: tuple[tuple[str, int, int], ...] = ()
+
+
+def _publish_usage_derive_checkpoint(
+    conn: sqlite3.Connection, *, prior_floor: int | None, scanned_bound: int
+) -> None:
+    """Commit usage version and ``max(prior validated floor, scanned bound)`` with its rows.
+
+    The caller supplies the validated floor and the bound it actually scanned; this never
+    re-queries the surviving ``MAX(raw_events.id)``, so a pruned maximum cannot lower it.
+    """
+    floor = max(prior_floor or 0, scanned_bound)
     for key, value in (
         ("usage_derive_version", _USAGE_DERIVE_VERSION),
-        ("usage_derive_raw_id", str(max_id)),
+        ("usage_derive_raw_id", str(floor)),
     ):
         conn.execute(
             "INSERT INTO meta(key, value) VALUES(?, ?) "
@@ -1328,58 +1587,152 @@ def _set_usage_derive_checkpoint(conn: sqlite3.Connection) -> None:
         )
 
 
-def _derive_usage_incremental_conn(conn: sqlite3.Connection) -> int:
-    """Derive new replayable usage under an existing IMMEDIATE transaction."""
-    rows = dict(
-        conn.execute(
-            "SELECT key, value FROM meta WHERE key IN ('usage_derive_version', 'usage_derive_raw_id')"
-        ).fetchall()
-    )
-    checkpoint = int(rows.get("usage_derive_raw_id", "0"))
+def _set_usage_derive_checkpoint(
+    conn: sqlite3.Connection, state: _CheckpointState | None = None, *, bootstrap: bool = True
+) -> bool:
+    """Stamp the checkpoint after a full replay under the shared safety rule.
+
+    *state* is the checkpoint reading taken before the replay mutated anything. A valid
+    floor is carried forward; an absent one is stamped only when *bootstrap* says the
+    store was pristine. Missing/invalid/version-changed established proof stays untouched
+    and returns False.
+    """
+    state = state if state is not None else _read_usage_checkpoint(conn)
+    if state.status == "absent" and not bootstrap:
+        return False
+    if state.status not in {"valid", "absent"}:
+        return False
     max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
-    if rows.get("usage_derive_version") != _USAGE_DERIVE_VERSION or max_id < checkpoint:
-        # One-time first-enable or normalizer-upgrade catch-up. Legacy derived
-        # rows have no source link; replace them once while preserving live.
-        # BUG-3736: held sources keep their usage; the replay writer skips their rows.
-        conn.execute(
-            f"DELETE FROM usage_events WHERE channel IS NOT 'live' AND {USAGE_NOT_HELD_SQL}"
+    _publish_usage_derive_checkpoint(conn, prior_floor=state.floor, scanned_bound=max_id)
+    return True
+
+
+def _usage_checkpoint_snapshot(conn: sqlite3.Connection) -> tuple[_CheckpointState, bool]:
+    """The checkpoint reading and bootstrap eligibility, taken before a replay mutates usage."""
+    state = _read_usage_checkpoint(conn)
+    return state, state.status == "absent" and _usage_bootstrap_eligible(conn)
+
+
+def _invalidate_usage_for_rebuild(conn: sqlite3.Connection) -> None:
+    """Downgrade tracked completion that ``rebuild``'s usage delete/replay is about to replace.
+
+    Negative tracking only (ENH-3745): affected current completion and the deleted
+    observations' witnesses become pending/unavailable in the same transaction, and older
+    successful boundaries remain as historical evidence. The replay itself, and its
+    row/cost preservation, are unchanged (ENH-3770).
+    """
+    if not storage_available(conn):
+        return
+    predicate = _REBUILD_TABLE_PREDICATES["usage_events"]
+    ids = tuple(row[0] for row in conn.execute(f"SELECT id FROM usage_events WHERE {predicate}"))
+    holds = load_usage_replay_holds(conn)
+    scopes = tuple(
+        head.scope
+        for head in (
+            read_source_head(conn, row[0])
+            for row in conn.execute("SELECT source_path FROM usage_source_state").fetchall()
         )
-        conn.execute("DELETE FROM search_index WHERE kind = 'usage'")
+        if head is not None and not holds.holds(head.scope.source_path, head.scope.host, None)
+    )
+    invalidate_usage_dependencies(conn, ids, scopes, reason="rebuild")
+
+
+def _invalidate_codex_catchup(conn: sqlite3.Connection, source: str) -> None:
+    """Invalidate tracked completion depending on *source*'s rollout observations."""
+    if not storage_available(conn):
+        return
+    ids = tuple(
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM usage_events WHERE channel = 'rollout' AND source_path = ?", (source,)
+        )
+    )
+    head = read_source_head(conn, source)
+    invalidate_usage_dependencies(
+        conn, ids, (head.scope,) if head is not None else (), reason="codex_catchup"
+    )
+
+
+def _held_appended_sources(
+    conn: sqlite3.Connection, checkpoint: int, holds: UsageReplayHolds
+) -> tuple[tuple[str, int, int], ...]:
+    """Held sources with candidate-capable rows above *checkpoint* the writer will skip."""
+    skipped: list[tuple[str, int, int]] = []
+    for source, host, first, last in conn.execute(
+        "SELECT source_path, host, MIN(id), MAX(id) FROM raw_events WHERE id > ? "
+        "AND event_type IN ('assistant', 'token_usage_record', 'event_msg', 'turn_context', "
+        "'session_meta') GROUP BY source_path, host ORDER BY source_path, host",
+        (checkpoint,),
+    ):
+        channel = "rollout" if host == "codex" else "transcript"
+        if holds.holds(source, host, channel):
+            skipped.append((source, first, last))
+    return tuple(skipped)
+
+
+def _derive_usage_incremental_disposition(conn: sqlite3.Connection) -> _DeriveDisposition:
+    """Derive new replayable usage under an existing IMMEDIATE transaction.
+
+    Validated same-version progress is never reset by a lower surviving raw maximum
+    (retention). A pristine store with no checkpoint replays once without deleting
+    anything. Missing, partial, malformed, contradictory or version-changed proof in an
+    established store skips untouched and reports a bounded reason; recovery that
+    preserves row identity is ENH-3770's.
+    """
+    state = _read_usage_checkpoint(conn)
+    max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
+    if state.status == "absent":
+        if not _usage_bootstrap_eligible(conn):
+            return _DeriveDisposition("skipped", reason="checkpoint_missing")
         count = _backfill_usage_events(conn, _usage_raw_cursor(conn))
-    elif max_id == checkpoint:
-        return 0
+        _publish_usage_derive_checkpoint(conn, prior_floor=None, scanned_bound=max_id)
+        return _DeriveDisposition("derived", count, scanned_bound=max_id)
+    if not state.valid:
+        return _DeriveDisposition("skipped", reason=f"checkpoint_{state.status}")
+    checkpoint = int(state.floor or 0)
+    if max_id <= checkpoint:
+        return _DeriveDisposition("derived", 0, scanned_bound=checkpoint)
+    holds = load_usage_replay_holds(conn)
+    held_skipped = _held_appended_sources(conn, checkpoint, holds)
+    codex_sources = [
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT source_path FROM raw_events WHERE id > ? AND host = 'codex'",
+            (checkpoint,),
+        )
+        if not holds.holds(row[0], "codex", "rollout")
+    ]
+    count = 0
+    for source in codex_sources:
+        # Codex turn state can start before this slice. Reconstruct it from
+        # this source's stored prefix; do not rescan the JSONL file.
+        # ENH-3745: tracked completion that consumed the observations about to be deleted
+        # (this source, or a copy whose dedup supplier it is) is invalidated first, in this
+        # transaction; a rollback restores the rows and the facts together.
+        _invalidate_codex_catchup(conn, source)
+        conn.execute(
+            "DELETE FROM usage_events WHERE channel = 'rollout' AND source_path = ?",
+            (source,),
+        )
+        conn.execute("DELETE FROM search_index WHERE kind = 'usage' AND anchor = ?", (source,))
+        count += _backfill_usage_events(
+            conn, _usage_raw_cursor(conn, "WHERE source_path = ?", (source,))
+        )
+    if codex_sources:
+        placeholders = ", ".join("?" for _ in codex_sources)
+        where = f"WHERE id > ? AND source_path NOT IN ({placeholders})"
+        params = (checkpoint, *codex_sources)
     else:
-        holds = load_usage_replay_holds(conn)
-        codex_sources = [
-            row[0]
-            for row in conn.execute(
-                "SELECT DISTINCT source_path FROM raw_events WHERE id > ? AND host = 'codex'",
-                (checkpoint,),
-            )
-            if not holds.holds(row[0], "codex", "rollout")
-        ]
-        count = 0
-        for source in codex_sources:
-            # Codex turn state can start before this slice. Reconstruct it from
-            # this source's stored prefix; do not rescan the JSONL file.
-            conn.execute(
-                "DELETE FROM usage_events WHERE channel = 'rollout' AND source_path = ?",
-                (source,),
-            )
-            conn.execute("DELETE FROM search_index WHERE kind = 'usage' AND anchor = ?", (source,))
-            count += _backfill_usage_events(
-                conn, _usage_raw_cursor(conn, "WHERE source_path = ?", (source,))
-            )
-        if codex_sources:
-            placeholders = ", ".join("?" for _ in codex_sources)
-            where = f"WHERE id > ? AND source_path NOT IN ({placeholders})"
-            params = (checkpoint, *codex_sources)
-        else:
-            where = "WHERE id > ?"
-            params = (checkpoint,)
-        count += _backfill_usage_events(conn, _usage_raw_cursor(conn, where, params))
-    _set_usage_derive_checkpoint(conn)
-    return count
+        where = "WHERE id > ?"
+        params = (checkpoint,)
+    count += _backfill_usage_events(conn, _usage_raw_cursor(conn, where, params))
+    _publish_usage_derive_checkpoint(conn, prior_floor=checkpoint, scanned_bound=max_id)
+    return _DeriveDisposition("derived", count, scanned_bound=max_id, held_skipped=held_skipped)
+
+
+def _derive_usage_incremental_conn(conn: sqlite3.Connection) -> int:
+    """Count-only view of :func:`_derive_usage_incremental_disposition`."""
+    return _derive_usage_incremental_disposition(conn).count
 
 
 def backfill_usage_incremental(db: Path | str = DEFAULT_DB_PATH) -> int:
@@ -1388,9 +1741,13 @@ def backfill_usage_incremental(db: Path | str = DEFAULT_DB_PATH) -> int:
     conn = _pkg.connect(db)
     try:
         conn.execute("BEGIN IMMEDIATE")
-        count = _derive_usage_incremental_conn(conn)
+        disposition = _derive_usage_incremental_disposition(conn)
+        if storage_available(conn):
+            # The scan may advance past held-source appends the writer skips; their
+            # pending bounds commit in the same transaction as the advance.
+            record_held_pending(conn, _USAGE_DERIVE_VERSION, disposition.held_skipped)
         conn.commit()
-        return count
+        return disposition.count
     except Exception:
         conn.rollback()
         raise
@@ -1404,6 +1761,130 @@ def _source_tail_digest(handle: Any, offset: int) -> str:
     return hashlib.sha256(handle.read(min(offset, 64))).hexdigest()
 
 
+def _certify_codex_stored_source(
+    conn: sqlite3.Connection,
+    handle: SessionHandle,
+    path: Path,
+    session_id: str,
+    preexisting: set[int],
+    *,
+    prior_lines: int = 0,
+    exempt_lines: frozenset[int] = frozenset(),
+) -> None:
+    """Raise unless every stored row of *path* canonically matches the current rollout parse.
+
+    Lines present before the refresh may be legacy plaintext: they certify by canonical
+    comparison. Lines the refresh inserted must be the literal sanitized payload.
+    """
+    from little_loops.session_store.claude_usage import claude_transcript_contract
+    from little_loops.session_store.usage_refresh import (
+        _canonical_payload,
+        _payload_equal,
+        _stored_payloads,
+    )
+
+    stored = {
+        row[0]: row[1:]
+        for row in conn.execute(
+            "SELECT line_no, session_id, host, host_basis, event_type, ts, "
+            "ordinal, usage_contract, CAST(raw_line AS BLOB), CAST(parsed_json AS BLOB), "
+            "typeof(raw_line), typeof(parsed_json) "
+            "FROM raw_events WHERE source_path = ?",
+            (str(path),),
+        )
+    }
+    seen: set[int] = set()
+    for event in iter_events(handle):
+        if event.line_no is None:
+            raise RuntimeError("Codex parser omitted a source line number")
+        expected = (
+            event.payload.get("sessionId") or session_id,
+            "codex",
+            "handle",
+            event.type or "unknown",
+            event.timestamp,
+            event.ordinal,
+            claude_transcript_contract(event.payload, host="codex", host_basis="handle"),
+        )
+        row = stored.get(event.line_no)
+        if row is None or row[:7] != expected:
+            raise RuntimeError("Codex stored source differs from current rollout")
+        if (
+            event.line_no <= prior_lines
+            and event.line_no not in preexisting
+            and event.line_no not in exempt_lines
+        ):
+            # Restored from the native source during this refresh: it proves nothing about
+            # the retained prior prefix.
+            raise RuntimeError("Codex retained prefix was not intact before this refresh")
+        columns = _stored_payloads(row[7], row[9], row[8], row[10])
+        sanitized = _canonical_payload(
+            event.payload, host="codex", event_type=event.type or "unknown"
+        )
+        if event.line_no in preexisting:
+            columns = tuple(  # type: ignore[assignment]
+                _canonical_payload(column, host=str(row[1]), event_type=str(row[3]))
+                for column in columns
+            )
+        if not all(_payload_equal(column, sanitized) for column in columns):
+            raise RuntimeError("Codex stored source differs from current rollout")
+        seen.add(event.line_no)
+    if seen != stored.keys():
+        raise RuntimeError("Codex stored source has unmatched rollout rows")
+
+
+def _refusal_code(exc: BaseException) -> str:
+    code = getattr(exc, "reason", None)
+    return code if code in REFUSAL_CODES else "invalid_payload"
+
+
+def _first_rejected(path: Path) -> tuple[str, int | None, int | None]:
+    """``(reason, first_line, first_offset)`` of the first physically rejected line, if any."""
+    try:
+        accounting = account_physical_lines(path)
+    except OSError:
+        return "decode_failure", None, None
+    if not accounting.rejected:
+        return "decode_failure", None, None
+    first = min(accounting.rejected, key=lambda r: r.first_offset)
+    return first.reason, first.first_line_no, first.first_offset
+
+
+def _codex_failure_diagnostic(
+    db: Path | str, attempt: Attempt | None, path: Path, exc: BaseException
+) -> None:
+    """After a full rollback, persist a content-free failure for a Codex refresh (best effort)."""
+    chain = [exc, exc.__cause__, exc.__context__]
+    if any(isinstance(e, HistorySanitizationError) for e in chain):
+        refused = next(e for e in chain if isinstance(e, HistorySanitizationError))
+        record_failure_only(
+            lambda: _pkg.connect(db),
+            attempt,
+            reason="sanitization_refused",
+            refusal_code=_refusal_code(refused),
+        )
+    elif any(isinstance(e, UnicodeDecodeError | json.JSONDecodeError) for e in chain):
+        reason, line, offset = _first_rejected(path)
+        record_failure_only(
+            lambda: _pkg.connect(db),
+            attempt,
+            reason=reason,
+            first_line_no=line,
+            first_offset=offset,
+        )
+
+
+def _refresh_status(base: str, result: Any) -> dict[str, int | str]:
+    """Overlay a truthful incomplete marker on an otherwise complete refresh status."""
+    if base == "complete" and result.reason not in _BENIGN_FINALIZE_REASONS:
+        return {"status": "incomplete", "reason": str(result.reason)}
+    return {"status": base}
+
+
+# Finalize outcomes that leave the legacy public fallback intact: nothing negative was found.
+_BENIGN_FINALIZE_REASONS = frozenset({None, "acquisition_unprovable", "storage_unavailable"})
+
+
 def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int | str]:
     """Replay a complete native rollout and commit new usage with a source boundary.
 
@@ -1414,8 +1895,10 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
     """
     path = source.expanduser().resolve()
     conn = _pkg.connect(db)
+    attempt: Attempt | None = None
     try:
         conn.execute("BEGIN IMMEDIATE")
+        attempt = begin_attempt(conn, str(path), _USAGE_DERIVE_VERSION, host="codex")
         with path.open("rb") as handle:
             initial = path.stat()
             if initial.st_size == 0:
@@ -1427,7 +1910,7 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
                 return {"raw_events": 0, "usage_events": 0, "status": "partial"}
             cursor = conn.execute(
                 "SELECT session_id, device, inode, committed_offset, tail_sha256, host, "
-                "source_mtime_ns "
+                "source_mtime_ns, status, derived_raw_event_id, committed_line_no "
                 "FROM usage_source_cursors WHERE source_path = ?",
                 (str(path),),
             ).fetchone()
@@ -1445,8 +1928,28 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
                 conn.commit()
                 raise RuntimeError("Codex rollout rotated, truncated, or overwritten")
             if cursor and (initial.st_size, initial.st_mtime_ns) == (cursor[3], cursor[6]):
+                # Unchanged bytes cannot waive semantic recovery: report pending, failure
+                # or version/checkpoint state truthfully, and never publish new proof here.
+                state = _read_usage_checkpoint(conn)
+                negative = _freshness_negative_evidence(conn, str(path))
+                derived_mark = _checkpoint_int(cursor[8])
                 conn.rollback()
-                return {"raw_events": 0, "usage_events": 0, "status": "complete"}
+                if cursor[7] != "complete":
+                    reason = "cursor_incomplete"
+                elif negative is not None:
+                    reason = negative[1]
+                elif not state.valid:
+                    reason = f"checkpoint_{state.status}"
+                elif derived_mark is None or int(state.floor or 0) < derived_mark:
+                    reason = "derive_pending"
+                else:
+                    return {"raw_events": 0, "usage_events": 0, "status": "complete"}
+                return {
+                    "raw_events": 0,
+                    "usage_events": 0,
+                    "status": "incomplete",
+                    "reason": reason,
+                }
             handle.seek(0)
             try:
                 header = json.loads(handle.readline())
@@ -1475,69 +1978,38 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
         # Lines present before this call may be legacy plaintext: they certify by
         # canonical comparison. Lines inserted below must be the literal sanitized
         # payload, or canonicalizing the stored side would mask a missed insert seam.
-        preexisting: set[int] = set()
-        if cursor is None:
-            preexisting = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT line_no FROM raw_events WHERE source_path = ?", (str(path),)
-                )
-            }
+        preexisting = {
+            row[0]
+            for row in conn.execute(
+                "SELECT line_no FROM raw_events WHERE source_path = ?", (str(path),)
+            )
+        }
         inserted = _backfill_raw_events(conn, handles)
 
         # First enablement may encounter rows ingested by SessionStart before
         # the source cursor existed. Certify the stored source against the
-        # current parser output before publishing a fresh boundary.
+        # current parser output before publishing a fresh boundary. A later refresh
+        # extends semantic coverage only if the same certification still holds; a
+        # failure there leaves the older boundary and pending completion instead.
+        prefix_proved = True
         if cursor is None:
-            from little_loops.session_store.claude_usage import claude_transcript_contract
-            from little_loops.session_store.usage_refresh import (
-                _canonical_payload,
-                _payload_equal,
-                _stored_payloads,
-            )
+            _certify_codex_stored_source(conn, handles[0], path, session_id, preexisting)
+        else:
+            try:
+                _certify_codex_stored_source(
+                    conn,
+                    handles[0],
+                    path,
+                    session_id,
+                    preexisting,
+                    prior_lines=int(cursor[9] or 0),
+                    exempt_lines=sticky_rejection_lines(conn, str(path)),
+                )
+            except RuntimeError:
+                prefix_proved = False
 
-            stored = {
-                row[0]: row[1:]
-                for row in conn.execute(
-                    "SELECT line_no, session_id, host, host_basis, event_type, ts, "
-                    "ordinal, usage_contract, CAST(raw_line AS BLOB), CAST(parsed_json AS BLOB), "
-                    "typeof(raw_line), typeof(parsed_json) "
-                    "FROM raw_events WHERE source_path = ?",
-                    (str(path),),
-                )
-            }
-            seen: set[int] = set()
-            for event in iter_events(handles[0]):
-                if event.line_no is None:
-                    raise RuntimeError("Codex parser omitted a source line number")
-                expected = (
-                    event.payload.get("sessionId") or session_id,
-                    "codex",
-                    "handle",
-                    event.type or "unknown",
-                    event.timestamp,
-                    event.ordinal,
-                    claude_transcript_contract(event.payload, host="codex", host_basis="handle"),
-                )
-                row = stored.get(event.line_no)
-                if row is None or row[:7] != expected:
-                    raise RuntimeError("Codex stored source differs from current rollout")
-                columns = _stored_payloads(row[7], row[9], row[8], row[10])
-                sanitized = _canonical_payload(
-                    event.payload, host="codex", event_type=event.type or "unknown"
-                )
-                if event.line_no in preexisting:
-                    columns = tuple(  # type: ignore[assignment]
-                        _canonical_payload(column, host=str(row[1]), event_type=str(row[3]))
-                        for column in columns
-                    )
-                if not all(_payload_equal(column, sanitized) for column in columns):
-                    raise RuntimeError("Codex stored source differs from current rollout")
-                seen.add(event.line_no)
-            if seen != stored.keys():
-                raise RuntimeError("Codex stored source has unmatched rollout rows")
-
-        derived = _derive_usage_incremental_conn(conn)
+        accounting = account_physical_lines(path)
+        disposition = _derive_usage_incremental_disposition(conn)
         with path.open("rb") as handle:
             final = path.stat()
             if (final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns) != (
@@ -1578,13 +2050,54 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
                 _now(),
             ),
         )
+        # The verified native header is actual acquisition evidence of host and session.
+        attempt = _with_verified_session(attempt, "codex", session_id)
+        outcome = finalize_source_refresh(
+            conn,
+            attempt,
+            accounting=accounting,
+            witness=AcquisitionWitness(
+                final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns, digest
+            ),
+            coverage_proved=prefix_proved,
+            derive_status=disposition.status,
+            derive_reason=disposition.reason,
+            held_skipped=disposition.held_skipped,
+            source_max_raw_id=source_max_id,
+            now=_now(),
+            reacquired_from_zero=True,
+        )
         conn.commit()
-        return {"raw_events": inserted, "usage_events": derived, "status": "complete"}
-    except Exception:
+        return {
+            "raw_events": inserted,
+            "usage_events": disposition.count,
+            **_refresh_status("complete", outcome),
+        }
+    except Exception as exc:
         conn.rollback()
+        _codex_failure_diagnostic(db, attempt, path, exc)
         raise
     finally:
         conn.close()
+
+
+def _with_verified_session(
+    attempt: Attempt | None, host: str, session_id: str | None
+) -> Attempt | None:
+    """*attempt* with host/session set from actual acquisition evidence (never guessed)."""
+    if attempt is None:
+        return None
+    scope = attempt.scope
+    return Attempt(
+        SourceScope(
+            scope.source_path,
+            scope.generation_id,
+            scope.derive_version,
+            host,
+            session_id or scope.session_id,
+        ),
+        attempt.head_revision,
+    )
 
 
 def refresh_usage_source(
@@ -1596,6 +2109,8 @@ def refresh_usage_source(
     reparses its rollout to preserve stateful tool normalization, but inserts
     only new line positions. A partial tail is not certified. A changed
     inode or overwritten boundary refuses reuse of physical line numbers.
+    The returned ``status`` is ``incomplete`` (with a bounded ``reason``) when ingestion
+    advanced but derivation, acquisition or source proof did not complete.
     """
     if host not in {"claude-code", "codex"}:
         raise ValueError(f"refresh_usage_source: unverified trigger host {host!r}")
@@ -1606,17 +2121,30 @@ def refresh_usage_source(
 
     path = source.expanduser().resolve()
     conn = _pkg.connect(db)
+    attempt: Attempt | None = None
+    refusal_line: int | None = None
+    refusal_offset: int | None = None
     try:
         conn.execute("BEGIN IMMEDIATE")
+        attempt = begin_attempt(conn, str(path), _USAGE_DERIVE_VERSION, host=host)
         cursor = conn.execute(
             "SELECT session_id, device, inode, committed_offset, committed_line_no, "
             "tail_sha256 FROM usage_source_cursors WHERE source_path = ?",
             (str(path),),
         ).fetchone()
+        preexisting_rows = (
+            conn.execute(
+                "SELECT 1 FROM raw_events WHERE source_path = ? LIMIT 1", (str(path),)
+            ).fetchone()
+            is not None
+        )
+        native_session_seen: str | None = None
         with path.open("rb") as handle:
             initial = path.stat()
             offset = int(cursor[3]) if cursor else 0
             line_no = int(cursor[4]) if cursor else 0
+            started_at_zero = offset == 0
+            ingest_from = offset
             if cursor and (
                 initial.st_dev != cursor[1]
                 or initial.st_ino != cursor[2]
@@ -1631,10 +2159,24 @@ def refresh_usage_source(
                 conn.commit()
                 raise RuntimeError("source rotated, truncated, or overwritten")
             session_id = cursor[0] if cursor else path.stem
+            retained_before = frozenset(
+                r[0]
+                for r in conn.execute(
+                    "SELECT line_no FROM raw_events WHERE source_path = ?", (str(path),)
+                )
+            )
+            prior_line_no = line_no
+            exempt_lines = sticky_rejection_lines(conn, str(path))
+            if cursor and has_sticky_rejection(conn, str(path)):
+                # Full re-acquisition from zero: a repaired gap can only be proven by
+                # comparing every retained position (INSERT OR IGNORE keeps existing rows).
+                offset = line_no = ingest_from = 0
+                started_at_zero = True
             handle.seek(offset)
             inserted = 0
             partial = False
             while True:
+                line_start = handle.tell()
                 raw_line = handle.readline()
                 if not raw_line:
                     break
@@ -1652,6 +2194,8 @@ def refresh_usage_source(
                 native_session = record.get("sessionId")
                 if isinstance(native_session, str) and native_session:
                     session_id = native_session
+                    native_session_seen = native_session
+                refusal_line, refusal_offset = line_no, line_start
                 packed = _pack_payload(
                     json.dumps(
                         sanitize_history_payload(
@@ -1661,6 +2205,7 @@ def refresh_usage_source(
                         ).payload
                     )
                 )
+                refusal_line = refusal_offset = None
                 contract = claude_transcript_contract(
                     record, host="claude-code", host_basis="handle"
                 )
@@ -1689,7 +2234,18 @@ def refresh_usage_source(
                 status = "pending_append"
             digest = _source_tail_digest(handle, offset)
 
-        derived = _derive_usage_incremental_conn(conn)
+        accounting = account_physical_lines(path, limit=offset if not partial else None)
+        # Zero-origin coverage: a pristine first read of the whole prefix, or a full
+        # re-acquisition from zero that canonically matches every retained position.
+        coverage = (started_at_zero and not preexisting_rows) or verify_claude_prefix(
+            conn,
+            path,
+            accounting.offset,
+            retained_before=retained_before,
+            prior_line_no=prior_line_no,
+            exempt_lines=exempt_lines,
+        )
+        disposition = _derive_usage_incremental_disposition(conn)
         source_max_id = conn.execute(
             "SELECT COALESCE(MAX(id), 0) FROM raw_events WHERE source_path = ?",
             (str(path),),
@@ -1723,49 +2279,159 @@ def refresh_usage_source(
                 _now(),
             ),
         )
+        # Only a native sessionId seen during acquisition verifies the session.
+        attempt = _with_verified_session(attempt, host, native_session_seen)
+        outcome = finalize_source_refresh(
+            conn,
+            attempt,
+            accounting=accounting,
+            witness=AcquisitionWitness(
+                final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns, digest
+            ),
+            coverage_proved=coverage,
+            derive_status=disposition.status,
+            derive_reason=disposition.reason,
+            held_skipped=disposition.held_skipped,
+            source_max_raw_id=source_max_id,
+            now=_now(),
+            ingest_from=ingest_from,
+            reacquired_from_zero=ingest_from == 0,
+        )
         conn.commit()
-        return {"raw_events": inserted, "usage_events": derived, "status": status}
-    except Exception:
+        return {
+            "raw_events": inserted,
+            "usage_events": disposition.count,
+            **_refresh_status(status, outcome),
+        }
+    except Exception as exc:
         conn.rollback()
+        if isinstance(exc, HistorySanitizationError):
+            # Whole-call rollback stands; a separate guarded failure-only transaction
+            # records only the bounded reason and first refused position.
+            record_failure_only(
+                lambda: _pkg.connect(db),
+                attempt,
+                reason="sanitization_refused",
+                refusal_code=_refusal_code(exc),
+                first_line_no=refusal_line,
+                first_offset=refusal_offset,
+            )
         raise
     finally:
         conn.close()
 
 
-def usage_source_freshness(db: Path | str, source: Path) -> dict[str, int | str | None]:
+def _snapshot_ready(conn: sqlite3.Connection) -> bool:
+    """Whether *conn* is an active pinned read transaction with ``query_only`` enabled."""
+    try:
+        return bool(conn.in_transaction) and conn.execute("PRAGMA query_only").fetchone()[0] == 1
+    except sqlite3.Error:
+        return False
+
+
+def _freshness_negative_evidence(conn: sqlite3.Connection, source: str) -> tuple[str, str] | None:
+    """``(status, reason)`` from durable semantic tracking that overrides legacy trust.
+
+    Reads the source head and its pending obligations. A tracked source that is not
+    cleanly complete never falls back to the legacy cursor comparison. ``None`` means no
+    semantic tracking exists, so only the legacy comparison applies.
+    """
+    head = read_source_head(conn, source)
+    pending = pending_obligations(conn, source)
+    if head is None and not pending:
+        return None
+    for ob in pending:
+        if ob.kind in {"acquisition_failure", "native_conflict"}:
+            return "unknown", ob.reason
+    for ob in pending:
+        if ob.kind == "partial_tail":
+            return "unknown", "partial_tail"
+    if any(ob.usage_pending for ob in pending):
+        return "stale", "derive_pending"
+    if head is None or head.status == "pending":
+        return "stale", "derive_pending"
+    if head.status == "unprovable":
+        return "unknown", head.reason or "invalid_state"
+    return None
+
+
+def usage_source_freshness(
+    db: Path | str, source: Path, *, conn: sqlite3.Connection | None = None
+) -> dict[str, int | str | None]:
     """Classify a selected local source against its committed derive boundary.
 
-    Reads only cursor metadata, file stat, and a bounded boundary/tail witness;
-    it never parses usage or advances the store. ``unknown`` is used whenever
-    the source cannot be compared safely (missing, rotation, partial write).
+    Reads only cursor/source-state metadata, file stat, and a bounded boundary/tail
+    witness; it never parses usage or advances the store. ``unknown`` is used whenever
+    the source cannot be compared safely (missing, rotation, partial write, invalid
+    metadata). With *conn*, the caller's already-active pinned read transaction
+    (``PRAGMA query_only = 1``) supplies every database read and is never opened, committed,
+    rolled back or closed here; an inactive or writable connection yields
+    ``unknown/read_snapshot_unavailable``. Without it, one owned read transaction is begun
+    before the first database read and released afterwards.
     """
     path = source.expanduser().resolve()
+    owned: sqlite3.Connection | None = None
     try:
-        conn = connect_readonly(db)
-        try:
-            cursor = conn.execute(
-                "SELECT device, inode, committed_offset, tail_sha256, source_mtime_ns, "
-                "derived_raw_event_id, status, updated_at FROM usage_source_cursors "
-                "WHERE source_path = ?",
-                (str(path),),
-            ).fetchone()
-            meta = dict(
-                conn.execute(
-                    "SELECT key, value FROM meta WHERE key IN "
-                    "('usage_derive_version', 'usage_derive_raw_id')"
-                ).fetchall()
-            )
-        finally:
-            conn.close()
+        if conn is None:
+            owned = connect_readonly(db)
+            owned.execute("BEGIN")
+            read = owned
+        else:
+            if not _snapshot_ready(conn):
+                return {
+                    "status": "unknown",
+                    "reason": "read_snapshot_unavailable",
+                    "as_of_offset": None,
+                }
+            read = conn
+        cursor = read.execute(
+            "SELECT device, inode, committed_offset, tail_sha256, source_mtime_ns, "
+            "derived_raw_event_id, status, updated_at FROM usage_source_cursors "
+            "WHERE source_path = ?",
+            (str(path),),
+        ).fetchone()
+        checkpoint = _read_usage_checkpoint(read)
+        negative = _freshness_negative_evidence(read, str(path))
+        head = read_source_head(read, str(path))
     except Exception:
         return {"status": "unknown", "reason": "store_unavailable", "as_of_offset": None}
+    finally:
+        if owned is not None:
+            owned.close()
     if cursor is None:
+        if negative is not None:
+            return {
+                "status": negative[0],
+                "reason": negative[1],
+                "as_of": None,
+                "as_of_offset": None,
+            }
         return {"status": "unknown", "reason": "source_untracked", "as_of_offset": None}
-    offset = int(cursor[2])
-    base = {"as_of_offset": offset, "as_of": cursor[7]}
+    offset = _checkpoint_int(cursor[2])
+    derived = _checkpoint_int(cursor[5])
+    if (
+        offset is None
+        or derived is None
+        or not all(_checkpoint_int(cursor[i]) is not None for i in (0, 1))
+        or not isinstance(cursor[3], str)
+        or _checkpoint_int(cursor[4]) is None
+    ):
+        return {"status": "unknown", "reason": "cursor_invalid", "as_of_offset": None}
+    base: dict[str, int | str | None] = {"as_of_offset": offset, "as_of": cursor[7]}
+    if head is not None:
+        # Semantic tracking exists: the older successful boundary, never ingestion state,
+        # is the as-of fact. An unproved boundary stays unknown.
+        successful = head.successful
+        base = {
+            "as_of_offset": successful.offset if successful else None,
+            "as_of": successful.at if successful else None,
+        }
     try:
         with path.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
             stat = path.stat()
+            if (opened.st_dev, opened.st_ino) != (stat.st_dev, stat.st_ino):
+                return {**base, "status": "unknown", "reason": "source_changed"}
             if (stat.st_dev, stat.st_ino) != (cursor[0], cursor[1]) or stat.st_size < offset:
                 return {**base, "status": "unknown", "reason": "source_changed"}
             if _source_tail_digest(handle, offset) != cursor[3] or cursor[6] == "source_changed":
@@ -1778,13 +2444,25 @@ def usage_source_freshness(db: Path | str, source: Path) -> dict[str, int | str 
                     "status": "stale" if complete else "unknown",
                     "reason": "new_append" if complete else "partial_tail",
                 }
+            after = path.stat()
+            if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != (
+                opened.st_dev,
+                opened.st_ino,
+                opened.st_size,
+                opened.st_mtime_ns,
+            ):
+                return {**base, "status": "unknown", "reason": "source_changed"}
     except OSError:
         return {**base, "status": "unknown", "reason": "source_unreadable"}
+    if negative is not None:
+        return {**base, "status": negative[0], "reason": negative[1]}
     if cursor[6] != "complete" or stat.st_mtime_ns != cursor[4]:
         return {**base, "status": "unknown", "reason": "source_changed"}
-    if meta.get("usage_derive_version") != _USAGE_DERIVE_VERSION:
+    if checkpoint.status in {"absent", "version_changed"}:
         return {**base, "status": "stale", "reason": "normalizer_changed"}
-    if int(meta.get("usage_derive_raw_id", "0")) < cursor[5]:
+    if not checkpoint.valid:
+        return {**base, "status": "unknown", "reason": "checkpoint_invalid"}
+    if int(checkpoint.floor or 0) < derived:
         return {**base, "status": "stale", "reason": "derive_pending"}
     return {**base, "status": "fresh", "reason": None}
 
@@ -1927,6 +2605,8 @@ def rebuild(
     }
     try:
         conn.execute("BEGIN IMMEDIATE")
+        usage_checkpoint, usage_bootstrap = _usage_checkpoint_snapshot(conn)
+        _invalidate_usage_for_rebuild(conn)
         # BUG-3766: provenance must be settled from the original search entries
         # before the wipe below deletes them.
         _classify_legacy_skill_origins(conn)
@@ -2004,7 +2684,7 @@ def rebuild(
             (str(SCHEMA_VERSION),),
         )
         _stamp_rebuild_derive_version(conn)
-        _set_usage_derive_checkpoint(conn)
+        _set_usage_derive_checkpoint(conn, usage_checkpoint, bootstrap=usage_bootstrap)
         conn.commit()
     except Exception:
         # A failed replay must not expose a partially replaced rollout set.
@@ -2086,6 +2766,8 @@ def backfill(
     if registry_dir is None:
         registry_dir = Path(".ll") / "learning-tests"
     conn = _pkg.connect(db)
+    header_failure: tuple[BaseException, list[tuple[Path, str]]] | None = None
+    raw_candidates: list[tuple[Path, str]] = []
     counts: dict[str, int] = {
         "issues": 0,
         "loops": 0,
@@ -2103,14 +2785,18 @@ def backfill(
         if repo_root is not None and (repo_root / ".git").exists():
             counts["commits"] = _backfill_commit_events(conn, repo_root)
         if jsonl_files or handles:
-            raw_handles = (
-                handles
-                if handles is not None
-                else handles_from_paths(
-                    jsonl_files or [], host if host is not None else resolve_host().name
-                )
-            )
+            effective_host = host if host is not None else resolve_host().name
+            if handles is not None:
+                raw_handles = handles
+            else:
+                try:
+                    raw_handles = handles_from_paths(jsonl_files or [], effective_host)
+                except UnicodeDecodeError as exc:
+                    header_failure = (exc, [(Path(p), effective_host) for p in jsonl_files or []])
+                    raise
+            raw_candidates = [(h.path, h.host) for h in raw_handles]
             counts["raw_events"] = _backfill_raw_events(conn, raw_handles)
+            _account_ingested_sources(conn, raw_handles)
         if registry_dir.is_dir():
             counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
         if sessions_root is not None and sessions_root.is_dir():
@@ -2122,10 +2808,15 @@ def backfill(
             (_now(),),
         )
         conn.commit()
-    except Exception:
+    except Exception as exc:
         # Roll back every uncommitted write on this connection (issues, snapshots, loops,
-        # git, raw events): a sanitizer failure publishes no watermark and no rebuild.
+        # git, raw events): a sanitizer failure publishes no watermark and no rebuild. Only
+        # then may a separate guarded transaction record the content-free diagnostic.
         conn.rollback()
+        if header_failure is not None:
+            _note_ingestion_failure(db, header_failure[0], header_failure[1])
+        else:
+            _note_ingestion_failure(db, exc, raw_candidates)
         raise
     finally:
         conn.close()
@@ -2313,23 +3004,14 @@ _RETENTION_UNVERIFIED = "usage_derive_unverified"
 _RETENTION_PENDING = "usage_derive_pending"
 _RETENTION_CONTEXT = "usage_replay_context_required"
 _RETENTION_LIMIT = RETENTION_LIMIT
+# ENH-3745: an unresolved source-recovery obligation (acquisition failure, native conflict,
+# refresh, held-source derive gap, or an outstanding raw-cache component) needs the raw rows.
+_RETENTION_RECOVERY = "source_recovery_pending"
 
 
 def _valid_usage_checkpoint(conn: sqlite3.Connection) -> int | None:
-    """Return the current-version usage derive high-water raw ID, or None if unproven."""
-    rows = dict(
-        conn.execute(
-            "SELECT key, value FROM meta WHERE key IN "
-            "('usage_derive_version', 'usage_derive_raw_id')"
-        ).fetchall()
-    )
-    if rows.get("usage_derive_version") != _USAGE_DERIVE_VERSION:
-        return None
-    try:
-        checkpoint = int(rows.get("usage_derive_raw_id") or "")
-    except ValueError:
-        return None
-    return checkpoint if checkpoint >= 0 else None
+    """Return the validated current-version usage derive floor, or None if unproven."""
+    return _read_usage_checkpoint(conn).floor
 
 
 @dataclass
@@ -2435,6 +3117,13 @@ def _semantic_veto(
     return set()
 
 
+def _source_recovery_pending(conn: sqlite3.Connection, source_path: str) -> bool:
+    """Whether *source_path* has an unresolved usage or raw-cache recovery obligation."""
+    return any(
+        ob.usage_pending or ob.raw_cache_pending for ob in pending_obligations(conn, source_path)
+    )
+
+
 def _plan_raw_prune(
     conn: sqlite3.Connection,
     cutoff_str: str,
@@ -2470,6 +3159,12 @@ def _plan_raw_prune(
             (cutoff_str, source_path),
         ).fetchone()
         if not eligible:
+            continue
+        if _source_recovery_pending(conn, source_path):
+            # An unresolved acquisition/conflict/refresh/derive obligation still needs this
+            # source's raw rows as evidence. Prune never acknowledges or deletes it.
+            held += eligible
+            reasons.add(_RETENTION_RECOVERY)
             continue
         capable = (
             checkpoint is None or max_id > checkpoint or _source_has_linked_usage(conn, source_path)

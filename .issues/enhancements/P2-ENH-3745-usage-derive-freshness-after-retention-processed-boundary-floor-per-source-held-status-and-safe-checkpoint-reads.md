@@ -4,10 +4,11 @@ type: ENH
 title: 'Usage derive freshness after retention: processed-boundary floor, per-source
   held status and safe checkpoint reads'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T20:27:34Z'
+completed_at: '2026-10-07T21:47:51Z'
 parent: EPIC-3562
 labels:
 - observability
@@ -301,6 +302,35 @@ Update `docs/reference/API.md`, `docs/reference/CLI.md` and `docs/guides/HISTORY
 
 No new semantic candidate recognition/correspondence proof (ENH-3744), reconciliation/hold release/safe mutation/retry iteration or protected two-phase parser-refresh replacement (ENH-3770), reader admission/aggregate beyond-prefix as-of integration (ENH-3746), or search restoration (ENH-3747). Full-prefix digest continuity and full held/pruned context promotion are deferred. This issue owns validated progress, acquisition/completion/failure storage, its conservative recovery-evidence prune veto, the minimal dependency handoff and freshness connection seam.
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-10-07
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/usage_source_state.py` (new): frozen records, finite reason/refusal enums, the five-table typed writers/readers (`record_source_acquisition`, `record_source_pending`, `publish_source_completion`, `invalidate_usage_dependencies`, `write_observation_witness`, `acknowledge_source_pending`, `read_source_derive_completion`, `read_observation_witness`) with persistent head/obligation CAS revisions and validated attached-member aliases.
+- `scripts/little_loops/session_store/usage_source_tracking.py` (new): zero-origin physical-line accounting, retained-prefix re-verification, failure-only guarded diagnostic transaction, held-source pending, and `finalize_source_refresh` (acquisition + pending + proof-driven publication on the publishing connection).
+- `schema.py`, `schema_manifest.json`: migration v62 (five internal tables, no seeded rows), `_KINDLESS_TABLES` registration.
+- `lifecycle.py`: validated checkpoint (`_read_usage_checkpoint`), pristine-store bootstrap, floor-preserving publication, derive disposition, truthful `incomplete` refresh status, unchanged-Codex fast-path guard, `usage_source_freshness(..., conn=)` with pinned-snapshot ownership and numeric validation, prune `source_recovery_pending` veto, rebuild/Codex-catch-up invalidation, raw-only/full-backfill failure diagnostics.
+- `usage_refresh.py`: parser-refresh invalidation + scoped refresh-pending in the replacement transaction, rejected-line accounting on unchanged output, preflight decode and sanitizer-refusal evidence, original-acquisition recovery evidence.
+- `usage_proof_scope.py`: `schema=` member scoping (`UsageProofUnavailable`).
+- Docs: `API.md`, `CLI.md`, `HISTORY_SESSION_GUIDE.md`. Tests: `test_enh3745_checkpoint_guards.py`, `test_enh3745_source_state.py`, `test_enh3745_source_refresh.py`; schema-version pins bumped to 62; `test_normalizer_version_change_replays_historical_rows` replaced by an established-mismatch skip/preservation test.
+
+### Deviations and follow-ups
+- Production code does not yet *populate* observation witnesses; the storage and helpers are tested and handed to ENH-3770 as specified.
+- A repaired decode/JSON gap must be byte-length-preserving (the existing 64-byte tail witness refuses a shifted prefix). A repaired Codex line gets a later raw ID, so ENH-3744 cannot prove its order and the source stays `usage_proof_unprovable` until ENH-3770 reconciliation.
+- Established stores with legacy-unlinked usage and no checkpoint now skip derivation (spec: protected recovery is ENH-3770); `rebuild` leaves such a checkpoint untouched.
+- Refresh now re-reads the source for physical-line accounting and prefix re-verification (O(file) per refresh); no full-prefix digest yet.
+
+### Verification Results
+- Tests: PASS for this change (29653 passed). `python -m pytest scripts/tests/` still reports 2 failures and 8 errors that are identical on a clean `HEAD` and unrelated to this issue: `test_next_loop_golden` (float epsilon), `test_prose_dep_sweep_gate` (ENH-3732 prose drift) and `test_libsql_integration::TestLive` (needs a live endpoint).
+- Lint: PASS (`ruff check` on changed files; 3 pre-existing import-order findings remain under `scripts/tests/spike/`)
+- Types: PASS (no mypy findings in changed modules beyond the pre-existing `ruamel` stub notice)
+- Integration: PASS
+
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P2
@@ -332,6 +362,8 @@ Historical scores below predate ENH-3744's completion and this concrete storage 
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-07T21:47:41 - `75ff8f25-801d-4667-8017-a94fc5ca418a.jsonl`
+- `/ll:ready-issue` - 2026-10-07T20:57:45 - `0c84c111-01e6-444c-909f-56ec8a3127f0.jsonl`
 - `/ll:confidence-check` - 2026-10-07T20:44:34 - `24d24e17-c19e-4a8b-8ae4-4709ee6ee947.jsonl`
 - Pre-implementation review #6 - 2026-10-07 - Verified the landed ENH-3744 proof adapter and removed its stale open-blocker risk while retaining historical confidence scores. Specified five internal tables, source-head/obligation CAS revisions, complete pending ranges, actual supplier/qualification/completion dependencies, acquisition-only/frontier/ack helpers and original-acquisition versioning. Added parser-refresh preflight/unchanged-output accounting, existing Codex append/cross-source invalidation, recovery-evidence prune veto, pinned read ownership and old/attached-schema controls. `/ll:advise` with Opus (confidence 0.72) supported grandfathered Codex reconstruction, explicit snapshots and durable revisions. Rejected tail/inode-only continuity, dropping mandatory original-acquisition/dependency storage and discarding unresolved proof-limit disposition; `usage_events` already uses AUTOINCREMENT. Existing relevant baseline: 317 passed. Issue-only refinement; no implementation or formal re-score claimed.
 

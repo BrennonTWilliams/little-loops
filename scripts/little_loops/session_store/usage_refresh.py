@@ -12,6 +12,7 @@ attribution. It deliberately leaves derived tables alone: callers must run
 from __future__ import annotations
 
 import json
+import sqlite3
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,23 @@ from little_loops.pii import HistorySanitizationError, sanitize_history_payload
 from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.sessions import SessionEvent, SessionHandle, iter_events
+from little_loops.session_store.usage_source_state import (
+    OriginalAcquisition,
+    SourcePending,
+    SourceScope,
+    invalidate_usage_dependencies,
+    read_source_head,
+    record_source_pending,
+    storage_available,
+)
+from little_loops.session_store.usage_source_tracking import (
+    USAGE_ACQUISITION_VERSION,
+    PhysicalAccounting,
+    account_physical_lines,
+    begin_attempt,
+    record_failure_only,
+    record_rejections,
+)
 from little_loops.session_store.writers import (
     _unpack_payload,
     load_usage_replay_holds,
@@ -201,6 +219,116 @@ def _inserted_matches(
     )
 
 
+_REFUSAL_CODES = frozenset(
+    {"invalid_payload", "key_collision", "unsafe_identity", "resource_limit"}
+)
+
+
+def _derive_version() -> str:
+    from little_loops.session_store.lifecycle import _USAGE_DERIVE_VERSION
+
+    return _USAGE_DERIVE_VERSION
+
+
+def _record_preflight_decode_failure(db: Path | str, handle: SessionHandle, path: Path) -> None:
+    """Persist a content-free decode failure raised before the source transaction opens."""
+    import little_loops.session_store as store
+
+    try:
+        accounting = account_physical_lines(path)
+    except OSError:
+        accounting = PhysicalAccounting(0, 0)
+    first = min(accounting.rejected, key=lambda r: r.first_offset, default=None)
+    conn = store.connect(db)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        attempt = begin_attempt(conn, str(path), _derive_version(), host=handle.host)
+        conn.rollback()
+    finally:
+        conn.close()
+    record_failure_only(
+        lambda: store.connect(db),
+        attempt,
+        reason=first.reason if first is not None else "decode_failure",
+        first_line_no=first.first_line_no if first is not None else None,
+        first_offset=first.first_offset if first is not None else None,
+    )
+
+
+def _record_rejections(conn: sqlite3.Connection, attempt: Any, path: Path) -> bool:
+    """Record physically rejected lines of *path* as durable failure evidence (True if written)."""
+    if attempt is None:
+        return False
+    try:
+        accounting = account_physical_lines(path)
+    except OSError:
+        return False
+    return record_rejections(conn, attempt, accounting)
+
+
+def _invalidate_tracked_completion(
+    conn: sqlite3.Connection, source_keys: tuple[str, ...], raw_source: str
+) -> None:
+    """Invalidate tracked completion consuming the observations a replacement will delete."""
+    if not storage_available(conn):
+        return
+    placeholders = ", ".join("?" for _ in source_keys)
+    ids = tuple(
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM usage_events WHERE channel IS NOT 'live' AND ("
+            f"source_path IN ({placeholders}) OR source_raw_event_id IN "
+            "(SELECT id FROM raw_events WHERE source_path = ?))",
+            (*source_keys, raw_source),
+        )
+    )
+    scopes = tuple(
+        head.scope for head in (read_source_head(conn, key) for key in source_keys) if head
+    )
+    invalidate_usage_dependencies(conn, ids, scopes, reason="parser_refresh")
+
+
+def _record_replacement_acquisition(conn: sqlite3.Connection, attempt: Any, path: Path) -> None:
+    """After a verified replacement, retain explicit original-source acquisition evidence.
+
+    Written only when the full claimed physical range was acquired without rejection
+    (content-free: scope, range, versions, revision). It is recovery evidence for ENH-3770,
+    never ordinary replay authority. Rejections are recorded as failure evidence instead and
+    withhold the evidence.
+    """
+    if attempt is None or not storage_available(conn):
+        return
+    try:
+        accounting = account_physical_lines(path)
+    except OSError:
+        return
+    head = read_source_head(conn, str(path))
+    if not accounting.clean:
+        record_rejections(conn, attempt, accounting)
+        return
+    if head is None:
+        return
+    record_source_pending(
+        conn,
+        SourcePending(
+            scope=SourceScope(str(path), head.scope.generation_id, head.scope.derive_version),
+            kind="refresh",
+            reason="parser_refresh",
+            range_kind="whole_source",
+            raw_cache_pending=True,
+            usage_pending=True,
+            original_acquisition=OriginalAcquisition(
+                SourceScope(str(path), head.scope.generation_id, head.scope.derive_version),
+                USAGE_ACQUISITION_VERSION,
+                accounting.offset,
+                accounting.line_count,
+                head.revision,
+            ),
+        ),
+        expected_head_revision=head.revision,
+    )
+
+
 def refresh_raw_events(
     db: Path | str = DEFAULT_DB_PATH, *, handles: list[SessionHandle]
 ) -> RefreshResult:
@@ -233,7 +361,11 @@ def refresh_raw_events(
         if version is None:
             outcomes.append(SourceRefresh(path, "skipped", "original_missing"))
             continue
-        events = list(iter_events(handle))
+        try:
+            events = list(iter_events(handle))
+        except UnicodeDecodeError:
+            _record_preflight_decode_failure(db, handle, path)
+            raise
         if _source_version(path) != version:
             outcomes.append(SourceRefresh(path, "skipped", "source_changed"))
             continue
@@ -251,8 +383,10 @@ def refresh_raw_events(
             continue
 
         conn = store.connect(db)
+        attempt = None
         try:
             conn.execute("BEGIN IMMEDIATE")
+            attempt = begin_attempt(conn, str(path), _derive_version(), host=handle.host)
             rows = conn.execute(_STORED_SELECT, (str(path),)).fetchall()
             reason: str | None = None
             # BUG-3736: refreshing a held source would invalidate retained usage that
@@ -337,7 +471,12 @@ def refresh_raw_events(
                     for column in columns
                 )
             ):
-                conn.rollback()
+                # Yielded events matching stored rows says nothing about physical lines the
+                # parser skipped: account them, and keep content-free negative evidence.
+                if _record_rejections(conn, attempt, path):
+                    conn.commit()
+                else:
+                    conn.rollback()
                 outcomes.append(SourceRefresh(path, "unchanged", rows=len(rows)))
                 continue
 
@@ -347,6 +486,11 @@ def refresh_raw_events(
             # stored under the handle's spelling.
             source_keys = tuple(dict.fromkeys((str(path), str(path.expanduser().resolve()))))
             placeholders = ", ".join("?" for _ in source_keys)
+            # ENH-3745: tracked completion that consumed these observations (this source or
+            # a copy depending on its supplier) becomes pending, with raw-cache and usage
+            # disposition, in this same transaction. Negative tracking only: the existing
+            # delete/needs_rebuild workflow below is unchanged until ENH-3770.
+            _invalidate_tracked_completion(conn, source_keys, str(path))
             conn.execute(
                 f"DELETE FROM usage_source_cursors WHERE source_path IN ({placeholders})",
                 source_keys,
@@ -382,11 +526,19 @@ def refresh_raw_events(
                 conn.rollback()
                 outcomes.append(SourceRefresh(path, "skipped", "parser_changed_during_refresh"))
                 continue
+            _record_replacement_acquisition(conn, attempt, path)
             conn.commit()
             outcomes.append(SourceRefresh(path, "refreshed", rows=inserted))
         except HistorySanitizationError as exc:
-            # Content-free reason; keeps earlier sources' commits and results.
+            # Content-free reason; keeps earlier sources' commits and results. The whole-call
+            # rollback stands; a separate guarded transaction records the bounded refusal.
             conn.rollback()
+            record_failure_only(
+                lambda: store.connect(db),
+                attempt,
+                reason="sanitization_refused",
+                refusal_code=exc.reason if exc.reason in _REFUSAL_CODES else "invalid_payload",
+            )
             outcomes.append(SourceRefresh(path, "skipped", exc.reason, rows=0))
         except Exception:
             conn.rollback()

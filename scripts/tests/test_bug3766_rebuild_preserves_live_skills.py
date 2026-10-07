@@ -437,6 +437,14 @@ class TestMigrationAndDeriveVersion:
     def test_v60_store_upgrades_with_null_origins_until_rebuild(self, db: Path) -> None:
         conn = sqlite3.connect(str(db))
         conn.execute("ALTER TABLE skill_events DROP COLUMN origin")
+        for table in (  # v62 (ENH-3745) tables postdate the v60 store being simulated
+            "usage_source_state",
+            "usage_source_pending",
+            "usage_observation_witnesses",
+            "usage_observation_dependencies",
+            "usage_completion_dependencies",
+        ):
+            conn.execute(f"DROP TABLE {table}")
         conn.execute("UPDATE meta SET value = '60' WHERE key = 'schema_version'")
         conn.execute(
             "INSERT INTO skill_events(ts, session_id, skill_name, args) "
@@ -447,7 +455,7 @@ class TestMigrationAndDeriveVersion:
         ensure_db(db)
         ensure_db(db)  # repeat is a no-op
         assert _rows(db, "SELECT origin FROM skill_events") == [(None,)]
-        assert _rows(db, "SELECT value FROM meta WHERE key = 'schema_version'") == [("61",)]
+        assert _rows(db, "SELECT value FROM meta WHERE key = 'schema_version'") == [("62",)]
         rebuild(db)
         assert _rows(db, "SELECT origin FROM skill_events") == [("legacy",)]
 

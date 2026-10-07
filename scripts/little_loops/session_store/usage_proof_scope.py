@@ -43,6 +43,26 @@ class UsageProofLimit(Exception):  # noqa: N818 - a bounded signal, not an error
     """A proof scope crossed a private limit; the whole affected scope stays retained."""
 
 
+class UsageProofUnavailable(Exception):  # noqa: N818 - a bounded signal, not an error condition
+    """The selected member is unknown, unsafe or lacks the proof tables: nothing is read.
+
+    Never falls back to ``main``: two attached members never join by matching paths, native
+    keys or raw IDs, so an unavailable member is reported, not substituted.
+    """
+
+
+def _member(conn: sqlite3.Connection, schema: str) -> str:
+    """Validated schema qualifier for *schema* (generated-safe alias attached to *conn*)."""
+    from little_loops.session_store.usage_source_state import _safe_schema, _table_exists
+
+    safe = _safe_schema(conn, schema)
+    if safe is None or not all(
+        _table_exists(conn, safe, table) for table in ("raw_events", "usage_events")
+    ):
+        raise UsageProofUnavailable
+    return safe
+
+
 @dataclass(frozen=True)
 class ProofScope:
     """Everything one source's proof needs, with related-source IDs separated."""
@@ -53,10 +73,13 @@ class ProofScope:
     related_raw_event_ids: frozenset[int]
 
 
-_ROW_SELECT = (
-    "SELECT typeof(raw_line), CAST(raw_line AS BLOB), source_path, host, host_basis, "
-    "event_type, ts, session_id, line_no, ordinal, usage_contract, id FROM raw_events"
-)
+def _row_select(schema: str) -> str:
+    return (
+        "SELECT typeof(raw_line), CAST(raw_line AS BLOB), source_path, host, host_basis, "
+        f"event_type, ts, session_id, line_no, ordinal, usage_contract, id FROM {schema}.raw_events"
+    )
+
+
 _OBS_COLUMNS = (
     "id",
     "host",
@@ -190,19 +213,26 @@ def collect_usage_proof_scope(
     deleted_sources: Collection[str] = (),
     cutoff: str | None = None,
     limits: ProofLimits | None = None,
+    schema: str = "main",
 ) -> ProofScope:
     """Collect one source's whole proof scope, bounded by *limits* (default ``PROOF_LIMITS``).
+
+    *schema* selects one member (``main`` or a generated-safe attached alias); every raw,
+    observation, related-source and exact-link query is qualified with it. An unknown,
+    unsafe or table-less member raises :class:`UsageProofUnavailable`.
 
     *deleted_sources*/*cutoff* describe earlier planned deletions a dry run has not
     performed: their aged compacted rows are excluded so a later source sees the same
     evidence a real run would. Raises :class:`UsageProofLimit` on any crossed limit.
     """
+    member = _member(conn, schema)
+    row_select = _row_select(member)
     budget = _Budget(limits or PROOF_LIMITS)
     overlay_sql, overlay_params = _overlay_clause(deleted_sources, cutoff)
 
     count, encoded = conn.execute(
         "SELECT COUNT(*), COALESCE(SUM(LENGTH(CAST(raw_line AS BLOB))), 0) "
-        "FROM raw_events WHERE source_path = ?",
+        f"FROM {member}.raw_events WHERE source_path = ?",
         (source,),
     ).fetchone()
     budget.item(count)
@@ -211,7 +241,7 @@ def collect_usage_proof_scope(
 
     records: list[UsageReplayRecord | UsageReplayFailure] = []
     for row in conn.execute(
-        f"{_ROW_SELECT} WHERE source_path = ? ORDER BY COALESCE(ordinal, line_no), line_no, id",
+        f"{row_select} WHERE source_path = ? ORDER BY COALESCE(ordinal, line_no), line_no, id",
         (source,),
     ):
         records.append(_record(tuple(row), budget))
@@ -233,7 +263,9 @@ def collect_usage_proof_scope(
             if isinstance(payload_session, str):
                 sessions.add(payload_session)
 
-    observations = _load_observations(conn, source, own_ids, claude_keys, response_ids, budget)
+    observations = _load_observations(
+        conn, source, own_ids, claude_keys, response_ids, budget, member
+    )
 
     related: dict[int, UsageReplayRecord] = {}
 
@@ -252,7 +284,7 @@ def collect_usage_proof_scope(
     for chunk in _chunks(sessions):
         marks = ", ".join("?" for _ in chunk)
         for row in conn.execute(
-            f"{_ROW_SELECT} WHERE source_path != ? AND session_id IN ({marks}) "
+            f"{row_select} WHERE source_path != ? AND session_id IN ({marks}) "
             f"AND event_type IN ('assistant', 'token_usage_record'){overlay_sql} "
             "ORDER BY source_path, COALESCE(ordinal, line_no), line_no, id",
             (source, *chunk, *overlay_params),
@@ -268,7 +300,7 @@ def collect_usage_proof_scope(
     for chunk in _chunks(links):
         marks = ", ".join("?" for _ in chunk)
         for row in conn.execute(
-            f"{_ROW_SELECT} WHERE id IN ({marks}){overlay_sql}", (*chunk, *overlay_params)
+            f"{row_select} WHERE id IN ({marks}){overlay_sql}", (*chunk, *overlay_params)
         ):
             keep(tuple(row))
 
@@ -288,6 +320,7 @@ def _load_observations(
     keys: set[str],
     response_ids: set[str],
     budget: _Budget,
+    member: str = "main",
 ) -> list[dict[str, Any]]:
     """Committed observations selected by exact raw links and native identities only."""
     found: dict[int, dict[str, Any]] = {}
@@ -301,7 +334,7 @@ def _load_observations(
         for chunk in _chunks(values):
             marks = ", ".join("?" for _ in chunk)
             for row in conn.execute(
-                f"SELECT {columns} FROM usage_events WHERE channel IS NOT 'live' "
+                f"SELECT {columns} FROM {member}.usage_events WHERE channel IS NOT 'live' "
                 f"AND {column} IN ({marks})",
                 tuple(chunk),
             ):
@@ -319,6 +352,7 @@ def inspect_retained_source(
     cutoff: str | None = None,
     limits: ProofLimits | None = None,
     channel: str | None = None,
+    schema: str = "main",
 ) -> tuple[UsageCandidateProof, ...]:
     """Prove every usage candidate retained in *source*; raises :class:`UsageProofLimit`.
 
@@ -327,7 +361,7 @@ def inspect_retained_source(
     returned.
     """
     scope = collect_usage_proof_scope(
-        conn, source, deleted_sources=deleted_sources, cutoff=cutoff, limits=limits
+        conn, source, deleted_sources=deleted_sources, cutoff=cutoff, limits=limits, schema=schema
     )
     proofs = inspect_usage_candidates(scope.records, scope.observations, channel=channel)
     return tuple(p for p in proofs if p.source_label == source)

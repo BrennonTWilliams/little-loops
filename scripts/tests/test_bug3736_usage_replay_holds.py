@@ -105,6 +105,14 @@ def _downgrade_and_remigrate(db: Path) -> None:
         # A v58 store predates every later migration too (v60 BUG-3755, v61 BUG-3766).
         conn.execute("ALTER TABLE loop_events DROP COLUMN to_state")
         conn.execute("ALTER TABLE skill_events DROP COLUMN origin")
+        for table in (  # v62 (ENH-3745) internal source-state tables
+            "usage_source_state",
+            "usage_source_pending",
+            "usage_observation_witnesses",
+            "usage_observation_dependencies",
+            "usage_completion_dependencies",
+        ):
+            conn.execute(f"DROP TABLE {table}")
         conn.execute("UPDATE meta SET value = '58' WHERE key = 'schema_version'")
         conn.commit()
     finally:
@@ -487,7 +495,7 @@ class TestLegacySeeding:
     ) -> None:
         db = tmp_path / "h.db"
         ensure_db(db)
-        assert SCHEMA_VERSION == 61
+        assert SCHEMA_VERSION == 62
         assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(0,)]
         assert lifecycle._USAGE_DERIVE_VERSION == "enh3651-v1"
         assert lifecycle.REBUILD_DERIVE_VERSION == "bug3766-v1"

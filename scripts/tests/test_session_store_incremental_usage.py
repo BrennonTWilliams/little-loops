@@ -147,22 +147,31 @@ def test_truncation_refuses_reused_line_numbers(tmp_path: Path) -> None:
         conn.close()
 
 
-def test_normalizer_version_change_replays_historical_rows(
+def test_established_version_mismatch_skips_and_preserves_usage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """ENH-3745: version-changed proof in an established store never replays destructively."""
     source = tmp_path / "session.jsonl"
     source.write_bytes((_CLAUDE / "transcript-v2.1.284.jsonl").read_bytes())
     db = tmp_path / "history.db"
     refresh_usage_source(db, source)
+    before = _usage_rows(db)
+    assert len(before) == 2
+    meta_before = _meta(db)
+    monkeypatch.setattr(lifecycle, "_USAGE_DERIVE_VERSION", "new-normalizer")
+    assert backfill_usage_incremental(db) == 0
+    assert _usage_rows(db) == before
+    assert _meta(db) == meta_before
+
+
+def _meta(db: Path) -> dict[str, str]:
     conn = connect(db)
     try:
-        conn.execute("DELETE FROM usage_events WHERE channel = 'transcript'")
-        conn.commit()
+        return dict(
+            conn.execute("SELECT key, value FROM meta WHERE key LIKE 'usage_derive_%'").fetchall()
+        )
     finally:
         conn.close()
-    monkeypatch.setattr(lifecycle, "_USAGE_DERIVE_VERSION", "new-normalizer")
-    assert backfill_usage_incremental(db) == 2
-    assert len(_usage_rows(db)) == 2
 
 
 def test_codex_turn_crossing_slice_boundary_matches_rebuild(tmp_path: Path) -> None:
@@ -289,7 +298,7 @@ def test_failed_append_derive_leaves_committed_cursor_stale(
     with monkeypatch.context() as patcher:
         patcher.setattr(
             lifecycle,
-            "_derive_usage_incremental_conn",
+            "_derive_usage_incremental_disposition",
             lambda conn: (_ for _ in ()).throw(RuntimeError("derive failed")),
         )
         with pytest.raises(RuntimeError, match="derive failed"):
