@@ -21,6 +21,7 @@ relates_to:
 - ENH-3745
 - ENH-3746
 - ENH-3747
+- ENH-3751
 testable: true
 confidence_score: 75
 outcome_confidence: 50
@@ -47,18 +48,18 @@ risk_factors:
 - id: paired-landing-enh3745
   domain: readiness
   criterion: dependencies
-  description: Must land with open ENH-3745 (cursor/progress storage); tooling lands
-    one issue per branch and epic-branch mode merges unverified
+  description: Shares cursor/progress storage with open ENH-3745; delivered as ordered
+    fail-closed merge points (see Delivery Plan, 2026-10-07), not one atomic landing
 - id: sanitizer-identity-registration
   domain: readiness
   criterion: specification
   description: Proof identity keys must be registered in pii._protocol_rules or retained
     payloads read as unprovable after redaction
-- id: slicing-decision-pending
+- id: slicing-decided-rescore-needed
   domain: outcome
   criterion: ambiguity
-  description: Opus slicing proposal (defer digest continuity, context-only promotion,
-    as-of witness) recorded but not decided; scope unsettled
+  description: Slicing decided 2026-10-07 (merge points MP1-MP3, Phase 2 deferrals);
+    scores above predate it — rerun /ll:confidence-check per merge point
 - id: wide-writer-caller-surface
   domain: outcome
   criterion: change_surface
@@ -70,7 +71,7 @@ risk_factors:
 
 ## Summary
 
-Replace BUG-3736's whole-source holdback with shared semantic proof and resume safe appends while preserving retained usage. Separate candidate correspondence, mutation permission and source completion: an observation can be represented without being safe to replace or sufficient to certify progress. Deliver with ENH-3745 before exposing the new writer behavior on `main`.
+Replace BUG-3736's whole-source holdback with shared semantic proof and resume safe appends while preserving retained usage. Separate candidate correspondence, mutation permission and source completion: an observation can be represented without being safe to replace or sufficient to certify progress. Delivered with ENH-3745 as ordered fail-closed merge points (see Delivery Plan); no merge may expose writer behavior that is not independently fail-closed.
 
 ## Current Behavior
 
@@ -136,7 +137,7 @@ ENH-3745 owns the source-local completion/boundary result and any durable source
 - An unkeyed audit row can correspond through its exact surviving raw link with compatible envelope identity. Without that link/native proof, classify it unprovable, not missing; it still protects itself and may prove ingestion. Never infer correspondence by token/cost/timestamp equality.
 - Codex duplicate-copy proof must match the writer's cross-source native-response rules: identical proved copies may share representation; conflicts remain audit/unprovable; unkeyed notifications cannot borrow another source's representation. Retain the relevant dedup context even if the winner's original raw was pruned.
 - Existing `source_line_no`/`source_ordinal`, verified native stream/session and compatible committed source-generation witnesses may support ordering. A raw ID orders ingestion only. If generation/order cannot be proved after pruning, preserve the retained observation and report mutation unavailable; do not invent compatibility or accept rollback as a risk. ENH-3745 owns a minimal durable witness if existing state is insufficient.
-- Permit bounded context-only audit-to-measured promotion when newly proved compatible native evidence completes current-producer qualification, such as Codex `task_complete` closing an already represented request. This is not unchanged replay or automatic legacy promotion. Require every relevant request-span/model/closure/conflict/dedup dependency to be proved; a gap inside required context blocks promotion, while an unrelated earlier gap may leave the successful source prefix behind a safely qualified request. Preserve request identity, numeric components, value-supplying position/timestamp and any stored historical cost; update only proved qualification facts and their dependency frontier. Pricing is allowed only for a newly proved eligible unpriced observation under existing semantics. Missing/replayed context or identical duplicate copies grant no permission to promote or downgrade. Demotion, conflicts and changed values remain outside this context-only transition.
+- **[Phase 2 for held/pruned and beyond-gap cases — see Delivery Plan; MP3 keeps today's full-raw-source Codex requalification]** Permit bounded context-only audit-to-measured promotion when newly proved compatible native evidence completes current-producer qualification, such as Codex `task_complete` closing an already represented request. This is not unchanged replay or automatic legacy promotion. Require every relevant request-span/model/closure/conflict/dedup dependency to be proved; a gap inside required context blocks promotion, while an unrelated earlier gap may leave the successful source prefix behind a safely qualified request. Preserve request identity, numeric components, value-supplying position/timestamp and any stored historical cost; update only proved qualification facts and their dependency frontier. Pricing is allowed only for a newly proved eligible unpriced observation under existing semantics. Missing/replayed context or identical duplicate copies grant no permission to promote or downgrade. Demotion, conflicts and changed values remain outside this context-only transition.
 - Check for unchanged/older/protected replay before calling pricing. No replay or rebuild reprices an unchanged retained observation. New or proved-changed requests follow existing pricing semantics; stored historic costs are not recalculated as a side effect of proof.
 - A proved value replacement atomically updates the applied-value source/generation/native position with its numeric values; a context-only mutation updates its actual qualification dependency frontier without pretending that a newer numeric snapshot supplied the values. No-op replay preserves both witnesses along with cost/metadata. A Codex dedup survivor retains its actual supplying source/position; another copy cannot substitute a convenient selected-source boundary.
 - Retry outstanding held candidates below the global scan high-water, including when raw max equals it, using ENH-3745's generation-scoped source pending/retry bound. This issue owns candidate iteration/retry; ENH-3745 owns scan validation and source-local completion, consuming these outcomes. Raw-ID bounds schedule retries only; native context/order still decides recognition and mutation.
@@ -146,14 +147,35 @@ ENH-3745 owns the source-local completion/boundary result and any durable source
 
 ### Delivery Contract
 
-Develop ENH-3744/3745 on one integration branch and land their completed writer changes together. ENH-3745 validation/read-only work may precede semantic work, but final cursor publication must consume this proof. Coordinate one `_USAGE_DERIVE_VERSION` bump for the new proof/reconciliation contract, with protected old-version recovery; no usage-only change bumps `REBUILD_DERIVE_VERSION` or its non-usage fingerprint. Do not add circular `blocked_by` edges. All local-editable consumer projects immediately run this checkout; a temporary cursor-certification gap on `main` is unacceptable.
+Superseded 2026-10-07: the "one branch, land together, one version bump" contract is replaced by the ordered fail-closed merge points in **Delivery Plan** below. Constraints that still hold: ENH-3745 final cursor publication consumes this issue's proof; no usage-only change bumps `REBUILD_DERIVE_VERSION` or its non-usage fingerprint; no circular `blocked_by` edges; all local-editable consumer projects immediately run this checkout, so every merge to `main` must be fail-closed on its own (see the non-regression definition).
 
 ### Landing Mechanics, Interactions and Scope Note (2026-10-07)
 
-- **Atomic multi-issue landing is not provided by the tooling.** `ll-auto`/`ll-parallel`/`ll-sprint` land one issue per branch. `parallel.epic_branches` is enabled with `merge_to_base_on_complete: true` and `verify_before_merge: false`, so an epic branch would merge to `main` unverified on completion, and an epic-worktree verify gate imports the main-tree editable install (false-negative merge blocks). Satisfy the paired-landing rule by implementing ENH-3744/3745 in one worktree/session and merging once, or by an order in which every intermediate commit is fail-closed (never emits `complete`/fresh it cannot prove; never mutates a protected observation without proof). Do not rely on epic-branch mode.
+- **Atomic multi-issue landing is not provided by the tooling.** `ll-auto`/`ll-parallel`/`ll-sprint` land one issue per branch. `parallel.epic_branches` is enabled with `merge_to_base_on_complete: true` and `verify_before_merge: false`, so an epic branch would merge to `main` unverified on completion, and an epic-worktree verify gate imports the main-tree editable install (false-negative merge blocks). Resolved 2026-10-07 by the Delivery Plan: every merge point is independently fail-closed, so no multi-issue atomic landing is needed. Do not rely on epic-branch mode.
 - **ENH-3751 (done 2026-10-06) changed the refresh seams this issue edits.** `usage_refresh.refresh_raw_events` now compares canonical (history-sanitized) payloads in both stored columns, refuses per-line metadata/contract changes (`source_metadata_changed`, `usage_contract_changed`, `existing_payload_not_preserved`, `parser_changed_during_refresh`) and promotes a NULL `usage_contract` monotonically — a persisted marker is never changed. `_refresh_codex_usage_source` first-cursor certification uses the same canonical comparison. Preserve all of this; "the existing verified original-source refresh's qualification recovery" above is that NULL→marker promotion, distinct from the context-only qualification promotion on `usage_events` specified here. The retained payloads the proof reads are sanitized (and legacy rows may be plaintext, or rewritten later by `ll-session redact`): every identity key the proof relies on must be protected by `pii._protocol_rules` for the host/event type (EPIC-3562 § Shared Delivery Ownership, sanitizer identity contract), because a rewrite of an unprotected identity would read as `missing`/`unprovable`. Treat an unregistered identity path as `unprovable`, never as an absent candidate.
 - **ENH-3747 coupling (verified in `lifecycle._derive_usage_incremental_conn` and `rebuild`).** Reset/catch-up delete only unheld non-live usage rows but wipe every `kind = 'usage'` search row, and `rebuild` wipes the whole kind; replay re-indexes only what it re-derives. Today only held and live observations lose search entries. Once reconciliation stops re-deriving unchanged unheld observations, every preserved observation does. Land ENH-3747 first, or in the same change with scope "every surviving committed usage observation that replay does not re-derive", and add a search-survival control to this issue's reset/catch-up/rebuild tests.
-- **Scope note — pending decision, not applied.** An Opus consult (confidence 0.72) recommended slicing ENH-3744/3745 into individually landable fail-closed steps and deferring hardening that already has a fail-closed fallback in these specs: full-prefix digest continuity (ENH-3745), context-only audit→measured promotion with its qualification-context frontier (this issue), and the applied-value-witness beyond-prefix as-of check (ENH-3746). Verified premise correction: usage-bearing raw is already pruned today (`_plan_raw_prune` deletes a fully aged, compacted source at or below a valid checkpoint and writes a hold marker), so the semantic prune veto and retained-reader admission are live correctness work, not post-hold-release work. See EPIC-3562 Review Notes (2026-10-07) for the proposed cut and decide before implementation starts.
+- **Scope note — decided 2026-10-07** (second Opus consult, confidence 0.74; refines the 0.72 proposal): slice into fail-closed merge points and defer hardening that has a fail-closed fallback. See **Delivery Plan**. Verified premise: usage-bearing raw is already pruned today (`_plan_raw_prune` deletes a fully aged, compacted source at or below a valid checkpoint and writes a hold marker; code re-read 2026-10-07), so the semantic prune veto and retained-reader admission are live correctness work, not post-hold-release work.
+
+### Delivery Plan (decided 2026-10-07)
+
+Fail-closed non-regression definition (applies to every merge point): a merge may only *subtract* trust relative to today's `main` — it never newly emits `complete`/fresh for something unproven and never mutates a protected observation without proof. It must **not** convert existing sources' freshness to permanent `unknown`: legacy cursors/checkpoints keep today's semantics until new evidence exists, and new storage starts as negative evidence only.
+
+| Merge point | Contents | Owner |
+| --- | --- | --- |
+| **MP0** (independent, first) | ENH-3747 standalone: preserve search rows for every surviving committed usage observation that replay does not re-derive | ENH-3747 |
+| **MP1** | **S0** checkpoint safety: skip-derive and report incomplete (never reset) on malformed/contradictory checkpoint; floor = `max(previous same-version floor, MAX(raw_events.id))`; contradiction = checkpoint > `sqlite_sequence.seq` for `raw_events` (AUTOINCREMENT, `schema.py`); changes confined to `_valid_usage_checkpoint`/`_set_usage_derive_checkpoint`. **S2a** pure `inspect_usage_candidates` correspondence proof + prune veto (including the `not capable` branch of `_plan_raw_prune`) + sanitizer-identity parity test | ENH-3745 (S0), this issue (S2a) |
+| **MP2** | **S1** next append-only migration: source-local pending/failure/`sanitization_refused`/derived-boundary storage, negative evidence only. **S2b** first positive completion: ENH-3744 outcomes → ENH-3745 source completion and both cursor writers | ENH-3745 + this issue |
+| **MP3** | **S3** reconciliation replacing delete-then-replay in reset/Codex catch-up/rebuild/parser refresh, below-checkpoint held retries, hold release, writer identity enforcement. Requires MP0. Recommended to be split into its own issue (`blocked_by` ENH-3744, ENH-3745, ENH-3747) so ENH-3732/ENH-3746 unblock after MP2 and the confidence gate scores MP1/MP2 scope — do that with `/ll:issue-size-review` before starting MP3, not before MP1 | this issue / new issue |
+
+Deferred to **Phase 2** (spec kept, non-gating, fail-closed fallback stated): (a) beyond-gap and held-source context-only audit→measured promotion with its qualification-context frontier (fallback: audit rows stay audit until a genuinely newer numeric snapshot; ENH-3746 then publishes figure `as_of` as unknown); (b) full-prefix digest continuity (ENH-3745; fallback: today's inode + 64-byte tail witness for freshness and native-offset mutation reported "mutation unavailable"); (c) the applied-value-witness beyond-prefix as-of check (ENH-3746). **Not deferred:** full-raw-source Codex requalification for fully retained, unheld sources (MP3 must keep today's per-Codex-source catch-up requalification — a later `task_complete` in a later append — or it regresses) and same-generation retained-raw mutation ordering via `source_line_no`/`source_ordinal`.
+
+Hazards the plan must respect:
+- **Version bump:** none in MP1/MP2 (they must run under the existing `_USAGE_DERIVE_VERSION`; legacy rows read as unknown). MP3 must re-justify its bump against what a mismatch replay may mutate once reconciliation exists — likely unnecessary. Bumping earlier makes every editable consumer run the legacy destructive reset against already-pruned data.
+- **Do not route an invalid checkpoint into the existing reset branch** (`_derive_usage_incremental_conn`, `max_id < checkpoint`): that converts today's loud `ValueError` into a silent destructive reset plus current-version restamp.
+- **Rebuild fingerprint:** any new non-pruned usage call inside `rebuild()` trips `test_enh3678`'s fingerprint and forces a `REBUILD_DERIVE_VERSION` bump (global wipe-and-replay on every consumer). Keep MP1/MP2 changes out of `rebuild()` or prove the fingerprint is unchanged.
+- **No non-destructive replay before MP3:** Codex's plain `INSERT INTO usage_events` hits the unique `source_raw_event_id` index (derive rollback stall) and the Claude path reprices/overwrites by raw-ID order, so MP1/MP2 must not introduce any replay path that re-derives an already-linked raw row.
+- **Prune veto cost:** decoding all aged sources under one `BEGIN IMMEDIATE` holds the write lock on multi-GB stores and blocks Stop-hook ingest. Run the veto per source (plan, delete, marker in one short `IMMEDIATE` transaction per source); dry-run still reads one snapshot and writes nothing. No size guards (history.db size is not a problem; contention is).
+- **Sanitizer identity registration:** unregistered identity paths make every post-ENH-3751 source `unprovable` and silently disable prune. MP1 needs a parity test that every identity path the proof reads is protected in `pii._protocol_rules` for each host/event type, failing loudly, plus a bounded retention reason surfaced by prune.
 
 ## Integration Map
 
@@ -188,21 +210,25 @@ Update usage/prune/rebuild/refresh contracts in `docs/reference/API.md`, retenti
 - [ ] A newer retained Claude snapshot cannot be rolled back by an older surviving or re-ingested native position with a larger raw ID. Same-path rotation/restore and alias controls do not manufacture compatibility. Repeated unchanged replay leaves cost/metadata untouched even when pricing is patched to fail/change.
 - [ ] Reset, Codex catch-up, full rebuild and verified parser refresh compare with existing usage before mutation; unchanged unheld/held row identities and stored costs survive. A crash between committed raw refresh and later derive leaves protected observations and durable pending evidence, never a lost figure or falsely complete source.
 - [ ] Codex lost header/model/turn/closure/adjacency context cannot downgrade or duplicate retained requests. Cross-source duplicate/conflict and unkeyed-notification cases match native writer rules.
-- [ ] Newly proved compatible Codex closure can qualify an existing audit request without a newer token snapshot or second observation. Counts/value lineage and stored cost remain intact; the qualification frontier changes atomically. Equal values or ordinary legacy replay alone cannot promote qualification.
+- [ ] Fully retained, unheld Codex sources keep today's requalification when a later append supplies the closure (no regression through MP3's reconciliation; counts and stored cost intact). **Phase 2:** for held/pruned or beyond-gap requests, newly proved compatible closure may qualify an existing audit request without a newer token snapshot or second observation, with the qualification frontier changing atomically; until then those rows stay audit. Equal values or ordinary legacy replay alone never promote qualification.
 - [ ] Proved-distinct appends derive while older conservation protection remains; ambiguous/unkeyed/wildcard legacy populations cannot be bypassed. Recovery revisits held candidates below an advanced/equal checkpoint without double counting.
-- [ ] Source completion is separate from representation/mutation/hold presence and is handed to ENH-3745. No incomplete proof can publish complete; final writer delivery is tested and landed together.
+- [ ] Source completion is separate from representation/mutation/hold presence and is handed to ENH-3745. No incomplete proof can publish complete; every merge point passes the full local suite on its own and satisfies the Delivery Plan's non-regression definition (MP1/MP2 introduce no `_USAGE_DERIVE_VERSION` bump, no `rebuild()` fingerprint change and no replay of an already-linked raw row).
+- [ ] Every identity path the proof reads is protected in `pii._protocol_rules` for each supported host/event type (parity test fails loudly); an unregistered path yields a bounded `unprovable` retention reason in `prune`, never an absent candidate.
+- [ ] `prune` evaluates the semantic veto per source in short `BEGIN IMMEDIATE` transactions (plan, delete, marker per source); a forced failure on one source rolls back only that source and leaves the others' result intact; dry-run matches the actual per-source plan with no writes.
+- [ ] A malformed/contradictory checkpoint (including `usage_derive_raw_id` > `raw_events` `sqlite_sequence.seq`) makes derive skip and report incomplete without deleting or restamping any usage row or checkpoint.
 - [ ] Protection, safe mutation, prune deletion and source-progress outcomes commit atomically; forced failures preserve rows, guards and proof. Source release cannot clear another source or wildcard protections.
-- [ ] Applied-value source/generation/native positions change atomically on actual replacements and survive no-op replay. ENH-3746 can distinguish a row updated beyond the completed prefix and a dedup survivor supplied by another source without reopening native files or exporting internal identities.
+- [ ] **[Phase 2]** Applied-value source/generation/native positions change atomically on actual replacements and survive no-op replay. ENH-3746 can distinguish a row updated beyond the completed prefix and a dedup survivor supplied by another source without reopening native files or exporting internal identities.
 - [ ] Source decode failures never disappear from proof merely because ingestion skipped their bytes. Recognized non-usage/blank lines remain harmless; prune never derives/prices and dry-run matches the actual semantic retention/context plan without writes.
 - [ ] ENH-3732 consumes the pure interface on a read-only connection without source reads, derivation or pricing; statuses expose no native keys/paths.
 - [ ] `python -m pytest scripts/tests/` exits 0, including paired progress/freshness tests.
 
 ## Implementation Steps
 
-1. Agree with ENH-3745 on bounded source completion and minimal generation/pending evidence; keep storage ownership there.
-2. Factor/test total native proof, correspondence and safe mutation separately, with coalescing/cross-source/decode/legacy controls.
-3. Replace usage delete-then-replay with guarded reconciliation; integrate transactional prune, two-phase refresh protection, context-only qualification and below-checkpoint held retries. Preserve unchanged costs, row identities and guards.
-4. Run real lifecycle, rollback and paired completion tests; land the completed ENH-3744/3745 writer integration together, then the local suite.
+0. **MP0:** land ENH-3747 standalone first (not part of this issue's diff).
+1. **MP1:** with ENH-3745's S0 (checkpoint safety, no reset on invalid checkpoint), factor and test the pure correspondence proof (`inspect_usage_candidates`) with coalescing/cross-source/decode/legacy controls; wire it into `_plan_raw_prune` as a per-source deletion veto including the `not capable` branch; add the `pii._protocol_rules` identity parity test. No mutation, no storage, no version bump.
+2. **MP2:** agree with ENH-3745 on the minimal pending/failure/boundary storage (its migration); hand it this issue's candidate outcomes for the first positive source completion. Negative evidence first; legacy cursors keep today's semantics.
+3. **MP3** (after MP0; likely its own issue): replace usage delete-then-replay with guarded reconciliation in reset, Codex catch-up, rebuild and the two-phase parser refresh; below-checkpoint held retries; hold release; writer identity enforcement. Preserve unchanged costs, row identities, guards and today's full-raw-source Codex requalification. Re-justify any `_USAGE_DERIVE_VERSION` bump.
+4. Each merge point: real lifecycle, rollback and completion tests, then `python -m pytest scripts/tests/`; re-run `/ll:confidence-check` for the next slice. Phase 2 items (context-only promotion for held/beyond-gap, digest continuity, applied-value witness) are separate follow-ups.
 
 ## Scope Boundaries
 
@@ -220,7 +246,7 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 **Outcome Confidence**: 50/100 → LOW
 
 ### Concerns
-- Paired landing with open ENH-3745 is mandatory, but tooling lands one issue per branch and epic-branch mode merges unverified (`verify_before_merge: false`); the landing plan is a process constraint, not an enforced mechanism.
+- _Superseded 2026-10-07:_ the mandatory paired landing was replaced by ordered fail-closed merge points (Delivery Plan), removing the process-only constraint. Scores above predate the slicing; rerun `/ll:confidence-check` for MP1 scope before starting (current outcome 50 is below the 65 gate).
 - ENH-3747 (open) must land first or in the same change, otherwise preserving unchanged usage rows widens search-row loss from held/live to every preserved observation.
 - Sanitizer identity precondition: every identity key the proof reads must be registered in `pii._protocol_rules`, or redacted retained payloads read as `unprovable`.
 - Learning tests: none required. Program Design gate passes; `BUG-3736` (`blocked_by`) is done.
@@ -236,6 +262,7 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 
 ## Session Log
 
+- Pre-implementation review #3 - 2026-10-07 - Re-verified the Current Behavior claims against `lifecycle.py` (unguarded `int()` of the checkpoint, `max_id < checkpoint` destructive reset, `max_id == checkpoint` early return, checkpoint-only prune proof, `raw_events` AUTOINCREMENT, unique `source_raw_event_id` index, `test_enh3678` rebuild-fingerprint gate). `/ll:advise` with `claude-opus-5-5` (confidence 0.74) resolved the pending slicing decision: ordered fail-closed merge points MP0-MP3 instead of one atomic landing, Phase 2 deferrals, no version bump before MP3, per-source prune veto, sanitizer-identity parity gate, and "never route invalid checkpoint to the reset branch". Opus dissent noted: if MP3's version bump has a normalizer-output justification, dropping it would leave stale-meaning rows. Added 3 ACs, rewrote steps and the Delivery Contract. No implementation or new score claimed.
 - `/ll:confidence-check` - 2026-10-07T16:32:13 - `2231707d-b3c0-49ab-b995-a5f45163a660.jsonl`
 - Pre-implementation epic review - 2026-10-07 - Added landing mechanics (tooling lands one issue per branch; epic-branch mode auto-merges unverified), the ENH-3751 refresh-seam interaction and the sanitizer identity precondition for the pure proof, and the ENH-3747 search-loss coupling (verified: reset/rebuild wipe all usage search rows; preserving unchanged rows widens the loss from held/live to every preserved observation). Recorded Opus's slicing proposal as a pending decision with one verified premise correction (raw of usage-bearing sources is pruned today). No implementation or readiness claim.
 
