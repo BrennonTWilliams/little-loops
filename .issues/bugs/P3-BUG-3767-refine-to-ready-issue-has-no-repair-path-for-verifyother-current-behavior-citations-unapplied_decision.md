@@ -1,248 +1,211 @@
 ---
 id: BUG-3767
 type: BUG
-title: refine-to-ready-issue has no repair path for VERIFY:other (Current Behavior
-  citations, unapplied_decision)
+title: Current Behavior citation corrections have no bounded repair path
 priority: P3
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T01:12:47Z'
-verify_verdict: VALID
-confidence_score: 85
-outcome_confidence: 50
-score_complexity: 5
-score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 10
+relates_to:
+- BUG-3763
+- BUG-3764
+- ENH-3765
 risk_factors:
-- id: adjacent-repair-paths-overlap
-  domain: readiness
-  criterion: duplicate_implementations
-  description: DIRECTIVE_DRIFT->reconcile and CLAIMS_OUTDATED->correct_claims already
-    exist; new route must extend rather than duplicate them.
-- id: b8-never-repairs-citations-conflict
+- id: preserve-current-behavior-premise
   domain: readiness
   criterion: architecture
-  description: Option B widening CLAIMS_OUTDATED conflicts with verify-issues B8 'never
-    repairs citations' and the BUG-3637 premise-change guard.
-- id: pinned-test-and-mirror-fanout
+  description: Citation edits require direct proof of the unchanged assertion; a
+    rewritten premise could otherwise pass the independent check unnoticed.
+- id: semantic-edit-quality
+  domain: outcome
+  criterion: complexity
+  description: Prompt-guided correction must distinguish exact citation spans from
+    assertions and ambiguous locations; scripted routing tests do not prove this.
+- id: shared-verify-command-contract
   domain: outcome
   criterion: change_surface
-  description: Many doc-contract and topology tests plus four max_steps==113 pins
-    and host mirrors break on anchor or step-count changes.
-- id: repair-option-unresolved
-  domain: outcome
-  criterion: ambiguity
-  description: Proposed Solution lists Options A/B/C with no Selected decision; route,
-    verdict token and unapplied_decision handling all depend on it.
-- id: verdict-model-contract-change
-  domain: outcome
-  criterion: complexity
-  description: Per-site change alters the persisted-verdict/route-table contract shared
-    by autodev, with fan-in to budgeted states.
-- id: wide-integration-surface
-  domain: outcome
-  criterion: complexity
-  description: 16 integration files across loop YAML, verify/reconcile commands, CLI
-    classifier, docs and three host mirrors.
-size: Large
+  description: Correctable scope repeats in classification, persistence, correction,
+    final sync and generated host mirrors; all must agree with BUG-3764.
 ---
 
-# BUG-3767: refine-to-ready-issue has no repair path for VERIFY:other (Current Behavior citations, unapplied_decision)
+# BUG-3767: Current Behavior citation corrections have no bounded repair path
 
 ## Summary
 
-`refine-to-ready-issue` deterministically fails with `GATE_UNMET` when `/ll:verify-issues --check` persists `verify_verdict: NON_VALID` for a stale line-number/symbol citation in `## Current Behavior`, or for `unapplied_decision` residue left in directive sections after `resolve-decision`. The only route from `VERIFY:other` is `check_gate_refine_limit` -> `refine_followup`, an additive-only pass that cannot fix a stale fact, so the shared refine budget burns on a no-op and the loop ends `failed`.
+Verification sends a stale citation inside Current Behavior to `NON_VALID` even when the original factual assertion remains true and only its source location needs correction. Preparation then chooses additive gap-analysis, which cannot replace the citation. Permit a narrowly evidenced citation-only correction through the existing `CLAIMS_OUTDATED` / `correct_claims` route while preserving BUG-3637's protection against rewriting an issue's premise.
+
+The observed BUG-3762 run failed after 26 iterations. This establishes a failed historical route, not deterministic model classification on byte-identical input. Genuine selected-decision directive drift belongs to BUG-3763/BUG-3764; raw `unapplied_decision` candidates are not independently proven defects.
 
 ## Current Behavior
 
-Observed run (transient, gitignored): `.loops/runs/refine-to-ready-issue-20261006T180316/` on BUG-3762 — 26 iterations, final state `failed`. <!-- ll-evidence-ok: run record is in transient gitignored directory, not tracked issue file -->
-Run-record outcome: `deferred`, legacy class: `gate_unmet`.
+Observed run (transient, gitignored): `.loops/runs/refine-to-ready-issue-20261006T180316/`, with captured output in the corresponding `.loops/.running/` log. Final state `failed`; run-record outcome `deferred`, legacy class `gate_unmet`. <!-- ll-evidence-ok: run artifacts are transient and gitignored -->
 
-1. BUG-3762 `## Current Behavior` cited `raw_redaction.py:266` (real location: `_projection` at `:260`) and `:391` (real: `_plan_column`'s `col.value is None` check at `:374-375`; `:391` is the replacement-over-`STORED_CAP` check). Both citations predate the run (present in commit `e3dd5cdac`); `refine_issue` (iter 6) left them uncorrected.
-2. `verify_issue` (iters 15, 23) persisted `verify_verdict: NON_VALID`. `commands/verify-issues.md:349` (BUG-3637) states a finding whose fix touches Current Behavior stays `NON_VALID`, never `CLAIMS_OUTDATED`, "regardless of how narrow the actual text change looks". The verify output in the run said Current Behavior "is outside the correctable scope" (run events, transient).
-3. `route_pre_score_obligation` (`scripts/little_loops/loops/refine-to-ready-issue.yaml`, route table ~L600) maps `"VERIFY:other"` -> `check_gate_refine_limit` -> `refine_followup` (`/ll:refine-issue --auto --gap-analysis`), which is additive-only (`commands/refine-issue.md` §5c; the gap-analysis contract at ~L893). Iter 18 reported that nothing else was changed (run events, transient). The shared `refine-to-ready-refine-count` budget hit 2, so iter 25 routed `check_gate_refine_limit` -> `record_gate_unmet` -> `failed`.
-4. Secondary: after `resolve-decision` selected Option A, `ll-issues format-check` still reported 4 `unapplied_decision` hits (`unverifiable_oversize`, `_fetch_one`, `complete: true`, `max_row_bytes`) in Program Design / Implementation Steps / Acceptance Criteria. verify and refine_followup both named `/ll:reconcile-issue` as the fix, but no route reaches `reconcile_issue` because the persisted verdict is `NON_VALID`, not `DIRECTIVE_DRIFT`.
-
-## Expected Behavior
-
-An otherwise-valid issue with (a) stale line/symbol citations in Current Behavior and/or (b) unapplied-decision residue converges to `VALID` within one repair cycle instead of reaching `record_gate_unmet`. Premise changes in Current Behavior still stay `NON_VALID`.
+1. BUG-3762's Current Behavior used two shorthand source locations that pointed at different statements. The final verifier confirmed the underlying assertions: the capped `CASE` in `_projection` and the missing-value guard in `_plan_column` were present, but the citation locations were stale.
+2. Verify at iterations 15 and 23 persisted `NON_VALID`, citing the Current Behavior exclusion in `commands/verify-issues.md` §2C. Its current rule excludes that section regardless of how narrow the change is.
+3. `VERIFY:other` enters `check_gate_refine_limit` and `/ll:refine-issue --auto --gap-analysis`. That pass cannot replace stale metadata; it reported no correction. The shared increment-before-command retry counter exhausted, and preparation reached `record_gate_unmet`.
+4. Earlier output also questioned decision-related text. The final verifier explicitly treated all four raw `unapplied_decision` candidates as consistent with the selected A+C mechanism and gave them no verdict effect. The decision rejects Option B's page-bound-growth mechanism, not every use of its vocabulary or per-row flag. Those identifiers must not be erased to clear a scanner.
+5. B8 reported no blocking citation gaps. The shorthand references have no exact occurrence entries in current `examined_refs`; there is no basis to claim those occurrences received `line_in_range: ok`. In any event, a range pass cannot establish what a line says or whether the cited assertion holds.
 
 ## Steps to Reproduce
 
-1. Take an otherwise-valid issue whose `## Current Behavior` cites a stale line number/symbol location (e.g. BUG-3762's `raw_redaction.py:266` / `:391`), and/or that still carries `unapplied_decision` residue in Program Design / Implementation Steps / Acceptance Criteria after `resolve-decision`.
-2. Run `ll-loop run refine-to-ready-issue` on it (e.g. `BUG-3762`).
-3. Observe: `verify_issue` persists `verify_verdict: NON_VALID`; `route_pre_score_obligation` emits `VERIFY:other` -> `check_gate_refine_limit` -> `refine_followup` (additive-only, changes nothing); the shared refine budget exhausts and the loop ends `record_gate_unmet` -> `failed`.
+1. Build a disposable issue with an otherwise-accurate Current Behavior assertion and a citation pointing at the wrong statement. Provide a uniquely identifiable correct source location; do not run against the live BUG-3762 artifact.
+2. In a real-child scripted harness, persist the current `NON_VALID` classification for that finding and leave the citation unchanged during gap-analysis.
+3. Observe `VERIFY:other` consume the additive retry and terminate at `record_gate_unmet`. Evaluate actual classification/correction separately using disposable model fixtures; the scripted harness establishes routing only.
+
+## Expected Behavior
+
+An otherwise-valid citation-only fixture is classified `CLAIMS_OUTDATED`, repaired once by the existing `correct_claims` state, then independently verified after normalization and verdict/evidence clearing. The assertion remains unchanged. A finding that requires changing behavior, a condition, a causal claim or other premise remains `NON_VALID` and is not automatically rewritten under this exception.
+
+Mixed eligible citation and genuine directive drift can require successive claim and reconcile cycles. A persistent or unprovable citation obligation exhausts the existing single claim-correction attempt and produces `gate_unmet`; no new budget is introduced.
+
+## Root Cause
+
+- **File**: `commands/verify-issues.md`
+- **Anchor**: `Correctable scope for CLAIMS_OUTDATED`, `In-place claim correction`, and verdict persistence/final sync clauses.
+- **Cause**: The section-wide Current Behavior exclusion intentionally protects premises, but also excludes source-location metadata that can be corrected without changing the assertion. Its `NON_VALID` fallback selects an additive remedy with no authority to replace the citation.
 
 ## Motivation
 
-This fix would:
-- Stop a deterministic, avoidable `GATE_UNMET` failure: the loop burns its whole shared refine budget (26 iterations in the observed BUG-3762 run) on a no-op `refine_followup` pass and ends `failed`.
-- Remove a manual step: the issue is otherwise valid, yet a human must hand-edit citations or run `/ll:reconcile-issue` to unblock it.
-- Close a dead end in the verdict model: `reconcile_issue` is named as the fix by both verify and `refine_followup`, but no persisted verdict reaches it for these two finding classes.
+Remove an avoidable manual correction and preparation failure while retaining the existing premise boundary. A broad route from `VERIFY:other` into reconcile would grant rewrite authority to unrelated defects; the existing targeted claim-correction owner is sufficient for this narrower case.
 
 ## Proposed Solution
 
-Decision needed — options:
+> **Selected:** Narrow original Option B to pure citation-location corrections in Current Behavior, using existing `CLAIMS_OUTDATED` and `correct_claims`. Delegate genuine selected-decision drift to BUG-3763/BUG-3764 and additive protection to ENH-3765.
 
-- **Option A**: route `VERIFY:other` to `check_reconcile_limit` -> `reconcile_issue` (-> `normalize_structure`) when the finding is a Current Behavior citation or `unapplied_decision`, instead of `check_gate_refine_limit`. Needs a discriminator (e.g. new sub-reason tokens from `ll-issues next-obligation` such as `VERIFY:CITATION` / `VERIFY:UNAPPLIED_DECISION`), and `reconcile-issue` must be permitted to edit Current Behavior citations.
-- **Option B**: widen the `CLAIMS_OUTDATED` correctable scope in `commands/verify-issues.md` §2C to include pure line-number/range/symbol-location fixes inside Current Behavior (not premise changes), so they use the existing `check_claim_correction_budget` -> `correct_claims` path. Must preserve the BUG-3637 rationale (an independent `--check` re-pass cannot catch a rewritten premise) — restrict to pure citation anchors; route the `unapplied_decision` case separately (e.g. persist as `DIRECTIVE_DRIFT`).
-- **Option C**: both — B for citations, A / `DIRECTIVE_DRIFT` classification for `unapplied_decision` residue.
+No new verdict, token, CLI flag, route, counter, Python helper or reconcile permission. Do not route all `VERIFY:other` findings into a rewrite.
+
+### Eligibility and preservation
+
+- Require a uniquely locatable original citation occurrence in Current Behavior and a uniquely supported replacement. Verify directly against the source that the existing assertion remains true verbatim; finding a nearby symbol or an in-range line is insufficient.
+- For this initial exception, confine the edit to the numeric line/range suffix of an existing citation in the same source file. Accept an explicit `path:N`/`path:N-M`, or shorthand `:N` only when the same sentence/bullet identifies its source file unambiguously. Do not change its path or asserted symbol, introduce a new anchor, or expand shorthand through a prose rewrite. Exact substring replacement of the authorized numeric span is the edit operation; everything else in Current Behavior remains byte-identical.
+- Require a symbol literal or backticked code expression in that sentence/bullet that directly identifies the asserted source, plus its enclosing symbol when needed. The literal must occur verbatim exactly once in that file or named enclosing symbol, be present at the replacement range and absent at the old range. Repeated identical citations require uniquely discriminating local context; otherwise decline. A nearest function name, bare prose pointer, in-range line or literal occurring in several branches cannot establish the exception.
+- Do not change asserted symbols, literals, thresholds, conditions, behavior, causation, scope, rationale, code snippets or incident evidence. A symbol used as an asserted subject is not metadata merely because the finding calls it an anchor. Other premise sections retain their existing exclusions; this is not a general factual-rewrite permission.
+- Decline the exception when the original occurrence, replacement target or unchanged-assertion proof is ambiguous or unsupported. A location pointing to a different fact, a changed source assertion or an unsupported premise remains `NON_VALID`. Never substitute another true statement to make the issue verify.
+- Preserve historical quotations and decision/research provenance. A literal historical citation is not a current-state correction target; if its age is unclear, report uncertainty instead of rewriting history.
+- `resolve_anchor` / anchor-sweep are optional mechanical aids only. The resolver scans backward for definitions and clamps out-of-range lines; it neither validates assertions nor distinguishes branches in one function. It cannot establish eligibility or choose the replacement on its own.
+
+### Evidence, classification and correction
+
+Keep the existing escaped, single-line `verify_evidence` format. Each eligible `Current Behavior:` item must identify the original citation occurrence and its unique local assertion/context, the old/new range in the same file, the identifying literal/enclosing symbol and direct support for the unchanged assertion. Use the existing `<section>: <drift> -> <correction>` item grammar; for example `Current Behavior: '<path>:<old>' [context: '<unique local text>'] -> '<path>:<new>' [anchor: '<literal>' in '<symbol>', support: '<unchanged assertion proof>']`. Paraphrase delimiter-containing payload so `; ` appears only between items. No new structured field is needed. Enumerate all eligible findings and replace evidence together with the verdict; source proof is more than literal matching alone.
+
+Apply the existing precedence `NON_VALID` > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` > `DIRECTIVE_DRIFT` > `VALID`. Any noncorrectable/current-premise or never-auto-correct finding prevents a `CLAIMS_OUTDATED` verdict. An otherwise-correctable citation plus lower-priority directive drift uses `CLAIMS_OUTDATED` first; fresh verification rediscovers remaining drift rather than treating a citation edit as its repair. Raw decision candidates never determine the verdict.
+
+Under `--from-evidence`, the new Current Behavior exception additionally requires current `verify_verdict: CLAIMS_OUTDATED`; re-read the issue and source before each numeric-span replacement. Revalidate the original occurrence, unique literal, old/new ranges and unchanged assertion; stale evidence that no longer uniquely matches or evidence for a different verdict is not authority to edit. Missing/empty evidence remains the existing no-op. Eligible corrections in an ordinary non-check verify run require its own fresh `CLAIMS_OUTDATED` classification and follow the same bounds; no flag is inferred from a field's presence. `--check` remains body-read-only and persists only verdict/evidence under its existing contract.
+
+B8 remains a read-only, property-exact evidence consumer and still "never repairs citations" in that checking step. The explicitly eligible §4 correction is a separate owner. Update §2C, §2.5 persistence, §4 correction, §4.1 final sync, flag documentation and repeated exclusion text consistently so none retains an unconditional Current Behavior ban that contradicts this exception. Preserve `## Context` and every other excluded section's existing scope.
+
+The loop remains `VERIFY:CLAIMS_OUTDATED` -> `check_claim_correction_budget` -> `correct_claims` -> `normalize_structure` -> `clear_verify_verdict` -> independent `verify_issue`. One executed correction per run; recurring citation findings end through the existing exhaustion route. Both classifier and `_verify_class` already support this token, so their implementation remains unchanged.
+
+### Decision Rationale
+
+Review on 2026-10-06 selected the bounded variant of Option B. Original Option A would require a new discriminator and Current Behavior reconcile authority for an existing claim-correction responsibility; original Option C duplicated the decision-drift work already owned by BUG-3763/BUG-3764. The observed final BUG-3762 pass supports source-location correction, not automatic removal of all scanner candidates.
+
+The exception must prove that the original assertion survives unchanged. Independent verification alone cannot guard against a silently rewritten premise, because a newly consistent assertion could pass; preservation and source-support evaluation are therefore explicit acceptance requirements.
+
+`/ll:advise --signal user_requested` with `claude-opus-5-5` supported citation-only Option B at confidence 0.75. This review adopts its exact-substring edit, adjacent unique-literal proof, same-file numeric-span boundary and stale-evidence safeguards; unambiguous shorthand has the same constraints. Opus's dissent favored manual/upstream correction to retain the unconditional premise boundary. A runtime before/after preservation guard is a possible follow-up; this issue accepts model-enforced exact-span editing plus disposable byte-preservation evaluation as a remaining risk, without adding another state or retry.
+
+## Review Findings
+
+- `commands/verify-issues.md` — B8 distinguishes mechanical coverage from content/premise judgment. Its no-repair clause applies to B8, so it need not be removed to permit separately bounded §4 edits.
+- `scripts/little_loops/cli/issues/check_verify_verdict.py` and `next_obligation.py` — the shared classifier already handles `CLAIMS_OUTDATED`; no duplicate token mapping or special flag is needed.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — existing claim-correction budget, normalization/recheck chain and exhaustion route provide the owner without topology changes.
+- `scripts/little_loops/cli/issues/anchor_sweep.py` — nearest-definition resolution is not assertion proof and can produce an incorrect anchor for an otherwise in-range citation.
+- `skills/decide-issue/reference.md` — `unapplied_decision_detail` is candidate evidence; bounded propagation permits residuals, and selected mechanisms can intentionally retain identifiers shared with rejected options.
+- The original 85/50 confidence assessment and Large size predate scope selection. Its six active scores, size and VALID verification marker are invalidated by this substantive issue rewrite; fresh confidence/verification must assess the new contract. Current risk factors describe the remaining proof and prompt-consistency risks.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `route_pre_score_obligation` route table and its header comment (`"VERIFY:other"` -> `check_gate_refine_limit`); `check_reconcile_limit` / `reconcile_issue` / `check_claim_correction_budget` / `correct_claims` states (reach depends on the selected option)
-- `commands/verify-issues.md` — §2C verdict table and "Correctable scope for `CLAIMS_OUTDATED`" rule (BUG-3637), §2.5 persisted-verdict mapping and verdict precedence
-- `commands/reconcile-issue.md` — only if Current Behavior citation edits must become permitted
-- `scripts/little_loops/cli/issues/check_verify_verdict.py` — `classify_verify_verdict` (token set), only if new sub-reason tokens are introduced
-- `scripts/little_loops/cli/issues/next_obligation.py` — `_verify_class` / `select_next_obligation`, only if new `VERIFY:*` tokens are introduced
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml:16-60` — route-table header comment (line 24 `VERIFY:EVIDENCE_UNVERIFIED, VERIFY:other → check_gate_refine_limit`) must be updated with the route table in `route_pre_score_obligation`; no test pins the comment text [Agent 2 finding]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml:100-153` — `max_steps: 113` rationale comment block (BUG-3637 cycle at 138-144, BUG-3740 at 149-152); add an entry for any new repair cycle, and bump `max_steps` only if the new path adds steps — which breaks four pins (see Tests) [Agent 2 finding]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml:205-223` — counter-seed block in `resolve_issue`: any new per-run budget state must seed its own counter file here (`autodev.yaml` reuses `run_dir` across issues) [Agent 2 finding]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml:1480-1592` — `diagnose` / `write_failure_evidence` capture lists enumerate `check_reconcile_limit` and `check_gate_refine_limit`; add any new capture-bearing budget state by convention [Agent 2 finding]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml:1306` — `record_gate_unmet`'s `check-verify-verdict --directive-drift` probe: only runtime consumer of a `check-verify-verdict` flag; a new persisted verdict would need its own scoped `[GATE_UNMET:*]` signal or an explicit decision to leave it out [Agent 2 finding]
-- `commands/verify-issues.md:251-295` — check B8 "Citation findings via format-check (BUG-3708)"; line 272 states B8 "never repairs citations" and is pinned by `TestB8Modes` — Option B (widening `CLAIMS_OUTDATED` to citations) must reconcile with it [Agent 2 finding]
-- `commands/verify-issues.md:482-514` — §2.5 `CLAIMS_OUTDATED` persistence bullet (482-499), "Any other verdict → NON_VALID" (500-505) and full verdict precedence (507-514); §4 in-place correction (547-565) and §4.1 frontmatter sync (604-609) repeat the premise-section exclusion [Agent 2 finding]
-- `commands/reconcile-issue.md:88-98` — "Preserve untouched" list names `## Current Behavior`; Option A must carve out citation anchors here and extend the `--from-verify-evidence` eligibility sentence (lines 124-139, 214), which gates on `verify_verdict` being exactly `DIRECTIVE_DRIFT` [Agent 2 finding]
-- `.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md` — host mirrors of `commands/verify-issues.md` (each carries `CLAIMS_OUTDATED` / `Correctable scope`); regenerate with `ll-adapt --host <gemini|kimi-code|qwen> --apply` after any verify-issues edit. No `reconcile-issue` mirror exists [Agent 1 + 2 finding]
-- `scripts/little_loops/cli/issues/check_verify_verdict.py:56-94` — `add_check_verify_verdict_parser`: there is no `--claims-outdated` flag today; a new persisted verdict read by `check-verify-verdict` needs its own flag alongside `--directive-drift`, otherwise it is read only via `next-obligation` [Agent 2 finding]
-- `scripts/little_loops/cli/issues/__init__.py:163,190` — `ll-issues` epilog help lines for `next-obligation` and `check-verify-verdict`; update only if the token set or exit contract text changes [Agent 1 finding]
+- `commands/verify-issues.md` — narrow Current Behavior exception across classification, complete evidence, persistence, §4/from-evidence edits, final sync and output/flag descriptions; preserve B8's read-only contract.
+- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — correctable-scope exclusions plus the specific exception, precedence and evidence persistence pins.
+- `scripts/tests/test_bug3708_verify_issues_b8.py` — B8 remains read-only/property-exact, shorthand fallback and premise/scope protections.
+- `scripts/tests/test_bug3753_historical_verification_notes.py` — historical-note preservation precedent and existing targeted correction lifecycle.
+- `scripts/tests/test_bug3695_directive_drift_repair.py`, `scripts/tests/test_builtin_loops.py`, `scripts/tests/test_ll_issues_next_obligation.py` — focused real-child/token compatibility coverage where existing fixtures fit; add a BUG-3767 real-child scenario module if clearer. Existing route/budget/step-cap assertions remain intact.
+- `docs/reference/COMMANDS.md`, `docs/guides/LOOPS_REFERENCE.md` — describe the conditional citation correction and existing claim-correction route. Update `docs/reference/CLI.md` only if prose currently repeats the correctable-scope restriction; no CLI enum/flag change.
+- `.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md` — regenerate full command mirrors through `ll-adapt`, not handwritten edits.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/issues/check_verify_verdict.py:classify_verify_verdict` is shared by `cmd_check_verify_verdict` and `next_obligation._verify_class`; any new token must be handled in both
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — sole consumer of the `VERIFY:*` token table; `autodev.yaml` reuses the refine loop's run_dir across issues (see `check_verify_retries` comment)
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/preparation_policy.py:785` — calls `select_next_obligation()` in `snapshot_issue()` but skips every tier-1 obligation including `VERIFY`, so a new `VERIFY:*` sub-reason can never reach `Facts.obligation_post`; no change needed (note: `obligation_post` comment at ~273) [Agent 1 + 2 finding]
-- `scripts/little_loops/cli/issues/__init__.py:804-809` — registers `add_check_verify_verdict_parser` and `add_next_obligation_parser` and dispatches `args.command == "next-obligation"` / `"check-verify-verdict"` in `main_issues()`; imports only, no change unless a subcommand flag is added [Agent 1 finding]
-- `scripts/little_loops/cli/issues/clear_verify_verdict.py:cmd_clear_verify_verdict` — removes `verify_verdict` / `verify_evidence` by key name (value-agnostic); a new verdict value or evidence shape needs no change [Agent 2 finding]
-- `scripts/little_loops/cli/issues/arm_proposal_revision.py:113` — reads `verify_evidence` only for `PROPOSAL_UNSOUND`; unaffected by a reshaped evidence field for a new verdict [Agent 2 finding]
-- `scripts/little_loops/issue_parser.py:directive_gaps` (~4953) — projects only `missing`/`empty`/`boilerplate`/`renamed`; `unapplied_decision` is a blocking `FormatGaps` field but is **not** a FORMAT obligation, so in the loop it can only enter through the persisted `verify_verdict`. Any `unapplied_decision` route must either persist it as `DIRECTIVE_DRIFT` (Option B/C) or add a new discriminator [Agent 2 finding]
-- `skills/decide-issue/SKILL.md:437-442` and `skills/decide-issue/reference.md:8` — Phase 7c documents that a non-empty `unapplied_decision_detail` residual is "expected under the bounded-scope rule"; this is the origin of the residue in finding 4, so a repair route must not contradict that rule [Agent 2 finding]
-- `skills/confidence-check/SKILL.md:197-207` and `skills/confidence-check/rubric.md:318,326` — cap the outcome score on `unapplied_decision`; this is the downstream effect of leaving the residue unrepaired [Agent 2 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — unchanged consumer of `VERIFY:CLAIMS_OUTDATED`; existing single-attempt budget, diagnostic signal and `max_steps: 113` remain.
+- `scripts/little_loops/cli/issues/check_verify_verdict.py`, `next_obligation.py`, `clear_verify_verdict.py` — unchanged classifier/delegate and value-agnostic clearing lifecycle.
+- `commands/reconcile-issue.md` — retains Current Behavior protection; BUG-3763 owns design/estimate repair.
+- `scripts/little_loops/issue_parser.py`, `cli/issues/anchor_sweep.py` — unchanged scanners/mechanical aids; not semantic edit authority.
+- `skills/ll-verify-issues/SKILL.md` — minimal Codex command bridge; source-body edits ordinarily require no bridge change. Existing registered-host adapter gate remains authoritative.
 
 ### Similar Patterns
-- BUG-3637 `check_claim_correction_budget` -> `correct_claims` (own counter, exhaustion goes straight to `record_gate_unmet`)
-- BUG-3695 `VERIFY:DIRECTIVE_DRIFT` -> `check_reconcile_limit` -> `reconcile_issue --from-verify-evidence`
-- BUG-3574 `check_proposal_revision_budget` (per-verdict dedicated budget)
+
+BUG-3637's evidence-limited claim correction and independent recheck; BUG-3753's historical verification-note protection; BUG-3708's property-exact citation demotion; BUG-3764's semantic review of raw decision candidates.
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — `PRE_TABLE` route-table assertions (~L3131-3145) and `check_reconcile_limit` / `check_gate_refine_limit` budget tests (~L1680-1760)
-- `scripts/tests/test_ll_issues_next_obligation.py` — token emission for any new `VERIFY:*` sub-reason
 
-_Wiring pass added by `/ll:wire-issue`:_
-
-Existing tests to update (new `VERIFY:*` token / reroute):
-- `scripts/tests/test_builtin_loops.py:3132-3146` — `PRE_TABLE` is compared whole by `TestRefineToReadyDispatch.test_pre_score_routing_table` (L3196/3200); update the `"VERIFY:other"` entry and any new token [Agent 2 + 3 finding]
-- `scripts/tests/test_builtin_loops.py:3170-3177` — hardcoded `sub["VERIFY"]` list in `TestRefineToReadyDispatch._tokens`; `test_dispatch_tokens_are_complete` (L3214) fails if the selector emits a token missing from the route table [Agent 2 + 3 finding]
-- `scripts/tests/test_ll_issues_next_obligation.py:64-109` — `TestVerify.test_classifier` and `test_sub_reasons` parametrize rows (incl. `("NON_VALID", "other")`, `expected = "other" if verdict == "NON_VALID" else verdict`) need a row per new token; `TestYamlParity.test_tier1_dispatch_covers_selector_tokens` (~L371) in `TestYamlParity` [Agent 2 + 3 finding]
-- `max_steps == 113` is pinned in four tests — `scripts/tests/test_builtin_loops.py:1884` in `TestRefineToReadyIssue`-adjacent budget test, `scripts/tests/test_autodev_proof_reentry.py:131`, `scripts/tests/test_bug3695_directive_drift_repair.py:292` in `test_route_table_budget_and_step_cap_unchanged`, `scripts/tests/test_advise_ready_gate.py:216` in `test_max_steps_113`; all break if a `max_steps` bump is needed [Agent 2 + 3 finding]
-- `scripts/tests/test_bug3695_directive_drift_repair.py:281-292` — `TestFlagReachesOnlyReconcileIssue.test_route_table_budget_and_step_cap_unchanged` pins `check_reconcile_limit` `on_yes`/`on_no`/`target == 2` and `reconcile_issue.next == "normalize_structure"`; Option A adds fan-in to `check_reconcile_limit`; `test_reconcile_issue_alone_has_flag` (L269) asserts only `reconcile_issue` carries `--from-verify-evidence` [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py:2776-2819` — `test_proposal_revision_cycle_routing` asserts `check_reconcile_limit.on_yes == "reconcile_issue"` and that nothing but `check_proposal_revision` routes to `reconcile_revision` [Agent 2 finding]
-- `scripts/tests/test_bug3708_verify_issues_b8.py:126-150` — `TestB8Modes.test_check_and_from_evidence_behavior` asserts `"never repairs citations"` (L130); `test_context_section_is_ruled_outside_correctable_scope` slices from `**Correctable scope for \`CLAIMS_OUTDATED\`` to `#### E. Validate Dependency` — both break if Option B moves/rewords the anchors [Agent 2 + 3 finding]
-- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py:128-207` — `TestClaimsOutdatedVerdict`: `test_correctable_scope_rule_excludes_premise_sections` (all seven section names incl. `Current Behavior` must remain), `test_persistence_states_full_precedence_order` (`` `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` `` substrings must survive a precedence edit), `test_persistence_carves_out_claims_outdated_with_evidence` [Agent 2 + 3 finding]
-- `scripts/tests/test_bug3695_directive_drift_repair.py:423-442` — `TestVerifyIssuesB6AndPersistence.test_drift_branch_persists_verdict_and_evidence_together` slices from the `DIRECTIVE_DRIFT` bullet to the literal `CLAIMS_OUTDATED verdict (BUG-3637)` bullet; inserting a bullet between them breaks the slice [Agent 3 finding]
-- `scripts/tests/test_bug3753_historical_verification_notes.py:141-148` — `TestCommandAndLoopPins.test_loop_reentry_topology_and_single_attempt_budget` pins `check_claim_correction_budget` (`on_yes` → `correct_claims`, `on_no` → `record_gate_unmet`, target 2) and `correct_claims.next → normalize_structure` (Option B reuse) [Agent 2 + 3 finding]
-- `scripts/tests/test_bug3695_directive_drift_repair.py:300-386` — `TestReconcileFlagContract.test_additions_scope_and_boundaries` and `TestBug3726ContextOnlyTriage` slice `reconcile-issue.md` by heading/contract strings; relevant only if Option A widens reconcile scope to Current Behavior [Agent 3 finding]
-- `scripts/tests/test_reconcile_issue_command.py` — `TestReconcileScopeBoundariesEligibility` requires the `Preserve untouched` literal under `## Contract (read this first`; keep it when editing line 88 [Agent 2 finding]
-- `scripts/tests/test_wiring_reference_docs.py:280-290` — pins the `#### \`ll-issues next-obligation\`` heading and `OBLIGATION[:sub_reason]` text in `docs/reference/CLI.md`, the `API.md` row, and the `LOOPS_REFERENCE.md` "Typed run record (ENH-3597)" anchor; preserve them in doc edits [Agent 2 finding]
-
-New tests to write (patterns to follow):
-- Real-child scenario via `run_refine_to_ready` (`scripts/tests/autodev_harness.py:1103`) modeled on `test_bug3695_directive_drift_repair.py:TestRealChildRepairRouting.test_drift_repaired_within_one_reconcile` (L88-120): BUG-3762-shaped verdict → scripted repair → `VALID`, assert `"record_gate_unmet" not in r.path` [Agent 3 finding]
-- Exhaustion scenario modeled on `TestRealChildExhaustion` (L140-170) — no real-child test covers the `VERIFY:other` → `check_gate_refine_limit` → `refine_followup` → `record_gate_unmet` path today [Agent 3 finding]
-- Premise-change scenario asserting a Current Behavior premise change stays `NON_VALID` and routes to `check_gate_refine_limit` (AC 2) [Agent 3 finding]
-- Topology pin in the style of `test_bug3753_historical_verification_notes.py:test_loop_reentry_topology_and_single_attempt_budget` for any new budget state, plus a counter test in the style of `test_builtin_loops.py:_run_counter_state` (L1698) / `test_check_reconcile_limit_counts_up_and_gates_at_two` (L1904) [Agent 3 finding]
-- Doc-contract tests in the `test_enh3250_verify_issues_proposal_vs_code.py:TestClaimsOutdatedVerdict` style (slice between `Persist the verdict to frontmatter` and `### 3. Request User Approval`, whitespace-flattened) for any new verdict row, persistence bullet, or narrowed correctable-scope text [Agent 3 finding]
-- CLI exit-code test in the style of `test_ll_issues_check_verify_verdict.py:TestCheckVerifyVerdictClaimsOutdated.test_claims_outdated_verdict_exits_one` (L172-180) if `check_verify_verdict.py` gains a flag [Agent 3 finding]
+- Otherwise-valid citation-only fixture: persist `CLAIMS_OUTDATED`, execute one `correct_claims`, normalize, clear old verdict/evidence and independently verify `VALID`; assert no additive retry, decomposition or reconcile. Do not promise the historical BUG-3762 artifact qualifies without testing its unique-literal conditions. Scripted command effects test routing only.
+- Persistent/unprovable correction: one executed correction followed by existing `record_gate_unmet`, closed `gate_unmet` class and no added counter or reset. Count executions separately from the increment-before-command counter value.
+- Mixed fixtures: eligible citation plus true directive drift uses claim correction, fresh `DIRECTIVE_DRIFT`, then BUG-3763's reconcile; a true premise defect dominates as `NON_VALID`. Intentional A+C floor/shared-vocabulary candidates cause no semantic decision-drift finding. Do not require one cycle for mixed defects.
+- Contract fixtures cover ordinary non-check correction, `--check`, `--from-evidence`, absent/empty/stale/wrong-verdict evidence, repeated identical citations, ambiguous occurrences/targets, unexamined shorthand with/without a scoped file, bare prose pointers, literals at the old range or multiple locations, in-range wrong-content references and different branches under the same function. Path/symbol changes are refused under this initial exception.
+- Disposable model evaluation verifies actual surgical edits: original Current Behavior bytes are identical except authorized citation spans, historical/provenance blocks survive, every corrected assertion remains directly supported, and ambiguous/changed assertions are refused. Record these results separately from pytest and scripted routing.
+- Preserve all other premise exclusions, Context protection, B8 no-repair/property-exact demotion, full precedence and the existing route/token/step-cap tests. Run `scripts/tests/test_wiring_skills_and_commands.py` after mirror regeneration.
 
 ### Documentation
-- `docs/guides/LOOPS_REFERENCE.md` — documents the `VERIFY:other` route
-- `commands/verify-issues.md` verdict docs (also listed under Files to Modify)
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/guides/LOOPS_REFERENCE.md:146-158` — token routing table in `Claim-verification gate chain (ENH-3031, ENH-3604)`; line 156 groups `VERIFY:other` with `VERIFY:EVIDENCE_UNVERIFIED` and `DESIGN` → `check_gate_refine_limit`, lines 153-154 hold the `DIRECTIVE_DRIFT` / `CLAIMS_OUTDATED` rows; add a row for any new token and split `VERIFY:other` out if its route changes. Paragraphs at ~160 and ~196 (claim-verification failure split by which section must change) describe the budget and repair split and need a matching edit [Agent 1 + 2 finding]
-- `docs/reference/CLI.md:2458` — `VERIFY` `sub_reason` list in `ll-issues next-obligation` (pre-score gates); also line 2464 token examples and 2471 "`VERIFY` reflects the last persisted `verify_verdict`" [Agent 1 + 2 finding]
-- `docs/reference/CLI.md:2652` — non-VALID umbrella sentence and flag rows (2661-2662) in `ll-issues check-verify-verdict`; update if a new persisted verdict or flag is added [Agent 1 + 2 finding]
-- `docs/reference/CLI.md:2761` — `format-check` gap-key list (and JSON example ~3038) in `ll-issues format-check`; touch only if `unapplied_decision` classification or severity changes [Agent 2 finding]
-- `docs/reference/COMMANDS.md:305` — `/ll:reconcile-issue` row naming `--from-verify-evidence` and its `DIRECTIVE_DRIFT` eligibility; update if the eligibility widens (Option A) [Agent 1 + 2 finding]
-- `docs/reference/API.md:1475,4755,7637` — `next-obligation` rows; sub-reasons are not enumerated, so no edit needed unless the rows begin enumerating them [Agent 2 finding]
-- `CHANGELOG.md` — add the entry under a concrete `## [X.Y.Z]` section during release prep, not `[Unreleased]` [Agent 2 finding]
+Align verify command and loop-guide prose with the narrow exception and sequential mixed-finding behavior. No general `VERIFY:other` repair promise.
 
 ### Configuration
-- N/A
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/config-schema.json` and frontmatter validators — verified no `verify_verdict` allow-list exists; `classify_verify_verdict` is the sole enumeration (unlisted values fall to `other`), so no schema change is needed [Agent 2 finding]
-
-### Prior Art (not wiring)
-_Wiring pass added by `/ll:wire-issue`:_
-- ENH-3690 (cancelled as superseded by BUG-3708) already proposed a citation-only repair route and was closed on the premise that B8 makes citation findings verdict-neutral; BUG-3767's observed run contradicts that for a stale line/symbol citation *inside Current Behavior* (`:266`, `:391`). Any option must state why B8's demotion did not apply here (the `examined_refs` entries for `raw_redaction.py:266` report `line_in_range: ok`, so the staleness is a content/premise judgment B8 explicitly leaves to the model) [Agent 1 + 2 finding]
+No new setting, frontmatter schema, host call or enum. Disposable evaluation artifacts stay under an isolated run directory.
 
 ## Program Design
 
 ### Types
 
-- Persisted `verify_verdict: str` and `verify_evidence: str` (existing frontmatter fields) carry the finding class; any new sub-reason token is an additional value returned by `classify_verify_verdict`. The exact set depends on the option selected in Proposed Solution.
+Existing `verify_verdict: str` uses `CLAIMS_OUTDATED`; escaped single-line `verify_evidence: str` carries exact occurrence, replacement location and unchanged-assertion support. Raw `unapplied_decision_detail` remains a candidate list requiring semantic review.
 
 ### Signatures
 
-- `classify_verify_verdict(verdict: object) -> str` — existing; extended only if a new token is added.
-- `select_next_obligation(...)` in `scripts/little_loops/cli/issues/next_obligation.py` — existing; emits `VERIFY:<class>` via `_verify_class(fm: dict[str, Any]) -> str`.
+No Python signature change:
+
+- `classify_verify_verdict(verdict: object) -> str` — existing shared classifier already handles `CLAIMS_OUTDATED`.
+- `_verify_class(fm: dict[str, Any]) -> str` — existing selector delegate, unchanged.
+
+`resolve_anchor` is not an eligibility discriminator.
 
 ### Call Path
 
-`route_pre_score_obligation` -> `ll-issues next-obligation` -> `select_next_obligation` -> `_verify_class` -> `classify_verify_verdict`; the emitted `VERIFY:*` token is routed by the loop's `route:` table to an existing budget state (`check_reconcile_limit` or `check_claim_correction_budget`) instead of `check_gate_refine_limit`.
+`select_next_obligation` -> `_verify_class` -> `classify_verify_verdict` supplies the existing `VERIFY:CLAIMS_OUTDATED` token from current verdict/evidence. The loop then uses `check_claim_correction_budget` -> `/ll:verify-issues --auto --from-evidence` -> normalization -> clear verdict/evidence -> fresh independent verification. Exhaustion uses existing `record_gate_unmet`.
 
 ## Implementation Steps
 
-1. Resolve the Proposed Solution decision (`/ll:decide-issue BUG-3767`), then add a discriminator that separates a Current Behavior citation / `unapplied_decision` finding from other `NON_VALID` causes.
-2. Update `commands/verify-issues.md` §2C/§2.5 (and, if needed, `classify_verify_verdict` + `next_obligation`) to persist/emit the discriminated verdict while keeping premise changes `NON_VALID`.
-3. Update `route_pre_score_obligation`'s route table and header comment to send the new class to an existing repair budget state; extend `commands/reconcile-issue.md` scope only if required.
-4. Extend `PRE_TABLE` and budget tests in `scripts/tests/test_builtin_loops.py` and the token tests in `scripts/tests/test_ll_issues_next_obligation.py`.
-5. Verify: `ll-loop validate refine-to-ready-issue`, `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_ll_issues_next_obligation.py`, then re-run the loop against a BUG-3762-shaped fixture and confirm it reaches `VALID`.
+1. Add the citation-only exception and proof/preservation rules consistently across the verify command's repeated scope, persistence, correction and final-sync clauses. Retain B8 and all other premise exclusions.
+2. Add focused contract and real-child routing/exhaustion cases without changing classifier, token, counter, route table or step cap. Coordinate mixed-finding fixtures with BUG-3764 after its repair dependency lands.
+3. Run disposable edit-quality evaluation for uniquely supported anchors, branch ambiguity, changed assertions, repeated citations, stale evidence and historical preservation. Record actual edits/refusals separately from scripted outcomes.
+4. Update documentation and regenerate affected registered-host mirrors via `ll-adapt --host <host> --apply`; check codex, gemini, kimi-code, qwen and omp where tracked artifacts exist.
+5. Run the named focused suites, the mirror gate, `ll-loop validate refine-to-ready-issue`, then `python -m pytest scripts/tests/`.
 
-### Wiring Phase (added by `/ll:wire-issue`)
+## Scope Boundaries
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `scripts/little_loops/loops/refine-to-ready-issue.yaml` — route table in `route_pre_score_obligation`, header comment (~L24), `max_steps` rationale block (~L100-153), and, for any new budget state, its counter seed in `resolve_issue` (~L205-223) and the capture lists in `diagnose`/`write_failure_evidence` (~L1480-1592)
-- Update `commands/verify-issues.md` — §2C table/correctable scope, §2.5 persistence + precedence (~L482-514), §4/§4.1, and reconcile with check B8's "never repairs citations" (L272) under Option B
-- Update `commands/reconcile-issue.md` — "Preserve untouched" (L88) and `--from-verify-evidence` eligibility (L124-139, L214) under Option A; keep the `Preserve untouched` literal that `test_reconcile_issue_command.py` requires
-- Regenerate host mirrors after any `commands/verify-issues.md` edit — `ll-adapt --host <gemini|kimi-code|qwen> --apply` (`.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md`)
-- Update `scripts/little_loops/cli/issues/check_verify_verdict.py` (`classify_verify_verdict`, `add_check_verify_verdict_parser` flag if a new persisted verdict) and `next_obligation.py` (`_verify_class`) only if a new token is introduced; `preparation_policy.snapshot_issue` needs no change (it skips VERIFY)
-- Decide the `unapplied_decision` path explicitly: it is not a FORMAT obligation (`issue_parser.directive_gaps` omits it), so it can reach repair only via a persisted verdict — persist it as `DIRECTIVE_DRIFT` (existing `reconcile_issue --from-verify-evidence` route) or add a discriminator; keep consistent with `skills/decide-issue/SKILL.md` Phase 7c's bounded-scope residual rule
-- Update tests — `PRE_TABLE` and `_tokens()` VERIFY list in `test_builtin_loops.py`; `TestVerify` parametrize rows in `test_ll_issues_next_obligation.py`; the four `max_steps == 113` pins if the cap changes; B8/`CLAIMS_OUTDATED` doc-contract tests (`test_bug3708_verify_issues_b8.py`, `test_enh3250_verify_issues_proposal_vs_code.py`, `test_bug3695_directive_drift_repair.py`) if verify-issues anchors move
-- Add new tests — real-child scenario (`run_refine_to_ready`) reaching `VALID` without `record_gate_unmet`; a premise-change scenario staying `NON_VALID`; topology/counter pins for any new budget state
-- Update docs — `docs/guides/LOOPS_REFERENCE.md` (L146-158 route table, L156 `VERIFY:other` row, ~L196 split paragraph), `docs/reference/CLI.md` (L2458 `sub_reason` list, L2652/2661-2662 `check-verify-verdict`), `docs/reference/COMMANDS.md` (L305) while preserving strings pinned by `test_wiring_reference_docs.py`
-- Verify with `ll-loop validate refine-to-ready-issue` and run the scoped suites above plus `test_wiring_skills_and_commands.py`
+This issue owns only the bounded Current Behavior citation exception and its existing claim-correction lifecycle. BUG-3763/BUG-3764 own genuine selected-decision design/estimate drift, and ENH-3765 owns additive protection. No blanket raw-candidate repair, new verdict/token, general premise rewrite, widened reconcile scope or independent retry is included. Citation-only behavior can land independently; joint evaluation runs after the related decision-drift fixes.
 
 ## Impact
 
-- **Priority**: P3 - deterministic loop failure with a manual workaround (hand-edit or `/ll:reconcile-issue`); not data-losing
-- **Effort**: Medium - touches loop routing, verify verdict docs, and (for some options) a CLI token set plus tests
-- **Risk**: Medium - changes shared refine-loop routing used by autodev; must preserve the BUG-3637 premise-change guard
-- **Breaking Change**: No
+- **Priority**: P3 — preparation can fail on correction-only source metadata; manual correction is available and no data loss is established.
+- **Effort**: Medium — prompt contract, focused fixtures, docs and generated mirrors; reuses existing route/budget.
+- **Risk**: Medium — an overbroad exception could hide a changed premise, so unchanged assertion/source proof and byte-preservation evaluation are required.
+- **Breaking Change**: No new CLI or verdict contract.
 
 ## Acceptance Criteria
 
-- A BUG-3762-shaped issue (stale Current Behavior line citations and/or `unapplied_decision` residue, otherwise valid) reaches `VALID` within one repair cycle and does not reach `record_gate_unmet`.
-- A Current Behavior finding that changes the premise (not a pure citation anchor) still persists `NON_VALID` and is not auto-rewritten.
-- `ll-loop validate refine-to-ready-issue` (MR rules) passes; `scripts/tests/test_builtin_loops.py` passes with new coverage for the new route.
-- The route-table comment header in `refine-to-ready-issue.yaml` and the verdict docs in `commands/verify-issues.md` reflect the change.
-
-## Related
-
-BUG-3637 (CLAIMS_OUTDATED scope), BUG-3551 (shared refine budget), ENH-3604 (next-obligation dispatch), ENH-3248 (reconcile), BUG-3695 (DIRECTIVE_DRIFT via verify-evidence), ENH-3765 (unapplied_decision detection in format-check).
-
-Side finding (minor, not part of this fix): in the same run's `resolve-decision` sub-loop, `assert_decision_cleared` (`ll-issues check-flag BUG-3762 decision_needed`) exited 1 although `/ll:decide-issue` reported `decision_needed: false`; it routed through `rearm_refuted_spike` and still reached `done`. Worth a separate look.
+- Uniquely supported, otherwise-valid Current Behavior citation-only findings persist `CLAIMS_OUTDATED` and use the existing one-attempt correction/recheck chain, without an additive retry or new route/token/counter.
+- Only authorized citation-number/range spans change through exact substring replacement. Paths, asserted symbols, assertions, conditions, causal claims, snippets and historical/provenance material stay unchanged; ambiguous/missing/nonunique literal support, stale/wrong-verdict evidence and changed/unproven assertions confer no edit authority.
+- All verifier scope/persistence/correction/sync clauses agree with the exception while B8 remains read-only and all other premise exclusions remain. Genuine premise defects persist `NON_VALID`.
+- Persistent citation findings follow existing budget exhaustion; mixed citation/directive findings preserve precedence and successive fresh verification. Raw selected-mechanism/history candidates do not force rewrite or scanner clearance.
+- Contract, scripted child-loop and disposable model evaluations cover the distinct guarantees above; generated mirrors, loop validation, focused and full local tests pass.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/reference/COMMANDS.md` — verifier correction behavior.
+- `docs/guides/LOOPS_REFERENCE.md` — claim-correction routing and one-attempt budget.
+- `docs/reference/CLI.md` — current verdict/token and citation evidence contracts.
 
 ## Status
 
@@ -250,25 +213,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-06_
+Historical assessment by `/ll:confidence-check` on 2026-10-06, before the scope choice: readiness 85/100 and outcome confidence 50/100. These are historical results, not scores for the revised proposal; the active score keys and stale verification marker were removed. Reassess after review.
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 50/100 → LOW
+### Resolved Concerns
 
-### Concerns
-- Proposed Solution is still "Decision needed" (Options A/B/C, no `> **Selected:**`); the discriminator token, route target and `unapplied_decision` handling all hinge on it. Run `/ll:decide-issue BUG-3767` first.
-- Option B (widen `CLAIMS_OUTDATED`) contradicts verify-issues B8's "never repairs citations" (pinned by `TestB8Modes`) and the BUG-3637 premise-change guard; the issue must state why B8's demotion did not apply to the BUG-3762 citations.
-- Existing repair paths (`DIRECTIVE_DRIFT` -> `reconcile_issue`, `CLAIMS_OUTDATED` -> `correct_claims`) overlap; the fix should extend them, not add a parallel path.
+- [resolved 2026-10-06 by issue review] Original concern: Options A/B/C had no Selected decision, leaving discriminator, route and candidate handling open. Resolution: select bounded citation-only Option B, reuse existing CLAIMS_OUTDATED/correct_claims, and assign genuine decision drift to BUG-3763/BUG-3764.
+- [resolved 2026-10-06 by issue review] Original concern: Option B conflicts with B8's "never repairs citations" and the BUG-3637 premise guard. Resolution: B8 remains read-only; §4 owns an explicit citation-span exception requiring direct proof of the unchanged assertion and preserving all premise prose.
+- [resolved 2026-10-06 by issue review] Original concern: existing DIRECTIVE_DRIFT/reconcile and CLAIMS_OUTDATED/correct_claims paths overlap. Resolution: the revised issue introduces neither path nor token and leaves Current Behavior protected under reconcile.
 
-### Outcome Risk Factors
-- Unresolved design decision (Options A/B/C) leaves several judgment calls open.
-- Broad enumeration across ~16 sites (loop YAML, verify/reconcile commands, CLI classifier, docs, three host mirrors) with moderate-to-deep per-site complexity: the persisted-verdict/route-table contract is shared by autodev and fans into budgeted states.
-- Wide pinned surface: four `max_steps == 113` pins, topology/doc-contract tests and host mirrors break on any anchor or step-count change.
+### Remaining Outcome Risks
 
-### Risk Factor Delta
-- Baseline: none recorded
+Prompt-guided assertion proof and surgical edits still need disposable model evaluation. The command repeats its correction scope in several places and generated mirrors; stale copies could reintroduce conflicting instructions. Original risk notes about an unresolved option, 16-site token/topology change and four changed step-cap pins no longer describe the selected scope.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:31:37 - `e18126dd-317b-417c-86ac-4401ea214536.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:29:30 - `b059f0e8-765a-45cb-b2ac-1828f56d58b5.jsonl`
 - `/ll:wire-issue` - 2026-10-07T01:27:14 - `ce6bd152-644a-4781-8ad3-92fcd1e54a6a.jsonl`

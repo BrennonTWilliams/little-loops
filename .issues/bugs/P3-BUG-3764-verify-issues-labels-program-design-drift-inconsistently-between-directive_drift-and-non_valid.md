@@ -11,6 +11,7 @@ captured_at: '2026-10-07T00:49:19Z'
 relates_to:
 - BUG-3763
 - ENH-3765
+- BUG-3767
 blocked_by:
 - BUG-3763
 ---
@@ -46,11 +47,13 @@ Align finding classification with an actual repair owner and keep repeated evalu
 **Widen the existing `DIRECTIVE_DRIFT` definition conditionally; do not add a verdict or obligation.** Blocked by BUG-3763, whose eligible remedy must exist before verification advertises it.
 
 - Update B6, the verdict table and check-mode persistence guidance together. Ordinary directive drift keeps its existing definition.
-- The additional category requires a recorded selected option and Decision Rationale, a mechanism that still stands, and a correction restricted to named Program Design directive passages or decision-derived Impact Effort/Risk lines. Use canonical `Program Design:` or `Impact:` evidence-item prefixes (not composite headings), and identify the specific passages plus the correction entailed by the selection; do not turn a section heading into blanket rewrite authority.
+- The additional category requires an unambiguous recorded selected option and Decision Rationale for the decision governing the passage, a mechanism that still stands, and a correction restricted to named Program Design directive passages or decision-derived Impact Effort/Risk lines. Another decision group's winner is insufficient. Use canonical `Program Design:` or `Impact:` evidence-item prefixes (not composite headings), in the existing `<section>: <drift> -> <correction>` item format, and identify the specific current passages plus the correction entailed by that selection; do not turn a section heading into blanket rewrite authority.
 - Collect all applicable findings in one pass, including ordinary AC/Step/Integration Map drift and decision-derived design/estimate drift. Persist the complete escaped, single-line `verify_evidence` with `DIRECTIVE_DRIFT` in the same frontmatter update, replacing earlier evidence. `--check` remains frontmatter-only.
+- Keep the canonical prefixes and `; ` item delimiter aligned with BUG-3763's consumer and pin them together. Paraphrase quoted payload text containing that delimiter or pseudo-item prefixes so it cannot masquerade as another section-named finding; escaping YAML alone does not protect item boundaries.
 - Treat `unapplied_decision_detail` as candidate evidence requiring contextual review. It scans Program Design but not Impact; inspect Impact semantically. Preserve historical option comparisons and research blocks; a shared-vocabulary candidate alone is insufficient.
 - Absent or ambiguous selection, an unsupported new design, general Impact factual errors and an actual refutation of the selected mechanism do not qualify for the carve-out. Apply the existing claim/premise categories or `PROPOSAL_UNSOUND` as appropriate.
 - Retain precedence: `NON_VALID` > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` > `DIRECTIVE_DRIFT` > `VALID`. A higher-priority defect still wins when decision drift coexists; do not force the repair token from raw candidates.
+- Coordinate with BUG-3767's pure Current Behavior citation exception: an eligible citation correction wins as `CLAIMS_OUTDATED`; after that repair, fresh verification can expose remaining `DIRECTIVE_DRIFT`. A genuine Current Behavior premise change remains `NON_VALID` and wins over both. Mixed findings can require successive claims and reconcile cycles; do not promise one repair for every mixed issue or suppress remaining findings.
 
 `classify_verify_verdict` already recognizes `DIRECTIVE_DRIFT`; `_verify_class` delegates to it. Their implementation and `next-obligation` tokens remain unchanged. BUG-3763 owns the loop exhaustion guard and existing non-convergence message. For genuine `NON_VALID`, the absence of that drift-specific tag remains correct.
 
@@ -73,6 +76,8 @@ Review on 2026-10-06, including `/ll:advise` with `claude-opus-5-5` (confidence 
 - `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py`, `scripts/tests/test_bug3695_directive_drift_repair.py` — conditional classification and persistence contract pins.
 - `scripts/tests/test_ll_issues_check_verify_verdict.py`, `scripts/tests/test_ll_issues_next_obligation.py` — executable compatibility cases using section-named evidence and competing/absent verdicts.
 - `docs/reference/COMMANDS.md` — verifier/remedy description if its current wording lists the old section scope.
+- `.gemini/commands/verify-issues.toml`, `.qwen/commands/ll/verify-issues.md`, `.kimi-code/skills/ll-verify-issues/SKILL.md` — generated command mirrors; regenerate through `ll-adapt`, not handwritten patches.
+- `scripts/tests/test_wiring_skills_and_commands.py` — existing registered-host mirror gate; source-body edits ordinarily need no change to the minimal Codex bridge `skills/ll-verify-issues/SKILL.md`.
 
 ### Dependent Files (Callers/Importers)
 
@@ -90,6 +95,7 @@ Existing B6 distinction between a mechanism-preserving directive repair and a re
 - `check-verify-verdict --directive-drift` classifies the verdict alone, including empty evidence; repair eligibility additionally checks evidence and selection. Do not conflate the probe and permission contracts.
 - Document-contract cases cover selected/ambiguous/absent selection, Impact-only drift, mixed ordinary/design drift, shared-vocabulary/history false positives and higher-priority defects.
 - Disposable model evaluation checks the intended classification and complete evidence for these cases. Deterministic Python tests establish mapping, not the model's semantic decisions.
+- Joint BUG-3767 fixture: eligible citation plus decision drift first emits `CLAIMS_OUTDATED`, then fresh verification exposes `DIRECTIVE_DRIFT`; adding a true premise defect keeps `NON_VALID`. Include multiple decision groups and intentional selected-mechanism/shared-vocabulary candidates so no raw candidate is treated as rejected-option proof.
 
 ### Documentation
 
@@ -121,7 +127,7 @@ No new or changed Python signature:
 1. Land BUG-3763's remedy first; then amend all three verifier definition/persistence locations consistently.
 2. Add contract cases and executable verdict/token tests; leave classifier and selector code unchanged unless a regression exposes a separate defect.
 3. Run the disposable classification evaluation, including higher-priority/ambiguous cases, and record its limits separately from scripted routing results.
-4. Update command documentation; run the named focused tests, then `python -m pytest scripts/tests/`.
+4. Update command documentation and regenerate affected registered-host mirrors with `ll-adapt --host <host> --apply`; check codex, gemini, kimi-code, qwen and omp where tracked artifacts exist. Run the named focused tests and `scripts/tests/test_wiring_skills_and_commands.py`, then `python -m pytest scripts/tests/`.
 
 ## Scope Boundaries
 
@@ -138,6 +144,7 @@ This issue owns classification and evidence production. BUG-3763 owns repair/rou
 - Evidence identifies every applicable passage and entailed correction, respects precedence, and is replaced atomically with the verdict; check mode makes no body edits.
 - Existing probe/token tests cover DIRECTIVE_DRIFT, NON_VALID, PROPOSAL_UNSOUND and absent verdicts without a new enum or route.
 - Disposable evaluation covers eligible, ambiguous, Impact-only, mixed and false-positive cases; results do not claim deterministic model behavior. Focused and full local tests pass.
+- Mixed citation/design/premise fixtures preserve shared precedence and successive fresh-verification remedies; governing decision groups and intentional historical/selected identifiers are handled correctly. Generated mirrors pass the registered-host gate.
 
 ## Related Key Documentation
 
@@ -149,5 +156,6 @@ This issue owns classification and evidence production. BUG-3763 owns repair/rou
 **Open** | Created: 2026-10-07 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:format-issue` - 2026-10-07T00:52:19 - `8092456a-7bf3-47b0-86f7-42712002052b.jsonl`
 - `/ll:capture-issue` - 2026-10-07T00:49:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
