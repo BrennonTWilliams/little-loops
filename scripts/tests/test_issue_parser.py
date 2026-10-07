@@ -5059,6 +5059,18 @@ class TestPriorityRegexCompletenessAllowlist:
             2,
             "JSON-schema pattern for a priority argument, not a filename read (two sites)",
         ),
+        ("next_arena/state.py", "_PRIORITY_PREFIX_DIGITS_RE"): (
+            1,
+            "FEAT-3561: mirrors IssueParser._parse_type_and_id's directory-fallback "
+            "number extraction (priority digit skipped over, not read as a value); "
+            "parity-tested against the real parser",
+        ),
+        ("next_arena/state.py", "infer_parser_id"): (
+            1,
+            "FEAT-3561: mirrors IssueParser._generate_id_from_filename's priority-token "
+            "strip before digit-scanning, without the number allocator; priority is "
+            "resolved separately via resolve_priority",
+        ),
         ("session_store/writers.py", "_FILENAME_PRIORITY_RE"): (
             1,
             "the deliberately-preserved filename fallback in _derive_type_priority "
