@@ -105,7 +105,7 @@ CLI → pure project snapshot → generators/scoring → select → bounded atom
 
 ## Implementation Steps
 
-1. Implement after FEAT-3561 and FEAT-3721; claim the next free schema version.
+1. Implement after FEAT-3561, FEAT-3769 and FEAT-3721; claim the next free schema version.
 2. Add migration, project ownership/action payload, consumed lookup index, classification/exports and rebuild-preservation tests; verify the derivation fingerprint is unchanged.
 3. Add strict schema preflight and reuse ENH-3752's existing-store no-ensure opener with `timeout=0.25` and explicit transaction/cleanup ownership, then recording, transactional `accept`, point-query `feedback`, `--no-record` and recommendation/feedback schema extensions; document schema-not-ready and remote-unsupported behavior.
 4. Update docs/tests; keep default round-robin deterministic.
@@ -167,7 +167,7 @@ A user sees recorded recommendation IDs and explicitly accepts one from another 
 
 - 2026-10-07: SQLite probes found a NOCASE-declared column with a valid BINARY identity index passes the metadata contract but bare identity predicates produce `SCAN main.recommendation_events`; explicit BINARY predicates yield an indexed seek. With BINARY and NOCASE unique indexes, a bare conflict target can suppress an unrelated constraint, while the explicitly collated target raises. Opus (0.82) accepted this narrow correction, adding exact BINARY project equality and normal-migration consumer fixtures. Pinned predicates/conflict targets consistently without new indexes or schema introspection; refreshed the illustrative version to 61 → 62 after BUG-3766. Existing acceptance semantics, reader ownership and scope remain unchanged.
 
-- 2026-10-07 (pre-implementation review): `/ll:advise --signal user_requested --host claude-code --model opus` ("CONDITIONAL GO", 0.75). Added the REC_ID canonicalization rule (case-variant IDs would read as false `unknown` under BINARY identity); referenced the `variant` discriminator now pinned by FEAT-3561's tagged-union `action_spec` before persisted shapes freeze; added ENH-3752 to `relates_to` (its landed opener is consumed here); now `blocked_by` FEAT-3769 so the loop variant (needed by the equal-fingerprint distinct-ID fixtures) and six-verb registry exist first. Opus's suggestion to trim the NOCASE/dual-index fixtures was not adopted: each is one parametrized fixture over a probe-reproduced hazard and the contract is unchanged. No migration, acceptance semantics or scope changes.
+- 2026-10-07 (pre-implementation review): `/ll:advise --signal user_requested --host claude-code --model opus` ("CONDITIONAL GO", 0.75). Added the REC_ID canonicalization rule (case-variant IDs would read as false `unknown` under BINARY identity); referenced the `variant` discriminator now pinned by FEAT-3561's tagged-union `action_spec` before persisted shapes freeze; added ENH-3752 to `relates_to` (its landed opener is consumed here); now `blocked_by` FEAT-3769 so the loop variant (needed by the equal-fingerprint distinct-ID fixtures) and four landed verbs exist first; FEAT-3713 adds the final two verbs. Opus's suggestion to trim the NOCASE/dual-index fixtures was not adopted: each is one parametrized fixture over a probe-reproduced hazard and the contract is unchanged. No migration, acceptance semantics or scope changes.
 
 ## Status
 

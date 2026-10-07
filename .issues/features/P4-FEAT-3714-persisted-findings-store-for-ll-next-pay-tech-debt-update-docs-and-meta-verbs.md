@@ -69,4 +69,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-10-03 | Priority: P4
+**Deferred** | Created: 2026-10-03 | Priority: P4

@@ -23,7 +23,7 @@ relates_to:
 
 ## Summary
 
-Add the `resolve-blocker` and `run-loop` generators to the `ll-next` core (FEAT-3561): root-blocker recommendations over the core's dependency graph and runnable-loop recommendations over configured loop definitions and filesystem run history. Split out of FEAT-3561 by the 2026-10-07 pre-implementation review so the epic's go/pause checkpoint (implement-issue + refine-issue + `--explain`) happens **before** the most specialized work: the captured-buffer loop-loading seam in `fsm/validation/structural_rules.py`, runner-order context resolution, the persisted-logical-name history join, the limited loop fingerprint scope and the loop history axes. These contracts moved here verbatim from FEAT-3561; none was weakened. This slice extends the core's registry, config, output Schema and `ProjectState`; it adds no history access, writes or schema bump.
+Add the `resolve-blocker` and `run-loop` generators to the `ll-next` core (FEAT-3561): root-blocker recommendations over the core's dependency graph and runnable-loop recommendations over configured loop definitions and filesystem run history. Split out of FEAT-3561 by the 2026-10-07 pre-implementation review so the epic's go/pause checkpoint (implement-issue + refine-issue + `--explain`) happens **before** the most specialized work: the captured-buffer loop-loading seam in `fsm/validation/structural_rules.py`, runner-order context resolution, the persisted-logical-name history join, the limited loop fingerprint scope and the loop history axes. These contracts moved here verbatim from FEAT-3561; none was weakened. This slice extends the core's registry, config, output Schema and `ProjectState`; it reads filesystem loop run records but adds no `history.db` access, writes or history DB schema bump. Its output Schema version advances under the core's published-contract rule.
 
 ## Current Behavior
 
@@ -31,7 +31,7 @@ After FEAT-3561 the arena recommends `implement-issue` and `refine-issue` only. 
 
 ## Expected Behavior
 
-`ll-next` also offers the highest-leverage root blocker (`resolve-blocker`) and an existing valid, fully resolved runnable loop (`run-loop`), with the same assessment-first, gate/coverage and explain behavior as the core verbs. Each is advisory, history-free and write-free. Both register in the core's shared verb registry at their pre-declared canonical positions (`implement-issue`, `refine-issue`, `resolve-blocker`, `run-loop`, then FEAT-3713's verbs); no closed verb list is duplicated.
+`ll-next` also offers the highest-leverage root blocker (`resolve-blocker`) and an existing valid, fully resolved runnable loop (`run-loop`), with the same assessment-first, gate/coverage and explain behavior as the core verbs. Each is advisory and write-free; loop history comes from captured filesystem run records, with no `history.db` access. Both register in the core's shared verb registry at their pre-declared canonical positions (`implement-issue`, `refine-issue`, `resolve-blocker`, `run-loop`, then FEAT-3713's verbs); no closed verb list is duplicated.
 
 ## Motivation
 
@@ -102,7 +102,7 @@ Cold start is **per verb** (core contract): a never-run valid loop has no resolv
 
 ### Extension contract
 
-Extend, never duplicate, the core registry: add both verbs at their canonical positions, their consumed `next.verbs.<verb>` weights/caps (`next.verbs.resolve-blocker.weights.*`, `next.verbs.run-loop.weights.*`, caps default 2) through the shared `NextConfig` root allowlist/schema, and the output-Schema `loop` variant branch (claim the next output `schema_version`). Reuse the core's cross-consumer isolation: the legacy `resolve_loop_history_weights` and arena consumers each validate only their own subtree, and neither validates an unconsumed registered sibling. Extend `ProjectState` with `loop_definitions` and `loop_history` (immutable captured evidence, no live I/O in scoring/generation). The core's no-history/no-write invariants, `--help`/error-path behavior and `--no-record` handoff are unchanged.
+Extend, never duplicate, the core registry: add both verbs at their canonical positions, their consumed `next.verbs.<verb>` weights/caps (`next.verbs.resolve-blocker.weights.*`, `next.verbs.run-loop.weights.*`, caps default 2) through the shared `NextConfig` root allowlist/schema, and the output-Schema `loop` variant branch (claim the next output `schema_version`). Reuse the core's cross-consumer isolation: the legacy `resolve_loop_history_weights` and arena consumers each validate only their own subtree, and neither validates an unconsumed registered sibling. Extend `ProjectState` with `loop_definitions` and `loop_history` (immutable captured evidence, no live I/O in scoring/generation). The core's no-`history.db`/no-write invariants, `--help`/error-path behavior and `--no-record` handoff are unchanged.
 
 ## Scope Boundaries
 
@@ -169,7 +169,7 @@ After the checkpoint records "go", a user running `ll-next` also sees the root b
 
 ## Related
 
-- EPIC-3710 (parent). FEAT-3561 (core; prerequisite and checkpoint owner), FEAT-3711 and FEAT-3713 (follow-ons blocked by this slice so the six-verb registry, `loop` action variant and arrival orders are settled), FEAT-3721 (reader; independent of this slice). FEAT-3681 (done; scorer/config foundation). FEAT-3714, FEAT-3722 (deferred).
+- EPIC-3710 (parent). FEAT-3561 (core; prerequisite and checkpoint owner), FEAT-3711 and FEAT-3713 (follow-ons blocked by this slice so four landed verbs and the `loop` action variant are settled; FEAT-3713 adds the final two verbs and both arrival orders are tested), FEAT-3721 (reader; independent of this slice). FEAT-3681 (done; scorer/config foundation). FEAT-3714, FEAT-3722 (deferred).
 
 ## Review Notes
 
