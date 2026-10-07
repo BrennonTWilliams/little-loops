@@ -1,39 +1,31 @@
 ---
 target: sql.js
-date: '2026-08-25'
+date: '2026-10-07'
 status: proven
 assertions:
-- claim: initSqlJs({wasmBinary}) initializes the engine and issues no fetch() during
-    init
+- claim: 'initSqlJs({wasmBinary}) initializes the engine and issues no fetch() during init (locateFile is still consulted for the filename)'
   result: pass
-- claim: without wasmBinary, sql.js resolves the .wasm through locateFile — the file://
-    fetch that must be avoided
+- claim: 'without wasmBinary, sql.js resolves the .wasm through locateFile (observed under Node, which loads it via fs, so no fetch was exercised)'
   result: pass
-- claim: DecompressionStream('gzip') inflates a gzipped SQLite file to byte-identical
-    bytes
+- claim: 'initSqlJs() memoizes - a second call returns the identical instance and its new options are ignored'
   result: pass
-- claim: new SQL.Database(inflatedBytes) opens the inflated snapshot and exposes only
-    the CTAS-projected columns
+- claim: 'DecompressionStream(''gzip'') inflates a gzipped SQLite file to byte-identical bytes'
   result: pass
-- claim: sql.js executes DELETE against the in-memory DB — there is no built-in read-only
-    mode
+- claim: 'new SQL.Database(inflatedBytes) opens the inflated snapshot and exposes only the CTAS-projected columns'
   result: pass
-- claim: db.exec() runs every semicolon-separated statement in one call, so a leading-SELECT
-    check alone is insufficient
+- claim: 'sql.js executes DELETE against the in-memory DB - there is no built-in read-only mode'
   result: pass
-- claim: re-instantiating new SQL.Database(embeddedBytes) restores mutated rows — the
-    "reset snapshot" action works
+- claim: 'db.exec() runs every semicolon-separated statement in one call, so a leading-SELECT check alone is insufficient'
   result: pass
-- claim: PRAGMA query_only=1 makes sql.js reject writes at the engine level ("attempt
-    to write a readonly database")
+- claim: 're-instantiating new SQL.Database(embeddedBytes) restores mutated rows - the reset snapshot action works'
   result: pass
-- claim: PRAGMA query_only is reversible from the query box — a guardrail, not a boundary
+- claim: 'PRAGMA query_only=1 makes sql.js reject writes at the engine level (attempt to write a readonly database)'
   result: pass
-- claim: sql-wasm.wasm 1.14.2 is 658410 bytes raw / 877880 base64; glue 46535 bytes;
-    fixed floor ~924 KB per artifact
+- claim: 'PRAGMA query_only is reversible from the query box - a guardrail, not a boundary'
   result: pass
-- claim: the same behaviour holds in a browser opened over file:// (proof ran under
-    node v22.22.3, not a browser)
+- claim: 'sql-wasm.wasm 1.14.2 is 658410 bytes raw / 877880 base64; glue 46535 bytes; fixed floor ~924 KB per artifact'
+  result: pass
+- claim: 'the same behaviour holds in a browser opened over file:// (proof ran under node v26.0.0, not a browser)'
   result: untested
 raw_output_path: .ll/learning-tests/raw/sqljs.txt
 ---

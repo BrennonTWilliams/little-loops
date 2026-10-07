@@ -44,11 +44,6 @@ risk_factors:
   criterion: specification
   description: Every native identity path read by proof needs sanitizer-registry parity;
     unregistered evidence must remain bounded-unprovable rather than disappear
-- id: stale-blocked-by-bug-3736
-  domain: readiness
-  criterion: dependencies
-  description: blocked_by still lists BUG-3736, which is completed; frontmatter edge
-    is stale
 - id: writer-replay-seam-factoring
   domain: outcome
   criterion: change_surface
@@ -240,8 +235,26 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 - Retained: `native-correspondence-context`, `sanitizer-identity-registration`
 - Changed fields: none
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- Bounded-window processing ("memory/batch limits") still has no concrete limit or carry-forward rule; pin one before implementing the fallback.
+- Every native identity path the proof reads must be in `pii._protocol_rules` (`pii.py:609`); enumerate the supported Claude/Codex paths up front so the parity test has a finite target.
+
+### Risk Factor Delta
+- Added: none
+- No longer reported: `stale-blocked-by-bug-3736`
+- Retained: `bounded-window-limit-unspecified`, `native-correspondence-context`, `per-source-prune-transaction-restructure`, `sanitizer-identity-registration`, `writer-replay-seam-factoring`
+- Changed fields: none
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-07T19:18:28 - `b97d96d3-c931-4dc1-998b-71841952c10d.jsonl`
 - `/ll:confidence-check` - 2026-10-07T18:56:20 - `000f8816-1881-424d-9310-315d32e525a7.jsonl`
 - Pre-implementation review #4 - 2026-10-07 - Replaced mixed-owner partial merge points with whole-issue order ENH-3744 → ENH-3745 → ENH-3770 (ENH-3747 independent before ENH-3770). Removed active reconciliation, checkpoint/storage, hold-release and deferred-promotion obligations from this issue and cleared obsolete pre-split scores. Pinned matched observation/context evidence, captured-value compatibility, audit correspondence separate from missing qualification-only context, native Codex parity, cross-source prune revalidation and fail-fast partial-commit/retry semantics. Opus second opinion (confidence 0.73) supported the whole-issue order, an additional veto over existing eligibility and the acquisition-accounting handoff; the parent review ran existing baseline controls (131 passed). Preserved earlier logs below as historical decisions; no implementation or new readiness score claimed.
 
