@@ -133,6 +133,8 @@ A ready sprint can be recommended while its recent history is partial or unavail
 
 - 2026-10-07: Reviewed the current target resolver, literal-path/deadline backend, CLI argument/completion producer and integer-primary-key schema against this contract; no new material reader gap or scope change found. Recommendation BINARY predicate/conflict semantics remain owned by FEAT-3711 with its migration/real lookup fixtures. Opus's epic consult ("CONDITIONAL PROCEED", 0.82) retained the four-child order and local-only reader. Preserve the core checkpoint and existing per-request availability/work bounds; this records review, not implementation or passing acceptance evidence.
 
+- 2026-10-07 (pre-implementation review #2): `/ll:advise --signal user_requested --host claude-code --model opus` ("CONDITIONAL GO", 0.75) reviewed the four-child set; no reader scope change. Opus suggested shrinking the lookalike-table fixture list and replacing the 200-ID windows with one bounded descending range query; neither adopted. The shape rejections are one metadata-check function exercised by a single parametrized fixture table (cheap, probe-reproduced), and the windows give truthful interrupted-range coverage under the shared deadline (Opus rated the simplification non-essential). Implementation guidance only: write the shape check as one function and the lookalike cases as one parametrized table, not separate bespoke tests. FEAT-3721 stays blocked only by the FEAT-3561 checkpoint and may proceed in parallel with FEAT-3769.
+
 ## Status
 
 **Open** | Created: 2026-10-04 | Priority: P3
