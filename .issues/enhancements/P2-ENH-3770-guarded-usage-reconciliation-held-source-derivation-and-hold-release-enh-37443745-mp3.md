@@ -23,6 +23,7 @@ relates_to:
 - ENH-3732
 - ENH-3746
 - ENH-3751
+- ENH-3747
 testable: true
 ---
 

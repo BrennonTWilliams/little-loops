@@ -23,6 +23,7 @@ relates_to:
 - ENH-3746
 - ENH-3747
 - ENH-3751
+- ENH-3770
 testable: true
 ---
 
@@ -30,7 +31,7 @@ testable: true
 
 ## Summary
 
-Preserve validated scan progress and proved source completion after retention, diagnose malformed proof safely, and publish source freshness from source-local successful derivation rather than global ingestion progress. Separate ingestion and derived boundaries so skipped work cannot overwrite historical proof. A historical source boundary describes a current figure only when it covers all of that figure's contributors. Own the shared progress/generation storage used by ENH-3744 and deliver it through the ordered fail-closed merge points defined in ENH-3744's Delivery Plan (this issue owns S0 in MP1 and S1 in MP2).
+Preserve validated scan progress and proved source completion after retention, diagnose malformed proof safely, and publish source freshness from source-local successful derivation rather than global ingestion progress. Separate ingestion and derived boundaries so skipped work cannot overwrite historical proof. A historical source boundary describes a current figure only when it covers all of that figure's contributors. Own the shared progress/generation storage used by ENH-3744 and deliver it through the ordered fail-closed merge points defined in ENH-3744's Delivery Plan (this issue owns S0 in MP1 and S1 in MP2; MP3 reconciliation was split out as ENH-3770 on 2026-10-07).
 
 ## Current Behavior
 
@@ -159,7 +160,7 @@ Update `docs/reference/API.md`, `docs/reference/CLI.md` and `docs/guides/HISTORY
 
 1. **MP1 / S0:** factor safe global/source metadata validation and optional-connection committed-state reads; reproduce reader/writer invalid-proof controls; replace the retention-induced `max_id < checkpoint` reset with skip-and-report plus the preserved floor and `sqlite_sequence` contradiction check. Land with ENH-3744's S2a.
 2. **MP2 / S1:** define shared source outcomes and minimal pending/failure/`sanitization_refused`/derived-boundary storage (negative evidence only) with conservative legacy migration; integrate ordinary ingestion, both cursor writers/fast paths and the sanitizer-refusal reason; first positive completion from ENH-3744's outcomes (S2b).
-3. **MP3 (with ENH-3744):** two-phase parser-refresh pending state and below-checkpoint retry bounds consumed by reconciliation. Phase 2: full-prefix digest continuity.
+3. **MP3 (ENH-3770):** two-phase parser-refresh pending state and below-checkpoint retry bounds consumed by reconciliation. Phase 2: full-prefix digest continuity.
 4. Per merge point: prove prune/rebuild/append/mixed-source/source-loss and reader-revision cases plus atomic failure recovery, then run the local suite.
 
 ## Scope Boundaries

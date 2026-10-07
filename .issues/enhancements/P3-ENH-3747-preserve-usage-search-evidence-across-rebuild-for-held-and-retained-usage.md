@@ -21,6 +21,7 @@ relates_to:
 - ENH-3731
 - ENH-3732
 - ENH-3744
+- ENH-3770
 testable: true
 ---
 

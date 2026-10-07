@@ -31,21 +31,6 @@ score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 10
 risk_factors:
-- id: deep-transactional-rewiring
-  domain: outcome
-  criterion: complexity
-  description: Replaces delete-then-replay with guarded reconciliation across prune,
-    rebuild, catch-up and two-phase refresh; contract-level changes
-- id: enh3747-search-loss-ordering
-  domain: readiness
-  criterion: dependencies
-  description: Preserving unchanged usage rows widens search-row loss unless open
-    ENH-3747 lands first or in the same change
-- id: generation-witness-storage-undecided
-  domain: outcome
-  criterion: ambiguity
-  description: Ordering/generation proof depends on a durable witness whose ownership
-    and shape sit with unresolved ENH-3745
 - id: paired-landing-enh3745
   domain: readiness
   criterion: dependencies
@@ -175,7 +160,7 @@ Hazards the plan must respect:
 
 - `scripts/little_loops/session_store/writers.py` — factor native recognition/coalescing/dedup, total retained-input decoding and safe observation insert/replace/no-op; resume safe additive work without clearing protection.
 - `scripts/little_loops/session_store/claude_usage.py` — reuse actual producer/omission rules without promoting legacy contracts.
-- `scripts/little_loops/session_store/lifecycle.py` — semantic `_plan_raw_prune`, held-candidate iteration, pre-deletion comparison in reset/Codex catch-up/rebuild and atomic protection release. Coordinate shared edits with ENH-3745, which owns checkpoint/cursor semantics; keep the non-usage rebuild fingerprint boundary intact.
+- `scripts/little_loops/session_store/lifecycle.py` — semantic per-source `_plan_raw_prune` veto (held-candidate iteration, pre-deletion comparison in reset/catch-up/rebuild and hold release are ENH-3770). Coordinate shared edits with ENH-3745, which owns checkpoint/cursor semantics; keep the non-usage rebuild fingerprint boundary intact.
 - `scripts/little_loops/session_store/usage_refresh.py` — reuse safe preservation/replacement decisions before raw replacement; protect observations across its two-phase workflow rather than deleting them for a later rebuild.
 - A small pure helper module under `session_store/` is permitted to avoid circular imports; no third-party dependency or new persisted subsystem.
 
