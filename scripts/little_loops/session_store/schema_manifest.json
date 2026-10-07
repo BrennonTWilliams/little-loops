@@ -2408,6 +2408,12 @@
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
+        },
+        {
+          "name": "origin",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -3165,5 +3171,5 @@
       "type": "table"
     }
   },
-  "schema_version": 60
+  "schema_version": 61
 }

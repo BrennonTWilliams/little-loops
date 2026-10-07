@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 60
+SCHEMA_VERSION = 61
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1569,6 +1569,14 @@ _MIGRATIONS: list[str] = [
     # written before v60, and every non-route event, keep NULL.
     """
     ALTER TABLE loop_events ADD COLUMN to_state TEXT;
+    """,
+    # v61 (BUG-3766): writer provenance for skill_events. Nullable with no default
+    # or CHECK: the three writers stamp 'prompt_hook' | 'skill_host' | 'transcript',
+    # rebuild() may classify unattributable historical rows 'legacy', and NULL means
+    # unclassified (stale-process insert or pre-v61 row). rebuild() wipes only
+    # origin = 'transcript'; every other row is live telemetry replay cannot recreate.
+    """
+    ALTER TABLE skill_events ADD COLUMN origin TEXT;
     """,
 ]
 

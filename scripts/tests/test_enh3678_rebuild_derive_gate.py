@@ -473,7 +473,7 @@ class TestDeriveFingerprint:
     def test_resolved_function_set_matches_snapshot(self) -> None:
         sources, _manifest = sources_at(REPO_ROOT, None)
         resolved = [f"{m}.{n}" for m, n in resolve_function_set(sources)]
-        assert len(resolved) == 23
+        assert len(resolved) == 28
         assert resolved == self._snapshot()["function_set"], (
             "the set of functions reachable from rebuild() changed; regenerate "
             "rebuild_fingerprint.json (see this class's docstring) and consider a bump"

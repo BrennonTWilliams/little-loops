@@ -102,8 +102,9 @@ def _downgrade_and_remigrate(db: Path) -> None:
     conn = sqlite3.connect(str(db))
     try:
         conn.execute("DROP TABLE usage_replay_holds")
-        # A v58 store predates every later migration too (v60, BUG-3755).
+        # A v58 store predates every later migration too (v60 BUG-3755, v61 BUG-3766).
         conn.execute("ALTER TABLE loop_events DROP COLUMN to_state")
+        conn.execute("ALTER TABLE skill_events DROP COLUMN origin")
         conn.execute("UPDATE meta SET value = '58' WHERE key = 'schema_version'")
         conn.commit()
     finally:
@@ -486,10 +487,10 @@ class TestLegacySeeding:
     ) -> None:
         db = tmp_path / "h.db"
         ensure_db(db)
-        assert SCHEMA_VERSION == 60
+        assert SCHEMA_VERSION == 61
         assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(0,)]
         assert lifecycle._USAGE_DERIVE_VERSION == "enh3651-v1"
-        assert lifecycle.REBUILD_DERIVE_VERSION == "bug3761-v1"
+        assert lifecycle.REBUILD_DERIVE_VERSION == "bug3766-v1"
 
     def test_rebuild_predicate_matches_shared_hold_fragment(self) -> None:
         predicate = lifecycle._REBUILD_TABLE_PREDICATES["usage_events"]

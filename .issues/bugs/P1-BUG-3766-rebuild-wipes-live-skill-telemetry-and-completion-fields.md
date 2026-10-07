@@ -3,10 +3,11 @@ id: BUG-3766
 type: BUG
 title: Rebuild wipes live skill telemetry and completion fields
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-06'
 captured_at: '2026-10-07T00:53:14Z'
+completed_at: '2026-10-07T02:16:18Z'
 labels:
 - history
 - telemetry
@@ -83,7 +84,7 @@ Option A selected in the initial `/ll:advise` consult (claude-opus-5-5, confiden
 
 Rejected Option B (no migration, predicate on search anchor `== skill_name`): it couples base-row provenance to a derived index and cannot classify un-indexed rows. The earlier review reported agreement with timestamp precision on its sampled store; this is not a writer invariant. Splitting all twin suppression into a follow-up remains rejected: newly origin-stamped hooks must not systematically double counts.
 
-The second advisor's dissent proposed marking every old row `'legacy'` and retaining it forever, with no FTS classification. Keep conservative classification so clearly identified historical replay rows can still be replaced. Also reject suppression of unresolved `'legacy'` rows and argument-free matching: the two live writers share an index anchor, and both production hook/replay paths normalize arguments with `.strip()[:200]` (`scripts/little_loops/hooks/user_prompt_submit.py:134`, `scripts/little_loops/session_store/writers.py:4730`). Preserve ambiguous invocations even when this leaves a bounded duplicate. **Tradeoff:** old completionless live rows become `'legacy'`, so their replay twins can increase historical counts on the first fixed rebuild; subsequent rebuilds must not accumulate further copies. No universal pre/post count equality is claimed: replay-only history legitimately adds rows, and legacy uncertainty cannot always be deduplicated safely.
+The second advisor's dissent proposed marking every old row `'legacy'` and retaining it forever, with no FTS classification. Keep conservative classification so clearly identified historical replay rows can still be replaced. Also reject suppression of unresolved `'legacy'` rows and argument-free matching: the two live writers share an index anchor, and both production hook/replay paths normalize arguments with `.strip()[:200]` (`scripts/little_loops/hooks/user_prompt_submit.py:138`, `scripts/little_loops/session_store/writers.py:4731`). Preserve ambiguous invocations even when this leaves a bounded duplicate. **Tradeoff:** old completionless live rows become `'legacy'`, so their replay twins can increase historical counts on the first fixed rebuild; subsequent rebuilds must not accumulate further copies. No universal pre/post count equality is claimed: replay-only history legitimately adds rows, and legacy uncertainty cannot always be deduplicated safely.
 
 ## Integration Map
 
@@ -192,12 +193,12 @@ ENH-3747 shares search deletion/re-indexing but has no required landing order wi
 
 ## Acceptance Criteria
 
-- [ ] Both public live writers survive rebuild with the same IDs, invocation and completion fields, including absent/pruned raw sources. A live context can complete after rebuild and update its original row; legacy classification may update origin only.
-- [ ] Survivor search entries are restored; explicit replay rows/search entries are replaced without dangling rows or accumulation across three rebuilds. Public search and skill rollups reflect the resulting multiset; legacy duplicate/anchor limits are documented.
-- [ ] Classification follows the exact Decision Rules: completion evidence wins; only a unique path twin permits transcript inference; ambiguous/name-only/no-twin evidence becomes durable `'legacy'`. Rebuild-generated anchors never change that classification. NULL rows inserted later and unknown explicit origins are preserved; no completion-NULL or precision-only replay inference.
-- [ ] A newly stamped hook and an eligible transcript twin yield one row; replay-only history remains; rapid repeats consume at most one replay row per eligible survivor. Different arguments, outside-window/invalid timestamps, NULL/empty sessions, skill hosts, legacy rows and unknown origins never suppress. Matching/count behavior and 200-character identity limits are verified and documented.
-- [ ] Automatic replay from a store stamped `bug3761-v1` preserves skills and becomes current only after success; large stores still defer and ordinary ingest remains ingest-only. Forced failures roll back classification, base rows, search entries and rebuild/usage stamps together, while retaining the separately committed schema migration.
-- [ ] The new migration, complete repair, new derive-version tag, fingerprint/function-set pin, current schema literals and repaired historical downgrade fixture ship together from an isolated worktree. Existing tool/correction/usage preservation and frozen legacy values remain intact. Classification scans FTS at most once per rebuild with NULL origins; representative added lock time is recorded.
+- [x] Both public live writers survive rebuild with the same IDs, invocation and completion fields, including absent/pruned raw sources. A live context can complete after rebuild and update its original row; legacy classification may update origin only.
+- [x] Survivor search entries are restored; explicit replay rows/search entries are replaced without dangling rows or accumulation across three rebuilds. Public search and skill rollups reflect the resulting multiset; legacy duplicate/anchor limits are documented.
+- [x] Classification follows the exact Decision Rules: completion evidence wins; only a unique path twin permits transcript inference; ambiguous/name-only/no-twin evidence becomes durable `'legacy'`. Rebuild-generated anchors never change that classification. NULL rows inserted later and unknown explicit origins are preserved; no completion-NULL or precision-only replay inference.
+- [x] A newly stamped hook and an eligible transcript twin yield one row; replay-only history remains; rapid repeats consume at most one replay row per eligible survivor. Different arguments, outside-window/invalid timestamps, NULL/empty sessions, skill hosts, legacy rows and unknown origins never suppress. Matching/count behavior and 200-character identity limits are verified and documented.
+- [x] Automatic replay from a store stamped `bug3761-v1` preserves skills and becomes current only after success; large stores still defer and ordinary ingest remains ingest-only. Forced failures roll back classification, base rows, search entries and rebuild/usage stamps together, while retaining the separately committed schema migration.
+- [x] The new migration, complete repair, new derive-version tag, fingerprint/function-set pin, current schema literals and repaired historical downgrade fixture ship together from an isolated worktree. Existing tool/correction/usage preservation and frozen legacy values remain intact. Classification scans FTS at most once per rebuild with NULL origins; representative added lock time is recorded.
 - [ ] `python -m pytest scripts/tests/` exits 0.
 
 ## Related Key Documentation
@@ -205,12 +206,22 @@ ENH-3747 shares search deletion/re-indexing but has no required landing order wi
 - [Session history guide](../../docs/guides/HISTORY_SESSION_GUIDE.md)
 - [Python API reference](../../docs/reference/API.md)
 
+## Resolution
+
+**Fixed** 2026-10-07. Schema v61 adds nullable `skill_events.origin`; the three writers stamp `prompt_hook` / `skill_host` / `transcript`. `rebuild()` classifies NULL-origin rows in-transaction (`_classify_legacy_skill_origins`: completion evidence → `skill_host`; unique `.jsonl` path twin → `transcript`; else `legacy`), wipes only `origin IS 'transcript'`, re-indexes survivors (`_reindex_skill_survivors`) and lets each eligible `prompt_hook` survivor suppress one replay twin (session/name/stored args, ±1s). `REBUILD_DERIVE_VERSION` is now `bug3766-v1`; fingerprint (function-set pin 23→28), manifest, schema literals and the BUG-3736 downgrade fixture updated. Tests: `scripts/tests/test_bug3766_rebuild_preserves_live_skills.py` (35).
+
+- Measured on a disposable synthetic store (50k NULL-origin rows with FTS entries): classification 0.12s, survivor re-index 0.11s. One FTS pass, only when NULL-origin rows exist.
+- Deviation: developed in the main checkout, not an isolated worktree.
+- Full suite: 29267 passed; 2 unrelated environmental failures — `test_next_loop_golden` (float last-digit mismatch, fails identically on a clean stash) and `test_libsql_integration::TestLive` (expired remote JWT).
+
 ## Status
 
-**Open** | Created: 2026-10-06 | Priority: P1
+**Done** | Created: 2026-10-06 | Priority: P1
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T02:16:11 - `8d4a0253-e3d0-4bd3-bb4d-902f480b42bc.jsonl`
+- `/ll:ready-issue` - 2026-10-07T02:03:41 - `d37d1bda-b8d2-48a2-869c-a65bb6d2d68c.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:54:59 - `7c74451d-fd76-4629-88f0-c83252b1303a.jsonl`
 - `/ll:advise` - 2026-10-07T01:47:11 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:refine-issue` - 2026-10-07T01:47:10 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`

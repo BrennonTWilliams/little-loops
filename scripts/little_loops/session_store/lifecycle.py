@@ -51,6 +51,7 @@ from little_loops.session_store.sessions import (
 from little_loops.session_store.targets import HistoryTarget, LocalTarget
 from little_loops.session_store.writers import (
     USAGE_NOT_HELD_SQL,
+    SkillReplaySurvivor,
     _backfill_assistant_messages,
     _backfill_commit_events,
     _backfill_issues_and_snapshots,
@@ -67,6 +68,7 @@ from little_loops.session_store.writers import (
     _iter_events,
     _now,
     _pack_payload,
+    _parse_aware_ts,
     host_layout_for,
     load_usage_replay_holds,
     mine_corrections_from_messages,
@@ -1044,6 +1046,10 @@ def recompress_raw_events(
 # bytes_in/bytes_out (``_backfill_tool_events``) and the reserved source
 # 'backfill' (``mine_corrections_from_messages``), so those signals classify a
 # row as replayable; everything else survives and is re-indexed in ``rebuild()``.
+# skill_events is mixed-origin too (BUG-3766): the prompt hook and ``ll-action`` write
+# live rows (the latter with completion fields) that replay cannot recreate. Unlike tools
+# and corrections there is no writer-distinguishing signal in the row, so v61 added an
+# ``origin`` column; only ``'transcript'`` rows are wiped.
 _REBUILD_TABLES = (
     "tool_events",
     "message_events",
@@ -1066,6 +1072,7 @@ _REBUILD_TABLE_PREDICATES = {
     "summary_nodes": "kind IS NOT 'retention'",
     "tool_events": "bytes_in IS NULL AND bytes_out IS NULL",
     "user_corrections": "source = 'backfill'",
+    "skill_events": "origin IS 'transcript'",
 }
 
 _REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction", "usage")
@@ -1082,7 +1089,7 @@ _USAGE_DERIVE_VERSION = "enh3651-v1"
 # SessionStart size gate (:func:`rebuild_disposition`) defers that replay on a
 # large store. Compared with ``!=`` (an identifier, never ordered).
 # ``test_enh3678_rebuild_derive_gate.py`` fails when the derivation changes without a bump.
-REBUILD_DERIVE_VERSION = "bug3761-v1"
+REBUILD_DERIVE_VERSION = "bug3766-v1"
 
 # Stores last rebuilt at or after this ``SCHEMA_VERSION`` but carrying no
 # ``rebuild_derive_version`` stamp were derived under schema-58 semantics, which
@@ -1772,6 +1779,90 @@ def usage_source_freshness(db: Path | str, source: Path) -> dict[str, int | str 
     return {**base, "status": "fresh", "reason": None}
 
 
+def _is_transcript_anchor(anchor: object, skill_name: str) -> bool:
+    """True for a replay-style skill search anchor: a ``.jsonl`` source path."""
+    return (
+        isinstance(anchor, str)
+        and anchor != skill_name
+        and ("/" in anchor or "\\" in anchor)
+        and anchor.endswith(".jsonl")
+    )
+
+
+def _classify_legacy_skill_origins(conn: sqlite3.Connection) -> None:
+    """Stamp every NULL-origin ``skill_events`` row with a provenance (BUG-3766).
+
+    Runs inside ``rebuild()``'s transaction, before anything is deleted, so it reads the
+    *original* skill search entries and a failed rebuild rolls it back. Explicit origins
+    are never touched. For each NULL-origin row: any completion field (including zero)
+    proves a skill host (``'skill_host'``); otherwise ``'transcript'`` only when its
+    ``(session, ts, name)`` group holds exactly one base row and exactly one search entry
+    whose anchor is a ``.jsonl`` source path; everything else — name-only anchors,
+    duplicates, conflicts, missing evidence — is ``'legacy'`` and survives forever.
+    """
+    rows = conn.execute(
+        "SELECT id, ts, session_id, skill_name, exit_code, success, duration_ms "
+        "FROM skill_events WHERE origin IS NULL"
+    ).fetchall()
+    if not rows:
+        return
+    keyed: dict[tuple[str, str, object], int] = {}
+    for _id, ts, sid, name, *_rest in rows:
+        key = (str(sid) if sid else "", ts, name)
+        keyed[key] = keyed.get(key, 0) + 1
+    # One pass over the FTS table (kind/ref/anchor/ts are UNINDEXED): tally only the
+    # entries that can match a NULL-origin row's group.
+    anchors: dict[tuple[str, str, object], list[object]] = {}
+    for ref, ts, content, anchor in conn.execute(
+        "SELECT ref, ts, content, anchor FROM search_index WHERE kind = 'skill'"
+    ):
+        key = (ref, ts, content)
+        if key in keyed:
+            anchors.setdefault(key, []).append(anchor)
+    updates: list[tuple[str, int]] = []
+    for row_id, ts, sid, name, exit_code, success, duration_ms in rows:
+        if exit_code is not None or success is not None or duration_ms is not None:
+            origin = "skill_host"
+        else:
+            key = (str(sid) if sid else "", ts, name)
+            found = anchors.get(key, [])
+            origin = (
+                "transcript"
+                if keyed[key] == 1
+                and len(found) == 1
+                and isinstance(name, str)
+                and name
+                and _is_transcript_anchor(found[0], name)
+                else "legacy"
+            )
+        updates.append((origin, row_id))
+    conn.executemany("UPDATE skill_events SET origin = ? WHERE id = ?", updates)
+
+
+def _reindex_skill_survivors(conn: sqlite3.Connection) -> list[SkillReplaySurvivor]:
+    """Re-index surviving ``skill_events`` rows and return their eligible hook twins.
+
+    Uses the live writers' own search arguments. Eligible survivors (``prompt_hook``,
+    no completion fields, non-empty session/name, string args, tz-aware timestamp) may
+    each suppress one replay twin in ``_backfill_skill_events``; skill hosts, legacy and
+    unknown origins never do.
+    """
+    survivors: list[SkillReplaySurvivor] = []
+    for row_id, ts, sid, name, args, origin, exit_code, success, duration_ms in conn.execute(
+        "SELECT id, ts, session_id, skill_name, args, origin, exit_code, success, duration_ms "
+        "FROM skill_events ORDER BY id"
+    ).fetchall():
+        _index(conn, content=name or "", kind="skill", ref=sid or "", anchor=name or "", ts=ts)
+        if origin != "prompt_hook" or not sid or not name or not isinstance(args, str):
+            continue
+        if exit_code is not None or success is not None or duration_ms is not None:
+            continue
+        parsed = _parse_aware_ts(ts)
+        if parsed is not None:
+            survivors.append(SkillReplaySurvivor(row_id, str(sid), name, args, parsed))
+    return survivors
+
+
 def _stamp_rebuild_derive_version(conn: sqlite3.Connection) -> None:
     """Record the derive version in the caller's open transaction (not a derivation)."""
     conn.execute(
@@ -1792,9 +1883,9 @@ def rebuild(
     Wipes ``_REBUILD_TABLES`` plus the ``search_index`` rows for
     ``_REBUILD_SEARCH_KINDS`` (except rows ``_REBUILD_TABLE_PREDICATES`` preserves:
     ``channel = 'live'`` usage events, ``kind = 'retention'`` summary nodes,
-    byte-bearing hook tool rows, and non-``backfill`` corrections, none of which
-    can be replayed from ``raw_events``; surviving tool/correction rows are
-    re-indexed and their replay twins suppressed), then re-derives them by replaying every
+    byte-bearing hook tool rows, non-``backfill`` corrections and every
+    non-``transcript`` ``skill_events`` row, none of which can be replayed from
+    ``raw_events``; surviving rows are re-indexed and their replay twins suppressed), then re-derives them by replaying every
     ``raw_events`` row through the same ``_backfill_*`` parsers the legacy
     JSONL path uses (via :func:`_iter_events`). Idempotent — safe to call
     repeatedly. On success, updates the ``last_rebuild_version`` meta key to
@@ -1826,6 +1917,9 @@ def rebuild(
     }
     try:
         conn.execute("BEGIN IMMEDIATE")
+        # BUG-3766: provenance must be settled from the original search entries
+        # before the wipe below deletes them.
+        _classify_legacy_skill_origins(conn)
         for table in _REBUILD_TABLES:
             where = _REBUILD_TABLE_PREDICATES.get(table)
             conn.execute(f"DELETE FROM {table}" + (f" WHERE {where}" if where else ""))
@@ -1864,6 +1958,10 @@ def rebuild(
                 ts=corr_ts,
             )
 
+        # BUG-3766: likewise for surviving skill rows (live hook / skill-host / legacy);
+        # eligible hook rows let replay skip their transcript twins.
+        live_skills = _reindex_skill_survivors(conn)
+
         def _raw_events_cursor(*, usage_order: bool = False) -> sqlite3.Cursor:
             ordering = (
                 "source_path, COALESCE(ordinal, line_no), line_no, id" if usage_order else "id"
@@ -1880,7 +1978,9 @@ def rebuild(
         counts["tools"] = _backfill_tool_events(conn, _raw_events_cursor(), skip_live=live_tools)
         counts["messages"] = _backfill_messages(conn, _raw_events_cursor())
         counts["assistant_messages"] = _backfill_assistant_messages(conn, _raw_events_cursor())
-        counts["skill_events"] = _backfill_skill_events(conn, _raw_events_cursor())
+        counts["skill_events"] = _backfill_skill_events(
+            conn, _raw_events_cursor(), skip_live=live_skills
+        )
         counts["usage_events"] = _backfill_usage_events(conn, _raw_events_cursor(usage_order=True))
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions, db=db)

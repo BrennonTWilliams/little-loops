@@ -119,6 +119,7 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v58 | ENH-3651 | `usage_events` source-link columns (`source_raw_event_id`, `source_path`, `observation_key`) with unique indexes, plus the `usage_source_cursors` table (source-tail and derive completion proof) |
 | v59 | BUG-3736 | `usage_replay_holds` markers: a source (or host/channel population) whose retained usage can no longer be replayed from `raw_events`; seeded from legacy dangling raw links, unlinked usage and sources missing their first line |
 | v60 | BUG-3755 | Nullable `to_state` column on `loop_events`: a `route` row keeps the transition source in `state` and the target in `to_state`; earlier rows and non-route events stay NULL |
+| v61 | BUG-3766 | `skill_events.origin` provenance column (`prompt_hook`, `skill_host`, `transcript`, `legacy`) |
 
 v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; v41 onward are individual feature- or fix-driven migrations, each described in the table above; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
 
@@ -224,6 +225,22 @@ Reads these sources sequentially:
 > they are lost if their raw source is gone. Rows deleted by a rebuild from an older
 > version are unrecoverable without a backup. Preserved correction text is not
 > rewritten by `ll-session redact`, which only rewrites `raw_events` (see BUG-3762).
+> Skill invocations survive too: every `skill_events` row not stamped
+> `origin = 'transcript'` (prompt-hook rows, `ll-action` skill-host rows with their
+> `exit_code` / `success` / `duration_ms`, and unclassifiable `legacy` rows) keeps
+> its ID and fields and is re-indexed. A transcript replay of a hook invocation with
+> the same session, skill name and stored arguments (first 200 characters) within
+> 1 second is not counted twice; each surviving hook row suppresses at most one replay
+> row, so two rapid identical prompts with one surviving row keep one replay row, and
+> invocations whose stored arguments share a 200-character prefix cannot be told apart.
+> Rows written before the `origin` column existed are classified on the first rebuild:
+> a completion field proves a skill host, a unique `.jsonl` source-path search anchor
+> proves a transcript replay row (replaced), and anything ambiguous becomes `legacy` and
+> is kept — so the first rebuild can leave a bounded duplicate when such a row's
+> transcript twin still exists; later rebuilds do not add more. Legacy rows lose their
+> original replay path anchor and are not refreshed from raw text. Skill rows already
+> deleted by an older rebuild are unrecoverable without a backup, and an old-version
+> rebuild against a v61 store is still destructive.
 > The first rebuild after upgrading holds the write lock; hook telemetry written
 > during that window can be dropped at the 5 s busy timeout.
 >

@@ -387,6 +387,9 @@ def record_skill_event(
     ``skill_name`` must match one of the configured glob patterns or the write is
     suppressed. Missing ``capture`` key or missing ``config`` defaults to permissive
     (no behavior change).
+
+    The row is stamped ``origin = 'prompt_hook'`` (BUG-3766): ``rebuild()`` preserves
+    it and suppresses its transcript twin instead of wiping it.
     """
     if config is not None:
         from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
@@ -399,7 +402,8 @@ def record_skill_event(
     ts = _now()
     try:
         conn.execute(
-            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+            "INSERT INTO skill_events(ts, session_id, skill_name, args, origin) "
+            "VALUES(?, ?, ?, ?, 'prompt_hook')",
             (ts, session_id, skill_name, args),
         )
         _index(
@@ -788,6 +792,9 @@ def skill_event_context(
     (``user_prompt_submit`` → :func:`record_skill_event`) is NOT covered — it
     stays ``analytics.enabled``-gated, which remains the project-level off
     switch for hook writes.
+
+    The row is stamped ``origin = 'skill_host'`` (BUG-3766) so ``rebuild()``
+    preserves it, completion fields included.
     """
     args = args[:200]
     conn: sqlite3.Connection | None = None
@@ -825,7 +832,8 @@ def skill_event_context(
         try:
             conn = _connect_telemetry(effective_path)
             cursor = conn.execute(
-                "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+                "INSERT INTO skill_events(ts, session_id, skill_name, args, origin) "
+                "VALUES(?, ?, ?, ?, 'skill_host')",
                 (ts, session_id, skill_name, args),
             )
             row_id = cursor.lastrowid
@@ -4687,7 +4695,75 @@ def _backfill_prompt_opt(conn: sqlite3.Connection, source: list[Path] | sqlite3.
     return count
 
 
-def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+@dataclass(frozen=True)
+class SkillReplaySurvivor:
+    """A surviving live ``prompt_hook`` skill row eligible to suppress a replay twin (BUG-3766)."""
+
+    id: int
+    session_id: str
+    skill_name: str
+    args: str
+    ts: datetime  # timezone-aware UTC
+
+
+# Replay timestamps are the transcript's; the hook stamps its own wall clock a moment later.
+_SKILL_TWIN_WINDOW_S = 1.0
+
+
+def _parse_aware_ts(value: object) -> datetime | None:
+    """Parse an ISO 8601 string to a timezone-aware UTC datetime (``None`` if naive/invalid)."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _match_skill_survivor(
+    pool: dict[tuple[str, str, str], list[SkillReplaySurvivor]],
+    consumed: set[int],
+    session_id: str | None,
+    skill_name: str,
+    args: str,
+    ts: str,
+) -> bool:
+    """Consume the closest unused survivor twin of one replay record; ``True`` if found.
+
+    A twin shares the normalized non-empty session ID, skill name and stripped stored
+    arguments, with timestamps within ``_SKILL_TWIN_WINDOW_S`` inclusive. Ties break on
+    the smallest row ID. Naive/invalid timestamps and empty sessions never match.
+    """
+    if not session_id:
+        return False
+    replay_ts = _parse_aware_ts(ts)
+    if replay_ts is None:
+        return False
+    best: SkillReplaySurvivor | None = None
+    best_diff = 0.0
+    for survivor in pool.get((session_id, skill_name, args.strip()), ()):
+        if survivor.id in consumed:
+            continue
+        diff = abs((survivor.ts - replay_ts).total_seconds())
+        if diff > _SKILL_TWIN_WINDOW_S:
+            continue
+        if best is None or diff < best_diff or (diff == best_diff and survivor.id < best.id):
+            best, best_diff = survivor, diff
+    if best is None:
+        return False
+    consumed.add(best.id)
+    return True
+
+
+def _backfill_skill_events(
+    conn: sqlite3.Connection,
+    source: list[Path] | sqlite3.Cursor,
+    *,
+    skip_live: Sequence[SkillReplaySurvivor] | None = None,
+) -> int:
     """Seed ``skill_events`` from /ll: invocations in user blocks of session JSONL files.
 
     Mirrors :func:`_backfill_messages` but selects ``type == "user"`` records and
@@ -4696,8 +4772,19 @@ def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     to include a backfill path (BUG-2283). Used by ``ll-logs stats`` so pre-init
     invocations are reflected in skill invocation counts. *source* accepts either
     JSONL files or a raw_events cursor — see :func:`_iter_events`.
+
+    Inserted rows are stamped ``origin = 'transcript'`` (BUG-3766), the one class
+    ``rebuild()`` wipes. *skip_live* is the surviving live ``prompt_hook`` rows: each
+    is consumed at most once by its closest replay twin, which is then neither inserted
+    nor indexed (and not counted). Omitted, every record is inserted.
     """
     count = 0
+    pool: dict[tuple[str, str, str], list[SkillReplaySurvivor]] = {}
+    for survivor in skip_live or ():
+        pool.setdefault(
+            (survivor.session_id, survivor.skill_name, survivor.args.strip()), []
+        ).append(survivor)
+    consumed: set[int] = set()
     for line, source_label in _iter_events(source):
         try:
             record = json.loads(line)
@@ -4729,9 +4816,13 @@ def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             skill_name = skill_name[: -len("</command-name>")]
         args_m = _BACKFILL_ARGS_RE.search(text)
         args = args_m.group(1).strip()[:200] if args_m else ""
+        normalized_sid = str(session_id) if session_id else None
+        if pool and _match_skill_survivor(pool, consumed, normalized_sid, skill_name, args, ts):
+            continue
         conn.execute(
-            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
-            (ts, str(session_id) if session_id else None, skill_name, args),
+            "INSERT INTO skill_events(ts, session_id, skill_name, args, origin) "
+            "VALUES(?, ?, ?, ?, 'transcript')",
+            (ts, normalized_sid, skill_name, args),
         )
         _index(
             conn,
