@@ -1332,6 +1332,7 @@ def _redact_report(**over: object) -> object:
         "omitted_problems": 0,
         "stop_reason": None,
         "complete": True,
+        "oversize_refused": 0,
     }
     base.update(over)
     return RawRedactionReport(**base)  # type: ignore[arg-type]
@@ -1402,6 +1403,64 @@ class TestRedactSubcommand:
                 assert main_session() == 1  # incomplete, not interrupted
         data = json.loads(capsys.readouterr().out)
         assert data["failed"] == 1 and data["complete"] is False and data["problems"] == []
+
+    def test_size_refusals_are_itemized_with_honest_rerun_guidance(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.session_store.raw_redaction import RawRedactionProblem as P
+
+        problems = (
+            P(4, "raw_line", "unverifiable_oversize", 9_000_000, "stored", 8 << 20),
+            P(4, "parsed_json", "unverifiable_oversize", 100, "decoded", 8 << 20),
+            P(None, None, "unverifiable_oversize", None, "request", 8 << 20),
+        )
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact"]):
+            with patch("little_loops.cli.session.redact_raw_events") as mock:
+                mock.return_value = _redact_report(
+                    failed=3,
+                    oversize_refused=3,
+                    complete=False,
+                    problems=problems,
+                    omitted_problems=1,
+                )
+                assert main_session() == 1
+        out = capsys.readouterr().out
+        assert "Size-refused: 3 row(s)" in out and "whole row was left unchanged" in out
+        assert "row 4 raw_line" in out and "9,000,000 bytes" in out and "8,388,608-byte" in out
+        assert "row 4 parsed_json" in out and "decoded value exceeds" in out
+        assert "NOT written" in out  # the request refusal found redactable content
+        assert "2 more size-refused row(s) are not itemized" not in out  # 2 distinct itemized ids
+        assert "1 more size-refused row(s) are not itemized" in out
+        assert "unredacted matches" in out and "sibling column" in out
+        assert "Rerunning unchanged cannot resolve this" in out and "backend administration" in out
+        assert "Incomplete: size-refused rows will not change on a rerun." in out
+        assert "rerun after resolving" not in out
+
+    def test_other_failures_keep_rerun_advice_alongside_size_refusals(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact"]):
+            with patch("little_loops.cli.session.redact_raw_events") as mock:
+                mock.return_value = _redact_report(failed=2, oversize_refused=1, complete=False)
+                assert main_session() == 1
+        out = capsys.readouterr().out
+        assert "1 more size-refused row(s) are not itemized" in out
+        assert "rerun after resolving the above; size-refused rows will not change." in out
+
+    def test_no_size_refusal_keeps_plain_incomplete_line_and_json_fields(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact"]):
+            with patch("little_loops.cli.session.redact_raw_events") as mock:
+                mock.return_value = _redact_report(failed=1, complete=False)
+                assert main_session() == 1
+        out = capsys.readouterr().out
+        assert "Size-refused" not in out and "Incomplete: rerun after resolving the above." in out
+        with patch("sys.argv", ["ll-session", "--db", str(tmp_path / "h.db"), "redact", "--json"]):
+            with patch("little_loops.cli.session.redact_raw_events") as mock:
+                mock.return_value = _redact_report(failed=1, complete=False)
+                main_session()
+        assert json.loads(capsys.readouterr().out)["oversize_refused"] == 0
 
     def test_interrupted_report_exits_130(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

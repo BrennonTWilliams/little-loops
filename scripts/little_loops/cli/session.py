@@ -541,6 +541,55 @@ def _redact_error(args: argparse.Namespace, exc: RawRedactionError | None) -> in
     return 130 if reason == "interrupted" else 1
 
 
+_SIZE_DETAIL = {
+    "stored": "stored value ({stored}) exceeds the {limit}-byte read limit; not validated",
+    "decoded": "decoded value exceeds the {limit}-byte limit (stored {stored}); not validated",
+    "replacement_stored": (
+        "redactable content found, but the scrubbed value exceeds the {limit}-byte stored limit "
+        "(original {stored}); NOT written"
+    ),
+    "replacement_decoded": (
+        "redactable content found, but the scrubbed value exceeds the {limit}-byte decoded limit "
+        "(original {stored}); NOT written"
+    ),
+    "request": (
+        "redactable content found, but the guarded write request exceeds the {limit}-byte "
+        "remote limit; NOT written"
+    ),
+}
+
+
+def _print_size_refusals(report: RawRedactionReport) -> None:
+    """Itemize retained size refusals and state honestly what a rerun cannot change."""
+    print(
+        f"Size-refused: {report.oversize_refused:,} row(s) exceeded a fixed size budget; each "
+        "whole row was left unchanged."
+    )
+    itemized: set[int | None] = set()
+    for p in report.problems:
+        if p.limit_kind is None or p.limit_kind not in _SIZE_DETAIL:
+            continue
+        itemized.add(p.row_id)
+        stored = "unknown size" if p.stored_bytes is None else f"{p.stored_bytes:,} bytes"
+        detail = _SIZE_DETAIL[p.limit_kind].format(stored=stored, limit=f"{p.limit_bytes or 0:,}")
+        print(f"  row {p.row_id} {p.column or '(request)'}: {detail}")
+    omitted = report.oversize_refused - len(itemized)
+    if omitted > 0:
+        print(
+            f"  {omitted:,} more size-refused row(s) are not itemized (details omitted); they "
+            "may include known-dirty payloads left unredacted."
+        )
+    print(
+        "  An unchanged row may still contain unredacted matches, including in a sibling column "
+        "that validated cleanly."
+    )
+    print(
+        "  Rerunning unchanged cannot resolve this: review the reported row ids and reduce or "
+        "remove the affected payloads through backend administration before rerunning. This "
+        "command never modifies or deletes them."
+    )
+
+
 def _print_redact_report(report: RawRedactionReport) -> None:
     verb = "Would change" if report.dry_run else "Changed"
     through = "" if report.last_scanned_id is None else f" through id {report.last_scanned_id}"
@@ -567,10 +616,22 @@ def _print_redact_report(report: RawRedactionReport) -> None:
     ):
         if value:
             print(f"{label}: {value:,} row(s) left as found (see --json for codes).")
+    if report.oversize_refused:
+        _print_size_refusals(report)
     if report.stop_reason:
         print(f"Stopped early: {report.stop_reason}")
     if not report.complete:
-        print("Incomplete: rerun after resolving the above.")
+        if not report.oversize_refused:
+            print("Incomplete: rerun after resolving the above.")
+        elif (
+            report.oversize_refused == report.failed
+            and not report.conflicts
+            and not report.unconfirmed
+            and not report.stop_reason
+        ):
+            print("Incomplete: size-refused rows will not change on a rerun.")
+        else:
+            print("Incomplete: rerun after resolving the above; size-refused rows will not change.")
     print(_REDACT_SCOPE)
 
 

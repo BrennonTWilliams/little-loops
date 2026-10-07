@@ -10482,6 +10482,10 @@ class RawRedactionProblem:
     row_id: int | None   # None for an operation-level diagnostic
     column: str | None   # "raw_line" / "parsed_json" / None
     reason: str          # fixed code, never content
+    stored_bytes: int | None = None  # exact stored column length; size refusals only
+    limit_kind: str | None = None    # stored | decoded | replacement_stored |
+                                     # replacement_decoded | request (remote only)
+    limit_bytes: int | None = None   # the exhausted budget; size refusals only
 ```
 
 `RawRedactionReport` carries `policy_version`, `target` (local path or remote provider/project
@@ -10489,7 +10493,10 @@ only), `dry_run`, `snapshot_max_id` and `last_scanned_id` (both `None` for an em
 `scanned`, `would_change` (candidate rows, both modes), `updates_applied` (acknowledged
 committed UPDATE applications), `unattributed_updates_applied`, `reconciled`,
 `counts_by_column`, `counts_complete`, `failed`, `conflicts`, `unconfirmed`, `problems` (at most
-100), `omitted_problems`, `stop_reason` and `complete`. `0 <= unattributed_updates_applied <=
+100), `omitted_problems`, `stop_reason`, `complete` and `oversize_refused` (defaulted to `0`).
+`oversize_refused` counts distinct rows refused by a size budget (reason
+`unverifiable_oversize`); it is a subset of `failed`, is kept independently of the truncated
+`problems`, and each such row is left entirely unchanged. `0 <= unattributed_updates_applied <=
 updates_applied`; applications plus `reconciled` is not a distinct-row partition.
 `counts_complete` is `False` when a short or lost acknowledgement leaves the confirmed counters a
 lower bound.
@@ -10502,8 +10509,15 @@ context cannot be validated is left unchanged and reported with a fixed reason c
 guarded by each row's original storage class, bytes and context, so a concurrent change is a
 conflict and is never overwritten; short or lost acknowledgements are reconciled by bounded
 re-reads and at most one guarded retry per row. `batch_size` is a row ceiling per page; internal
-bounds (at most 8 value-returning rows per page, 1 MiB stored and 4 MiB decoded per column, 8 MiB
-per remote write request) still apply.
+bounds (at most 8 value-returning rows per page, 1 MiB stored and 4 MiB decoded per column) still
+apply to the scan. A row above them is promoted once to a bounded single-row path: one coherent
+read of both payloads and the context, validated at 8 MiB stored and 8 MiB decoded per column
+(finite limits, not a total memory guarantee; the decoded limit is usually the binding one).
+Replacements are bounded by the same limits, and on remote targets only the guarded write request
+must also fit 8 MiB (local writes have no request-size limit). A row that still cannot be
+validated or safely written stays unchanged, keeps the run incomplete, and is reported as
+`unverifiable_oversize` with the exhausted budget; it may retain unredacted matches. The public
+signature is unchanged and no setting controls these limits.
 
 **Errors.** `batch_size` must be a positive `int` (`ValueError`). Before a snapshot exists an
 expected failure raises `RawRedactionError` (a `HistoryError`) whose `reason` is one of

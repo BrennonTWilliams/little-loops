@@ -12,6 +12,10 @@ Safety model:
 - Rows are scanned by ``id`` keyset up to a ``MAX(id)`` captured once; each page is projected
   with ``typeof``/length/bounded-BLOB so no oversized or malformed value is ever decoded by the
   database driver, and each payload is decoded under hard byte/decompression caps.
+- A row whose payload exceeds the ordinary page bounds is promoted once to a separate bounded
+  single-row path (one coherent SELECT of both payloads plus host/event_type, fixed larger
+  limits). A row that still cannot be validated or safely written stays entirely unchanged and
+  is reported as ``unverifiable_oversize`` with the exhausted budget; it is never counted clean.
 - Writes are guarded by the original storage class, bytes and host/event-type context
   (``UPDATE ... WHERE id = ? AND typeof(...) AND CAST(... AS BLOB) IS ?``): a concurrent writer's
   change is reported as a conflict and is never overwritten.
@@ -68,6 +72,7 @@ RAW_REDACTION_REASONS: tuple[str, ...] = (
     "invalid_encoding",
     "invalid_compression",
     "invalid_json",
+    "unverifiable_oversize",
     "conflict",
     "vanished",
     "unconfirmed",
@@ -94,8 +99,12 @@ STORED_CAP = 1 << 20  # stored bytes per payload column: the largest value one p
 DECODED_CAP = 4 << 20  # decompressed/decoded bytes per payload column (zlib-bomb ceiling)
 CONTEXT_CAP = 256  # stored bytes of host / event_type
 PAGE_ROWS_MAX = 8  # value-returning rows per page: 8 rows x 2 columns x STORED_CAP = 16 MiB
+# One promoted row reads the same payload bytes as a full page (2 x 8 MiB) and decodes at twice
+# the ordinary ceiling. Finite maintenance limits, not a total Python heap guarantee.
+SINGLE_ROW_STORED_CAP = PAGE_ROWS_MAX * STORED_CAP
+SINGLE_ROW_DECODED_CAP = 2 * DECODED_CAP
 REPLACEMENT_BYTES_CAP = 8 << 20  # encoded replacements retained before a flush
-REQUEST_BYTES_CAP = 8 << 20  # serialized outbound write request, including overhead
+REQUEST_BYTES_CAP = 8 << 20  # serialized outbound write request (remote targets only)
 PROBLEM_CAP = 100  # retained diagnostics; further ones only increment ``omitted_problems``
 
 UPDATE_SQL = (
@@ -129,11 +138,20 @@ class RawRedactionError(HistoryError):
 
 @dataclass(frozen=True)
 class RawRedactionProblem:
-    """One content-free diagnostic: row id (``None`` for an operation), column, reason code."""
+    """One content-free diagnostic: row id (``None`` for an operation), column, reason code.
+
+    A byte-budget refusal (``reason == "unverifiable_oversize"``) also carries ``limit_kind``
+    (``stored``, ``decoded``, ``replacement_stored``, ``replacement_decoded`` or ``request``),
+    ``limit_bytes`` (the exhausted budget) and, when column-specific, ``stored_bytes`` (the
+    column's exact stored length). All three are ``None`` for every other diagnostic.
+    """
 
     row_id: int | None
     column: str | None
     reason: str
+    stored_bytes: int | None = None
+    limit_kind: str | None = None
+    limit_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -146,7 +164,9 @@ class RawRedactionReport:
     ``counts_by_column`` holds attributed rule counts (planned counts in preview).
     ``counts_complete`` is false when ambiguous commits keep the confirmed counters a lower
     bound. ``complete`` means the snapshot was exhausted with no failure, conflict, unconfirmed
-    row or stop reason.
+    row or stop reason. ``oversize_refused`` counts distinct rows refused by a size budget during
+    planning (a subset of ``failed``, independent of the truncated ``problems``); each such row
+    is left entirely unchanged and may still contain unredacted matches.
     """
 
     policy_version: int
@@ -168,21 +188,41 @@ class RawRedactionReport:
     omitted_problems: int
     stop_reason: str | None
     complete: bool
+    oversize_refused: int = 0
 
 
 # -- bounded strict decode -------------------------------------------------------------------
 
 
 class _Refusal(Exception):
-    """A content-free per-column refusal carrying a ``RAW_REDACTION_REASONS`` code."""
+    """A content-free per-column refusal carrying a ``RAW_REDACTION_REASONS`` code.
 
-    def __init__(self, reason: str) -> None:
+    A byte-budget refusal also names the exhausted budget (``limit_kind`` / ``limit_bytes``) and,
+    once known, the column's stored length; structural limits carry none of these and never
+    promote a row to larger byte budgets.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        limit_kind: str | None = None,
+        limit_bytes: int | None = None,
+        stored_bytes: int | None = None,
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.limit_kind = limit_kind
+        self.limit_bytes = limit_bytes
+        self.stored_bytes = stored_bytes
 
 
-def _refuse(reason: str) -> NoReturn:
-    raise _Refusal(reason) from None
+def _refuse(
+    reason: str,
+    limit_kind: str | None = None,
+    limit_bytes: int | None = None,
+    stored_bytes: int | None = None,
+) -> NoReturn:
+    raise _Refusal(reason, limit_kind, limit_bytes, stored_bytes) from None
 
 
 def _reject_constant(_name: str) -> NoReturn:
@@ -198,32 +238,44 @@ def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return out
 
 
-def decode_payload(sql_type: str, data: bytes) -> dict[str, Any]:
+def decode_payload(sql_type: str, data: bytes, *, decoded_cap: int = DECODED_CAP) -> dict[str, Any]:
     """Decode one stored payload column under the maintenance bounds.
 
     ``text`` is strict UTF-8; ``blob`` is a single complete zlib stream whose output is bounded
-    to ``DECODED_CAP``. The JSON root must be an object with unique keys and finite numbers.
+    to ``decoded_cap`` (default ``DECODED_CAP``; only the promoted single-row path passes a
+    larger one). The JSON root must be an object with unique keys and finite numbers.
     Raises :class:`_Refusal` (fixed code, no chained context). The sanitizer's depth/node limits
     act after this decoder and do not bound structural allocation inside ``json.loads``.
     """
+    return _decode(sql_type, data, decoded_cap, "decoded")
+
+
+def _decode(sql_type: str, data: bytes, decoded_cap: int, kind: str) -> dict[str, Any]:
+    """``decode_payload`` with the byte-budget refusal labelled ``kind``.
+
+    The decompressor is asked for at most ``decoded_cap + 1`` bytes, so exhaustion is detected
+    without materializing more, and decoded-byte exhaustion takes precedence over EOF/checksum/
+    trailing defects that cannot be established within the bound.
+    """
     if sql_type == "text":
-        if len(data) > DECODED_CAP:
-            _refuse("resource_limit")
+        if len(data) > decoded_cap:
+            _refuse("resource_limit", kind, decoded_cap)
         raw = data
     else:
         stream = zlib.decompressobj()
         try:
-            raw = stream.decompress(data, DECODED_CAP + 1)
+            raw = stream.decompress(data, decoded_cap + 1)
         except zlib.error:
             _refuse("invalid_compression")
-        if len(raw) > DECODED_CAP:
-            _refuse("resource_limit")
+        if len(raw) > decoded_cap:
+            _refuse("resource_limit", kind, decoded_cap)
         if not stream.eof or stream.unconsumed_tail or stream.unused_data:
             _refuse("invalid_compression")  # truncated, trailing or concatenated stream
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         _refuse("invalid_encoding")
+    del raw
     try:
         value = json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_reject_constant)
     except RecursionError:
@@ -261,9 +313,9 @@ def _projection(name: str, cap: int) -> str:
     )
 
 
-def _projection_sql() -> str:
+def _projection_sql(*, stored_cap: int = STORED_CAP) -> str:
     return (
-        f"SELECT id, {_projection('raw_line', STORED_CAP)}, {_projection('parsed_json', STORED_CAP)}, "
+        f"SELECT id, {_projection('raw_line', stored_cap)}, {_projection('parsed_json', stored_cap)}, "
         f"{_projection('host', CONTEXT_CAP)}, {_projection('event_type', CONTEXT_CAP)} "
         "FROM raw_events"
     )
@@ -292,6 +344,18 @@ def _fetch_page(conn: Any, *, snapshot: int, last_id: int | None, limit: int) ->
 
 def _fetch_one(conn: Any, row_id: int) -> _Observed | None:
     row = conn.execute(f"{_projection_sql()} WHERE id = ?", (row_id,)).fetchone()
+    return None if row is None else _observed(row)
+
+
+def _fetch_oversize_one(conn: Any, row_id: int) -> _Observed | None:
+    """One coherent SELECT of both payloads (up to ``SINGLE_ROW_STORED_CAP`` each) and context.
+
+    A single statement, so the payloads and host/event_type are never assembled from different
+    versions. A value beyond the cap is withheld (``None``) and equals neither original nor
+    desired bytes. Used only by the promoted single-row path and its reconciliation.
+    """
+    sql = f"{_projection_sql(stored_cap=SINGLE_ROW_STORED_CAP)} WHERE id = ?"
+    row = conn.execute(sql, (row_id,)).fetchone()
     return None if row is None else _observed(row)
 
 
@@ -345,6 +409,7 @@ class _Plan:
     counts: dict[str, dict[str, int]]
     params: tuple[Any, ...]
     replacement_bytes: int
+    expanded: bool = False  # planned from a single-row observation: reconcile with that read
 
     @property
     def changed(self) -> bool:
@@ -367,19 +432,37 @@ def _context(obs: _Observed) -> tuple[str, str] | None:
     return host, event_type
 
 
-def _plan_column(col: _Col, host: str, event_type: str) -> tuple[bytes | None, dict[str, int]]:
-    """Sanitize one column; ``(None, {})`` when the policy changes nothing."""
+def _plan_column(
+    col: _Col,
+    host: str,
+    event_type: str,
+    *,
+    stored_cap: int = STORED_CAP,
+    decoded_cap: int = DECODED_CAP,
+) -> tuple[bytes | None, dict[str, int]]:
+    """Sanitize one column; ``(None, {})`` when the policy changes nothing.
+
+    Byte-budget refusals name the exhausted budget and the column's stored length. The source,
+    sanitizer result and serialized text are released as soon as they are no longer needed so
+    the large objects of one column never overlap the output re-decode.
+    """
     if col.sql_type not in ("text", "blob"):
         _refuse("unsupported_storage")
     if col.value is None:
-        _refuse("resource_limit")
-    source = decode_payload(col.sql_type, col.value)
+        _refuse("resource_limit", "stored", stored_cap, col.length)
+    try:
+        source = _decode(col.sql_type, col.value, decoded_cap, "decoded")
+    except _Refusal as exc:
+        if exc.limit_kind is not None:
+            exc.stored_bytes = col.length
+        raise
     try:
         result = sanitize_history_payload(source, host=host, event_type=event_type)
     except HistorySanitizationError as exc:
         _refuse(exc.reason)
     del source
-    if not result.counts:
+    counts = dict(result.counts)
+    if not counts:
         return None, {}
     try:
         text = json.dumps(result.payload, ensure_ascii=True, allow_nan=False)
@@ -387,11 +470,19 @@ def _plan_column(col: _Col, host: str, event_type: str) -> tuple[bytes | None, d
         _refuse("resource_limit")
     except (TypeError, ValueError):
         _refuse("invalid_json")
+    del result
     stored = text.encode("ascii") if col.sql_type == "text" else _pack_payload(text)
-    if len(stored) > STORED_CAP:
-        _refuse("resource_limit")
-    decode_payload(col.sql_type, stored)  # a successful output must stay maintainable on rerun
-    return stored, dict(result.counts)
+    del text
+    if len(stored) > stored_cap:
+        _refuse("resource_limit", "replacement_stored", stored_cap, col.length)
+    try:
+        # a successful output must stay maintainable on rerun
+        _decode(col.sql_type, stored, decoded_cap, "replacement_decoded")
+    except _Refusal as exc:
+        if exc.limit_kind is not None:
+            exc.stored_bytes = col.length
+        raise
+    return stored, counts
 
 
 def _update_params(
@@ -418,34 +509,104 @@ def _update_params(
     )
 
 
-def _plan_row(obs: _Observed) -> tuple[_Plan | None, tuple[tuple[str | None, str], ...]]:
-    """Validate a row and plan its replacements; ``(None, problems)`` leaves it unchanged."""
+@dataclass(frozen=True)
+class _Failure:
+    """One planning refusal: operation/column, reason and (for byte budgets) the exhausted one.
+
+    A byte-budget failure is planned as ``resource_limit`` plus ``limit_kind`` so promotion can
+    recognize it; the run relabels it ``unverifiable_oversize`` once no larger budget remains.
+    """
+
+    column: str | None
+    reason: str
+    limit_kind: str | None = None
+    limit_bytes: int | None = None
+    stored_bytes: int | None = None
+
+
+#: Byte budgets a larger single-row read/decode can lift (``request`` and structure cannot).
+_PROMOTABLE = frozenset({"stored", "decoded", "replacement_stored", "replacement_decoded"})
+
+
+def _request_estimate(obs: _Observed, replacements: dict[str, bytes]) -> int:
+    """Request estimate with both complete original guards; future replacements are ``None``."""
+    params = _update_params(obs, replacements.get("raw_line"), replacements.get("parsed_json"))
+    return _estimate_request_bytes(UPDATE_SQL, [params], shape="batch")
+
+
+def _plan_row(
+    obs: _Observed,
+    *,
+    stored_cap: int = STORED_CAP,
+    decoded_cap: int = DECODED_CAP,
+    request_cap: int | None = REQUEST_BYTES_CAP,
+    defer_oversize: bool = False,
+    expanded: bool = False,
+) -> tuple[_Plan | None, tuple[_Failure, ...]]:
+    """Validate a row and plan its replacements; ``(None, failures)`` leaves it unchanged.
+
+    ``request_cap`` is the remote wire limit (``None`` for local targets, which have no request
+    limit); it is checked incrementally, before a candidate is retained. ``defer_oversize``
+    skips decoding an in-bounds sibling when the other payload was withheld by ``stored_cap``,
+    because the caller will promote and replan the whole row.
+    """
     ctx = _context(obs)
     if ctx is None:
-        return None, ((None, "unsupported_context"),)
+        return None, (_Failure(None, "unsupported_context"),)
     host, event_type = ctx
-    problems: list[tuple[str | None, str]] = []
+    columns = tuple(zip(_COLUMNS, (obs.raw, obs.parsed), strict=True))
+    if defer_oversize and all(c.sql_type in ("text", "blob") for _, c in columns):
+        withheld = [(n, c) for n, c in columns if c.value is None]
+        if withheld:
+            return None, tuple(
+                _Failure(n, "resource_limit", "stored", stored_cap, c.length) for n, c in withheld
+            )
+    problems: list[_Failure] = []
     replacements: dict[str, bytes] = {}
     counts: dict[str, dict[str, int]] = {}
-    for name, col in zip(_COLUMNS, (obs.raw, obs.parsed), strict=True):
+    for name, col in columns:
         try:
-            new, col_counts = _plan_column(col, host, event_type)
+            new, col_counts = _plan_column(
+                col, host, event_type, stored_cap=stored_cap, decoded_cap=decoded_cap
+            )
         except _Refusal as exc:
-            problems.append((name, exc.reason))
+            problems.append(
+                _Failure(name, exc.reason, exc.limit_kind, exc.limit_bytes, exc.stored_bytes)
+            )
             continue
-        if new is not None:
-            replacements[name] = new
-            counts[name] = col_counts
+        if new is None:
+            continue
+        if request_cap is not None and obs.raw.value is not None and obs.parsed.value is not None:
+            if _request_estimate(obs, {**replacements, name: new}) > request_cap:
+                del new  # release the candidate; a wider read cannot make it fit
+                return None, (_Failure(None, "resource_limit", "request", request_cap),)
+        replacements[name] = new
+        counts[name] = col_counts
     if problems:
         return None, tuple(problems)  # a failed sibling discards the other column's plan
     new_raw, new_parsed = replacements.get("raw_line"), replacements.get("parsed_json")
     if new_raw is None and new_parsed is None:
-        return _Plan(obs, None, None, {}, (), 0), ()
+        return _Plan(obs, None, None, {}, (), 0, expanded), ()
     params = _update_params(obs, new_raw, new_parsed)
-    if _estimate_request_bytes(UPDATE_SQL, [params], shape="batch") > REQUEST_BYTES_CAP:
-        return None, ((None, "resource_limit"),)
     size = len(new_raw or b"") + len(new_parsed or b"")
-    return _Plan(obs, new_raw, new_parsed, counts, params, size), ()
+    return _Plan(obs, new_raw, new_parsed, counts, params, size, expanded), ()
+
+
+def _wants_promotion(failures: Sequence[_Failure]) -> bool:
+    """True when a larger single-row budget could change the outcome of this row.
+
+    A row refused for context or storage class is refused regardless and is never refetched.
+    """
+    if any(f.reason in ("unsupported_context", "unsupported_storage") for f in failures):
+        return False
+    return any(f.limit_kind in _PROMOTABLE for f in failures)
+
+
+def _final(failure: _Failure) -> _Failure:
+    """Relabel a remaining byte-budget refusal; other validation codes are kept."""
+    if failure.limit_kind is None:
+        return failure
+    return replace(failure, reason="unverifiable_oversize")
 
 
 def _state(obs: _Observed) -> tuple[Any, ...]:
@@ -493,6 +654,7 @@ class _Tally:
     counts_by_column: dict[str, dict[str, int]] = field(default_factory=dict)
     counts_complete: bool = True
     failed_ids: frozenset[int] = frozenset()
+    oversize_ids: frozenset[int] = frozenset()  # subset of failed_ids refused by a size budget
     conflict_ids: frozenset[int] = frozenset()
     unconfirmed_ids: frozenset[int] = frozenset()
     problems: tuple[RawRedactionProblem, ...] = ()
@@ -501,11 +663,39 @@ class _Tally:
     pending: tuple[int, ...] = ()  # ids of a unit whose acknowledgement is not yet accounted
     commit_issued: bool = False
 
-    def problem(self, row_id: int | None, column: str | None, reason: str) -> _Tally:
+    def problem(
+        self,
+        row_id: int | None,
+        column: str | None,
+        reason: str,
+        *,
+        stored_bytes: int | None = None,
+        limit_kind: str | None = None,
+        limit_bytes: int | None = None,
+    ) -> _Tally:
         if len(self.problems) < PROBLEM_CAP:
-            entry = RawRedactionProblem(row_id, column, reason)
+            entry = RawRedactionProblem(
+                row_id, column, reason, stored_bytes, limit_kind, limit_bytes
+            )
             return replace(self, problems=(*self.problems, entry))
         return replace(self, omitted=self.omitted + 1)
+
+    def refused(self, row_id: int, failures: Sequence[_Failure]) -> _Tally:
+        """Account one refused row: diagnostics, failed id and size-refused id in one value."""
+        t = self
+        for f in failures:
+            t = t.problem(
+                row_id,
+                f.column,
+                f.reason,
+                stored_bytes=f.stored_bytes,
+                limit_kind=f.limit_kind,
+                limit_bytes=f.limit_bytes,
+            )
+        oversize_ids = t.oversize_ids
+        if any(f.reason == "unverifiable_oversize" for f in failures):
+            oversize_ids = oversize_ids | {row_id}
+        return replace(t, failed_ids=t.failed_ids | {row_id}, oversize_ids=oversize_ids)
 
     def with_counts(self, counts: dict[str, dict[str, int]]) -> _Tally:
         merged = {col: dict(rules) for col, rules in self.counts_by_column.items()}
@@ -703,19 +893,63 @@ class _Run:
                 return
 
     def _handle(self, obs: _Observed) -> None:
-        plan, problems = _plan_row(obs)
+        request_cap = REQUEST_BYTES_CAP if self.remote else None
+        plan, failures = _plan_row(obs, request_cap=request_cap, defer_oversize=True)
+        if _wants_promotion(failures):
+            promoted = self._promote(obs, request_cap)
+            if promoted is None:
+                return  # stopped or vanished: already accounted, nothing left to plan
+            obs, plan, failures = promoted
+        failures = tuple(_final(f) for f in failures)
         t = replace(self.tally, scanned=self.tally.scanned + 1, last_scanned_id=obs.id)
-        if problems:
-            for column, reason in problems:
-                t = t.problem(obs.id, column, reason)
-            t = replace(t, failed_ids=t.failed_ids | {obs.id})
+        if failures:
+            t = t.refused(obs.id, failures)
         elif plan is not None and plan.changed:
             t = replace(t, would_change=t.would_change + 1)
             if self.dry_run:
                 t = t.with_counts(plan.counts)
         self.tally = t
         if plan is not None and plan.changed and not self.dry_run:
-            self._enqueue(plan)
+            if plan.expanded:
+                self._apply([plan])  # never joins the ordinary queue; released before next row
+            else:
+                self._enqueue(plan)
+
+    def _promote(
+        self, obs: _Observed, request_cap: int | None
+    ) -> tuple[_Observed, _Plan | None, tuple[_Failure, ...]] | None:
+        """Replan a row once under the single-row limits.
+
+        Pending ordinary plans are written first; if that stops the run the row stays unplanned.
+        The whole observation is replaced by one coherent bounded read when a payload was
+        withheld; when both values are already present (decoded/replacement overflow) that
+        observation is reused. ``None`` means the row was accounted here (vanished) or the run
+        stopped, so the caller must not plan it again.
+        """
+        self._flush()
+        if self.tally.stop_reason is not None:
+            return None
+        if obs.raw.value is None or obs.parsed.value is None:
+            try:
+                fresh = _fetch_oversize_one(self.conn, obs.id)
+            except (HistoryError, sqlite3.Error):
+                self.stop("backend_failure")
+                return None
+            if fresh is None:
+                t = replace(self.tally, scanned=self.tally.scanned + 1, last_scanned_id=obs.id)
+                self.tally = replace(t, conflict_ids=t.conflict_ids | {obs.id}).problem(
+                    obs.id, None, "vanished"
+                )
+                return None
+            obs = fresh
+        plan, failures = _plan_row(
+            obs,
+            stored_cap=SINGLE_ROW_STORED_CAP,
+            decoded_cap=SINGLE_ROW_DECODED_CAP,
+            request_cap=request_cap,
+            expanded=True,
+        )
+        return obs, plan, failures
 
     def _enqueue(self, plan: _Plan) -> None:
         if self._group:
@@ -779,7 +1013,8 @@ class _Run:
 
     def _reconcile_one(self, plan: _Plan) -> None:
         row_id = plan.obs.id
-        verdict = _classify(plan, _fetch_one(self.conn, row_id))
+        fetch = _fetch_oversize_one if plan.expanded else _fetch_one
+        verdict = _classify(plan, fetch(self.conn, row_id))
         if verdict == "original":
             self.begin([row_id], commit_issued=True)
             ack = self.conn.execute(UPDATE_SQL, plan.params).rowcount
@@ -790,7 +1025,7 @@ class _Run:
             if ack != 0:
                 self.stop("backend_invariant")
                 return
-            verdict = _classify(plan, _fetch_one(self.conn, row_id))
+            verdict = _classify(plan, fetch(self.conn, row_id))
             if verdict == "original":
                 verdict = "changed"  # a second zero is a conflict even if ABA restored it
         t = self.tally
@@ -831,6 +1066,7 @@ class _Run:
             omitted_problems=t.omitted,
             stop_reason=t.stop_reason,
             complete=complete,
+            oversize_refused=len(t.oversize_ids),
         )
 
 

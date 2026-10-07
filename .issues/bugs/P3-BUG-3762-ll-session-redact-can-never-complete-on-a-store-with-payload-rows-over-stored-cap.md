@@ -3,8 +3,9 @@ id: BUG-3762
 title: ll-session redact can never complete on a store with payload rows over STORED_CAP
 type: BUG
 priority: P3
-status: open
+status: done
 discovered_date: '2026-10-06'
+completed_at: '2026-10-07T06:43:50Z'
 labels: []
 decision_needed: false
 unproven_mechanism: true
@@ -62,7 +63,7 @@ Observed under v1.167.0 on six clean user rows with 1.1–3.3 MB stored and 1.5�
 - `_plan_column()` maps the missing oversized value to `resource_limit`; the same code also covers decoded-byte exhaustion, JSON recursion, sanitizer structural limits, oversized replacements and request estimates. Those causes require different remedies.
 - `decode_payload()` caps decoded output at 4 MiB, so increasing only the stored read limit would still refuse the largest reported row. A highly compressed row can exceed the decoded limit while remaining below the stored limit.
 - `_plan_row()` discards both replacements if either column fails. Preserve this row atomicity.
-- `_plan_row()` also refuses a dirty row whose estimated write request exceeds `REQUEST_BYTES_CAP`, on every target. That cap is a remote (Hrana) wire limit; local writes run `BEGIN IMMEDIATE … COMMIT` with no request-size limit, so locally the refusal is self-inflicted. No existing test pins a local request refusal (`test_raw_redaction.py` request-estimate tests use the remote stub).
+- `_plan_row()` also refuses a dirty row whose estimated write request exceeds `REQUEST_BYTES_CAP`, on every target. That cap is a remote (Hrana) wire limit; local writes run `BEGIN IMMEDIATE`, then `COMMIT`, with no request-size limit, so locally the refusal is self-inflicted. No existing test pins a local request refusal (`test_raw_redaction.py` request-estimate tests use the remote stub).
 - `_Run.report()` counts distinct failed rows; `problems` counts per-column diagnostics and retains at most 100 entries. A size refusal can be omitted entirely after earlier failures.
 - In `scripts/little_loops/cli/session.py`, `_print_redact_report()` prints only aggregate failures and the generic rerun advice. `_main_redact()` returns 1 for an incomplete run and writes no telemetry.
 
@@ -209,7 +210,7 @@ Expanded observations use the planned singleton helper; expanded writes reuse `_
 
 ## Implementation Steps
 
-1. **Prove the bounded mechanism first (reduced gate).** Using synthetic local SQLite and the existing libSQL/Hrana stub: (a) one captured wire test of a singleton with two maximum-sized columns, asserting the raw response stays below the 32 MiB captured-response ceiling and never exceeds the full-page maximum; (b) strict cap/cap+1 unit tests for both read tiers, the per-column output budgets and the remote request estimate; (c) one expanded lost-ack reconciliation demonstration; (d) one recorded absolute `tracemalloc` peak each for ordinary-page co-retention plus singleton processing, a local dirty write binding both originals and both replacements (~32 MiB of parameters, including the transient SQLite copy), and expanded reconciliation, with fixture hashes and Python version. There are no relative ratio/runtime gates and no multi-sample protocol: the 8 MiB limits are fixed constants and the peaks are recorded, not gated, unless one is surprising. If bounds or reconciliation fail, or a peak is unacceptable, revise this design and retain the flags rather than weakening guards. Record the results here before clearing `unproven_mechanism`/`spike_needed`.
+1. **Prove the bounded mechanism first (reduced gate).** Using synthetic local SQLite and the existing libSQL/Hrana stub: (a) one captured wire test of a singleton with two maximum-sized columns, asserting the raw response stays below the 32 MiB captured-response ceiling and never exceeds the full-page maximum; (b) strict cap/cap+1 unit tests for both read tiers, the per-column output budgets and the remote request estimate; (c) one expanded lost-ack reconciliation demonstration; (d) one recorded absolute `tracemalloc` peak each for ordinary-page co-retention plus singleton processing, a local dirty write binding both originals and both replacements (~32 MiB of parameters, including the transient SQLite copy), and expanded reconciliation, with fixture hashes and Python version. There are no relative ratio/runtime gates and no multi-sample protocol: the 8 MiB limits are fixed constants and the peaks are recorded, not gated, unless one is surprising. If bounds or reconciliation fail, or a peak is unacceptable, revise this design and retain the flags rather than weakening guards. **Done 2026-10-07:** the proof passed and is recorded under `## Spike Results` (`spike_completed: true`); only the structurally dense JSON allocation (387.8 MiB) is left to decide in Step 3.
 2. Add failing regressions for the reproduced clean row, decoded-only overflow and dirty expanded fit/refusal. Fixtures use seeded incompressible benign content plus a separately controlled sensitive marker; assert stored/decoded premises and sanitizer counts. Repeated-character padding alone does not exercise the stored limit.
 3. Implement byte-limit stage metadata, internal bounds, coherent singleton refetch and one-time promotion. Cover replacement growth, unsupported context/storage, malformed compression/encoding/JSON, and preserved row atomicity. Include a trailing/corrupt compressed stream whose stored input fits but whose decoded output exceeds the effective cap: it must stop boundedly with a size refusal, while an oversized zero BLOB remains invalid compression. Keep ordinary callers on their existing defaults.
 4. Integrate singleton guarded writes, bounded replacement lifetime and expanded reconciliation. Exercise dirty normal siblings, both-large columns, mutation between page/fallback and between plan/write, disappearance, short/lost acknowledgement, one guarded retry and a refetch now above the expanded cap. Assert no false success, no false conflict from an unchanged oversized sibling, and exact untouched siblings/types. Rerun a successfully scrubbed expanded row and require zero changes/failures. Pin captured remote request estimates against oversized BLOB and escaped/non-ASCII TEXT values, and assert a local dirty expanded row whose originals plus replacements exceed the remote request estimate is scrubbed.
@@ -225,7 +226,7 @@ Expanded observations use the planned singleton helper; expanded writes reuse `_
 
 ## Status
 
-**Open** | Created: 2026-10-06 | Priority: P3. The defect is reproduced. The design is reconciled and was trimmed on 2026-10-07 (remote-only request limit, reduced Step 1 proof gate, ingest regressions split to a follow-up); the reduced Step 1 proof is still required before production implementation.
+**Done** | Created: 2026-10-06 | Priority: P3. The defect is reproduced. The design is reconciled and was trimmed on 2026-10-07 (remote-only request limit, reduced Step 1 proof gate, ingest regressions split to a follow-up); the reduced Step 1 proof passed on 2026-10-07 (see `## Spike Results`); production implementation (Steps 2–6) may proceed.
 
 ## Confidence Check Notes
 
@@ -307,7 +308,19 @@ _Added by `/ll:confidence-check` on 2026-10-07 (post-spike re-score)_
 - Retained: `decoded-allocation-8mib`, `multi-site-shared-state-change`, `report-contract-fanout`
 - Changed fields: `decoded-allocation-8mib` — description
 
+## Resolution
+
+**Action**: fix | **Completed**: 2026-10-07
+
+Implemented Option A in `scripts/little_loops/session_store/raw_redaction.py`: a row above the ordinary page bounds is promoted once to a bounded single-row path (`_fetch_oversize_one`, one coherent SELECT; fixed `SINGLE_ROW_STORED_CAP` / `SINGLE_ROW_DECODED_CAP` of 8 MiB per column; `decode_payload(..., decoded_cap=)`). Clean rows complete unchanged; dirty rows are scrubbed through the existing full-value guards and applied immediately with expanded reconciliation; rows beyond the limits stay unchanged and are reported as `unverifiable_oversize` (`RawRedactionProblem.stored_bytes/limit_kind/limit_bytes`, `RawRedactionReport.oversize_refused`). The request estimate is now remote-only and incremental. `ll-session redact` text output itemizes size refusals and replaces the blanket rerun advice. CLI.md, API.md and HISTORY_SESSION_GUIDE.md updated.
+
+**Step 3 decision (structurally dense JSON, 387.8 MiB spike peak):** accepted rather than bounding structural size separately. The allocation is transient, sequential per column, bounded by the fixed 8 MiB decoded limit, and only reachable through a malformed-by-design legacy payload; a separate structural cap would add a second budget vocabulary for no observed row. Revisit if a real store hits it.
+
+**Verification**: `test_raw_redaction.py` (88), `test_ll_session.py`, docs gates pass; full suite 29409 passed. Unrelated pre-existing failures: `test_next_loop_golden` float last-digit mismatch, and `test_libsql_integration` live-endpoint errors (no endpoint in this environment).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T06:43:49 - `cf8e71c9-b32f-4171-ad80-2947378fe309.jsonl`
+- `/ll:ready-issue` - 2026-10-07T06:27:58 - `d7f9e217-58e2-4dc6-94bc-c41e50da41f9.jsonl`
 - `/ll:confidence-check` - 2026-10-07T06:18:12 - `a272514e-787d-48a7-ac65-893a82e6e4bf.jsonl`
 - `/ll:spike` - 2026-10-07T06:03:01 - `8c655ae6-6aea-48c9-b19a-e5c5f9c860df.jsonl`
 - `/ll:confidence-check` - 2026-10-07T05:51:23 - `8f69bdcc-23e5-40e5-af3a-a2f0f3e89cbf.jsonl`

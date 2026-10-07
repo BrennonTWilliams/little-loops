@@ -7,6 +7,7 @@ Local behavior runs against real SQLite on the current schema; remote behavior r
 from __future__ import annotations
 
 import json
+import random
 import sqlite3
 import zlib
 from collections.abc import Iterator
@@ -110,6 +111,7 @@ class TestVocabulary:
             "invalid_encoding",
             "invalid_compression",
             "invalid_json",
+            "unverifiable_oversize",
             "conflict",
             "vanished",
             "unconfirmed",
@@ -455,7 +457,8 @@ class TestRowFailures:
         db.conn.execute("UPDATE raw_events SET raw_line = x'ff' WHERE id = 2")
         report = run(db)
         reasons = {(p.row_id, p.column): p.reason for p in report.problems}
-        assert reasons[(1, "parsed_json")] == "resource_limit"
+        # promoted to the single-row read, an oversized zero BLOB is still invalid compression
+        assert reasons[(1, "parsed_json")] == "invalid_compression"
         assert reasons[(2, "raw_line")] == "invalid_compression"
         assert report.failed == 2 and report.scanned == 2
 
@@ -932,3 +935,377 @@ class TestRemote:
         report = redact_raw_events(target)
         assert report.stop_reason == "unconfirmed" and report.unconfirmed == 1
         assert not report.complete and not report.counts_complete
+
+
+# -- BUG-3762: bounded single-row path for payloads over the page bounds ---------------------
+
+
+def big_payload(hex_chars: int, *, secret: bool = False, seed: int = 1) -> str:
+    """Valid supported-context JSON padded with seeded, incompressible benign hex."""
+    pad = random.Random(seed).randbytes(hex_chars // 2).hex()
+    return payload(f"{SECRET} {pad}" if secret else pad)
+
+
+def _stored(db: Db, row_id: int) -> dict[str, tuple[str, int]]:
+    return {c: (db.cell(row_id, c)[0], len(db.cell(row_id, c)[1])) for c in rr._COLUMNS}
+
+
+class TestSingleRowBounds:
+    def test_limits_derive_from_page_budget(self) -> None:
+        assert rr.SINGLE_ROW_STORED_CAP == rr.PAGE_ROWS_MAX * rr.STORED_CAP == 8 << 20
+        assert rr.SINGLE_ROW_DECODED_CAP == 2 * rr.DECODED_CAP == 8 << 20
+
+    def test_decode_cap_is_explicit_and_default_is_ordinary(self) -> None:
+        pad = rr.SINGLE_ROW_DECODED_CAP - len('{"a": ""}')
+        at_cap = '{"a": "' + "x" * pad + '"}'
+        assert len(at_cap) == rr.SINGLE_ROW_DECODED_CAP
+        got = rr.decode_payload("blob", blob(at_cap), decoded_cap=rr.SINGLE_ROW_DECODED_CAP)
+        assert len(got["a"]) == pad
+        with pytest.raises(rr._Refusal) as exc:
+            rr.decode_payload("blob", blob(at_cap + " "), decoded_cap=rr.SINGLE_ROW_DECODED_CAP)
+        assert (exc.value.reason, exc.value.limit_kind, exc.value.limit_bytes) == (
+            "resource_limit",
+            "decoded",
+            rr.SINGLE_ROW_DECODED_CAP,
+        )
+        assert _refusal("blob", blob(at_cap)) == "resource_limit"  # default stays 4 MiB
+
+    def test_structural_limit_carries_no_byte_budget(self) -> None:
+        deep = ('{"a": ' + "[" * 100_000 + "]" * 100_000 + "}").encode()
+        with pytest.raises(rr._Refusal) as exc:
+            rr.decode_payload("text", deep, decoded_cap=rr.SINGLE_ROW_DECODED_CAP)
+        assert exc.value.reason == "resource_limit" and exc.value.limit_kind is None
+
+    def test_decoded_exhaustion_precedes_unestablishable_defects(self) -> None:
+        bomb = zlib.compress(b"{" + b" " * (rr.SINGLE_ROW_DECODED_CAP + 10))[:-4]  # truncated
+        with pytest.raises(rr._Refusal) as exc:
+            rr.decode_payload("blob", bomb, decoded_cap=rr.SINGLE_ROW_DECODED_CAP)
+        assert exc.value.limit_kind == "decoded"
+
+    def test_projection_default_is_the_page_shape(self) -> None:
+        assert rr._projection_sql() == rr._projection_sql(stored_cap=rr.STORED_CAP)
+        assert str(rr.SINGLE_ROW_STORED_CAP) in rr._projection_sql(
+            stored_cap=rr.SINGLE_ROW_STORED_CAP
+        )
+
+    def test_singleton_read_is_one_coherent_statement_with_cap_boundary(self, db: Db) -> None:
+        cap = rr.SINGLE_ROW_STORED_CAP
+        db.insert(1, b"\x00", b"\x00")
+        db.conn.execute(
+            "UPDATE raw_events SET raw_line = zeroblob(?), parsed_json = zeroblob(?) WHERE id = 1",
+            (cap, cap + 1),
+        )
+        statements: list[str] = []
+        db.conn.set_trace_callback(statements.append)
+        seen = rr._fetch_oversize_one(db.conn, 1)
+        db.conn.set_trace_callback(None)
+        assert seen is not None and len(statements) == 1
+        assert seen.raw.value is not None and len(seen.raw.value) == cap
+        assert seen.parsed.value is None and seen.parsed.length == cap + 1  # withheld, not shipped
+        assert seen.host.value == b"claude-code" and seen.event_type.value == b"assistant"
+        assert rr._fetch_oversize_one(db.conn, 99) is None
+
+    def test_tally_refusal_keeps_size_ids_a_subset_of_failed_ids(self) -> None:
+        f = rr._Failure("raw_line", "unverifiable_oversize", "stored", 10, 11)
+        t = rr._Tally().refused(7, (f, rr._Failure("parsed_json", "invalid_json")))
+        assert t.oversize_ids == {7} and t.failed_ids == {7} and len(t.problems) == 2
+        t = t.refused(8, (rr._Failure("raw_line", "invalid_json"),))
+        assert t.oversize_ids == {7} and t.failed_ids == {7, 8}
+
+
+class TestExpandedLocal:
+    @pytest.mark.parametrize("kind", ["blob", "text"])
+    def test_clean_row_over_page_cap_completes_unchanged_and_repeatably(
+        self, db: Db, kind: str
+    ) -> None:
+        text = big_payload(2_200_000)
+        value: Any = blob(text) if kind == "blob" else text
+        db.insert(1, value, value)
+        db.insert(2, payload(), payload())
+        assert all(n > rr.STORED_CAP for _, n in _stored(db, 1).values())
+        before = [db.cell(1, "raw_line"), db.cell(1, "parsed_json")]
+        # id 2 is the only dirty row: preview, apply, then a repeat that must find nothing
+        for dry_run, changes, applied in ((True, 1, 0), (False, 1, 1), (False, 0, 0)):
+            report = run(db, dry_run=dry_run)
+            assert report.complete and report.failed == 0 and report.oversize_refused == 0
+            assert report.scanned == 2 and report.problems == ()
+            assert (report.would_change, report.updates_applied) == (changes, applied)
+            assert [db.cell(1, "raw_line"), db.cell(1, "parsed_json")] == before
+        assert db.cell(2, "raw_line")[1] == payload().replace("bob@example.com", "[EMAIL]").encode()
+
+    def test_decoded_only_overflow_is_promoted_without_refetch(
+        self, db: Db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        text = payload("a" * (rr.DECODED_CAP + 1000))
+        db.insert(1, blob(text), blob(text))
+        assert all(n < rr.STORED_CAP for _, n in _stored(db, 1).values())
+        calls: list[int] = []
+        original = rr._fetch_oversize_one
+        monkeypatch.setattr(
+            rr, "_fetch_oversize_one", lambda conn, i: calls.append(i) or original(conn, i)
+        )
+        report = run(db)
+        assert report.complete and report.oversize_refused == 0 and report.scanned == 1
+        assert calls == []  # both values were present: the observation is reused
+
+    def test_dirty_expanded_row_scrubbed_atomically_with_types_and_idempotent(self, db: Db) -> None:
+        db.insert(1, blob(big_payload(2_200_000, secret=True)), big_payload(2_200_000, secret=True))
+        db.insert(2, payload(), payload())
+        before = _stored(db, 1)
+        report = run(db)
+        assert report.complete and report.updates_applied == 2 and report.scanned == 2
+        assert report.counts_by_column["raw_line"] and report.counts_by_column["parsed_json"]
+        assert {c: t for c, (t, _) in _stored(db, 1).items()} == {
+            c: t for c, (t, _) in before.items()
+        }
+        raw = json.loads(zlib.decompress(db.cell(1, "raw_line")[1]))
+        assert raw["message"]["content"][0]["text"].startswith(CLEAN)
+        again = run(db)
+        assert again.complete and again.would_change == 0 and again.updates_applied == 0
+
+    def test_local_dirty_row_beyond_remote_request_estimate_is_scrubbed(self, db: Db) -> None:
+        text = big_payload(7_200_000, secret=True)
+        db.insert(1, blob(text), blob(text))
+        obs = rr._fetch_oversize_one(db.conn, 1)
+        assert obs is not None and obs.raw.value is not None
+        replacement = {"raw_line": obs.raw.value, "parsed_json": obs.parsed.value or b""}
+        assert rr._request_estimate(obs, replacement) > rr.REQUEST_BYTES_CAP  # remote would refuse
+        report = run(db)
+        assert report.complete and report.updates_applied == 1 and report.oversize_refused == 0
+
+    def test_replacement_growth_is_promoted_and_written(
+        self, db: Db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = json.dumps(
+            {
+                "type": "assistant",
+                "message": {"content": [{"type": "text", "text": SECRET + " " + "é" * 450_000}]},
+            },
+            ensure_ascii=False,
+        )
+        db.insert(1, body, payload())
+        assert len(db.cell(1, "raw_line")[1]) < rr.STORED_CAP
+        calls: list[int] = []
+        original = rr._fetch_oversize_one
+        monkeypatch.setattr(
+            rr, "_fetch_oversize_one", lambda conn, i: calls.append(i) or original(conn, i)
+        )
+        report = run(db)
+        assert report.complete and report.updates_applied == 1 and calls == []
+        assert len(db.cell(1, "raw_line")[1]) > rr.STORED_CAP  # \u00e9 escapes grew it
+        assert run(db).would_change == 0
+
+    def test_context_refusal_is_never_refetched(
+        self, db: Db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db.insert(1, blob(big_payload(2_200_000)), payload(), host="unknown-host")
+        calls: list[int] = []
+        original = rr._fetch_oversize_one
+        monkeypatch.setattr(
+            rr, "_fetch_oversize_one", lambda conn, i: calls.append(i) or original(conn, i)
+        )
+        report = run(db)
+        assert calls == [] and report.failed == 1 and not report.complete
+        assert report.oversize_refused == 0
+        assert [(p.row_id, p.column, p.reason) for p in report.problems] == [
+            (1, None, "unsupported_context")
+        ]
+
+    def test_mixed_page_flushes_pending_rows_and_scans_each_row_once(self, db: Db) -> None:
+        db.insert(1, payload(), payload())
+        db.insert(2, blob(big_payload(2_200_000, secret=True)), payload())
+        db.insert(3, payload(), payload())
+        report = run(db)
+        assert report.complete and report.scanned == 3 and report.last_scanned_id == 3
+        assert report.updates_applied == 3
+        for i in (1, 2, 3):
+            assert SECRET.encode() not in db.cell(i, "parsed_json")[1]
+
+    def test_vanished_row_on_refetch_is_a_conflict_counted_once(
+        self, db: Db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db.insert(1, blob(big_payload(2_200_000)), payload())
+        original = rr._fetch_oversize_one
+
+        def gone(conn: Any, row_id: int) -> Any:
+            db.conn.execute("DELETE FROM raw_events WHERE id = ?", (row_id,))
+            return original(conn, row_id)
+
+        monkeypatch.setattr(rr, "_fetch_oversize_one", gone)
+        report = run(db)
+        assert report.scanned == 1 and report.conflicts == 1 and report.failed == 0
+        assert any(p.reason == "vanished" and p.row_id == 1 for p in report.problems)
+
+
+class TestSizeRefusals:
+    def test_row_beyond_singleton_stored_cap_is_refused_unchanged_with_metadata(
+        self, db: Db
+    ) -> None:
+        cap = rr.SINGLE_ROW_STORED_CAP
+        db.insert(1, payload(), payload())
+        db.conn.execute("UPDATE raw_events SET raw_line = zeroblob(?) WHERE id = 1", (cap + 5,))
+        before = [db.cell(1, "raw_line"), db.cell(1, "parsed_json")]
+        for dry_run in (True, False):
+            report = run(db, dry_run=dry_run)
+            assert not report.complete and report.failed == 1 and report.oversize_refused == 1
+            assert report.would_change == 0 and report.updates_applied == 0
+            assert report.counts_by_column == {}  # discarded sibling matches are not counted
+            assert report.problems == (
+                rr.RawRedactionProblem(
+                    1, "raw_line", "unverifiable_oversize", cap + 5, "stored", cap
+                ),
+            )
+            assert [db.cell(1, "raw_line"), db.cell(1, "parsed_json")] == before
+
+    def test_decoded_overflow_beyond_singleton_cap_names_the_decoded_budget(self, db: Db) -> None:
+        text = payload("a" * (rr.SINGLE_ROW_DECODED_CAP + 10))
+        db.insert(1, blob(text), payload())
+        report = run(db)
+        (problem,) = report.problems
+        assert problem.reason == "unverifiable_oversize" and problem.limit_kind == "decoded"
+        assert problem.limit_bytes == rr.SINGLE_ROW_DECODED_CAP
+        assert problem.stored_bytes == len(db.cell(1, "raw_line")[1])
+        assert report.counts_by_column == {} and report.oversize_refused == 1
+
+    def test_two_refused_columns_count_as_one_failed_and_size_refused_row(self, db: Db) -> None:
+        cap = rr.SINGLE_ROW_STORED_CAP
+        db.insert(1, b"\x00", b"\x00")
+        db.conn.execute(
+            "UPDATE raw_events SET raw_line = zeroblob(?), parsed_json = zeroblob(?) WHERE id = 1",
+            (cap + 1, cap + 2),
+        )
+        report = run(db)
+        assert len(report.problems) == 2 and report.failed == 1 and report.oversize_refused == 1
+
+    def test_size_refusal_survives_diagnostic_truncation(
+        self, db: Db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(rr, "PROBLEM_CAP", 1)
+        db.insert(1, "{x", payload())
+        db.insert(2, payload(), payload())
+        db.conn.execute(
+            "UPDATE raw_events SET raw_line = zeroblob(?) WHERE id = 2",
+            (rr.SINGLE_ROW_STORED_CAP + 1,),
+        )
+        report = run(db)
+        assert [p.reason for p in report.problems] == ["invalid_json"]
+        assert report.omitted_problems == 1 and report.failed == 2
+        assert report.oversize_refused == 1
+
+    def test_report_json_always_carries_the_new_fields(self, db: Db) -> None:
+        db.insert(1, payload(), payload())
+        data = asdict(run(db))
+        assert data["oversize_refused"] == 0 and data["problems"] == ()
+        db.insert(2, "{x", payload())
+        problem = asdict(run(db, dry_run=True).problems[0])
+        assert (problem["stored_bytes"], problem["limit_kind"], problem["limit_bytes"]) == (
+            None,
+            None,
+            None,
+        )
+
+    def test_refusals_leak_no_payload_content(self, db: Db) -> None:
+        db.insert(1, blob(big_payload(2_200_000, secret=True)), "{" + SECRET)
+        assert "bob@example.com" not in json.dumps(asdict(run(db)))
+
+
+class TestExpandedReconciliation:
+    def _lose_ack(self, monkeypatch: pytest.MonkeyPatch, between: Any = None) -> None:
+        """Local write that reports a zero acknowledgement (nothing applied)."""
+
+        def zero(run_: Any, plans: Any) -> Any:
+            if between is not None:
+                between()
+            run_.begin([p.obs.id for p in plans])
+            run_.settle_zero()
+            return 0
+
+        monkeypatch.setattr(rr, "_write_unit", zero)
+
+    def test_zero_ack_reconciles_through_the_expanded_read_and_retries_once(
+        self, db: Db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db.insert(1, blob(big_payload(2_200_000, secret=True)), payload())
+        self._lose_ack(monkeypatch)
+        calls: list[int] = []
+        original = rr._fetch_oversize_one
+        monkeypatch.setattr(
+            rr, "_fetch_oversize_one", lambda conn, i: calls.append(i) or original(conn, i)
+        )
+        report = run(db)
+        assert calls == [1, 1]  # promotion refetch, then one coherent reconcile re-read + retry
+        assert report.updates_applied == 1 and report.conflicts == 0 and report.complete
+        assert SECRET.encode() not in db.cell(1, "parsed_json")[1]
+
+    def test_concurrent_change_past_singleton_cap_is_conflict_not_convergence(
+        self, db: Db, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db.insert(1, blob(big_payload(2_200_000, secret=True)), payload())
+
+        def grow() -> None:
+            db.conn.execute(
+                "UPDATE raw_events SET parsed_json = zeroblob(?) WHERE id = 1",
+                (rr.SINGLE_ROW_STORED_CAP + 1,),
+            )
+
+        self._lose_ack(monkeypatch, between=grow)
+        report = run(db)
+        assert report.conflicts == 1 and not report.complete
+        assert report.failed == 0 and report.oversize_refused == 0  # not a planning refusal
+        assert report.updates_applied == 0
+
+
+class TestExpandedRemote:
+    def test_clean_expanded_row_completes_and_response_stays_under_32mib(
+        self, remote: tuple[HranaStub, RemoteTarget], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests import hrana_stub
+
+        stub, target = remote
+        monkeypatch.setenv(target.config.auth_token_env, TOKEN)
+        text = big_payload(2_200_000)
+        _rinsert(stub, 1, blob(text), blob(text))
+        sizes: list[int] = []
+        original = hrana_stub._Handler._reply
+
+        def spy(self: Any, status: int, body: Any) -> Any:
+            sizes.append(len(json.dumps(body).encode()))
+            return original(self, status, body)
+
+        monkeypatch.setattr(hrana_stub._Handler, "_reply", spy)
+        stub.requests.clear()
+        report = redact_raw_events(target)
+        assert report.complete and report.failed == 0 and report.oversize_refused == 0
+        assert max(sizes) < 32 << 20
+        assert not any("update raw_events" in r["body"].lower() for r in stub.requests)
+
+    def test_dirty_row_over_request_budget_is_refused_unchanged_as_request(
+        self, remote: tuple[HranaStub, RemoteTarget], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stub, target = remote
+        monkeypatch.setenv(target.config.auth_token_env, TOKEN)
+        text = big_payload(7_200_000, secret=True)
+        _rinsert(stub, 1, blob(text), blob(text))
+        before = (_rcell(stub, 1, "raw_line"), _rcell(stub, 1, "parsed_json"))
+        stub.requests.clear()
+        report = redact_raw_events(target)
+        assert not report.complete and report.failed == 1 and report.oversize_refused == 1
+        (problem,) = report.problems
+        assert (problem.column, problem.reason, problem.limit_kind) == (
+            None,
+            "unverifiable_oversize",
+            "request",
+        )
+        assert problem.limit_bytes == rr.REQUEST_BYTES_CAP
+        assert (_rcell(stub, 1, "raw_line"), _rcell(stub, 1, "parsed_json")) == before
+        assert not any("update raw_events" in r["body"].lower() for r in stub.requests)
+
+    def test_remote_dirty_row_that_fits_the_request_is_scrubbed(
+        self, remote: tuple[HranaStub, RemoteTarget], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stub, target = remote
+        monkeypatch.setenv(target.config.auth_token_env, TOKEN)
+        _rinsert(stub, 1, blob(big_payload(2_200_000, secret=True)), payload())
+        report = redact_raw_events(target)
+        assert report.complete and report.updates_applied == 1
+        assert SECRET.encode() not in zlib.decompress(_rcell(stub, 1, "raw_line")[1])
