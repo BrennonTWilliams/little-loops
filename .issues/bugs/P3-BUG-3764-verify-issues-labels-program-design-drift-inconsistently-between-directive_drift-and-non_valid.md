@@ -25,7 +25,13 @@ Side effect: `record_gate_unmet` only emits the `GATE_UNMET:DIRECTIVE_DRIFT_NON_
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Program Design / Impact drift against a selected decision matches neither the `DIRECTIVE_DRIFT` definition (fix confined to Implementation Steps / Acceptance Criteria / Integration Map) nor the `NON_VALID` never-auto-correct set, so `/ll:verify-issues --check --auto` picks a verdict non-deterministically. On BUG-3761 it returned `DIRECTIVE_DRIFT` twice then `NON_VALID` (surfaced as `VERIFY:other`), and the flip suppressed the `GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE` evidence tag.
+
+## Steps to Reproduce
+
+1. Take an issue whose selected decision contradicts its `## Program Design` section (e.g. BUG-3761 after `/ll:decide-issue --auto` selected Option B over the section's Option A).
+2. Run `/ll:verify-issues BUG-3761 --check --auto` three times without editing the issue.
+3. Observe the persisted `verify_verdict` vary between `DIRECTIVE_DRIFT` and `NON_VALID`, and `ll-issues next-obligation` flip between `VERIFY:DIRECTIVE_DRIFT` and `VERIFY:other`.
 
 ## Expected Behavior
 
@@ -33,7 +39,9 @@ Program Design / Impact drift against a selected decision gets one deterministic
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+This fix would:
+- Make `refine-to-ready-issue` routing deterministic: the same unchanged issue always takes the same repair rung.
+- Restore the `GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE` evidence tag, which only `record_gate_unmet` emits when `check-verify-verdict --directive-drift` passes, so loop failures stay diagnosable.
 
 ## Proposed Solution
 
@@ -42,28 +50,48 @@ Decide where Program Design drift belongs: either widen `DIRECTIVE_DRIFT`'s sect
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `commands/verify-issues.md` — check-B6 classification text and the verdict table (`DIRECTIVE_DRIFT` row, `NON_VALID` never-auto-correct set, §2.5 precedence)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `route_pre_score_obligation` routes, `record_gate_unmet` non-convergence tag
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/cli/issues/check_verify_verdict.py` — `classify_verify_verdict` (verdict → class) and the `--directive-drift` query used by `record_gate_unmet`
+- `scripts/little_loops/cli/issues/next_obligation.py` — `_verify_class` maps `verify_verdict` to the `VERIFY:*` token
 
 ### Similar Patterns
-- TBD - search for consistency
+- `PROPOSAL_UNSOUND` / `CLAIMS_OUTDATED` — verdicts persisted as their own value (not collapsed into `NON_VALID`) so a dedicated `VERIFY:*` route exists
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_ll_issues_check_verify_verdict.py`
+- `scripts/tests/test_ll_issues_next_obligation.py`
+- `scripts/tests/test_builtin_loops.py` (loop route assertions)
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/CLI.md` if a verdict/token is added (check `next-obligation` and `check-verify-verdict` entries)
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+## Program Design
+
+### Types
+
+- `verify_verdict: str` — frontmatter enum persisted by verify-issues; gains an explicit value (or a widened `DIRECTIVE_DRIFT` definition) for Program Design / Impact drift
+
+### Signatures
+
+- `classify_verify_verdict(verdict: object) -> str` — accept the chosen verdict value
+- `_verify_class(fm: dict[str, Any]) -> str` — map it to a `VERIFY:*` token
+
+### Call Path
+
+`/ll:verify-issues --check --auto` -> `verify_verdict` frontmatter -> `select_next_obligation` -> `_verify_class` -> `route_pre_score_obligation` -> `check_reconcile_limit` | `check_gate_refine_limit` -> `record_gate_unmet`
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Decide whether Program Design / Impact drift widens `DIRECTIVE_DRIFT` (requires the companion BUG-3763 reconcile-contract change) or gets its own verdict.
+2. Update the check-B6 classification text and verdict-precedence table in `commands/verify-issues.md` to name that verdict.
+3. Align `classify_verify_verdict`, `_verify_class`, and the `route_pre_score_obligation` / `record_gate_unmet` handling with it.
+4. Add tests and run `python -m pytest scripts/tests/test_ll_issues_check_verify_verdict.py scripts/tests/test_ll_issues_next_obligation.py`.
 
 ## Impact
 
@@ -86,4 +114,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-10-07T00:52:19 - `8092456a-7bf3-47b0-86f7-42712002052b.jsonl`
 - `/ll:capture-issue` - 2026-10-07T00:49:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`

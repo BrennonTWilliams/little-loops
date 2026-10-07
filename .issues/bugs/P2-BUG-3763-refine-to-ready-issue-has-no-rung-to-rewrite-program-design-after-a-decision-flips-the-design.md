@@ -27,7 +27,14 @@ The routing worked as designed; the gap is capability. No rung in the repair lad
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+When `/ll:decide-issue --auto` selects an option different from the one `## Program Design` (and the Impact Effort/Risk lines) were written for, every repair rung declines the section: decide-issue Phase 7c flags it without editing, `/ll:reconcile-issue` refuses it as out of contract, and `/ll:refine-issue --gap-analysis` is additive-only. `ll-issues format-check` keeps reporting `unapplied_decision`, the `check_gate_refine_limit` counter reaches its `lt 2` limit, and the loop ends in `record_gate_unmet` → `failed`.
+
+## Steps to Reproduce
+
+1. Take an issue with a `decision_needed` point and a `## Program Design` section written for Option A (e.g. BUG-3761 before the run below).
+2. Run `ll-loop run refine-to-ready-issue` on it; `resolve_decision_mid_refine` runs `/ll:decide-issue --auto` and selects Option B.
+3. Observe `verify_issue` → `DIRECTIVE_DRIFT` → `reconcile_issue` (fixes Acceptance Criteria, refuses Program Design/Impact) → second `DIRECTIVE_DRIFT` → `refine_followup` (additive-only).
+4. Observe the third verify → `VERIFY:other` → `check_gate_refine_limit` exhausted → `record_gate_unmet` → `failed`, with `ll-issues format-check` still reporting `unapplied_decision`.
 
 ## Expected Behavior
 
@@ -35,7 +42,10 @@ After a decision flips the design, the loop repairs Program Design and Impact to
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+This fix would:
+- Remove a loop-level dead end: any issue whose decision flips after Program Design was written fails `refine-to-ready-issue` even though every other gate is clean.
+- Save ~38 min / 33 iterations of model time per failed attempt (BUG-3761 run).
+- Remove the need for a manual Program Design/Impact edit between `/ll:decide-issue` and the loop's next verify pass.
 
 ## Proposed Solution
 
@@ -48,28 +58,50 @@ Pick one (needs a decision):
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `reconcile_issue`, `refine_followup`, `check_gate_refine_limit`, `record_gate_unmet` (Option B adds a rung)
+- `commands/reconcile-issue.md` / `skills/ll-reconcile-issue/SKILL.md` — rewrite contract currently limited to Implementation Steps, Acceptance Criteria, Integration Map (Option A)
+- `skills/decide-issue/SKILL.md` — Phase 7c "Propagate Selection" bounded-scope rule (Option C)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/issue_parser.py` — `FormatGaps.unapplied_decision` / `unapplied_decision_detail` is the residual signal any new rung must clear (surfaced by `scripts/little_loops/cli/issues/format_check.py`)
+- `scripts/little_loops/cli/issues/next_obligation.py` — `select_next_obligation` routes `VERIFY:*` tokens consumed by `route_pre_score_obligation`
 
 ### Similar Patterns
-- TBD - search for consistency
+- The existing `check_reconcile_limit` → `reconcile_issue` and `check_gate_refine_limit` → `refine_followup` budget/rung pairs in `refine-to-ready-issue.yaml`
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_reconcile_issue_command.py` — contract assertions if reconcile's scope widens
+- `scripts/tests/test_builtin_loops.py` — loop-structure assertions if a state is added
+- TBD (Option B/C): fixture test for a selected-Option-B issue with Option-A Program Design
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/CLI.md` / loop docs if a new rung or flag is added (check `refine-to-ready-issue` mentions)
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+## Program Design
+
+### Types
+
+- `unapplied_decision_detail: list[{section: str, identifier: str}]` — existing `format-check --format json` field; the repair rung's input and its pass/fail signal
+
+### Signatures
+
+- Option A: widen the `reconcile-issue` rewrite contract text to include `## Program Design` and Impact Effort/Risk (no new code identifier)
+- Option B: new loop state `rewrite_program_design` (shell/prompt state in `refine-to-ready-issue.yaml`) gated by a new `check_program_design_rewrite_limit` budget state
+- Option C: extend decide-issue Phase 7c rewrite categories (`skills/decide-issue/reference.md`) to cover whole-section rewrite when the rejected option dominates
+
+### Call Path
+
+`route_pre_score_obligation` -> `reconcile_issue` (Option A) | `rewrite_program_design` (Option B) -> `verify_issue` -> `record_gate_unmet` (fail-closed when residual `unapplied_decision` persists)
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Decide between Options A/B/C (`/ll:decide-issue BUG-3763`).
+2. Implement the chosen rung/contract change in the files above.
+3. Add a fixture issue (selected Option B, Program Design describing rejected Option A) and a regression test that it clears `unapplied_decision` within one budget.
+4. Run `python -m pytest scripts/tests/test_reconcile_issue_command.py scripts/tests/test_builtin_loops.py` and `ll-loop validate refine-to-ready-issue`.
 
 ## Impact
 
@@ -92,4 +124,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-10-07T00:52:19 - `8092456a-7bf3-47b0-86f7-42712002052b.jsonl`
 - `/ll:capture-issue` - 2026-10-07T00:49:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
