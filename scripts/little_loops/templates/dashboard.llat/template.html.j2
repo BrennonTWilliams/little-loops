@@ -103,7 +103,18 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
     <p class="muted">Custom SQL reads snapshot tables directly. <code>usage_events</code>
       contains raw observations for audit, including unresolved overlap. Use
       <code>selected_usage_events</code> and <code>usage_coverage_audit</code> for
-      qualified accounting; a raw sum is not a canonical consumption total.</p>
+      qualified accounting; a raw sum is not a canonical consumption total, and a
+      <code>SUM</code> over selected rows or NULLs does not certify a complete
+      population. Custom SQL is an audit tool and runs unchanged.</p>
+    <p class="muted">The <em>Usage by model and channel</em> view reports qualification
+      for the <em>whole model</em>: provenance and reasons repeat on each channel row, and
+      a complete channel cannot make an incomplete model available. Tokens and cost are
+      qualified independently, so cost can be unavailable while tokens are available.
+      An empty cell is an unavailable figure (see the reason columns), never zero; a
+      measured zero shows <code>0</code>. A channel whose <code>selected_events</code> is
+      0 has audit observations only and no canonical figure. Costs are shown to four
+      decimals, but availability uses the stored value. Integers are shown exactly,
+      including values above 9007199254740991.</p>
     <textarea id="sql" spellcheck="false" aria-label="Read-only SQL query"></textarea>
     <div>
       <button id="run" type="button">Run</button>
@@ -129,12 +140,26 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
       sql: "SELECT final_state, COUNT(*) AS n FROM loop_runs GROUP BY final_state ORDER BY n DESC"
     },
     {
-      label: "Usage cost by model and channel",
+      label: "Usage by model and channel",
       sql: "SELECT model, channel, coverage, raw_observation_count AS raw_events," +
-        " ROUND(raw_cost_usd, 4) AS raw_cost_subtotal_usd," +
         " selected_observation_count AS selected_events," +
+        " CASE WHEN canonical_input_tokens IS NOT NULL" +
+        " AND canonical_output_tokens IS NOT NULL" +
+        " AND canonical_cache_read_input_tokens IS NOT NULL" +
+        " AND canonical_cache_creation_input_tokens IS NOT NULL" +
+        " AND qualification_reason IS NULL THEN 'available' ELSE 'unavailable' END" +
+        " AS token_availability," +
+        " qualification_reason AS token_reason," +
+        " canonical_input_tokens, canonical_output_tokens," +
+        " canonical_cache_read_input_tokens, canonical_cache_creation_input_tokens," +
+        " CASE WHEN canonical_cost_usd IS NOT NULL AND cost_qualification_reason IS NULL" +
+        " THEN 'available' ELSE 'unavailable' END AS cost_availability," +
+        " cost_qualification_reason AS cost_reason," +
+        " ROUND(canonical_cost_usd, 4) AS canonical_cost_usd," +
+        " ROUND(raw_cost_usd, 4) AS raw_cost_subtotal_usd," +
         " ROUND(known_cost_usd, 4) AS known_cost_subtotal_usd," +
-        " ROUND(canonical_cost_usd, 4) AS canonical_cost_usd" +
+        " raw_missing_cost_count, known_missing_cost_count," +
+        " provenance AS model_provenance, coverage_reason, qualification_policy_version" +
         " FROM usage_coverage_audit ORDER BY model, channel"
     }
   ];
@@ -255,7 +280,10 @@ th { position: sticky; top: 0; background: var(--color-surface, #1a1d26); }
       while (stmt.step()) {
         total++;
         if (rows.length < ROW_CAP) {
-          rows.push(stmt.getAsObject());
+          // useBigInt keeps stored INTEGERs exact past 2^53; rendering uses
+          // String(), so a BigInt prints as its exact decimal. Never convert
+          // back to Number or JSON-serialize these rows.
+          rows.push(stmt.getAsObject(undefined, { useBigInt: true }));
         }
       }
       columns = stmt.getColumnNames();

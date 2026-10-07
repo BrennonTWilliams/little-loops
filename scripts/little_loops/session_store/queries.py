@@ -8,6 +8,7 @@ FTS5 search/recent lookups and the JSONL export walker. Depends on
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 from collections.abc import Generator, Mapping
 from dataclasses import dataclass, field
@@ -19,6 +20,17 @@ from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.schema import _KIND_TABLE, VALID_KINDS
 from little_loops.sqlite_uri import sqlite_file_uri
+from little_loops.token_provenance import (
+    COST_COLUMN,
+    TOKEN_COLUMNS,
+    UNKNOWN_MODEL_BUCKET,
+    USAGE_QUALIFICATION_REASONS,
+    ObservationGroup,
+    qualify_usage,
+    row_channel,
+    valid_cost_value,
+    valid_token_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -234,10 +246,15 @@ _SHAREABLE_COLUMNS: dict[str, list[str]] = {
         "canonical_cache_read_input_tokens",
         "canonical_cache_creation_input_tokens",
         "canonical_cost_usd",
+        # ENH-3733 model-scoped qualification metadata, repeated on each channel row.
+        "provenance",
+        "qualification_reason",
+        "cost_qualification_reason",
+        "qualification_policy_version",
     ],
 }
 
-_SHAREABLE_ALLOWLIST_VERSION: int = 3
+_SHAREABLE_ALLOWLIST_VERSION: int = 4
 
 # The export types the shareable allowlist covers — the default `--tables` set
 # for `ll-artifact dashboard` in BOTH modes (D16/D22). Deliberately NOT
@@ -315,41 +332,97 @@ def _snapshot_select(
     return sql
 
 
-_SNAPSHOT_COMPONENTS = (
-    "input_tokens",
-    "output_tokens",
-    "cache_read_input_tokens",
-    "cache_creation_input_tokens",
-    "cost_usd",
+_SNAPSHOT_COMPONENTS = (*TOKEN_COLUMNS, COST_COLUMN)
+
+_INT64_MAX = 2**63 - 1
+_SNAPSHOT_CHANNELS = frozenset({"live", "rollout", "transcript"})
+
+#: Consumer-only reason (ENH-3733): the shared qualification succeeded but a canonical
+#: channel token subtotal cannot be bound to a signed 64-bit SQLite INTEGER.
+SNAPSHOT_OVERFLOW_REASON = "snapshot_integer_overflow"
+
+# Enumerated ``_coverage_reason`` codes emitted by the shared coverage selector
+# (``history_reader.usage._classify_coverage`` / ``select_usage_coverage``).
+_COVERAGE_REASON_CODES = frozenset(
+    {
+        "unverified_cross_channel_identity",
+        "live_replay_join_unproven",
+        "cross_channel_join_unproven",
+        "codex_live_scope_unknown",
+        "codex_live_identity_unverified",
+        "rollout_request_identity_unverified",
+        "no_verified_identity_columns",
+        "no_host_column",
+    }
 )
+
+# Only these literals may reach a generated reason column; a lexically valid
+# identifier-shaped source value is not an approved code (ENH-3733).
+_SNAPSHOT_REASON_CODES = (
+    USAGE_QUALIFICATION_REASONS | _COVERAGE_REASON_CODES | {SNAPSHOT_OVERFLOW_REASON}
+)
+
+
+def _snapshot_reason(reason: Any) -> str | None:
+    """Admit *reason* only when it is an approved bounded code; else ``unclassified``."""
+    if reason is None:
+        return None
+    return (
+        reason if isinstance(reason, str) and reason in _SNAPSHOT_REASON_CODES else "unclassified"
+    )
+
+
+def _bindable_int(value: int | None) -> int | None:
+    """Return *value* if it fits SQLite's signed 64-bit INTEGER, else ``None``."""
+    return value if value is not None and value <= _INT64_MAX else None
 
 
 @dataclass
 class _SnapshotTotals:
-    """Numeric observation subtotals with missing-component tracking."""
+    """Valid-value observation subtotals sharing the source ``ObservationGroup`` rules.
+
+    NULL (``missing``) and present-but-inadmissible (``invalid``) values are tracked
+    separately; only valid values enter a subtotal. Token sums are exact Python
+    integers (range-checked by the caller before binding); cost uses the same
+    order-independent finite ``fsum`` as the source reader.
+    """
 
     count: int = 0
-    sums: dict[str, int | float] = field(default_factory=dict)
+    sums: dict[str, int] = field(default_factory=dict)
+    costs: list[float] = field(default_factory=list)
     missing: dict[str, int] = field(default_factory=dict)
+    invalid: dict[str, int] = field(default_factory=dict)
 
     def add(self, row: Mapping[str, Any]) -> None:
         self.count += 1
         for column in _SNAPSHOT_COMPONENTS:
             value = row.get(column)
-            if (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and (column == "cost_usd" or (isinstance(value, int) and value >= 0))
-            ):
-                self.sums[column] = self.sums.get(column, 0) + value
-            else:
+            if value is None:
                 self.missing[column] = self.missing.get(column, 0) + 1
+            elif not (
+                valid_cost_value(value) if column == COST_COLUMN else valid_token_value(value)
+            ):
+                self.invalid[column] = self.invalid.get(column, 0) + 1
+            elif column == COST_COLUMN:
+                self.costs.append(value)
+            else:
+                self.sums[column] = self.sums.get(column, 0) + value
 
-    def value(self, column: str, *, strict: bool = False) -> int | float | None:
-        """Return an observed subtotal, or a complete total when strict."""
-        if self.count == 0 or (strict and self.missing.get(column, 0)):
-            return None
+    def tokens(self, column: str) -> int | None:
+        """Exact sum of valid token values; ``None`` without one."""
         return self.sums.get(column)
+
+    def value(self, column: str) -> int | float | None:
+        """Sum of valid values; ``None`` without one (or on a non-finite cost sum)."""
+        if column != COST_COLUMN:
+            return self.tokens(column)
+        if not self.costs:
+            return None
+        try:
+            total = math.fsum(self.costs)
+        except OverflowError:
+            return None
+        return total if math.isfinite(total) else None
 
 
 def _snapshot_usage_selection(conn: sqlite3.Connection, since: str | None) -> None:
@@ -358,6 +431,11 @@ def _snapshot_usage_selection(conn: sqlite3.Connection, since: str | None) -> No
     Generated schemas contain only allowlisted accounting fields. In
     particular, source paths, native request/turn IDs and coverage group keys
     never leave the source store, including in local mode.
+
+    Qualification is model-wide (ENH-3733): one :class:`ObservationGroup` per
+    logical model over every in-filter audit contributor, qualified through
+    :func:`qualify_usage` separately for tokens and cost. Each channel row carries
+    its own contribution plus the whole model's metadata.
     """
     from little_loops.history_reader.usage import select_usage_coverage
 
@@ -401,40 +479,50 @@ def _snapshot_usage_selection(conn: sqlite3.Connection, since: str | None) -> No
         "known_cache_creation_input_tokens INTEGER, known_cost_usd REAL, "
         "known_missing_cost_count INTEGER, canonical_input_tokens INTEGER, "
         "canonical_output_tokens INTEGER, canonical_cache_read_input_tokens INTEGER, "
-        "canonical_cache_creation_input_tokens INTEGER, canonical_cost_usd REAL)"
+        "canonical_cache_creation_input_tokens INTEGER, canonical_cost_usd REAL, "
+        "provenance TEXT, qualification_reason TEXT, cost_qualification_reason TEXT, "
+        "qualification_policy_version INTEGER)"
     )
-    raw_totals: dict[tuple[str | None, str], _SnapshotTotals] = {}
-    selected_totals: dict[tuple[str | None, str], _SnapshotTotals] = {}
-    model_selected_totals: dict[str | None, _SnapshotTotals] = {}
-    model_coverage: dict[str | None, set[str]] = {}
-    model_reasons: dict[str | None, set[str]] = {}
 
-    def _key(row: Mapping[str, Any]) -> tuple[str | None, str]:
+    def _key(row: Mapping[str, Any]) -> tuple[str, str]:
         model = row.get("model")
-        channel = row.get("channel")
+        channel = row_channel(row)
         return (
-            model if isinstance(model, str) else None,
-            channel if channel in {"live", "rollout", "transcript"} else "unknown",
+            model if isinstance(model, str) else UNKNOWN_MODEL_BUCKET,
+            channel if channel in _SNAPSHOT_CHANNELS else "unknown",
         )
 
-    for group in selection.groups:
-        for row in group.audit_rows:
-            key = _key(row)
-            raw_totals.setdefault(key, _SnapshotTotals()).add(row)
-            model_coverage.setdefault(key[0], set()).add(group.coverage)
-            if group.reason:
-                reason = group.reason
-                if (
-                    not isinstance(reason, str)
-                    or not reason.isascii()
-                    or not reason.replace("_", "").isalnum()
-                ):
-                    reason = "unclassified"
-                model_reasons.setdefault(key[0], set()).add(reason[:64])
-        for row in group.selected_rows:
-            key = _key(row)
-            selected_totals.setdefault(key, _SnapshotTotals()).add(row)
-            model_selected_totals.setdefault(key[0], _SnapshotTotals()).add(row)
+    model_groups: dict[str, ObservationGroup] = {}
+    model_coverage_reasons: dict[str, set[str]] = {}
+    raw_totals: dict[tuple[str, str], _SnapshotTotals] = {}
+    selected_totals: dict[tuple[str, str], _SnapshotTotals] = {}
+    for row in selection.audit_rows:
+        key = _key(row)
+        model_groups.setdefault(key[0], ObservationGroup()).add(row)
+        raw_totals.setdefault(key, _SnapshotTotals()).add(row)
+        if row.get("_coverage_reason"):
+            model_coverage_reasons.setdefault(key[0], set()).add(
+                _snapshot_reason(row["_coverage_reason"]) or "unclassified"
+            )
+    for row in selection.selected_rows:
+        selected_totals.setdefault(_key(row), _SnapshotTotals()).add(row)
+
+    # Per-model qualification, with the export-only representability guard: a
+    # canonical channel token subtotal outside int64 makes every canonical token
+    # component of the model unavailable. The shared result is not altered.
+    qualified: dict[str, tuple[Any, Any, str | None]] = {}
+    for model, group in model_groups.items():
+        token_q = qualify_usage(group)
+        cost_q = qualify_usage(group, require_cost=True)
+        token_reason = token_q.reason
+        if token_q.eligible and any(
+            (value := selected_totals[k].tokens(column)) is not None and value > _INT64_MAX
+            for k in selected_totals
+            if k[0] == model
+            for column in TOKEN_COLUMNS
+        ):
+            token_reason = SNAPSHOT_OVERFLOW_REASON
+        qualified[model] = (token_q, cost_q, token_reason)
 
     audit_columns = _SHAREABLE_COLUMNS["usage_coverage_audit"]
     audit_sql = (
@@ -447,54 +535,31 @@ def _snapshot_usage_selection(conn: sqlite3.Connection, since: str | None) -> No
     audit_rows: list[tuple[Any, ...]] = []
     for (model, channel), raw in raw_totals.items():
         known = selected_totals.get((model, channel), _SnapshotTotals())
-        model_known = model_selected_totals.get(model, _SnapshotTotals())
-        statuses = model_coverage.get(model, set())
-        coverage = (
-            "overlap_unresolved"
-            if "overlap_unresolved" in statuses
-            else "unknown"
-            if "unknown" in statuses
-            else "non_overlapping"
-        )
-        canonical = coverage == "non_overlapping"
-        reasons = ",".join(sorted(model_reasons.get(model, set()))) or None
-        audit_rows.append(
-            (
-                model,
-                channel,
-                coverage,
-                reasons,
-                raw.count,
-                raw.value("input_tokens"),
-                raw.value("output_tokens"),
-                raw.value("cache_read_input_tokens"),
-                raw.value("cache_creation_input_tokens"),
-                raw.value("cost_usd"),
-                raw.missing.get("cost_usd", 0),
-                known.count,
-                known.value("input_tokens"),
-                known.value("output_tokens"),
-                known.value("cache_read_input_tokens"),
-                known.value("cache_creation_input_tokens"),
-                known.value("cost_usd"),
-                known.missing.get("cost_usd", 0),
-                known.value("input_tokens", strict=True)
-                if canonical and not model_known.missing.get("input_tokens")
-                else None,
-                known.value("output_tokens", strict=True)
-                if canonical and not model_known.missing.get("output_tokens")
-                else None,
-                known.value("cache_read_input_tokens", strict=True)
-                if canonical and not model_known.missing.get("cache_read_input_tokens")
-                else None,
-                known.value("cache_creation_input_tokens", strict=True)
-                if canonical and not model_known.missing.get("cache_creation_input_tokens")
-                else None,
-                known.value("cost_usd", strict=True)
-                if canonical and not model_known.missing.get("cost_usd")
-                else None,
+        token_q, cost_q, token_reason = qualified[model]
+        record: dict[str, Any] = {
+            "model": model,
+            "channel": channel,
+            "coverage": model_groups[model].coverage(),
+            "coverage_reason": ",".join(sorted(model_coverage_reasons.get(model, ()))) or None,
+            "raw_observation_count": raw.count,
+            "raw_cost_usd": raw.value(COST_COLUMN),
+            "raw_missing_cost_count": raw.missing.get(COST_COLUMN, 0),
+            "selected_observation_count": known.count,
+            "known_cost_usd": known.value(COST_COLUMN),
+            "known_missing_cost_count": known.missing.get(COST_COLUMN, 0),
+            "canonical_cost_usd": known.value(COST_COLUMN) if cost_q.eligible else None,
+            "provenance": token_q.provenance,
+            "qualification_reason": _snapshot_reason(token_reason),
+            "cost_qualification_reason": _snapshot_reason(cost_q.reason),
+            "qualification_policy_version": token_q.policy_version,
+        }
+        for column in TOKEN_COLUMNS:
+            record[f"raw_{column}"] = _bindable_int(raw.tokens(column))
+            record[f"known_{column}"] = _bindable_int(known.tokens(column))
+            record[f"canonical_{column}"] = (
+                _bindable_int(known.tokens(column)) if token_reason is None else None
             )
-        )
+        audit_rows.append(tuple(record[column] for column in audit_columns))
     conn.executemany(audit_sql, audit_rows)
 
 
@@ -530,7 +595,8 @@ def build_snapshot_db(
 
     Returns:
         The source DB's recorded ``schema_version``, read on the same read-only
-        connection (D19), or None when it cannot be determined.
+        connection and inside the same read transaction as the exported rows
+        (D19), or None when it cannot be determined.
     """
     refuse_on_remote(db, "snapshot_export")
     unknown = [t for t in tables if t not in _EXPORT_TABLE_MAP]
@@ -541,11 +607,14 @@ def build_snapshot_db(
 
     conn = _connect_readonly(Path(db))
     conn.row_factory = sqlite3.Row
+    schema_version: str | None = None
     try:
-        schema_version = read_schema_version(conn)
         conn.execute("ATTACH DATABASE ? AS snap", (str(Path(dest).absolute()),))
         try:
             conn.execute("BEGIN")
+            # First read inside the transaction: it pins the read snapshot, so the
+            # version and every exported/generated table describe one source commit.
+            schema_version = read_schema_version(conn)
             for type_name in tables:
                 table, ts_col = _EXPORT_TABLE_MAP[type_name]
                 sql = _snapshot_select(conn, table, ts_col, local_mode, since)

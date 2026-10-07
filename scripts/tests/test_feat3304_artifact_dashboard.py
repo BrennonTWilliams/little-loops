@@ -166,6 +166,87 @@ def project(tmp_path: Path) -> Path:
     return tmp_path
 
 
+_BOUNDARY_TOKENS = {
+    "boundary-2p53m1": 2**53 - 1,
+    "boundary-2p53": 2**53,
+    "boundary-2p53p1": 2**53 + 1,
+    "boundary-2p63m1": 2**63 - 1,
+}
+
+
+def _seed_usage_scenarios(db_path: Path) -> None:
+    """Replace the synthetic usage rows with ENH-3733 qualification scenarios.
+
+    Each model is a separate fully verified population so one scenario's
+    unpriced/overflowing contributor cannot taint another's controls.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute("ALTER TABLE usage_events ADD COLUMN identity_basis TEXT")
+    conn.execute("DELETE FROM usage_events")
+    columns = (
+        "ts, session_id, model, input_tokens, output_tokens, cache_read_input_tokens, "
+        "cache_creation_input_tokens, cost_usd, channel, host, host_basis, provenance, "
+        "scope_kind, identity_basis"
+    )
+    counter = iter(range(1000))
+
+    def add(
+        model: str | None,
+        tokens: tuple[int, int, int, int],
+        cost: float | None,
+        *,
+        channel: str = "transcript",
+        scope: str | None = None,
+    ) -> None:
+        live = channel == "live"
+        conn.execute(
+            f"INSERT INTO usage_events ({columns}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "2026-08-01T00:00:00Z",
+                f"sess-{next(counter)}",
+                model,
+                *tokens,
+                cost,
+                channel,
+                "codex" if live else "claude-code",
+                None if live else "handle",
+                "measured",
+                scope,
+                "host_observed" if live else None,
+            ),
+        )
+
+    add("zero-model", (0, 0, 0, 0), 0.0)
+    add("tiny-cost-model", (1, 1, 1, 1), 0.00001)
+    add("unpriced-model", (2, 2, 2, 2), None)
+    add(None, (3, 3, 3, 3), 0.5)
+    add("overflow-model", (2**62, 1, 1, 1), 0.25)
+    add("overflow-model", (2**62, 1, 1, 1), 0.25)
+    # Complete transcript channel plus an unresolved live channel: the whole model
+    # is unavailable and the live channel has audit observations but no selection.
+    add("audit-only-model", (4, 4, 4, 4), 0.4)
+    add("audit-only-model", (5, 5, 5, 5), 0.5, channel="live", scope="unknown")
+    for name, value in _BOUNDARY_TOKENS.items():
+        add(name, (value, 0, 0, 0), 0.0)
+    conn.commit()
+    conn.close()
+
+
+@pytest.fixture
+def usage_project(project: Path) -> Path:
+    """`project` with the ENH-3733 usage scenarios in its history.db."""
+    _seed_usage_scenarios(project / ".ll" / "history.db")
+    return project
+
+
+def _predefined_usage_sql(html: str) -> str:
+    """Reassemble the predefined usage view's SQL from the page's JS string concat."""
+    match = re.search(r'label: "Usage by model and channel",\s*sql: (.*?)\n    \}', html, re.S)
+    assert match, "predefined usage view not found in the generated page"
+    pieces = re.findall(r'"((?:[^"\\]|\\.)*)"', match.group(1))
+    return "".join(pieces)
+
+
 class _Args:
     def __init__(self, **kwargs: object) -> None:
         self.tables = None
@@ -245,10 +326,33 @@ class TestSnapshotRoundTrip:
         code, out = _run(project)
         assert code == 0
         html = out.read_text(encoding="utf-8")
-        assert 'label: "Usage cost by model and channel"' in html
+        assert 'label: "Usage by model and channel"' in html
+        assert "Usage cost by model and channel" not in html
         assert "FROM usage_coverage_audit ORDER BY model, channel" in html
         assert "FROM usage_events GROUP BY model" not in html
         assert "raw observations for audit" in html
+        sql = _predefined_usage_sql(html)
+        for column in (
+            "canonical_input_tokens",
+            "canonical_output_tokens",
+            "canonical_cache_read_input_tokens",
+            "canonical_cache_creation_input_tokens",
+            "token_availability",
+            "cost_availability",
+        ):
+            assert column in sql
+        # Canonical figures are projected directly: no re-summing or token arithmetic.
+        assert not re.search(r"\b(SUM|TOTAL)\s*\(", sql, re.I)
+        assert "+" not in sql and "COALESCE" not in sql.upper()
+        assert "FROM usage_events" not in sql
+
+    def test_page_reads_integers_exactly_and_never_serializes_rows(self, project: Path) -> None:
+        code, out = _run(project)
+        assert code == 0
+        html = out.read_text(encoding="utf-8")
+        assert "getAsObject(undefined, { useBigInt: true })" in html
+        assert "stmt.getAsObject()" not in html
+        assert "JSON.stringify(rows" not in html and "Number(value)" not in html
 
     def test_excluded_columns_absent_from_recovered_schema(
         self, project: Path, tmp_path: Path
@@ -285,6 +389,16 @@ class TestSnapshotRoundTrip:
         assert columns == [
             c for c in _SHAREABLE_COLUMNS["usage_events"] if c not in provenance_cols
         ]
+        # A fresh export from a pre-v55 source still carries current metadata, with
+        # the absent provenance staying unknown/audit-only (canonical NULL + reason).
+        audit = _table_columns(conn, "usage_coverage_audit")
+        assert audit == _SHAREABLE_COLUMNS["usage_coverage_audit"]
+        conn.row_factory = sqlite3.Row
+        (row,) = conn.execute("SELECT * FROM usage_coverage_audit").fetchall()
+        assert row["provenance"] == "unknown"
+        assert row["qualification_reason"] is not None
+        assert row["canonical_input_tokens"] is None and row["canonical_cost_usd"] is None
+        assert row["qualification_policy_version"] is not None
 
     def test_non_allowlisted_tables_absent(self, project: Path, tmp_path: Path) -> None:
         code, out = _run(project, since="2026-07-01")
@@ -331,6 +445,105 @@ class TestSnapshotRoundTrip:
         conn = _recover_snapshot(out.read_text(encoding="utf-8"), tmp_path / "rt.db")
         assert list(conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")) == []
         assert conn.execute("PRAGMA freelist_count").fetchone()[0] == 0
+
+
+class TestPredefinedUsageViewExecution:
+    """ENH-3733: execute the page's own predefined SQL on a real generated snapshot."""
+
+    def _view(self, project: Path, tmp_path: Path) -> dict[str, list[dict[str, object]]]:
+        code, out = _run(project)
+        assert code == 0
+        html = out.read_text(encoding="utf-8")
+        conn = _recover_snapshot(html, tmp_path / "view.db")
+        conn.row_factory = sqlite3.Row
+        rows = [dict(r) for r in conn.execute(_predefined_usage_sql(html))]
+        view: dict[str, list[dict[str, object]]] = {}
+        for row in rows:
+            view.setdefault(str(row["model"]), []).append(row)
+        return view
+
+    def test_numeric_zero_is_available_not_unavailable(
+        self, usage_project: Path, tmp_path: Path
+    ) -> None:
+        (row,) = self._view(usage_project, tmp_path)["zero-model"]
+        assert row["token_availability"] == "available"
+        assert row["cost_availability"] == "available"
+        assert row["canonical_input_tokens"] == 0 and row["canonical_cost_usd"] == 0
+        assert row["token_reason"] is None and row["cost_reason"] is None
+
+    def test_small_positive_cost_is_available_despite_rounded_display(
+        self, usage_project: Path, tmp_path: Path
+    ) -> None:
+        (row,) = self._view(usage_project, tmp_path)["tiny-cost-model"]
+        assert row["canonical_cost_usd"] == 0  # four-decimal presentation only
+        assert row["cost_availability"] == "available"
+
+    def test_unpriced_model_keeps_tokens_but_cost_is_unavailable_with_reason(
+        self, usage_project: Path, tmp_path: Path
+    ) -> None:
+        (row,) = self._view(usage_project, tmp_path)["unpriced-model"]
+        assert row["token_availability"] == "available" and row["canonical_input_tokens"] == 2
+        assert row["cost_availability"] == "unavailable"
+        assert row["canonical_cost_usd"] is None
+        assert row["cost_reason"] == "unpriced_contributor"
+        assert row["known_missing_cost_count"] == 1
+
+    def test_unknown_model_bucket(self, usage_project: Path, tmp_path: Path) -> None:
+        (row,) = self._view(usage_project, tmp_path)["(unknown model)"]
+        assert row["canonical_input_tokens"] == 3 and row["token_availability"] == "available"
+
+    def test_token_overflow_does_not_hide_eligible_cost(
+        self, usage_project: Path, tmp_path: Path
+    ) -> None:
+        (row,) = self._view(usage_project, tmp_path)["overflow-model"]
+        assert row["token_availability"] == "unavailable"
+        assert row["token_reason"] == "snapshot_integer_overflow"
+        assert row["canonical_input_tokens"] is None
+        assert row["cost_availability"] == "available" and row["canonical_cost_usd"] == 0.5
+        assert row["raw_events"] == 2
+
+    def test_audit_only_channel_and_model_wide_taint(
+        self, usage_project: Path, tmp_path: Path
+    ) -> None:
+        rows = {r["channel"]: r for r in self._view(usage_project, tmp_path)["audit-only-model"]}
+        assert rows["live"]["selected_events"] == 0 and rows["live"]["raw_events"] == 1
+        assert rows["transcript"]["selected_events"] == 1
+        for row in rows.values():  # the complete channel cannot recertify the model
+            assert row["token_availability"] == "unavailable"
+            assert row["cost_availability"] == "unavailable"
+            assert row["token_reason"] == "coverage_unknown"
+            assert row["coverage"] == "unknown"
+            assert row["canonical_input_tokens"] is None
+        assert rows["transcript"]["known_cost_subtotal_usd"] == 0.4  # audit evidence kept
+
+    def test_boundary_integers_are_stored_exactly(
+        self, usage_project: Path, tmp_path: Path
+    ) -> None:
+        view = self._view(usage_project, tmp_path)
+        for name, value in _BOUNDARY_TOKENS.items():
+            (row,) = view[name]
+            assert row["canonical_input_tokens"] == value
+            assert row["token_availability"] == "available"
+
+    def test_empty_generated_usage_tables_return_no_view_rows(self, tmp_path: Path) -> None:
+        project_root = tmp_path / "empty"
+        (project_root / ".ll").mkdir(parents=True)
+        (project_root / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        _build_history_db(project_root / ".ll" / "history.db")
+        conn = sqlite3.connect(project_root / ".ll" / "history.db")
+        conn.execute("DELETE FROM usage_events")
+        conn.commit()
+        conn.close()
+        assert self._view(project_root, tmp_path) == {}
+
+    def test_audit_rows_carry_the_shared_policy_version(
+        self, usage_project: Path, tmp_path: Path
+    ) -> None:
+        from little_loops.token_provenance import USAGE_QUALIFICATION_POLICY_VERSION
+
+        view = self._view(usage_project, tmp_path)
+        versions = {r["qualification_policy_version"] for rows in view.values() for r in rows}
+        assert versions == {USAGE_QUALIFICATION_POLICY_VERSION}
 
 
 # ---------------------------------------------------------------------------
@@ -717,8 +930,8 @@ class TestAllowlistVersionLockstep:
     maintains and the control it exists to provide does not exist.
     """
 
-    PINNED_VERSION = 3
-    PINNED_HASH = "bf0b2c214c0b6c4db2308bae58326b1d60b6b3aac0cae732766a9ab098ae6968"
+    PINNED_VERSION = 4
+    PINNED_HASH = "398f6141915a6a40dcee552314ca10ac9f60fe8050678438e24ec0656301038c"
 
     def test_allowlist_and_version_change_together(self) -> None:
         digest = hashlib.sha256(
@@ -1221,10 +1434,10 @@ class TestDashboardNodeRuntimeGate:
     """
 
     @pytest.mark.timeout(240)
-    def test_generated_page_runtime_behaviour(self, project: Path) -> None:
+    def test_generated_page_runtime_behaviour(self, usage_project: Path) -> None:
         node = require_node()
 
-        code, out = _run(project, since="2026-07-01")
+        code, out = _run(usage_project, since="2026-07-01")
         assert code == 0
 
         js_test = Path(__file__).parent / "js" / "feat3304" / "feat3304_dashboard_runtime.test.mjs"

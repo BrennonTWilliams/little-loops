@@ -3,9 +3,10 @@ id: ENH-3733
 type: ENH
 title: Snapshot export and dashboard usage qualification
 priority: P2
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-10-05'
+completed_at: '2026-10-07T17:17:39Z'
 parent: ENH-3723
 decision_needed: false
 testable: true
@@ -165,16 +166,16 @@ Bump `_SHAREABLE_ALLOWLIST_VERSION` with every allowlist edit and update `TestAl
 
 ## Acceptance Criteria
 
-- [ ] Source/snapshot token and cost qualification agree for measured/estimated/mixed, partial/unknown, invalid and unpriced contributor populations; rejected rows cannot create a canonical subset. Valid sums outside SQLite's integer range follow the documented consumer-only unavailable exception without crashing or rounding.
-- [ ] Full-identity coverage precedes filtering; window/channel/model controls preserve completeness, approved raw/selected evidence and observation counts. Logical NULL buckets and whole-model metadata are documented.
-- [ ] Canonical unavailable fields are NULL with bounded reasons; observed zero remains numeric zero. Empty channels/models create no figures or artificial zeros. Generated audit subtotals obey shared validity/finite-sum/range rules without failing on invalid or unrepresentable values; missing-cost counts mean NULL only, and invalid/overflow values do not inflate them. Exactly four new metadata columns are added.
-- [ ] New metadata is strictly allowlisted and leak-tested against both prose and identifier-shaped sentinels; approved existing observation identities remain unchanged.
-- [ ] Aggregate label, separate token/cost reasons and shared policy version travel on audit rows. Old snapshots are audit-only; empty new snapshots have neither figures nor a version row. No rate/page-stamp/payload/table additions.
-- [ ] Predefined SQL is executed in ordinary pytest against real generated snapshots and displays unavailable vs zero correctly. The generated page's own query/render path passes Node controls for exact integers through `2**63-1`, REAL costs, zero, NULL and row caps wherever supported. Custom SQL is unmodified and receives truthful completeness guidance; no BigInt query-row JSON serialization or vendor edit is needed.
-- [ ] The predefined usage view includes all four canonical token components and independent token/cost availability. Token export overflow can coexist with available cost; positive cost below display precision remains available. Unrounded custom-SQL REAL values, zero-row empty generated tables and current metadata on newly exported pre-v55 source stores pass the real SQL/page controls.
-- [ ] Two disjoint channels with representable `2**62` token subtotals remain available despite an unbound model sum above int64; finite per-channel costs whose shared model sum overflows stay unavailable with `invalid_cost`. A WAL writer committing between version acquisition and export reads cannot produce mixed-revision source metadata/raw/selected/audit tables.
-- [ ] Generated tables and source-version metadata use one source read snapshot; concurrent writes cannot create internally inconsistent export. Schema/allowlist/hash lockstep, reproducibility and five-key live payload controls pass.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] Source/snapshot token and cost qualification agree for measured/estimated/mixed, partial/unknown, invalid and unpriced contributor populations; rejected rows cannot create a canonical subset. Valid sums outside SQLite's integer range follow the documented consumer-only unavailable exception without crashing or rounding.
+- [x] Full-identity coverage precedes filtering; window/channel/model controls preserve completeness, approved raw/selected evidence and observation counts. Logical NULL buckets and whole-model metadata are documented.
+- [x] Canonical unavailable fields are NULL with bounded reasons; observed zero remains numeric zero. Empty channels/models create no figures or artificial zeros. Generated audit subtotals obey shared validity/finite-sum/range rules without failing on invalid or unrepresentable values; missing-cost counts mean NULL only, and invalid/overflow values do not inflate them. Exactly four new metadata columns are added.
+- [x] New metadata is strictly allowlisted and leak-tested against both prose and identifier-shaped sentinels; approved existing observation identities remain unchanged.
+- [x] Aggregate label, separate token/cost reasons and shared policy version travel on audit rows. Old snapshots are audit-only; empty new snapshots have neither figures nor a version row. No rate/page-stamp/payload/table additions.
+- [x] Predefined SQL is executed in ordinary pytest against real generated snapshots and displays unavailable vs zero correctly. The generated page's own query/render path passes Node controls for exact integers through `2**63-1`, REAL costs, zero, NULL and row caps wherever supported. Custom SQL is unmodified and receives truthful completeness guidance; no BigInt query-row JSON serialization or vendor edit is needed.
+- [x] The predefined usage view includes all four canonical token components and independent token/cost availability. Token export overflow can coexist with available cost; positive cost below display precision remains available. Unrounded custom-SQL REAL values, zero-row empty generated tables and current metadata on newly exported pre-v55 source stores pass the real SQL/page controls.
+- [x] Two disjoint channels with representable `2**62` token subtotals remain available despite an unbound model sum above int64; finite per-channel costs whose shared model sum overflows stay unavailable with `invalid_cost`. A WAL writer committing between version acquisition and export reads cannot produce mixed-revision source metadata/raw/selected/audit tables.
+- [x] Generated tables and source-version metadata use one source read snapshot; concurrent writes cannot create internally inconsistent export. Schema/allowlist/hash lockstep, reproducibility and five-key live payload controls pass.
+- [ ] `python -m pytest scripts/tests/` exits 0. (1 failure + 8 errors reproduce on clean `main`: `test_next_loop_golden`, live `test_libsql_integration`.)
 
 ## Impact
 
@@ -234,6 +235,8 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-07T17:17:39 - `bc545c3f-f96c-4059-84c3-601caf2c25c7.jsonl`
+- `/ll:ready-issue` - 2026-10-07T16:56:21 - `c3217ded-bd6e-47d6-8550-bc50b893cca6.jsonl`
 - `/ll:confidence-check` - 2026-10-07T16:51:58 - `8d2a4672-0c21-4e88-b585-9393828cb9fc.jsonl`
 - Pre-implementation review - 2026-10-07 - Specified token-bearing predefined SQL, independent unrounded-value availability, isolated zero/small-positive/unpriced fixtures, regenerated-vs-retained legacy artifacts and discriminating WAL/channel-boundary tests. Corrected parent/epic API and population handoffs; Opus supported the changes (confidence 0.80). Existing baseline: 198 passed; issue corpus gates: 4 passed. Cleared prior confidence scores; no implementation or refreshed readiness score claimed.
 
@@ -263,6 +266,22 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 - `/ll:wire-issue` - 2026-10-05T04:23:20 - `1b404432-b825-49eb-bd3d-99651e25e458.jsonl`
 - `/ll:refine-issue` - 2026-10-05T04:16:01 - `688a8bf8-c000-4ab4-a82d-b83b98aa3a6a.jsonl`
 - `/ll:issue-size-review` - 2026-10-05T00:00:00 - `<session-dir>/session.jsonl`
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-10-07T17:17:39Z
+- **Status**: Completed
+
+### Changes Made
+- `session_store/queries.py`: `_snapshot_usage_selection` now builds one `ObservationGroup` per logical model (NULL model → `UNKNOWN_MODEL_BUCKET`, `row_channel` buckets) and qualifies tokens and cost separately through `qualify_usage`; each channel row carries its own contribution plus four model-scoped metadata columns (`provenance`, `qualification_reason`, `cost_qualification_reason`, `qualification_policy_version`). `_SnapshotTotals` reuses the shared validators and finite `fsum`, tracks NULL vs invalid separately (missing-cost counts are NULL-only), and an export-only int64 representability guard yields `snapshot_integer_overflow` for canonical tokens. Reasons pass a bounded allowlist (`unclassified` otherwise). `read_schema_version` moved inside the export transaction. Allowlist version 3 → 4.
+- `templates/dashboard.llat/template.html.j2`: predefined view renamed `Usage by model and channel` with four canonical token fields, independent `token_availability`/`cost_availability` (value-based, unrounded cost), reasons and model scope; `runQuery` reads rows with `getAsObject(undefined, {useBigInt: true})` for exact integers; guidance text for custom SQL.
+- Tests: `test_enh3543_snapshot_usage.py` (parity, overflow permutations, disjoint channels, window, leak/reason bounding, WAL version and selector-seam snapshot tests), `test_feat3304_artifact_dashboard.py` (predefined SQL executed on real snapshots, pins bumped to v4), `feat3304_dashboard_runtime.test.mjs` (page's own query/render loop with a DOM stub).
+- Docs: `docs/reference/API.md`, `docs/reference/CLI.md`.
+
+### Verification
+- Full suite: 29448 passed; 1 failure (`test_next_loop_golden` float repr) and 8 errors (`test_libsql_integration` live endpoint) reproduce identically on clean `main`. `ruff check` findings are in unrelated spike files; mypy clean.
+- Mutation checks: moving the version read outside the transaction fails the WAL test; reverting `useBigInt` fails the Node page-loop test.
 
 ## Status
 

@@ -9198,6 +9198,68 @@ of insertion order: `empty_selection`, `coverage_overlap_unresolved`, `coverage_
 publishes a canonical value only when its qualification is eligible, and
 `ObservationGroup.audit_subtotal()` returns the valid-value sum with no gate.
 
+### build_snapshot_db usage accounting tables
+
+```python
+from little_loops.session_store.queries import build_snapshot_db
+
+def build_snapshot_db(
+    db: Path, dest: Path, *, tables: list[str], since: str | None = None, local_mode: bool = False
+) -> str | None
+```
+
+When `usage_event` is exported, the snapshot carries three usage tables (ENH-3543,
+ENH-3733): `usage_events` (raw observations for audit), `selected_usage_events`
+(rows the coverage policy accepted, labelled with their `coverage`) and
+`usage_coverage_audit` (one row per model and channel). The return value is still the
+source `schema_version`; it is now read inside the same read transaction as the
+exported rows, so the version, raw rows, selected rows and audit rows always describe
+one committed revision of the source store.
+
+`usage_coverage_audit` qualifies usage with [`qualify_usage`](#qualify_usage--usagequalification)
+at **model scope**. Every in-filter audit observation of a logical model (rows with no model
+share the reserved `(unknown model)` bucket; legacy NULL channels use the logical channel)
+forms one group, and tokens and cost are qualified separately. The group's result
+controls every channel row: a complete channel cannot make an incomplete model
+available. Each row therefore repeats four model-scoped metadata columns next to its own
+per-channel values:
+
+| Column | Meaning |
+|--------|---------|
+| `provenance` | Aggregate `measured` / `estimated` / `mixed` / `unknown` label of the whole model |
+| `qualification_reason` | Why the four `canonical_*_tokens` are NULL (bounded code), or NULL when available |
+| `cost_qualification_reason` | Why `canonical_cost_usd` is NULL (bounded code), or NULL when available |
+| `qualification_policy_version` | The `USAGE_QUALIFICATION_POLICY_VERSION` that produced the result |
+
+`coverage_reason` stays a coverage diagnostic and is separate from the accounting
+reasons. Reasons are drawn only from a fixed vocabulary — the qualification reasons, the
+coverage reason codes and `snapshot_integer_overflow`; anything else is written as
+`unclassified`.
+
+- All four `canonical_*_tokens` columns are NULL together when tokens do not qualify;
+  `canonical_cost_usd` follows its own result, so valid tokens stay available when cost is
+  unpriced. A qualified channel whose observed values are all zero reports `0`; a
+  channel/model/window with no observations gets no row, never an invented zero.
+- `raw_*` and `known_*` columns are audit subtotals over valid values only (non-negative
+  integers; finite non-negative costs). `raw_missing_cost_count` and
+  `known_missing_cost_count` count **NULL costs only**; inadmissible or overflowing values
+  are excluded from subtotals and surface through the qualification reasons. (Before
+  allowlist version 4 these counts also included inadmissible values.)
+- SQLite INTEGER columns hold at most `2**63 - 1`. A raw or known token subtotal above
+  that is written as NULL without dropping any observation row or count. If a canonical
+  *channel* token subtotal cannot be represented, all canonical token components of that
+  model become NULL with `snapshot_integer_overflow`; cost is unaffected, and the source
+  readers (which are not limited by SQLite) are unchanged. Values are never rounded or
+  clamped to fit.
+- Old snapshot files and standalone dashboards generated before these columns existed
+  remain historical audit artifacts and are not certified under the current policy;
+  regenerate the dashboard to get the model-scoped view. A snapshot generated from a
+  store with no usage observations has empty usage tables and therefore no policy-version
+  row.
+
+Custom SQL against these tables stays an audit tool: a `SUM` over selected rows or NULLs
+does not certify a complete population, so read the canonical columns and their reasons.
+
 ### select_usage_coverage / select_usage_observations
 
 ```python
