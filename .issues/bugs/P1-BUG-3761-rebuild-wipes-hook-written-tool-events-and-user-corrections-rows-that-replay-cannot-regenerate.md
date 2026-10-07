@@ -1,6 +1,7 @@
 ---
 id: BUG-3761
-title: rebuild() wipes hook-written tool_events and user_corrections rows that replay cannot regenerate
+title: rebuild() wipes hook-written tool_events and user_corrections rows that replay
+  cannot regenerate
 type: BUG
 priority: P1
 status: open
@@ -17,6 +18,43 @@ relates_to:
 - BUG-3715
 - BUG-3766
 - ENH-3747
+confidence_score: 95
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: minor-open-impl-choices
+  domain: outcome
+  criterion: ambiguity
+  description: Temp relation vs materialized CTE and inline vs helper (23-function
+    pin) left to implementation
+- id: rebuild-lock-window
+  domain: outcome
+  criterion: complexity
+  description: Survivor-key materialization extends the BEGIN IMMEDIATE window against
+    the 5s hook busy timeout; needs measurement
+- id: shared-rebuild-edit-coordination
+  domain: outcome
+  criterion: change_surface
+  description: ENH-3747 and BUG-3766 edit the same search deletion and derive-version
+    bump; patches must be combined without losing exclusions
+- id: survivor-deletion-novel-pattern
+  domain: readiness
+  criterion: architecture_compliance
+  description: Survivor-aware search deletion deviates from simple predicate precedent
+    used for usage/retention rows
+- id: survivor-search-key-normalization
+  domain: outcome
+  criterion: complexity
+  description: NULL-safe, type-normalized FTS survivor-key matching (strip semantics,
+    NULL/empty session, affinity) is new mechanism beyond predicate precedent
+- id: wide-test-doc-fanout
+  domain: outcome
+  criterion: complexity
+  description: About 17 change sites across source, fingerprint JSON, six test files
+    and four docs
 ---
 
 ## Summary
@@ -218,6 +256,7 @@ Focused baseline checks passed: 101 tests across `TestRebuild`, PostToolUse hook
 **Open** | Created: 2026-10-06 | Priority: P1
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T01:02:00 - `8092456a-7bf3-47b0-86f7-42712002052b.jsonl`
 - `/ll:ready-issue` - 2026-10-07T00:55:44 - `62355c4f-23ba-4c6f-bf44-9fe87ad6e7af.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-07T00:39:26 - `c822b1e8-eb73-465f-ac83-ee54531a264e.jsonl`
 - `/ll:reconcile-issue` - 2026-10-07T00:31:44 - `c0a7447a-de94-4f52-84a5-8f881b60acd9.jsonl`
