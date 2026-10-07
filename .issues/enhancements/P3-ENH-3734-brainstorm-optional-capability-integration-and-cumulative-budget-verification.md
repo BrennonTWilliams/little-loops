@@ -118,6 +118,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Review Notes
 
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78):_ provisional until the optional children land (EPIC-3687 § Provisional). The matrix is 2^k over the capabilities actually built (a cancelled child shrinks it), and must report the remaining step slack (the core has about 9-11 visits before optional capabilities; all three add about 8; retries consume visits). Cumulative time follows EPIC-3581 § Budget sizing rule. No contract change.
+
 _2026-10-05 executor review and `/ll:advise` with Opus (confidence 0.70):_ all four existing children suffice. Adopted real deterministic shell integration, fresh-attempt/render-source matching, bounded annotation/source validation, explicit retry/clock accounting and an all-three-enabled evidence run. Retained the eight-combination matrix with real artifact effects. Dissent: per-verdict stamp/compositing remains the heaviest P3 mechanism; no reversal of its existing capability-sanity purpose is warranted. Bounds are design choices, not live measurements.
 
 _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ added manifest/verdict restart and grounding-deadline combinations. Count grounding in pre-tournament elapsed time, not the post-tournament tail suggested by the advisor. No new live measurements; scope/ownership and deferred capabilities are unchanged.
@@ -127,5 +129,6 @@ _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ added manifest
 **Open** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
 - Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - `/ll:refine-issue` - 2026-10-05T17:31:36-06:00 - `EPIC-3687 pre-implementation review`

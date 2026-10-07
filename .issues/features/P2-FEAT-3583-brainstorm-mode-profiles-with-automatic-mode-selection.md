@@ -85,7 +85,7 @@ Optional target flips are owned by FEAT-3584 (functional ground=codebase), FEAT-
 
 ### Bounded tuning and comparable evaluation
 
-The completed FEAT-3686 spike found functional approach agreement 0.72 (<0.75); visual/business axes are unmeasured. For each of these modes, use a fixed corpus of at least 20 representative ideas and the same three independent blind-tag calls, recording exact-cell and per-axis agreement. Permit at most two tuning iterations (three measured versions including the initial one); acceptance is exact-cell >=0.6 and each axis >=0.75. If it still fails, preserve a provisional explicit-mode preset, keep the shipped default artifact, and leave the tuning acceptance criterion pending until the axis decision is resolved; report the blocker rather than tune indefinitely or silently weaken the threshold.
+The completed FEAT-3686 spike found functional approach agreement 0.72 (<0.75); visual/business axes are unmeasured. For each of these modes, use a fixed corpus of at least 20 ideas (source and briefs: EPIC-3581 § Pinned briefs and tuning corpus: old-loop ideas on the matching pinned brief, never new-loop ideas under the preset being tuned) and the same three independent blind-tag calls, recording exact-cell and per-axis agreement. Permit at most two tuning iterations (three measured versions including the initial one); acceptance is exact-cell >=0.6 and each axis >=0.75. If it still fails, preserve a provisional explicit-mode preset, keep the shipped default artifact, and leave the tuning acceptance criterion pending until the axis decision is resolved; report the blocker rather than tune indefinitely or silently weaken the threshold.
 
 Freeze the final definitions and corpus/model/version in the run record. If functional bins/definitions change, re-tag **both old and new** pinned-brief ideas with those same final definitions; the historical six-cell figure is not a gate against a changed grid. FEAT-3582's earlier comparison uses FEAT-3667's provisional preset and is preserved as its own evidence.
 
@@ -117,7 +117,7 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 
 ## Implementation Steps
 
-1. Tune and measure the existing presets within the bounded process; keep final axis definitions comparable across baselines.
+1. Build the corpora (one fresh old-loop run each on pinned briefs 3-4; functional reuses `fresh-20260929/`), then tune and measure the existing presets within the bounded process; keep final axis definitions comparable across baselines.
 2. Wire explicit-input preflight, auto-only classify_mode, safe capture/file delivery and the existing resolver.
 3. Add malformed/finite-confidence/boundary/error/explicit-mode fixtures and capability-token wiring tests.
 4. Verify preset packaging, fence/capture rules, exact state count (classifier adds one successful-path state), the derived classifier time/retry bound, both loop validation and the local suite. Document auto as opt-in; FEAT-3596 owns release of the new default.
@@ -132,7 +132,7 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 ## Acceptance Criteria
 
 - Four existing presets satisfy FEAT-3667's schema; functional/visual/business tuning meets the bounded measurement gate. The default remains artifact in this change; FEAT-3596 flips it only after live evidence passes.
-- One reference brief per mode is routed using stubbed classifier output. FEAT-3596 owns the four already-planned live auto runs and the default-switch gate; stubbed success alone is not evidence of classifier accuracy. No duplicate live calibration run is required here.
+- One pinned brief per mode (EPIC-3581 § Pinned briefs and tuning corpus) is routed using stubbed classifier output. FEAT-3596 owns the four already-planned live auto runs and the default-switch gate; stubbed success alone is not evidence of classifier accuracy. No duplicate live calibration run is required here.
 - Explicit mode skips classification; invalid explicit inputs cause zero LLM dispatches even with mode=auto, including ideas_per_round outside FEAT-3667's 1–10 cap or min_ideas above nine-lens capacity. Reuse engine validation; do not add a second bound implementation.
 - Confidence 0.6 is accepted; lower, nonfinite/out-of-range, boolean, malformed, unknown mode and classifier host failure/timeout all fall back visibly to artifact.
 - Real-executor/resume fixtures seed a prior high-confidence MODE_JSON capture, then raise a classifier exception/timeout or exhaust retries. The fixed-error branch selects artifact and records the current failure, even when the old decision file exists. Duplicate/oversized records, empty/oversized rationale, failed raw-file writes and explicit-mode capture bypass have deterministic coverage.
@@ -143,6 +143,8 @@ Freeze the final definitions and corpus/model/version in the run record. If func
 - Changed definitions trigger comparable old/new re-tagging; reference records include import origin and actual resource usage.
 
 ## Review History
+
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78):_ the tuning corpus had no defined source for visual/business (and the circular option, ideas from the steered new loop under the preset being tuned, would inflate bin agreement); it now comes from old-loop runs on the pinned briefs (EPIC-3581 § Pinned briefs and tuning corpus). Classifier timeout/retry sizing follows EPIC-3581 § Budget sizing rule (proposal: 120 s).
 
 _2026-10-05 implementation-boundary review; `/ll:advise` with claude-opus-5-5, confidence 0.78:_ Kept auto opt-in and moved the default switch to FEAT-3596 after its existing live evidence, avoiding a duplicate calibration corpus. Added explicit classifier timeout/retry-bound and shared safe argument transport requirements.
 
@@ -183,6 +185,7 @@ _Added by `/ll:confidence-check` on 2026-09-28; re-verified unchanged 2026-09-29
 **Note** (added by `/ll:audit-issue-conflicts`): This issue adds opt-in `mode=auto` only and preserves the shipped `mode=artifact` default; FEAT-3596 owns the gated default flip to `auto` (the 2026-09-30 note above saying this issue flips the default is superseded). FEAT-3582 owns wiring the `resolve-profile --validate-only` preflight into `init`; this issue adds only the auto-only `classify_mode` branch after it.
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
 - Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - `/ll:audit-issue-conflicts` - 2026-10-06T17:22:34 - `41577712-f527-4990-b326-7134aa659541.jsonl`
 - Implementation-boundary review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue updates only) - 2026-10-05

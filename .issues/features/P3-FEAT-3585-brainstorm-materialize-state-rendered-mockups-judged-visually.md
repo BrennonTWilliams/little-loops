@@ -89,7 +89,7 @@ materialize-check commits materialize.json once, then atomically projects its se
 
 Before any manifest exists, each render dispatch publishes one atomic staging result bound to its render_attempt_id and materialize_input input_digest. Candidate IDs come only from the snapshot, never a directory scan. Results contain per-asset source_sha256 computed at render time, png_sha256 and code_sha256, plus the control digest and operation status. materialize-check accepts an image only when attempt/input/source hashes match and the actual contained PNG exists with PNG signature/IHDR dimensions matching the configured viewport/device scale; a staging rendered label alone is insufficient. Explicit --render-error/--canary-error routes ignore stale successful staging/captures rather than accepting leftovers. A committed manifest still uses the stricter replay contract above; attempt staging does not replace it.
 
-Initial unmeasured action bounds are author 300 s, canary 120 s and render state 130 s. Rendering has at most 5 s module discovery + 15 s browser launch + nine 10 s file operations (eight candidates, each including capture/composite, plus control) + 5 s cleanup + 15 s publication/termination allowance. A shorter configured whole-operation deadline may degrade earlier. Any changed measured bound must update YAML/constants/fixtures together. All materialize work, including allowed author/canary retries and rendering/check overhead, extends PRE_TOURNAMENT_WORST_S/parent timeout, not the post-tournament TAIL_S. There is no promise of completing image judging under every failure pattern.
+Initial unmeasured action bounds are author 300 s, canary 120 s and render state 130 s. Rendering has at most 5 s module discovery + 15 s browser launch + nine 10 s file operations (eight candidates, each including capture/composite, plus control) + 5 s cleanup + 15 s publication/termination allowance. A shorter configured whole-operation deadline may degrade earlier. Any changed measured bound must update YAML/constants/fixtures together. All materialize work, including allowed author/canary retries and rendering/check overhead, extends PRE_BUDGET_S/parent timeout, not the post-tournament TAIL_S. There is no promise of completing image judging under every failure pattern.
 
 ## Integration Map
 
@@ -158,6 +158,8 @@ Initial unmeasured action bounds are author 300 s, canary 120 s and render state
 
 ## Review History
 
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78):_ provisional until the core lands (EPIC-3687 § Provisional). Before starting, re-evaluate value against the core's measured visual-mode results; cancellation is allowed. If it proceeds and the first reference run shows the stamped-PNG mechanism dominating cost or failures, phase it (image judging first, per-verdict stamps second) as a recorded Review Decision rather than hardening further. Materialize time bounds follow EPIC-3581 § Budget sizing rule (one retry allowance per prompt state; the per-action bounds above stay as the declared timeouts). No contract change.
+
 _2026-10-05 executor/portability review and `/ll:advise` with Opus (confidence 0.70):_ pinned fresh error status/render-attempt identity, exact source/code parsing, PNG validation, all three zero-wait settings, safe capture transport, whole-renderer bounds, host tool-scope limits, and ownership of the generation-floor CLI extension. No new browser/model measurements were made. Historical step estimates, round-1 restart language and FEAT-3596 reference-run ownership below are superseded by the active contract above. Retained per-verdict stamps despite their complexity; they remain a capability sanity signal.
 
 _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ accepted static-wrapper compositing, digest-only expected-code metadata, a stable input snapshot/committed manifest and replay fixtures. Retained the existing <2-valid-source failure: the advisor's new text-only fallback would allow unauthored candidates and is unnecessary because the floor already handles this path. Code echoes remain an instruction-scoped sanity signal; hashing is not claimed as read isolation. Browser/stamp learning proof and real visual evidence remain pending implementation.
@@ -192,6 +194,7 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
 - Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - `/ll:refine-issue` - 2026-10-05T17:31:36-06:00 - `EPIC-3687 pre-implementation review`
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05

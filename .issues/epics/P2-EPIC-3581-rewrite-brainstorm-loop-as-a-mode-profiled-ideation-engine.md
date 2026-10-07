@@ -45,7 +45,7 @@ Out of scope: reframe, unjudged hybrid synthesis, web evidence/reserve promotion
 - Generation is bounded to 1–10 ideas per lens (at most nine lenses/90 current rows), with typed/nonempty bounded title/body/extra fields and visible rejection counts. Valid blind re-tags recompute off_grid eligibility; invalid ones preserve it. Explicit inputs fail preflight before the classifier/generation. BUILT_CAPABILITIES prohibits missing-state tokens. Profiles choose base values; nonempty explicit knobs override; empty inherits; false/none disables. reframe and synthesize=true remain unavailable in v1.
 - Canonical portfolio slots are distinct eligible tournament finalists; reserve/dropped IDs cannot leak to sinks. Reports are deterministic; successful validation precedes every sink. Generation diversity and surviving finalist coverage are separate metrics; post-filter finalist floor is two.
 - Main tournament and reversed probe batches are atomic; the rate definitions and thresholds are pinned in FEAT-3667. Odd-finalist partial rounds do not guarantee equal games, so salvage is low-confidence. Child failures have explicit failure terminals and all failure routes reach salvage.
-- Budgets come from actual executor paths, including captured blocks, empty queue peek, classifier, sink/finalization, retries and backoffs. Every prompt has a finite action timeout; FEAT-3582 owns the retry arithmetic (ordinary prompt visit: at most five dispatches, 5*timeout + 70 s backoff) and executor-constant mirror fixture. The child-overrun term remains one last action plus one handler sleep. Nominal core paths fit max_steps60; retry-induced parent cap exhaustion runs deterministic finalize_failed, while child cap exhaustion reaches salvage. Outer loop timeout can bypass finalization; no executor changes are part of this epic. Disable six-hour rate-limit defaults; preserve the child/judge/core tail plus retry-sleep reserve. Optional children own their own step/time increments; ENH-3734 verifies their cumulative values.
+- Budgets come from actual executor paths, including captured blocks, empty queue peek, classifier, sink/finalization, retries and backoffs. Every prompt has a finite action timeout; FEAT-3582 owns the retry arithmetic (ordinary prompt visit: at most five dispatches, 5*timeout + 70 s backoff) and executor-constant mirror fixture; parent/tail sizing follows § Budget sizing rule (nominal visits + one retried visit; the all-retries bound is informational). The child-overrun term remains one last action plus one handler sleep. Nominal core paths fit max_steps60; retry-induced parent cap exhaustion runs deterministic finalize_failed, while child cap exhaustion reaches salvage. Outer loop timeout can bypass finalization; no executor changes are part of this epic. Disable six-hour rate-limit defaults; preserve the child/judge/core tail plus retry-sleep reserve. Optional children own their own step/time increments; ENH-3734 verifies their cumulative values.
 - Classifier host-error paths pass a fixed decision-error to the resolver and never read saved successful captures. Core fixtures explicitly disable the three optional knobs; negative capability tests use the core allowlist while shipped-preset compatibility uses the actual built set.
 - FEAT-3582's real worktree runs and comparable core A/B gate occur before the live rewrite reaches main. FEAT-3596 repeats the final-core comparison with matched model/settings, actual usage and identical blind tagging of old/new ideas. Changed axes require re-tagging both sets; human A/B judgments must be actually recorded.
 
@@ -56,6 +56,46 @@ One accounting definition is shared by FEAT-3582's pre-main gate and FEAT-3596's
 The preserved fresh baseline uses claude-sonnet-5-5 with its recorded host/settings. Its exact denominators are **902,745 artifact tokens** (879,243 input context + 23,502 output) and **915,457 functional tokens** (888,628 input context + 26,829 output). The former approximately 879k/889k values excluded output and cannot be denominators for this formula. These corrections reuse recorded columns; they are not new measurements and do not rewrite the preserved baseline.
 
 Test `2 * new_gate_tokens <= 3 * matching_baseline_tokens` in integers: ceilings **1,354,117** (artifact) and **1,373,185** (functional). A different model/host/settings is incomparable until a matching baseline exists. Preserve complete per-component usage, import origin and comparison inputs; both children reference this definition rather than redefining it.
+
+## Cost-gate notes (2026-10-07)
+
+The ceiling (1.5x of 14 old calls) binds at about 21 flat-average calls (902,745 / 14 ≈ 64.5k per call), not at the ≤30-call cap, which is only a sanity cap. The core design is 20 calls (frame, 9 diverge, dedup, shortlist, 7 rounds, probe) + `finalize_done` + the classifier under auto. The earlier "≈22 x 63k ≈ 1.4M" estimate is pessimistic: the old average includes three ≈130k listwise calls (cluster/rank/converge) that no longer exist (the other 11 calls average ≈44k). Nothing is measured until FEAT-3582's real runs. If the first real run exceeds the ceiling, apply these pre-agreed levers in order, one change per re-run of the same briefs:
+
+1. Make `finalize_done` deterministic (-1 call; `render-report` already produced the report).
+2. Skip the `frame` LLM call when the profile's lens catalog has ≤9 lenses and all are used (-1 call).
+3. Re-baseline: if per-call fixed host overhead dominates, apply one documented slimmer host setting to BOTH the old baseline (re-run from the pinned SHA) and the new loop. Comparability requires matching settings, so re-baseline rather than waive the gate.
+4. Cap lenses last: it works against the cells >= old gate.
+
+A lever that changes a contract is recorded as a Review Decision in its owning child.
+
+## Budget sizing rule (2026-10-07)
+
+Parent timeout and `TAIL_S` are sized from declared timeouts, not from an all-retries worst case. Thirteen-plus prompt visits at `5*T + 70 s` each is hours at any sensible `T`, and a literal all-retries `TAIL_S` makes the `insufficient_time` guard unsatisfiable (guard needs `TAIL_S + 2130 s` remaining). Rule:
+
+- `PRE_BUDGET_S` = sum of declared timeouts of every nominal pre-tournament prompt visit (nine diverges, plus the classifier under auto) + one extra retried visit at the largest timeout (`4*T_max + 70`).
+- `TAIL_S` = max(600, longest post-tournament branch with each prompt allowed one retry (`2*T + 30`) + deterministic overhead).
+- `PARENT_TIMEOUT_S` = `PRE_BUDGET_S + TOURNAMENT_TIMEOUT_S + JUDGE_CALL_TIMEOUT_S + RETRY_SLEEP_RESERVE_S + TAIL_S`.
+
+Initial unmeasured proposals: classifier 120, frame 180, diverge 240, dedup 300, shortlist 180, sink prompts 300, `finalize_done` 180 if still a prompt. That gives `PRE_BUDGET_S` ≈ 4,210, `TAIL_S` ≈ 700-1,100 and a parent timeout of about 7,000-7,500 s. The all-retries table stays informational: a retry storm can hit the outer timeout without finalization (already accepted), while a healthy-but-slow run fails loudly at the `pre_tournament` guard with `ideas.jsonl` intact. Optional children apply the same rule to their own prompt visits (one retry allowance each); ENH-3734 verifies the sum. Constants live in the engine and are mirror-tested against the YAML (FEAT-3582).
+
+## Pinned briefs and tuning corpus (2026-10-07)
+
+Frozen before any run scores them; editing one after its first run creates a new brief and keeps the old result. Briefs 1-2 are the existing baseline briefs.
+
+| # | Expected auto mode | Brief |
+|---|---|---|
+| 1 | artifact | "Suggest names and one-line taglines for an open-source CLI that watches a repository's issue backlog and drafts implementation plans." |
+| 2 | functional | "Design how little-loops should let a user pause a running FSM loop, edit its context, and resume it without losing state." |
+| 3 | visual | "Design the visual identity (logo direction, color palette, typography) and landing-page layout for an open-source CLI that watches a repository's issue backlog and drafts implementation plans." |
+| 4 | business | "Propose a business model, pricing and go-to-market plan for an open-source CLI that watches a repository's issue backlog and drafts implementation plans." |
+
+FEAT-3596's four live auto runs use these four briefs, with the expected mode fixed in advance. FEAT-3583's tuning corpus is at least 20 ideas per tuned mode from the OLD loop (pinned SHA `2fe16824a`, the `brainstorm-baseline` copy) on the matching brief: mode-agnostic and unsteered, as in the FEAT-3686 spike (functional reuses the `fresh-20260929/` brief-2 ideas). Never take it from the new loop under the preset being tuned; steering toward bins would inflate bin agreement. Briefs 3-4 each need one fresh old-loop run (about 14 calls) before tuning.
+
+## Delivery mode and spec freeze (2026-10-07)
+
+- **Spec freeze.** The 2026-09-30 freeze was followed by two more spec-only rounds; the 2026-10-07 review is the last before implementation. No further spec-only review rounds until FEAT-3667 checkpoint (b) lands; new contract text needs a failing test or a measured run behind it. EPIC-3687's children and ENH-3734 are provisional until the core lands: reconcile them then rather than hardening them now.
+- **Deliver on main, serially** (`/ll:manage-issue`: FEAT-3667, FEAT-3582, FEAT-3583, FEAT-3596). Under `parallel.epic_branches` the orchestrator merges `epic/EPIC-3581-*` to the base branch only when every child is done/cancelled with none blocked (`parallel/orchestrator.py` epic-complete check; `verify_before_merge` is false in this repo's config). That would make FEAT-3667's "safe to merge to main on its own" false, leave FEAT-3582's pre-main merge gate with no enforcement point, and strand the validated core on the epic branch when a FEAT-3596 default-flip miss leaves closure pending. If these issues are ever run through `ll-parallel`/`ll-sprint`, pass `--no-epic-branches`.
+- **Automation stop for human gates.** FEAT-3582's merge gate and FEAT-3596's criteria need a human-recorded blind A/B verdict. An implementing session prepares the randomized neutral A/B packet, records its path in the issue and stops with status `in_progress`. It never sets `done`, and never lets a Resolution or "automated fallback" stand in for the verdict. The human records the verdict in the issue body (rater, date, per-brief win/tie/loss).
 
 ## Default-mode release gate
 
@@ -98,7 +138,7 @@ FEAT-3582 ships artifact by default. FEAT-3583 adds opt-in auto and completes bo
 - Zero/insufficient ideas/cells/finalists fail before judging or sinks; no dropped/reserve candidate can win.
 - All four core modes produce their expected text-judged portfolio/report layouts; auto classification and explicit built-knob overrides are visibly recorded.
 - Full deterministic round-robin N<=8, counterbalanced order, independent reversed probe, observable tie/abstention/partial flags, and working failure salvage.
-- On the two pinned briefs with matched evaluation definitions/settings: cells >= old, duplicates <= old, actual calls <=30 (including classifier/finalization/retries), total context tokens <=1.5x the matching old baseline; human blind A/B win-or-tie on both. Two-brief evidence is a regression smoke check, not proof of improvement.
+- On the two pinned briefs with matched evaluation definitions/settings: cells >= old, duplicates <= old, actual calls <=30 (including classifier/finalization/retries; a sanity cap, the token ceiling binds first), `gate_tokens` (§ Comparable token gate; includes output) <=1.5x the matching old baseline; human blind A/B win-or-tie on both. Two-brief evidence is a regression smoke check, not proof of improvement.
 - Both loops validate; all artifacts stay under run_dir; packaging and full local pytest pass; exact step/time/retry bounds fit shipped budgets.
 - All five child statuses resolve to done/cancelled; no optional P3/P4 capability or deferred v2 scope gates this epic.
 
@@ -116,6 +156,8 @@ Reviewed 2026-10-06 against the current executor/runner/issue contracts, with `/
 Active child directives now cover the missing lens-completion/acknowledgement handoff, stale classifier captures, independent core fixtures and the unowned budget-helper reference. Preserve reservation-before-publication and the existing queue; the advisor's suggested metadata-last cursor shortcut would violate the monotonic-ID requirement. Implementation evidence, human A/B and refreshed readiness scores remain pending their owners.
 
 ## Review History
+
+_2026-10-07 pre-implementation review; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only, nothing measured:_ Declared the spec freeze and serial-on-main delivery (epic-branch merge only fires when every child is done/cancelled; verified against the orchestrator), added the pre-agreed cost levers and the budget sizing rule (a literal all-retries derivation of parent timeout/`TAIL_S` is unsatisfiable against the `insufficient_time` guard), pinned the visual/business briefs plus an unsteered tuning corpus, and added human-gate automation-stop rules. Child fixes: minimum-lens fail-fast, one floor-stage table, checkpoint (a)/(b) smoke-test dependency, `diverge` error route, `render-report --failed` non-clobber, retry slack fixture. Opus's "route `diverge` errors to `ingest` with an empty raw file" was not adopted (stale-capture hazard; see FEAT-3582).
 
 _2026-10-05 implementation-boundary review; `/ll:advise` with claude-opus-5-5, confidence 0.78:_ Reviewed all four open children against executor/persistence/interpolation code and preserved baseline counters. Updated ownership for durable lens handoff, safe shell arguments, derived pre-tournament bounds/local failure terminals, exact shared token accounting and the final-integration auto-default gate. No new child/dependency change, live quality measurement or human A/B verdict.
 
@@ -173,6 +215,7 @@ Historical design evolution; the reconciled scope/contracts above are authoritat
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
 - Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - Implementation-boundary review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.78; issue updates only) - 2026-10-05
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05

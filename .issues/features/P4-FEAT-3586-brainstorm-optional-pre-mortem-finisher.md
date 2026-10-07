@@ -140,7 +140,7 @@ Annotation input limits are 64 KiB UTF-8 per raw capture, exactly one tagged JSO
 
 Publication spans premortem.json and portfolio flags, so separate atomic replacements are not a transaction. Replaying annotate from the same saved captures must repair either interruption boundary to the same result, preserve unrelated flags and remove stale success on an explicit skip. Inject failures between both writes and verify replay before report/validation/sinks; successful annotation replay cannot introduce duplicate flags.
 
-The tail600 core reserve cannot guarantee two post-tournament calls plus retries. In the enablement change, add the maximum critic+defender action time **including bounded retry dispatches and backoff**, plus annotate/render/validation/finalization overhead, to TAIL_S and the parent's timeout/engine guard. Assert the longest finisher/error/salvage path fits with a fake clock. Do not budget only +3 visits: elapsed time and invocations are separate. ENH-3734 later verifies the combined optional value, and earlier children may already have raised the timeout.
+The tail600 core reserve cannot guarantee two post-tournament calls plus retries. In the enablement change, add the critic+defender action time with one retry allowance per prompt (EPIC-3581 § Budget sizing rule, `2*T + 30` each; the all-retries bound is informational), plus annotate/render/validation/finalization overhead, to TAIL_S and the parent's timeout/engine guard. Assert the longest finisher/error/salvage path fits with a fake clock. Do not budget only +3 visits: elapsed time and invocations are separate. ENH-3734 later verifies the combined optional value, and earlier children may already have raised the timeout.
 
 ## Implementation Steps
 
@@ -175,6 +175,8 @@ The tail600 core reserve cannot guarantee two post-tournament calls plus retries
 
 
 ## Review Decisions
+
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78):_ provisional until the core lands (EPIC-3687 § Provisional); re-evaluate value against core results before starting, and cancellation is an allowed outcome (this P4 child otherwise gates its P3 epic). Tail sizing now follows EPIC-3581 § Budget sizing rule. The snapshot/replay machinery is kept as specified; no contract change.
 
 _2026-10-05 executor review and `/ll:advise` with Opus (confidence 0.70):_ corrected the long-wait ladder, stale-capture error branches, printf/:shell transport, separate output-fence registration, bounded annotation input/publication replay, host scope limitations and preset integration map. The core evidence issue does not verify the all-optional budget; ENH-3734 owns that work. Historical four-step and heredoc statements below are superseded by the active three-visit contract. Kept the three-visit route rather than adding an intermediate critic validator; a malformed exit-0 critic may waste the bounded defender call. Numeric limits are design choices, not measured quality thresholds.
 
@@ -221,6 +223,7 @@ _Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate
 - `annotate` needs `portfolio.json`, `ideas.jsonl`, and the engine module, none of which exist yet. Signatures are pinned only against FEAT-3582's spec, so recheck them once FEAT-3582 lands.
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
 - Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - `/ll:refine-issue` - 2026-10-05T17:31:36-06:00 - `EPIC-3687 pre-implementation review`
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
