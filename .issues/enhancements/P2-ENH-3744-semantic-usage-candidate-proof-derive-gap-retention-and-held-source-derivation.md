@@ -22,6 +22,48 @@ relates_to:
 - ENH-3746
 - ENH-3747
 testable: true
+confidence_score: 75
+outcome_confidence: 50
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
+risk_factors:
+- id: deep-transactional-rewiring
+  domain: outcome
+  criterion: complexity
+  description: Replaces delete-then-replay with guarded reconciliation across prune,
+    rebuild, catch-up and two-phase refresh; contract-level changes
+- id: enh3747-search-loss-ordering
+  domain: readiness
+  criterion: dependencies
+  description: Preserving unchanged usage rows widens search-row loss unless open
+    ENH-3747 lands first or in the same change
+- id: generation-witness-storage-undecided
+  domain: outcome
+  criterion: ambiguity
+  description: Ordering/generation proof depends on a durable witness whose ownership
+    and shape sit with unresolved ENH-3745
+- id: paired-landing-enh3745
+  domain: readiness
+  criterion: dependencies
+  description: Must land with open ENH-3745 (cursor/progress storage); tooling lands
+    one issue per branch and epic-branch mode merges unverified
+- id: sanitizer-identity-registration
+  domain: readiness
+  criterion: specification
+  description: Proof identity keys must be registered in pii._protocol_rules or retained
+    payloads read as unprovable after redaction
+- id: slicing-decision-pending
+  domain: outcome
+  criterion: ambiguity
+  description: Opus slicing proposal (defer digest continuity, context-only promotion,
+    as-of witness) recorded but not decided; scope unsettled
+- id: wide-writer-caller-surface
+  domain: outcome
+  criterion: change_surface
+  description: Touched writer/lifecycle/refresh entry points have 6-10 dependents
+    across CLI, schema, readers and many test modules
 ---
 
 # ENH-3744: Semantic usage-candidate proof, derive-gap retention and held-source derivation
@@ -169,6 +211,28 @@ No independent freshness/cursor storage, reader admission, search restoration, l
 ## Status
 
 **Open** | Created: 2026-10-05 | Priority: P2
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 75/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 50/100 → LOW
+
+### Concerns
+- Paired landing with open ENH-3745 is mandatory, but tooling lands one issue per branch and epic-branch mode merges unverified (`verify_before_merge: false`); the landing plan is a process constraint, not an enforced mechanism.
+- ENH-3747 (open) must land first or in the same change, otherwise preserving unchanged usage rows widens search-row loss from held/live to every preserved observation.
+- Sanitizer identity precondition: every identity key the proof reads must be registered in `pii._protocol_rules`, or redacted retained payloads read as `unprovable`.
+- Learning tests: none required. Program Design gate passes; `BUG-3736` (`blocked_by`) is done.
+
+### Outcome Risk Factors
+- Deep per-site complexity: replaces delete-then-replay with guarded reconciliation across prune, rebuild, catch-up and two-phase refresh (contract-level change, High risk).
+- Scope unsettled: the Opus slicing proposal (defer digest continuity, context-only promotion, as-of witness) is recorded as a pending decision; decide before implementation starts.
+- Generation/ordering proof depends on a durable witness whose shape sits with unresolved ENH-3745.
+- Wide caller surface (~6-10 dependents across CLI, schema, readers, many test modules).
+
+### Risk Factor Delta
+- Baseline: none recorded
 
 ## Session Log
 
