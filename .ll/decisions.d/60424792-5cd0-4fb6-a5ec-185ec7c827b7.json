@@ -1,0 +1,12 @@
+{
+  "id": "c67da883-db12-432f-9f27-2fca473f0600",
+  "type": "decision",
+  "timestamp": "2026-10-07T00:51:08Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Clean oversize rows need only fetch/decode/scan; keeps page and wire bounds intact; C alone fails AC1",
+  "rule": "Option A (single-row oversize path) with Option C unverifiable_oversize floor",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (opt-in --max-row-bytes grows page worst case); Option C alone (fails AC1)",
+  "issue": "BUG-3762"
+}

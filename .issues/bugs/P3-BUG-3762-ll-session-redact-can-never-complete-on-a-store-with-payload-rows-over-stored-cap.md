@@ -6,7 +6,7 @@ priority: P3
 status: open
 discovered_date: '2026-10-06'
 labels: []
-decision_needed: true
+decision_needed: false
 unproven_mechanism: true
 ---
 
@@ -101,9 +101,9 @@ Decided by `/ll:decide-issue` on 2026-10-06.
 | Option C | 2/3 | 3/3 | 3/3 | 3/3 | 11/12 (fails AC1 standalone — not eligible as sole fix) |
 
 **Key evidence**:
-- Option A: reuses `_fetch_one` (`raw_redaction.py:293`), single-statement `execute` and `_reconcile_one`'s single-row `UPDATE_SQL` path; `_Col.length` already detects and sizes oversize columns. Against: no `substr`/blob-chunk read or cap-parameterized `decode_payload` exists anywhere (`DECODED_CAP` at `:210-219`), remote reads materialize the whole base64 result (`libsql.py:124`), and `UPDATE_SQL`'s full-bytes guard costs ~4.4 MB on a 3.3 MB row. The unproven fetch/decode mechanism remains (`unproven_mechanism: true`); the dirty-row write-back is the real unknown.
-- Option B: `--batch`/`batch_size` is a clean flag-plumbing template (`cli/session.py:417`, `:586`), but the bound must reach `_projection_sql`, `decode_payload`, the `STORED_CAP` replacement check (`:391`) and `REQUEST_BYTES_CAP` (`:445`, `:725`), and `test_captured_page_response_under_32mib` has no dependency on the flag.
-- Option C: new reason code is a one-line vocabulary addition plus `TestVocabulary` edit; sizes need a field on frozen `RawRedactionProblem` (update `_redact_report` helper). No remote-valid remedy command exists — `prune`/`compact` are remote-refused and keyed on source path/age (`backend.py:97-104`).
+- Evidence on A — reuses `_fetch_one` (`raw_redaction.py:293`), single-statement `execute` and `_reconcile_one`'s single-row `UPDATE_SQL` path; `_Col.length` already detects and sizes oversize columns. Against: no `substr`/blob-chunk read or cap-parameterized `decode_payload` exists anywhere (`DECODED_CAP` at `:210-219`), remote reads materialize the whole base64 result (`libsql.py:124`), and `UPDATE_SQL`'s full-bytes guard costs ~4.4 MB on a 3.3 MB row. The unproven fetch/decode mechanism remains (`unproven_mechanism: true`); the dirty-row write-back is the real unknown.
+- Evidence on B — `--batch`/`batch_size` is a clean flag-plumbing template (`cli/session.py:417`, `:586`), but the bound must reach `_projection_sql`, `decode_payload`, the `STORED_CAP` replacement check (`:391`) and `REQUEST_BYTES_CAP` (`:445`, `:725`), and `test_captured_page_response_under_32mib` has no dependency on the flag.
+- Evidence on C — new reason code is a one-line vocabulary addition plus `TestVocabulary` edit; sizes need a field on frozen `RawRedactionProblem` (update `_redact_report` helper). No remote-valid remedy command exists — `prune`/`compact` are remote-refused and keyed on source path/age (`backend.py:97-104`).
 
 ## Integration Map
 
@@ -125,6 +125,62 @@ _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 
 - **Tests**: `scripts/tests/test_raw_redaction.py` — `TestWireBounds` (`:197`; must keep passing), `TestVocabulary` (`:104`, pins the reason set), `TestRowFailures.test_unsupported_storage_and_resource_limit` (`:449`, builds its over-cap row with `zeroblob(STORED_CAP + 1)` — all zeros, not valid zlib/JSON, and asserts `resource_limit` for `(1, "parsed_json")` and `report.failed == 2`; this existing contract changes or is narrowed by the fix), `TestBoundedDecode.test_decoded_cap_boundary`. `scripts/tests/test_ll_session.py::TestRedactSubcommand` pins the `redact_raw_events` call kwargs exactly (`{"batch_size": 7, "dry_run": True}`), so a new keyword threaded from the CLI must update those assertions. No test asserts on `Incomplete:` / `Failed:` text, and none builds a valid over-cap payload (clean or dirty) — the synthetic rows the acceptance criteria call for do not exist yet. `scripts/tests/test_enh3751_sanitize_raw_events.py` has no over-cap ingest case.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/session.py` — calls `redact_raw_events(args.db, batch_size=args.batch, dry_run=args.dry_run)` and formats the report, in `_main_redact()`; sole runtime consumer of `RawRedactionReport` (`print_json(asdict(report))`, so any new report/problem field appears in `--json` automatically) [Agent 1, 2 finding]
+- `scripts/little_loops/session_store/raw_redaction.py` — `_Run._reconcile_one()` is the only caller of `_fetch_one()` and `_plan_row()` is the only caller of `_plan_column()`/`_update_params()`; `decode_payload()` is called only from `_plan_column()` (two sites), so parameterizing its cap touches no other module [Agent 1 finding; graph-confirmed]
+- `scripts/little_loops/session_store/raw_redaction.py` — `_state()`/`_desired_state()`/`_classify()` compare `_Col.value`; two over-cap columns both carry `value is None`, so they compare equal. Any oversize path that leaves `value` as `None` must not let reconcile read an unchanged oversize column as "converged" [Agent 2 finding, in `_classify()`]
+- `scripts/little_loops/session_store/raw_redaction.py` — `_update_params()` binds `obs.raw.value`/`obs.parsed.value` as the full-bytes guard and asserts `obs.host.value is not None`; a column with `value is None` (over cap) has no bytes to bind, so the dirty-oversize write guard cannot reuse it unchanged [Agent 2 finding, in `_update_params()`]
+- `scripts/little_loops/session_store/writers.py` — `_unpack_payload()` does an unbounded `zlib.decompress`; the only other `decompressobj` user is `decode_payload()`. The new bounded oversize decode must not route through `_unpack_payload` (would bypass the zlib-bomb bound) [Agent 1 finding, in `_unpack_payload()`]
+- `scripts/little_loops/session_store/lifecycle.py` — `_backfill_raw_events()` and `refresh_usage_source()` apply no byte cap (sanitize then `_pack_payload`); these are the source of new oversize rows. Read-only for this issue, relevant only to the ingest-pinning test [Agent 1, 3 finding]
+- `scripts/little_loops/session_store/__init__.py` — re-exports only `redact_raw_events`, `RawRedactionProblem`, `RawRedactionReport`; a new reason code or size field needs **no** edit here (`RAW_REDACTION_REASONS`, caps and `decode_payload` are not re-exported) [Agent 2 finding]
+- No loop YAML, hook, skill, command or plugin manifest runs `ll-session redact` or parses its `complete`/`problems`/`failed` fields or exit code (`.loops/.history/` hits are run logs, not gates); `init/writers.py` allowlists `Bash(ll-session:*)`, so a new flag needs no permission change [Agent 1, 2 finding]
+
+### Files to Modify (additional sites)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/session_store/raw_redaction.py` — `_Run._handle()` and `_Run._enqueue()` both compare `_estimate_request_bytes(...)` to `REQUEST_BYTES_CAP`; `_plan_row()` returns `None` keyed `(None, "resource_limit")` on the same overflow. These are the dirty-oversize write-guard touchpoints for the Option C floor [Agent 1, 2 finding]
+- `scripts/little_loops/session_store/raw_redaction.py` — `_Run._record()` enforces `PROBLEM_CAP`/`omitted_problems`; new size fields on `RawRedactionProblem` must carry integers only (`test_no_content_in_problems` and the `asdict(report)` token-leak assertions forbid content) and need **default values** so the 3-arg `RawRedactionProblem(1, "raw_line", "invalid_json")` equality in `test_failures_advance_progress_and_leave_rows_unchanged` keeps holding [Agent 2, 3 finding]
+- `scripts/little_loops/session_store/raw_redaction.py` — module docstring "Safety model" bullets (lines 13-14: "bounded-BLOB so no oversized … value is ever decoded", "hard byte/decompression caps"), the `DECODED_CAP` comment ("zlib-bomb ceiling") and the `PAGE_ROWS_MAX` comment ("8 rows x 2 columns x STORED_CAP = 16 MiB") encode the current invariant and must be restated for the oversize path [Agent 2 finding, in the module docstring]
+- `unverifiable_oversize` must live **outside** `pii.HISTORY_ERROR_REASONS` (pinned as an exact tuple in `scripts/tests/test_pii.py`); add it only to the `extra` part of `RAW_REDACTION_REASONS` [Agent 2 finding]
+- `scripts/little_loops/cli/session.py` — `_build_parser()` epilog "Examples" block and the module docstring command list name `redact` and need updating if a flag is added; the `--batch` help text ("internal byte bounds still apply") is the template for any new flag, and `_positive_int` is the existing validator for a `>= 1` integer flag [Agent 1, 2 finding]
+- `scripts/little_loops/cli/session.py` — per-row reasons such as `resource_limit` never pass through `_REDACT_GUIDANCE` (it is keyed only on pre-snapshot `RawRedactionError` reasons: `target_unavailable`, `schema_mismatch`, `backend_failure`, `interrupted`); the oversize remedy text belongs in `_print_redact_report()`, not `_REDACT_GUIDANCE` [Agent 2 finding]
+- Conditional (Option C floor, rows beyond the per-row bound / dirty rows whose guard cannot fit): the `unverifiable_oversize` path adds a new `RawRedactionProblem` outcome that must feed `failed_ids` (or change the `complete` expression in `_Run.report()`) to keep the exit code at 1; if it is also made a stop reason, `RAW_REDACTION_STOP_REASONS` and its pinned 6-name set in `TestVocabulary` change too [Agent 1, 2 finding]
+- Open question carried from decision `60424792-…json`: it records `--max-row-bytes` (Option B) as **rejected**, while this issue's Recommended line and Program Design still allow it as A's per-row budget. The `max_row_bytes` kwarg/CLI/test/doc touchpoints below apply only if the flag is kept [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/CLI.md` — **`redact` flags** table (~`:4814`), **Report fields** paragraph (~`:4828`, states "`problems` (at most 100 entries of `row_id`, `column`, `reason`)") and the unfiltered-`complete` definition; update for any new problem field, the oversize outcome, and `--max-row-bytes` if kept. Keep the `test_wiring_reference_docs.py` needles (`ll-session redact`, `` **`redact` flags** ``) [Agent 2 finding, in `Report fields`]
+- `docs/reference/API.md` — `### Raw payload redaction: redact_raw_events (ENH-3752)`: the signature block, the `RawRedactionProblem` field block (lists only `row_id`, `column`, `reason`), the `RawRedactionReport` field list (must mirror the dataclass) and the "Behavior" paragraph ("1 MiB stored and 4 MiB decoded per column, 8 MiB per remote write request") [Agent 2 finding, in `Behavior`]
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — `## Scrubbing Stored Payloads`: the bullet "Conflicts are reported, not overwritten" ends "Rerun after resolving them." and says unvalidated rows are "counted under `failed`"; that wording is wrong for an oversize refusal. Keep the heading needle [Agent 2 finding, in `Scrubbing Stored Payloads`]
+- `docs/reference/CONFIGURATION.md` — `history.backend` remote bullet list: "**Supported remotely.**" (pinned needle ``` `ll-session redact` scrubs stored raw payload ```) and the adjacent "**Not supported remotely.**" bullet (`prune`, `compact`, `recompress` refused) — the latter is why the oversize remedy text cannot name `prune`/`compact` [Agent 2 finding, in the `history.backend` bullet list]
+- `CHANGELOG.md` — do not add under `[Unreleased]` (project rule); the `## [1.167.0] - 2026-10-06` section is already dated, so a BUG-3762 entry belongs in a new versioned section at release prep [Agent 2 finding]
+- No hits in `README.md`, `scripts/README.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md`, `docs/ARCHITECTURE.md`, `commands/`, `skills/`, `hooks/` or host-adapter mirrors, so `ll-adapt` / README mirror gates do not apply [Agent 1, 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_raw_redaction.py` — `TestVocabulary.test_reasons_extend_sanitizer_codes_and_are_closed` (`:105`) hard-codes the 13-name `extra` set and the 6-name `RAW_REDACTION_STOP_REASONS`; add `unverifiable_oversize` to the right set [Agent 3 finding]
+- `scripts/tests/test_raw_redaction.py` — `TestRowFailures.test_unsupported_storage_and_resource_limit` (`:449`) will break: `zeroblob(STORED_CAP + 1)` is not a zlib stream, so a bounded fetch likely yields `invalid_compression` or the new outcome, and `report.failed == 2` may change. Narrow or rewrite it [Agent 2, 3 finding]
+- `scripts/tests/test_raw_redaction.py` — `TestRowFailures.test_failures_advance_progress_and_leave_rows_unchanged` (`:420`) pins `RawRedactionProblem(1, "raw_line", "invalid_json")` equality and `report.failed == 5`; breaks if a new size field has no default [Agent 2, 3 finding]
+- `scripts/tests/test_raw_redaction.py` — `TestRemote.test_unknown_outcome_and_unreadable_reconcile_is_unconfirmed` (`:918`) monkeypatches `rr._fetch_one` with `lambda conn, row_id: ...`; breaks if `_fetch_one`'s signature or call shape changes. The `_fetch_page` monkeypatches (`fetch(conn, **kw)`, `spy(conn, **kw)`; kwargs `snapshot`, `last_id`, `limit`) tolerate added kwargs but not renames [Agent 2, 3 finding]
+- `scripts/tests/test_raw_redaction.py` — `TestWireBounds.test_captured_page_response_under_32mib` (`:265`) reads `rows[0].raw.value`, uses `_fetch_page(conn, snapshot=8, last_id=None, limit=8)` and a `_Handler._reply` size spy; breaks if `_Col.value` is renamed or `_projection` changes shape. Reuse its spy to prove each single-row oversize fetch response stays bounded [Agent 3 finding]
+- `scripts/tests/test_raw_redaction.py` — `TestBoundedDecode.test_decoded_cap_boundary` and its `_refusal(sql_type, data)` helper are the template for a cap-parameterized `decode_payload` test (cap+1 bomb under a larger cap) [Agent 3 finding]
+- `scripts/tests/test_raw_redaction.py` — **new tests**, following `TestLocalScrub` with the `blob()` / `payload()` / `Db.insert()` helpers (no valid over-cap row exists today; build one from incompressible base64 noise and assert the premise `STORED_CAP < len(stored)` and `len(text) <= DECODED_CAP`): clean oversize blob row → `complete`; dirty oversize blob and TEXT row; dirty row whose replacement exceeds `STORED_CAP` (`_plan_column` `:391`, untested today); mixed page of normal + oversize rows with `batch_size=2` (`test_zero_negative_ids_and_holes` pattern); dry-run leaves bytes unchanged (`test_dry_run_changes_nothing_and_reports_plan` pattern); remote clean/dirty oversize via the `remote` fixture (`HranaStub`, `_rinsert`, `_rcell`, `stub.requests` body assertions as in `test_preview_sends_reads_only`) [Agent 3 finding]
+- `scripts/tests/test_ll_session.py` — `TestRedactSubcommand.test_dispatch_passes_target_batch_and_dry_run` (`:1381`) pins `mock.call_args.kwargs == {"batch_size": 7, "dry_run": True}` exactly; pass `max_row_bytes` only when the flag is set, or update the assertion [Agent 2, 3 finding]
+- `scripts/tests/test_ll_session.py` — `_redact_report()` (`:1312`) builds `RawRedactionReport(**base)` with all 19 fields and the dataclass is frozen with no defaults; add any new report field to `base`. `test_json_is_exactly_one_object` (`:1396`) reads `failed`/`complete`/`problems`; extend for new keys. `test_parsed_defaults_and_flags` and `test_invalid_batch_is_usage_error_exit_2` (parametrized `0, -1, x, 1.5`) are the templates for a new flag's parse/default/invalid-value tests [Agent 2, 3 finding]
+- `scripts/tests/test_ll_session.py` — **new text-mode test** for the oversize outcome using the `capsys` + `_redact_report(...)` override pattern; no test asserts on `Incomplete:`, `left as found`, `see --json for codes` or `Failed:` today, so nothing breaks but nothing guards the new wording either. `test_end_to_end_preview_then_apply_without_telemetry` is the real-SQLite template for an end-to-end oversize case (also asserts `_cli_event_count() == 0`) [Agent 3 finding]
+- `scripts/tests/test_enh3751_sanitize_raw_events.py` — **new ingest test** modelled on `test_local_ingest_sanitizes_both_columns_identically` (`ensure_db` + `backfill_raw_events` + `_columns(db)`) with a large incompressible record, asserting `len(raw) > STORED_CAP` and that both columns are sanitized and stored (pins "sanitized, not refused"); no over-cap ingest case exists [Agent 3 finding]
+- `scripts/tests/test_remote_operation_matrix.py` — `TestRedactIsASupportedRemoteOperation` calls `redact_raw_events(dry_run=True)` / `redact_raw_events()` with no size kwargs; stays green unless the call signature changes [Agent 2, 3 finding]
+- `scripts/tests/test_pii.py` — pins `HISTORY_ERROR_REASONS` as an exact tuple (~`:1064`); unaffected provided the new code stays out of it [Agent 2 finding]
+- `scripts/tests/spike/enh3752_raw_redaction/` is independent (`test_guard_spike_does_not_import_production_raw_redaction`); not affected [Agent 3 finding]
 
 ## Program Design
 
@@ -166,6 +222,21 @@ _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 4. Text mode names the oversize row ids/sizes and a remedy valid on local and remote targets, and the JSON `problems`/report fields carry the same distinction (`_redact_report` helper updated for any new field).
 5. Ingest behavior over the cap is pinned by a test in `test_enh3751_sanitize_raw_events.py` (current behavior: sanitized and stored, not refused) and the CLI/API/guide docs state the bounds and the new path without breaking the `test_wiring_reference_docs.py` needles.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/session_store/raw_redaction.py` — give new `RawRedactionProblem` size fields default values and integer-only content; add `unverifiable_oversize` to the `extra` part of `RAW_REDACTION_REASONS` (never to `pii.HISTORY_ERROR_REASONS`); make the new outcome feed `failed_ids` so exit code and `complete` stay correct
+- Update `scripts/little_loops/session_store/raw_redaction.py` — in `_classify()`/`_state()`/`_desired_state()`/`_update_params()`, handle `_Col.value is None` for oversize columns explicitly (no `None == None` convergence, no full-bytes guard bind from a value that was never fetched); keep the guard within `REQUEST_BYTES_CAP` or fall to the `unverifiable_oversize` floor
+- Update `scripts/little_loops/session_store/raw_redaction.py` — restate the module docstring "Safety model", `DECODED_CAP` and `PAGE_ROWS_MAX` comments for the oversize path; do not route the bounded decode through `writers._unpack_payload` (unbounded)
+- Update `scripts/little_loops/cli/session.py` — put the oversize remedy text in `_print_redact_report()` (not `_REDACT_GUIDANCE`), valid on local and remote targets; thread `max_row_bytes` from `redact_parser` through `_main_redact()` only when set (if the flag is kept — decision `60424792-…` rejected Option B); update the epilog "Examples" and module docstring
+- Inject at `scripts/little_loops/cli/session.py:_main_redact()` — `redact_raw_events(args.db, batch_size=..., dry_run=...)`: pass `max_row_bytes` conditionally so `test_dispatch_passes_target_batch_and_dry_run` keeps its exact-kwargs contract
+- Update `scripts/tests/test_raw_redaction.py` — `TestVocabulary` (`extra` + stop-reason sets), `test_unsupported_storage_and_resource_limit` (zero-blob row no longer a pure `resource_limit`), keep `_fetch_one` call shape compatible with the `lambda conn, row_id:` monkeypatch; add the new clean/dirty/TEXT/replacement-overflow/mixed-page/dry-run/remote oversize tests
+- Update `scripts/tests/test_ll_session.py` — add new fields to `_redact_report()` `base`; extend `test_json_is_exactly_one_object`; add flag parse/default/invalid, text-mode and end-to-end oversize tests
+- Update `scripts/tests/test_enh3751_sanitize_raw_events.py` — add the over-cap ingest test pinning "sanitized and stored, not refused"
+- Update `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/CONFIGURATION.md` — report fields, flag table, bounds text, and replace the "Rerun after resolving them." wording; preserve the `test_wiring_reference_docs.py` needles
+- Defer `CHANGELOG.md` to release prep (no `[Unreleased]` entry)
+
 ## Impact
 
 - **Priority**: P3 - `ll-session redact` cannot report `complete: true` on affected stores, but only for stores with over-cap payload rows and no data is lost or leaked by the refusal
@@ -179,5 +250,7 @@ _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-10-07T00:59:39 - `62355c4f-23ba-4c6f-bf44-9fe87ad6e7af.jsonl`
+- `/ll:decide-issue` - 2026-10-07T00:51:15 - `6b41f46f-0778-4eee-bd27-b06a454db20a.jsonl`
 - `/ll:refine-issue` - 2026-10-07T00:47:16 - `707e2f6d-f91c-469f-87fe-53582d107779.jsonl`
 - `/ll:format-issue` - 2026-10-06T23:51:15 - `a0ac9893-a394-4fc1-a6b5-800ff281d815.jsonl`
