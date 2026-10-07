@@ -24,11 +24,6 @@ relates_to:
 - ENH-3770
 testable: true
 risk_factors:
-- id: proof-limit-retention-cost
-  domain: outcome
-  criterion: complexity
-  description: Whole-scope proof limits conservatively retain over-limit dependency
-    components; initial aggregate calibration covers Claude, not Codex neighborhoods
 - id: native-correspondence-context
   domain: outcome
   criterion: complexity
@@ -39,6 +34,11 @@ risk_factors:
   criterion: complexity
   description: Prune moves from one operation-wide BEGIN IMMEDIATE to per-source transactions
     with cross-source revalidation and fail-fast partial commits
+- id: proof-limit-retention-cost
+  domain: outcome
+  criterion: complexity
+  description: Whole-scope proof limits conservatively retain over-limit dependency
+    components; initial aggregate calibration covers Claude, not Codex neighborhoods
 - id: sanitizer-identity-registration
   domain: readiness
   criterion: specification
@@ -232,7 +232,17 @@ The 2026-10-07 pre-split check recorded readiness **75/100** and outcome confide
 
 ## Confidence Check Notes
 
-The standalone checks recorded at 18:56:20 and 19:18:28 on 2026-10-07 both reported readiness **85/100** (PROCEED WITH CAUTION) and outcome confidence **71/100** (MODERATE). These are recorded assessments before this review's contract amendments, not recalculated scores.
+_Re-scored by `/ll:confidence-check` on 2026-10-07 against the amended contract_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+Earlier standalone checks (18:56:20, 19:18:28) reported the same 85/71. All hard gates clear: no unresolved `blocked_by`, Program Design passes, no claim/parity/decision/structure gaps, no learning-test targets, no unproven-mechanism flag. Risk-factor composition is unchanged (5 retained, none added or removed).
+
+### Concerns
+
+- Contract is very dense (per-source transactions, whole-scope limits, actual-supplier holds, dry-run overlay); Implementation Step 0 is satisfied by this re-score and can be dropped.
+- Readiness 85 sits exactly on the configured readiness threshold; any new spec gap tips it to a STOP.
 
 ### Review Resolution
 
@@ -251,6 +261,7 @@ Re-run `/ll:confidence-check` for the amended contract before implementation; th
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-07T19:38:03 - `587cf4a4-7f35-4772-8156-1bc4c32d25a5.jsonl`
 - Pre-implementation review #5 - 2026-10-07 - Pinned actual supplier/population hold predicates, separate protection versus correspondence references, dry-run virtual source effects, finite sanitizer paths and paginated/reset native-order controls. Replaced unspecified windows with whole-scope item/encoded/decoded caps and conservative component fallback; aggregate-only calibration of the 32 largest encoded Claude sources supports the initial constants but does not claim Codex coverage. Removed stale confidence ambiguity without rescoring. `/ll:advise` with Opus (confidence 0.70) supported applied-row transactional proof, scoped whole-input limits, component-specific refresh obligations and standalone rebuild invalidation in ENH-3745; its size-calibration uncertainty prompted the read-only aggregate probe. Existing producer/hold/incremental/refresh baseline: 121 passed. No implementation or new readiness score claimed.
 
 - `/ll:confidence-check` - 2026-10-07T19:18:28 - `b97d96d3-c931-4dc1-998b-71841952c10d.jsonl`
