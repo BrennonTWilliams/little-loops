@@ -13,7 +13,7 @@ spike_needed: true
 spike_attempted: true
 spike_completed: true
 confidence_score: 95
-outcome_confidence: 64
+outcome_confidence: 71
 score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 18
@@ -22,18 +22,8 @@ risk_factors:
 - id: decoded-allocation-8mib
   domain: outcome
   criterion: ambiguity
-  description: 8 MiB decoded limit per column doubles allocation growth; structurally
-    dense JSON allocation and ordinary-page/singleton co-retention unmeasured
-- id: dirty-row-request-fit
-  domain: outcome
-  criterion: complexity
-  description: Dirty expanded rows on remote targets may not fit the 8 MiB guarded
-    request estimate and stay unredacted (local targets have no request limit)
-- id: expanded-reconciliation-lost-ack
-  domain: outcome
-  criterion: complexity
-  description: Lost/short-ack reconciliation must use the expanded bounded read without
-    false success or conflict
+  description: Spike measured 387.8 MiB peak for structurally dense 8 MiB-decoded
+    JSON; Step 3 must decide accept vs bound structural size
 - id: multi-site-shared-state-change
   domain: outcome
   criterion: complexity
@@ -44,11 +34,11 @@ risk_factors:
   criterion: change_surface
   description: Additive report/problem fields reach CLI printer, exports, JSON contract,
     tests and three docs
-- id: unproven-bounded-singleton-mechanism
-  domain: outcome
-  criterion: outcome_cap
-  description: Fixed 8 MiB singleton read/decode budgets and Step 1 proof are unproven;
-    unproven_mechanism caps outcome at 64
+- id: stale-step1-proof-text
+  domain: readiness
+  criterion: issue_well_specified
+  description: Implementation Step 1 and Status still describe the proof as pending
+    although Spike Results records it passing
 ---
 
 ## Summary
@@ -303,6 +293,19 @@ _Added by `/ll:spike` on 2026-10-07_
 **Spike location**: `scripts/tests/spike/bug3762_singleton_redaction/` (plan: `.ll/spikes/spike-BUG-3762.md`)
 **Verification**: 32 spike tests (29 AC + 3 guard) pass, plus regressions `test_raw_redaction.py` (61) and the ENH-3752 spike (37): 130 tests across 3 commands.
 **Promotion**: fold into its production module under `project.src_dir` and its test under `project.test_dir`, in a separate PR.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07 (post-spike re-score)_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE (no cap: `spike_completed` suppresses the `unproven_mechanism` cap; raw sum 71 clears the 65 gate)
+
+### Risk Factor Delta
+- Added: `stale-step1-proof-text`
+- No longer reported: `dirty-row-request-fit`, `expanded-reconciliation-lost-ack`, `unproven-bounded-singleton-mechanism`
+- Retained: `decoded-allocation-8mib`, `multi-site-shared-state-change`, `report-contract-fanout`
+- Changed fields: `decoded-allocation-8mib` — description
 
 ## Session Log
 - `/ll:spike` - 2026-10-07T06:03:01 - `8c655ae6-6aea-48c9-b19a-e5c5f9c860df.jsonl`
