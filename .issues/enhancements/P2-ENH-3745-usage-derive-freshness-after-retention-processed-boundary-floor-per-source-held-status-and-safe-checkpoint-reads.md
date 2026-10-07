@@ -25,7 +25,7 @@ relates_to:
 - ENH-3751
 - ENH-3770
 testable: true
-confidence_score: 65
+confidence_score: 90
 outcome_confidence: 66
 score_complexity: 5
 score_test_coverage: 25
@@ -332,6 +332,7 @@ Historical scores below predate ENH-3744's completion and this concrete storage 
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-07T20:44:34 - `24d24e17-c19e-4a8b-8ae4-4709ee6ee947.jsonl`
 - Pre-implementation review #6 - 2026-10-07 - Verified the landed ENH-3744 proof adapter and removed its stale open-blocker risk while retaining historical confidence scores. Specified five internal tables, source-head/obligation CAS revisions, complete pending ranges, actual supplier/qualification/completion dependencies, acquisition-only/frontier/ack helpers and original-acquisition versioning. Added parser-refresh preflight/unchanged-output accounting, existing Codex append/cross-source invalidation, recovery-evidence prune veto, pinned read ownership and old/attached-schema controls. `/ll:advise` with Opus (confidence 0.72) supported grandfathered Codex reconstruction, explicit snapshots and durable revisions. Rejected tail/inode-only continuity, dropping mandatory original-acquisition/dependency storage and discarding unresolved proof-limit disposition; `usage_events` already uses AUTOINCREMENT. Existing relevant baseline: 317 passed. Issue-only refinement; no implementation or formal re-score claimed.
 
 - `/ll:confidence-check` - 2026-10-07T19:41:47 - `22334795-d531-4b66-95a2-305d57a6c53c.jsonl`
