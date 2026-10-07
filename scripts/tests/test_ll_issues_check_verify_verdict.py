@@ -151,6 +151,35 @@ class TestCheckVerifyVerdictDirectiveDrift:
         assert "VERIFY_VERDICT_NON_VALID" in result.stderr
 
 
+class TestDesignEvidenceFollowsVerdictOnly:
+    """BUG-3764: identical Program Design/Impact evidence — the probe follows only the verdict."""
+
+    EVIDENCE = (
+        "verify_evidence: \"Program Design: 'Call Path routes a \u2192 b' -> rewrite; "
+        "Impact: 'Effort prices the migration, it's stale' -> reprice\"\n"
+    )
+
+    @pytest.mark.parametrize(
+        ("verdict", "drift_rc"),
+        [
+            ("DIRECTIVE_DRIFT", 0),
+            ("NON_VALID", 1),
+            ("PROPOSAL_UNSOUND", 1),
+            ("CLAIMS_OUTDATED", 1),
+            ("EVIDENCE_UNVERIFIED", 1),
+            ("VALID", 1),
+            (None, 1),
+        ],
+    )
+    def test_directive_drift_probe_ignores_evidence(
+        self, temp_project_dir: Path, verdict: str | None, drift_rc: int
+    ) -> None:
+        fm = (f"verify_verdict: {verdict}\n" if verdict else "") + self.EVIDENCE
+        _write_issue(temp_project_dir, _feature("FEAT-9777", fm))
+        result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9777", "--directive-drift")
+        assert result.returncode == drift_rc
+
+
 class TestCheckVerifyVerdictNonValid:
     def test_non_valid_verdict_exits_one(self, temp_project_dir: Path) -> None:
         body = _feature("FEAT-9203", "verify_verdict: NON_VALID\n")

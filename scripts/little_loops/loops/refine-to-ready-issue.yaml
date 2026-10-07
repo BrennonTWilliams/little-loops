@@ -836,10 +836,19 @@ states:
     # Exit 0: complete canonical `Program Design: <drift> -> <correction>` or
     #         `Impact: ...` item at an item START (a section named only inside
     #         another item's correction tail does not match).
-    # Exit 1: ordinary no-match (not drift, absent/non-string/empty/malformed
-    #         evidence, unsupported prefixes) -> existing additive fallback.
-    # Exit 2+: probe/path/read failure or ambiguous item boundary (a `; ` inside a
-    #         quoted payload) -> record_gate_unmet with a persisted diagnostic.
+    # Exit 1: ordinary no-match (not drift, absent/non-string/empty evidence, or
+    #         prefix-free ordinary-only evidence, even a legacy malformed fragment)
+    #         -> existing additive fallback.
+    # Exit 2+: probe/path/read failure, or a reserved `Program Design:`/`Impact:`
+    #         prefix is present and the WHOLE list is not well-formed (BUG-3764): every
+    #         item needs `<section>: <drift> -> <correction>` with exactly one
+    #         structural ` -> ` and nonempty sides, so malformed reserved items
+    #         (section-only, missing space, no arrow, empty side) and observable split
+    #         fragments fail even beside a valid item -> record_gate_unmet with a
+    #         persisted diagnostic. Quotes, apostrophes and backslashes are legal
+    #         payload text (no quote-count rule). Producers normalize embedded ` -> `
+    #         and `; ` in payloads, so a valid-looking faux boundary cannot be
+    #         diagnosed here and a match grants only the bounded exhaustion signal.
     #         Protection cannot be assessed, so never spend an additive retry.
     # The item prefixes/`; ` delimiter pin the verify-issues DIRECTIVE_DRIFT
     # producer contract (commands/verify-issues.md) — change them together.
@@ -855,6 +864,7 @@ states:
       [ -n "$FILE" ] && [ -r "$FILE" ] || fail "issue file unreadable for $ID: $FILE"
       LL_FILE="$FILE" python3 - 2>"$DIAG" << 'PYEOF'
       import os
+      import re
       import sys
 
       try:
@@ -868,22 +878,32 @@ states:
       if not isinstance(ev, str) or not ev.strip():
           sys.exit(1)
       prefixes = ("Program Design: ", "Impact: ")
+      reserved = re.compile(r"(?:Program Design|Impact)(?::|$)")
       items = ev.split("; ")
-      if not any(i.startswith(prefixes) for i in items):
+      # Prefix-free evidence (ordinary AC/Step/Integration Map items only) keeps the
+      # additive fallback, even when a legacy fragment is malformed.
+      if not any(reserved.match(i) for i in items):
           sys.exit(1)
+      # A reserved Program Design/Impact prefix is present: validate the WHOLE mixed
+      # list before accepting any match, so a valid first item cannot hide a malformed
+      # later one. Legal punctuation (quotes, apostrophes, backslashes) is not an
+      # ambiguity; a split fragment or malformed reserved item is.
       for i in items:
-          # A `; ` inside a quoted payload splits one item into fragments: an odd
-          # quote count or a fragment with no `<section>: ... -> ...` shape.
-          if i.count("'") % 2 or ": " not in i or "->" not in i:
+          drift, arrow, fix = i.partition(" -> ")
+          section, colon, drift_text = drift.partition(": ")
+          bad = (
+              not arrow
+              or " -> " in fix
+              or not colon
+              or not section.strip()
+              or not drift_text.strip(" '")
+              or not fix.strip(" '")
+              or (reserved.match(i) and not i.startswith(prefixes))
+          )
+          if bad:
               print(f"ambiguous item boundary near: {i[:120]!r}", file=sys.stderr)
               sys.exit(2)
-      for i in items:
-          if not i.startswith(prefixes):
-              continue
-          drift, _, fix = i.split(": ", 1)[1].partition(" -> ")
-          if drift.strip(" '") and fix.strip(" '"):
-              sys.exit(0)
-      sys.exit(1)
+      sys.exit(0)
       PYEOF
       RC=$?
       if [ "$RC" -le 1 ]; then rm -f "$DIAG"; exit "$RC"; fi

@@ -249,11 +249,21 @@ This issue owns classification, evidence production/synchronization and the mini
 - `docs/reference/COMMANDS.md` — verify/reconcile command descriptions.
 - `docs/guides/LOOPS_REFERENCE.md` — token dispatch and evidence lifecycle.
 
+## Implementation Progress
+
+**2026-10-07 (manage-issue)** — Deterministic scope landed; the live classification evaluation is **not yet run**, so acceptance is incomplete and the issue stays open.
+
+- Done: `commands/verify-issues.md` (B6 selected-decision propagation sub-check with retained precondition, verdict table, canonical-prefix evidence grammar with payload normalization, full-check evidence cleanup, §4 targeted `--from-evidence` pending-pair rule, §4.1 post-fix evidence sync), `docs/reference/COMMANDS.md`, generated gemini/qwen/kimi-code mirrors, and the `check_residual_decision_drift` guard (whole-list validation after reserved-prefix detection, no quote-count rule, malformed/empty reserved items diagnose, prefix-free fallback preserved).
+- Tests: guard matrix + strict-YAML/real-parser/actual-guard roundtrip (`test_bug3763_decision_drift_repair.py`), contract pins (`test_enh3250_...`), verdict-only probe matrix (`test_ll_issues_check_verify_verdict.py`). Full suite: 29348 passed; 1 unrelated float-ULP failure in `test_next_loop_golden.py` and 8 live-libsql errors (no endpoint).
+- Remaining: run the fixed F01-F15 / M01-M08 disposable evaluation against the real `/ll:verify-issues --check --auto` command (initial run + at most two revision rounds) and record results under `postmortems/`; the joint BUG-3767 mixed-citation pytest fixture is not added.
+
 ## Status
 
 **Open** | Created: 2026-10-07 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T03:38:04 - `80bcb8f4-2b8f-4764-95dc-7f5c03710f8c.jsonl`
+- `/ll:ready-issue` - 2026-10-07T03:25:49 - `8faf0342-ec33-464c-846f-bae2c7c2e26a.jsonl`
 - `/ll:confidence-check` - 2026-10-07T03:20:40 - `d0c6965a-f073-4230-9107-254c09a30024.jsonl`
 - `/ll:verify-issues` - 2026-10-07T03:14:58 - `d0c6965a-f073-4230-9107-254c09a30024.jsonl`
 - `/ll:confidence-check` - 2026-10-07T03:02:33 - `a01917d3-707e-49be-b1b2-6bcd8c610f5e.jsonl`

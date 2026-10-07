@@ -207,8 +207,8 @@ class TestResidualGuardMatrix:
             (IMPACT_EVIDENCE, 0),
             (f"{AC_EVIDENCE}; {PD_EVIDENCE}", 0),
             (AC_EVIDENCE, 1),
-            ("Program Design: -> only a correction", 1),
-            ("Impact: 'drift' ->", 1),
+            ("Program Design: -> only a correction", 2),
+            ("Impact: 'drift' ->", 2),
             ("Acceptance Criteria: 'x' -> update the Program Design: step", 1),
             ("Integration Map: 'Impact: stays' -> keep", 1),
         ],
@@ -240,6 +240,66 @@ class TestResidualGuardMatrix:
         assert rc == 2
         assert "ambiguous item boundary" in err
         assert diag.exists() and "ambiguous item boundary" in diag.read_text()
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "Impact: it's priced for the old migration -> reprice for Option B, it's cheaper",
+            "Impact: 'Effort says \\migration\\' -> reprice",
+            "Program Design: 'a \"quoted\" step' -> rewrite",
+            "Program Design: Call Path a \u2192 b \u2192 c -> rewrite the Call Path",
+            "Impact: 'drift' -> fix, with one comma",
+            f"{PD_EVIDENCE}; Acceptance Criteria: 'don't skip' -> add an AC",
+        ],
+        ids=["apostrophes", "backslashes", "double-quotes", "normalized-arrows", "comma", "mixed"],
+    )
+    def test_legal_punctuation_is_not_ambiguous(self, tmp_path: Path, value: str) -> None:
+        assert self._run(tmp_path, self._ev(value))[0] == 0
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "Program Design: a single item with no arrow",
+            "Program Design:'no space' -> fix",
+            "Program Design",
+            "Impact:",
+            "Impact: '' -> fix",
+            "Program Design: 'drift' -> a -> b",
+            f"{PD_EVIDENCE}; Impact: malformed later item",
+            f"Impact: 'x' -> y; {PD_EVIDENCE}; Program Design:'bad' -> z",
+            "Acceptance Criteria: ordinary fragment; Impact: 'x' -> y",
+            "Impact: 'x' -> y; Acceptance Criteria: ",
+        ],
+        ids=[
+            "no-arrow",
+            "missing-space",
+            "section-only",
+            "section-colon-only",
+            "empty-drift-quotes",
+            "extra-arrow",
+            "valid-first-malformed-later",
+            "valid-first-malformed-last",
+            "ordinary-fragment-beside-reserved",
+            "empty-ordinary-item",
+        ],
+    )
+    def test_malformed_reserved_lists_are_diagnostics(self, tmp_path: Path, value: str) -> None:
+        rc, err, diag = self._run(tmp_path, self._ev(value))
+        assert rc == 2
+        assert "ambiguous item boundary" in err
+        assert diag.exists()
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "Acceptance Criteria: it's quoted; and a legacy fragment",
+            "Acceptance Criteria: 'x' -> a -> b",
+            "Integration Map: 'Impact: stays' -> keep; loose fragment",
+        ],
+        ids=["apostrophe-fragment", "ordinary-extra-arrow", "reserved-name-in-tail"],
+    )
+    def test_prefix_free_evidence_keeps_ordinary_fallback(self, tmp_path: Path, value: str) -> None:
+        assert self._run(tmp_path, self._ev(value))[0] == 1
 
     def test_not_drift_verdict_is_no_match(self, tmp_path: Path) -> None:
         assert self._run(tmp_path, self._ev(PD_EVIDENCE), probe_rc=1)[0] == 1
@@ -277,6 +337,7 @@ class TestRecordGateUnmetDiagnosticSurface:
         ]["action"]
         assert '("Program Design: ", "Impact: ")' in action
         assert 'split("; ")' in action and 'partition(" -> ")' in action
+        assert 'count("\'")' not in action, "no quote-count rule (BUG-3764)"
 
 
 def _slice(text: str, start: str, end: str) -> str:
@@ -318,3 +379,25 @@ class TestReconcileDecisionCarveOutContract:
     def test_bridge_and_flag_docs_mention_extension(self) -> None:
         assert "Program Design" in SKILL_BRIDGE.read_text()
         assert "BUG-3763" in RECONCILE_CMD.read_text().split("---", 2)[1]
+
+
+class TestProducerSerializationRoundtrip:
+    """BUG-3764: produced evidence survives strict YAML, the real parser and the guard."""
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "Impact: 'Effort/Risk: it's priced for the migration' -> reprice, it needs none",
+            "Program Design: 'Call Path \"a\" \u2192 b' -> rewrite C:\\path\\step",
+            "Impact: 'x: y' -> z; Program Design: 'q' -> r",
+        ],
+        ids=["apostrophe-colon", "quote-backslash-arrow", "mixed"],
+    )
+    def test_roundtrip(self, tmp_path: Path, payload: str) -> None:
+        from little_loops.frontmatter import parse_frontmatter
+
+        line = TestResidualGuardMatrix._ev(payload)
+        text = f"---\nid: ENH-9800\n{line}\n---\n\nbody\n"
+        assert yaml.safe_load(text.split("---")[1])["verify_evidence"] == payload
+        assert parse_frontmatter(text)["verify_evidence"] == payload
+        assert TestResidualGuardMatrix._run(tmp_path, line)[0] == 0
