@@ -11,120 +11,171 @@ captured_at: '2026-10-07T00:49:18Z'
 relates_to:
 - BUG-3764
 - ENH-3765
+blocks:
+- BUG-3764
 ---
 
 # BUG-3763: refine-to-ready-issue has no rung to rewrite Program Design after a decision flips the design
 
 ## Summary
 
-`refine-to-ready-issue` has no targeted repair that can rewrite a `## Program Design` section after `/ll:decide-issue` selects a different option than the one the section was written for. The observed run ended at `record_gate_unmet` → `failed` with this repair still unowned. Acceptance-criteria gaps also appeared during the run; the trace does not establish that every other gate was clean.
+The existing `DIRECTIVE_DRIFT` remedy cannot rewrite Program Design or decision-derived Impact estimates. When a recorded selection differs from those passages, reconciliation declines them and additive refinement leaves the rejected design intact. Extend the existing evidence-gated reconciliation contract narrowly, and stop sending persistent directive drift to additive refinement after its one repair attempt.
 
-Observed on BUG-3761 (run `.loops/.history/2026-10-07T000313-refine-to-ready-issue`, 33 iterations, 38 min, `failed`):
-
-1. `resolve_decision_mid_refine` ran `/ll:decide-issue --auto`, which selected Option B (predicates on existing columns, no migration). Program Design and the Impact Effort/Risk lines were written for rejected Option A (a `channel` column, migration). decide-issue Phase 7c is bounded-scope by design and reports the section as flagged, not edited.
-2. `verify_issue` → `DIRECTIVE_DRIFT` → `check_reconcile_limit` → `reconcile_issue`. `/ll:reconcile-issue` fixed the Acceptance Criteria but refused Program Design and Impact as out of contract (its rewrite scope is Implementation Steps, Acceptance Criteria, Integration Map).
-3. Second verify → `DIRECTIVE_DRIFT` → reconcile budget spent → `check_gate_refine_limit` → `refine_followup` (`/ll:refine-issue --gap-analysis`). Additive-only, so it cannot remove the Option A text; `ll-issues format-check` still reports `unapplied_decision`.
-4. Third verify → `VERIFY:other` → `check_gate_refine_limit` counter hit 2 (limit `lt 2`) → `record_gate_unmet` → `failed`; run record `deferred`.
-
-The routing worked as designed; the gap is capability. No rung in the repair ladder owns Program Design / Impact rewrites.
+Observed on BUG-3761 in `.loops/.history/2026-10-07T000313-refine-to-ready-issue`: 33 iterations, 38m11s, terminal `failed`, run record `deferred`. The verify passes also found AC gaps, so the trace does not establish that every other gate was clean.
 
 ## Current Behavior
 
-When `/ll:decide-issue --auto` selects an option different from the one `## Program Design` (and the Impact Effort/Risk lines) were written for, every repair rung declines the section: decide-issue Phase 7c flags it without editing, `/ll:reconcile-issue` refuses it as out of contract, and `/ll:refine-issue --gap-analysis` is additive-only. `ll-issues format-check` keeps reporting `unapplied_decision`, the `check_gate_refine_limit` counter reaches its `lt 2` limit, and the loop ends in `record_gate_unmet` → `failed`.
+1. `resolve_decision_mid_refine` selected Option B: predicates on existing columns, without a migration. Program Design and Impact Effort/Risk still described Option A: a channel column and migration. Decide's Phase 7c flagged residuals under its bounded propagation contract.
+2. Verify at iteration 15 returned `DIRECTIVE_DRIFT`, naming Program Design/Impact and an AC gap. `reconcile_issue` at iteration 18 repaired ACs but refused Program Design/Impact as outside its contract.
+3. Verify at iteration 21 again returned `DIRECTIVE_DRIFT`. With reconciliation spent, the loop entered `check_gate_refine_limit` and `refine_followup`. That pass added useful AC/research findings and Option B restatements, but could not remove Option A directives.
+4. Verify at iteration 30 returned `NON_VALID` because Program Design was outside the documented remedy scope. `VERIFY:other` reached the exhausted shared retry counter and `record_gate_unmet` at iteration 33.
 
 ## Steps to Reproduce
 
-1. Create a disposable fixture with competing options, a canonical selected-option callout, and a `## Program Design` section written for the rejected option. Include stale Impact Effort/Risk lines and preserved decision/research history. BUG-3761 has since been manually repaired, so its current file is not a reproducer.
-2. Run the child-loop harness on that fixture, scripting `resolve_decision_mid_refine` to select Option B. Use a separate disposable live evaluation to assess actual model edits.
-3. Observe `verify_issue` → `DIRECTIVE_DRIFT` → `reconcile_issue` (fixes Acceptance Criteria, refuses Program Design/Impact) → second `DIRECTIVE_DRIFT` → `refine_followup` (additive-only).
-4. Observe the third verify → `VERIFY:other` → `check_gate_refine_limit` exhausted → `record_gate_unmet` → `failed`, with `ll-issues format-check` still reporting `unapplied_decision`.
+1. Create a disposable fixture with two options, a canonical selected-option callout and Decision Rationale selecting Option B, and Program Design directives describing Option A. Include stale Impact Effort/Risk and preserved research/decision history. The current BUG-3761 file has since been manually repaired.
+2. Use the real child-loop harness with scripted slash-command effects: persist `DIRECTIVE_DRIFT` plus evidence naming Program Design and Impact; let reconciliation leave those passages unchanged; persist drift again.
+3. Observe reconciliation exhaust and fall through to additive refinement. A separate disposable live evaluation is needed to reproduce and assess actual model edits.
 
 ## Expected Behavior
 
-After a decision flips the design, the loop repairs Program Design and Impact to match the selected option (or routes to a rung that can), and only fails when that repair itself fails.
+One eligible reconcile pass repairs all named decision-derived passages together with the ordinary directive gaps. It re-enters normalization and fresh verification. If the repair lacks adequate source detail or drift persists after that attempt, fail with explicit non-convergence evidence before spending the additive retry budget.
 
 ## Motivation
 
-This fix would:
-- Remove a loop-level dead end: any issue whose decision flips after Program Design was written fails `refine-to-ready-issue` even though every other gate is clean.
-- Save ~38 min / 33 iterations of model time per failed attempt (BUG-3761 run).
-- Remove the need for a manual Program Design/Impact edit between `/ll:decide-issue` and the loop's next verify pass.
+Provide a repair owner for selected-decision propagation without broadening ordinary reconciliation into a general design rewrite. The observed failed run cost 38m11s; its six-minute additive retry could not discharge the rewrite obligation.
 
 ## Proposed Solution
 
-Pick one (needs a decision):
+**Selected approach: conditional extension of the existing `--from-verify-evidence` contract, plus a residual-drift guard after reconciliation exhaustion.** No new flag, verdict, Python entry point, or retry counter.
 
-- **A.** Extend the `reconcile-issue` rewrite contract to Program Design and Impact Effort/Risk, so the existing `DIRECTIVE_DRIFT` → `reconcile_issue` rung can clear `unapplied_decision`.
-- **B.** Add a rung that runs `/ll:refine-issue --full-rewrite` (or a targeted Program Design rewrite) when `format-check` reports a residual `unapplied_decision` after reconcile.
-- **C.** Have decide-issue Phase 7c rewrite Program Design/Impact when the rejected option's text dominates the section.
+### Repair eligibility and bounds
+
+- Retain the existing eligibility conjunction: explicit `--from-verify-evidence`, `verify_verdict: DIRECTIVE_DRIFT`, and nonempty current `verify_evidence`.
+- Additionally require a recorded selected option and Decision Rationale, a selected mechanism that still stands, and evidence naming the specific Program Design passages or Impact Effort/Risk lines that describe the rejected option. A section name alone does not authorize replacing its entire contents.
+- Rewrite those named directive passages in place from the recorded selection and its rationale. Existing recorded findings may substantiate the selected mechanism, but cannot introduce a new design or override the selection. If these sources are insufficient, preserve the passage and report the concern.
+- Impact eligibility is limited to decision-derived Effort/Risk text. Severity, affected populations, factual incident history and unrelated estimates remain protected. Preserve accurate Program Design directives, decision records, human rationale, research/provenance blocks and every unrelated section; do not replace the whole H2 around protected material.
+- Ordinary reconciliation, unflagged callers and evidence for other verdicts retain their existing scope. A selected mechanism refuted by code belongs to `PROPOSAL_UNSOUND`, not this carve-out.
+- A substantive design/estimate edit follows the existing resolved-Concern and score-clearing lifecycle. `--check` is read-only, including frontmatter, guards and Session Log; no-op passes do not clear scores.
+
+### Exhaustion routing
+
+Insert a shell state named `check_residual_directive_drift` on `check_reconcile_limit.on_no`, before `check_gate_refine_limit`. Query `ll-issues check-verify-verdict <ID> --directive-drift` using the existing shell-exit convention:
+
+- Match: go directly to `record_gate_unmet`, preserving the existing `GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE` message and `directive_drift_nonconvergence` evidence reference.
+- No match or probe error: retain the existing fallback to `check_gate_refine_limit`. Keep the counter-error handling unchanged and cover it explicitly.
+
+One reconciliation per run remains the bound. If a prior ineligible AC-route reconcile spent it before design drift was discovered, fail explicitly rather than resetting the counter or silently granting another repair. This is a known bounded limitation; VERIFY normally precedes ACCEPTANCE_CRITERIA. All persistent `DIRECTIVE_DRIFT`, including ordinary AC/Step/Integration Map drift, now stops before additive retry. Budget checks still increment on entry: distinguish counter value 2 from two executed repairs.
+
+### Decision Rationale
+
+Review on 2026-10-06 selected this narrow variant of original Option A. Full refinement would expand edits and research unnecessarily; widening decide's Phase 7c would defeat its candidate-versus-edit and bounded-analysis protections. A separate rewrite rung remains a follow-up only if live evaluation demonstrates missed classification or a real need for an independent budget.
+
+`/ll:advise` with `claude-opus-5-5` recommended this approach at confidence 0.75. Its dissent favored a post-decision rewrite rung if verifier classification proves unreliable. Its principal limitations are thin selected-option descriptions and an already-spent reconcile budget; both must end as explicit unmet obligations, not invented designs.
+
+## Review Findings
+
+- `commands/reconcile-issue.md` — Contract and source-extension clauses currently exclude Program Design/Impact. Its existing selected-rationale source and substantive-edit cleanup provide the relevant precedent.
+- `scripts/little_loops/issue_parser.py` — `_DECISION_DIRECTIVE_SECTIONS` includes Program Design but excludes Impact. `unapplied_decision_detail` is a candidate list, not an edit list; shared-vocabulary false positives are documented in `skills/decide-issue/reference.md`.
+- A disposable parser probe reported a Program Design candidate, no Impact-only candidate, and the same Program Design candidate after appending a selected-option restatement. Do not require every raw candidate to disappear or delete legitimate history just to clear the scanner.
+- `scripts/little_loops/cli/issues/next_obligation.py` — DESIGN checks missing/empty/nonspecific design, not decision propagation. `_verify_class` already delegates to the shared verdict classifier.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — reconciliation exhaustion currently enters the shared increment-before-command retry counter. A refusal after `refine_followup` starts cannot refund it.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `reconcile_issue`, `refine_followup`, `check_gate_refine_limit`, `record_gate_unmet` (Option B adds a rung)
-- `commands/reconcile-issue.md` / `skills/ll-reconcile-issue/SKILL.md` — rewrite contract currently limited to Implementation Steps, Acceptance Criteria, Integration Map (Option A)
-- `skills/decide-issue/SKILL.md` — Phase 7c "Propagate Selection" bounded-scope rule (Option C)
+
+- `commands/reconcile-issue.md` — conditional rewrite eligibility, preservation, evidence reading, in-place edits, check-mode and score lifecycle.
+- `skills/ll-reconcile-issue/SKILL.md` — bridge description and argument documentation; the command remains the contract source.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — exhaustion guard, route comments, capture/diagnostic context and state-budget explanation. Recount `max_steps` only if the added valid path requires it.
+- `scripts/tests/test_reconcile_issue_command.py`, `scripts/tests/test_builtin_loops.py`, `scripts/tests/test_bug3695_directive_drift_repair.py` — contract pins and existing-route expectations; update the old persistent-drift fall-through assertions intentionally.
+- Extend the existing child-loop harness cases in `scripts/tests/test_bug3695_directive_drift_repair.py` with the decision-drift routing and evidence-lifecycle matrix.
+- `docs/reference/COMMANDS.md`, `docs/guides/LOOPS_REFERENCE.md` — conditional scope and exhaustion behavior.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/issue_parser.py` — `FormatGaps.unapplied_decision` / `unapplied_decision_detail` is the residual signal any new rung must clear (surfaced by `scripts/little_loops/cli/issues/format_check.py`)
-- `scripts/little_loops/cli/issues/next_obligation.py` — `select_next_obligation` routes `VERIFY:*` tokens consumed by `route_pre_score_obligation`
+
+- `commands/verify-issues.md` — the widened evidence producer is owned by BUG-3764 and lands after this repair contract.
+- `scripts/little_loops/cli/issues/check_verify_verdict.py` — existing `--directive-drift` probe, unchanged.
+- `scripts/little_loops/cli/issues/next_obligation.py`, `scripts/little_loops/cli/issues/run_record.py` — unchanged token mapping and closed terminal-class contract.
+- `scripts/little_loops/loops/prepare-issue.yaml`, `scripts/little_loops/loops/refine-to-ready-issue.yaml` — unflagged reconcile callers, shared AC route and `reconcile_revision` must retain their scope.
 
 ### Similar Patterns
-- The existing `check_reconcile_limit` → `reconcile_issue` and `check_gate_refine_limit` → `refine_followup` budget/rung pairs in `refine-to-ready-issue.yaml`
+
+- BUG-3695's evidence-gated AC/Step repair and its real child-loop harness in `scripts/tests/test_bug3695_directive_drift_repair.py`.
+- Reconciliation's conditional Scope Boundaries carve-out and substantive score clearing.
 
 ### Tests
-- `scripts/tests/test_reconcile_issue_command.py` — contract assertions if reconcile's scope widens
-- `scripts/tests/test_builtin_loops.py` — loop-structure assertions if a state is added
-- TBD (Option B/C): fixture test for a selected-Option-B issue with Option-A Program Design
+
+- Successful scripted repair: one flagged reconcile, normalize, clear old verdict/evidence, fresh VALID verdict, fresh scores and `done`; assert additive retry count remains zero.
+- Persistent drift: one reconcile, exhaustion guard, `record_gate_unmet`, closed `gate_unmet` class and existing non-convergence evidence; no `refine_followup`, no decomposition.
+- Earlier ineligible AC-route reconcile, then discovered design drift: explicit exhaustion without an extra repair or counter reset.
+- VALID plus AC-route exhaustion, NON_VALID/`VERIFY:other`, missing verdict, and guard errors retain their documented fallback/infra behavior.
+- Contract fixtures for no flag, another verdict, empty evidence, absent/ambiguous selection, insufficient winner detail, `--check`, no-op scores and provenance preservation.
+- Opt-in model evaluation on disposable copies verifies actual Program Design/Impact edits and protected-byte preservation. Scripted effects establish routing, not model compliance or convergence.
 
 ### Documentation
-- `docs/reference/CLI.md` / loop docs if a new rung or flag is added (check `refine-to-ready-issue` mentions)
+
+Update command and loop references. No CLI enum/flag change is intended; update `docs/reference/CLI.md` only where it describes exhaustion behavior.
 
 ### Configuration
-- N/A
+
+No new setting. Counters and any evaluation artifacts remain isolated under the run directory.
 
 ## Program Design
 
 ### Types
 
-- `unapplied_decision_detail: list[{section: str, identifier: str}]` — existing `format-check --format json` field; the repair rung's input and its pass/fail signal
+Existing `verify_verdict: str`, escaped single-line `verify_evidence: str`, and the selected-option/rationale text supply eligibility. `FormatGaps.unapplied_decision_detail: list[dict[str, str]]` remains advisory candidate evidence for semantic review; it is not unconditional edit authority.
 
 ### Signatures
 
-- Option A: widen the `reconcile-issue` rewrite contract text to include `## Program Design` and Impact Effort/Risk (no new code identifier)
-- Option B: new loop state `rewrite_program_design` (shell/prompt state in `refine-to-ready-issue.yaml`) gated by a new `check_program_design_rewrite_limit` budget state
-- Option C: extend decide-issue Phase 7c rewrite categories (`skills/decide-issue/reference.md`) to cover whole-section rewrite when the rejected option dominates
+No new Python signature. The existing interfaces are:
+
+- `classify_verify_verdict(verdict: object) -> str` — unchanged shared classifier backing the shell probe.
+- `ll-issues check-verify-verdict <ID> --directive-drift` — existing query used by the new shell guard.
+- `/ll:reconcile-issue <ID> --from-verify-evidence` — existing invocation with the conditional contract extension above.
+
+The only new executable loop component is the shell guard described above.
 
 ### Call Path
 
-`route_pre_score_obligation` -> `reconcile_issue` (Option A) | `rewrite_program_design` (Option B) -> `verify_issue` -> `record_gate_unmet` (fail-closed when residual `unapplied_decision` persists)
+`VERIFY:DIRECTIVE_DRIFT` -> `check_reconcile_limit` -> eligible `reconcile_issue` -> `normalize_structure` -> `clear_verify_verdict` -> `verify_issue`.
+
+On exhaustion: `check_reconcile_limit` -> `check_residual_directive_drift` -> `record_gate_unmet` for persisted drift, otherwise the existing additive-budget fallback.
 
 ## Implementation Steps
 
-1. Decide between Options A/B/C (`/ll:decide-issue BUG-3763`).
-2. Implement the chosen rung/contract change in the files above.
-3. Add a fixture issue (selected Option B, Program Design describing rejected Option A) and a regression test that it clears `unapplied_decision` within one budget.
-4. Run `python -m pytest scripts/tests/test_reconcile_issue_command.py scripts/tests/test_builtin_loops.py` and `ll-loop validate refine-to-ready-issue`.
+1. Extend only the evidence-gated reconcile contract and bridge metadata, with the bounds above. Keep ordinary scope, current evidence entailment rules and read-only mode intact.
+2. Add the shell exhaustion guard and diagnostic capture; preserve per-run counter isolation and closed run-record classes.
+3. Add real-child harness tests and contract pins; amend prior BUG-3695 tests that expected additive fallback for persistent drift.
+4. Add the disposable opt-in model evaluation for actual edit quality, false-positive/history preservation, Impact-only evidence and insufficient source detail. Record its result separately from pytest.
+5. Update command/loop documentation, run the focused tests, `ll-loop validate refine-to-ready-issue`, and finally `python -m pytest scripts/tests/`. Classification changes belong to BUG-3764; command-level additive protection belongs to ENH-3765.
+
+## Scope Boundaries
+
+This issue owns reconcile repair capability and loop exhaustion routing. BUG-3764 owns verifier classification; ENH-3765 owns additive command protection. It does not broaden decide's rewrite contract, introduce a general full rewrite, change decision-detection semantics or add retry capacity.
 
 ## Impact
 
-- **Severity**: Loop-level dead end for any issue whose decision flips after Program Design was written; wastes ~38 min of model time per attempt.
-- **Affected**: `scripts/little_loops/loops/refine-to-ready-issue.yaml`, `skills/ll-reconcile-issue/SKILL.md`, `skills/decide-issue/SKILL.md`.
+- **Severity**: A selected-decision propagation gap can fail preparation after a long run; the observed run lasted 38m11s.
+- **Affected**: Evidence-gated reconciliation and persistent directive-drift exhaustion. Normal AC-route and unflagged reconciliation protections remain required.
 
 ## Acceptance Criteria
 
-- A fixture issue with a selected Option B and a Program Design section describing rejected Option A reaches `done` (or a ready state) in `refine-to-ready-issue` without manual edits.
-- `ll-issues format-check` reports no `unapplied_decision` after the repair.
-- The repair does not run more than once per `check_*_limit` budget and still fails closed to `record_gate_unmet` when it cannot converge.
+- The contract permits one eligible pass to rewrite all specifically evidenced rejected-option Program Design directives and Impact Effort/Risk lines from the recorded selection, with no new mechanism or lost provenance. Disposable model evaluation verifies the edit behavior.
+- Real-child scripted tests reach `done` after successful repair and fresh verification/scoring, with one reconcile and no additive retry.
+- Persistent drift, including an already-spent reconcile budget, reaches `record_gate_unmet` with the existing non-convergence evidence and no additive pass or decomposition.
+- Missing eligibility and check/no-op modes preserve their documented scope and mutation rules. Raw false-positive candidates do not authorize edits or forced scanner clearance.
+- Existing higher/absent verdict paths, non-drift exhaustion and guard-error behavior pass the regression matrix; focused and full local tests and loop validation pass.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/guides/LOOPS_REFERENCE.md` — claim-verification dispatch and bounded repair routing.
+- `docs/reference/COMMANDS.md` — reconcile command contract.
+- `docs/reference/CLI.md` — verdict query and typed run records.
 
 ## Status
 
 **Open** | Created: 2026-10-07 | Priority: P2
-
 
 ## Session Log
 - `/ll:format-issue` - 2026-10-07T00:52:19 - `8092456a-7bf3-47b0-86f7-42712002052b.jsonl`
