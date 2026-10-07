@@ -12,6 +12,43 @@ relates_to:
 - BUG-3763
 - BUG-3764
 - BUG-3767
+confidence_score: 95
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: ambiguous-parent-containment
+  domain: outcome
+  criterion: ambiguity
+  description: Mapping candidates to containing H2s with repeated headings or identifiers
+    relies on conservative judgment.
+- id: false-positive-withholding-all-callers
+  domain: outcome
+  criterion: change_surface
+  description: Every gap-analysis caller, including refine_followup, can have useful
+    additions withheld by false-positive candidates.
+- id: impact-protection-beyond-detector
+  domain: readiness
+  criterion: architecture_compliance
+  description: Impact Effort/Risk embargo extends beyond the detector, which excludes
+    Impact from its section list.
+- id: model-behavior-not-test-proven
+  domain: outcome
+  criterion: test_coverage
+  description: String-presence pins cannot prove model editing behavior; only an opt-in
+    disposable evaluation can.
+- id: multi-stage-write-protection
+  domain: outcome
+  criterion: complexity
+  description: One protected-section set must hold across Steps 3.9, 5a, 5c, 6, 6.7
+    and 6.8 in a prose command.
+- id: nine-site-change-surface
+  domain: outcome
+  criterion: complexity
+  description: 'About nine sites: command, two test files, COMMANDS.md, three mirrors
+    and the wiring gate.'
 ---
 
 # ENH-3765: refine_followup gap-analysis adds contradictory Option B restatement beside rejected Option A
@@ -175,7 +212,25 @@ This issue owns additive command protection and reporting. BUG-3763 owns the act
 
 **Open** | Created: 2026-10-07 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across about nine sites (command, two test files, COMMANDS.md, three mirrors, wiring gate).
+- Moderate per-site depth: one protected-section set must hold consistently across Steps 3.9, 5a, 5c, 6, 6.7 and 6.8 of a prose command.
+- String-presence contract pins cannot prove model editing behavior; the byte-identity guarantee rests on the opt-in disposable evaluation.
+- Mapping candidates to containing H2s with repeated headings or identifiers relies on conservative judgment.
+- The embargo applies to every gap-analysis caller, so false-positive candidates can withhold useful additions.
+
+### Risk Factor Delta
+- Baseline: none recorded
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T01:58:06 - `2e049e0f-fd3f-4dfe-ade3-b2323845a2d1.jsonl`
 - `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:format-issue` - 2026-10-07T00:51:36 - `9aaef30f-0230-47c7-ac7f-df1e0deadca8.jsonl`
 - `/ll:capture-issue` - 2026-10-07T00:49:26 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`

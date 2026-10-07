@@ -9,7 +9,49 @@ labels: []
 decision_needed: false
 unproven_mechanism: true
 verify_verdict: NON_VALID
-
+confidence_score: 85
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
+risk_factors:
+- id: dirty-oversize-write-guard
+  domain: outcome
+  criterion: complexity
+  description: Full-bytes UPDATE guard costs ~4.4 MB on a 3.3 MB row against REQUEST_BYTES_CAP;
+    dirty-row write-back is the real unknown.
+- id: max-row-bytes-flag-undecided
+  domain: readiness
+  criterion: issue_well_specified
+  description: Decision rejects --max-row-bytes while Recommended and Program Design
+    still use it as the per-row budget.
+- id: multi-site-moderate-depth
+  domain: outcome
+  criterion: complexity
+  description: 6-15 sites across raw_redaction, CLI, tests and four docs with cross-function
+    shared-state changes.
+- id: replacement-bound-undecided
+  domain: readiness
+  criterion: issue_well_specified
+  description: Whether the STORED_CAP bound on a redacted replacement moves with the
+    per-row opt-in is left undecided.
+- id: report-shape-fanout
+  domain: outcome
+  criterion: change_surface
+  description: New problem/report fields and flag ripple through pinned test helpers,
+    the CLI report printer and three reference docs.
+- id: unapplied-decision-gap
+  domain: outcome
+  criterion: ambiguity
+  description: format-check unapplied_decision caps Criterion C; hits mostly stem
+    from Option C's retained floor, not a true unapplied decision.
+- id: unproven-blob-chunk-read
+  domain: outcome
+  criterion: outcome_cap
+  description: No codebase site reads a BLOB in chunks or decodes above DECODED_CAP;
+    unproven_mechanism cap is active.
+spike_needed: true
 ---
 
 ## Summary
@@ -262,8 +304,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-10-06 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Concerns
+- Decision record rejects `--max-row-bytes` (Option B) while Recommended and Program Design still use it as A's per-row budget — settle whether the flag exists before implementing.
+- Whether the `STORED_CAP` bound on a redacted replacement moves with the per-row opt-in is undecided (`_plan_column` replacement check).
+- `format-check` reports `unapplied_decision` (caps Criterion C); the hits (`unverifiable_oversize`, `_fetch_one`, `complete: true`) look like false positives from Option C's retained floor and A's reuse of `_fetch_one` — reword or mark them to clear the cap.
+
+### Outcome Risk Factors
+- Unproven mechanism: no codebase site reads a BLOB in chunks or decodes above `DECODED_CAP`; spike the bounded fetch/decode before implementing.
+- Dirty oversize rows: the full-bytes `UPDATE_SQL` guard costs ~4.4 MB on a 3.3 MB row against `REQUEST_BYTES_CAP`, so write-back is the real unknown.
+- Broad enumeration across ~10 sites (raw_redaction, CLI, three test files, four docs) with moderate cross-function depth; new report fields ripple through pinned test helpers.
+
+### Risk Factor Delta
+- Baseline: none recorded
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T02:01:21 - `f53e748b-82f7-41b3-bce8-59be22735cbb.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:06:04 - `51f4678d-2b6a-45cf-bb75-d154b3120223.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-07T01:04:15 - `c24bb708-1ad0-4da8-9d25-50c9d7db6349.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:01:29 - `fec5599b-fa5e-41b8-98dd-172ad808fa28.jsonl`

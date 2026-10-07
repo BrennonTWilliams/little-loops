@@ -15,8 +15,8 @@ risk_factors:
 - id: preserve-current-behavior-premise
   domain: readiness
   criterion: architecture
-  description: Citation edits require direct proof of the unchanged assertion; a
-    rewritten premise could otherwise pass the independent check unnoticed.
+  description: Citation edits require direct proof of the unchanged assertion; a rewritten
+    premise could otherwise pass the independent check unnoticed.
 - id: semantic-edit-quality
   domain: outcome
   criterion: complexity
@@ -27,6 +27,12 @@ risk_factors:
   criterion: change_surface
   description: Correctable scope repeats in classification, persistence, correction,
     final sync and generated host mirrors; all must agree with BUG-3764.
+confidence_score: 95
+outcome_confidence: 68
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3767: Current Behavior citation corrections have no bounded repair path
@@ -226,6 +232,7 @@ Historical assessment by `/ll:confidence-check` on 2026-10-06, before the scope 
 Prompt-guided assertion proof and surgical edits still need disposable model evaluation. The command repeats its correction scope in several places and generated mirrors; stale copies could reintroduce conflicting instructions. Original risk notes about an unresolved option, 16-site token/topology change and four changed step-cap pins no longer describe the selected scope.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T01:59:42 - `438bda79-5f23-4d11-b7b8-bf0e892b50ac.jsonl`
 - `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:31:37 - `e18126dd-317b-417c-86ac-4401ea214536.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:29:30 - `b059f0e8-765a-45cb-b2ac-1828f56d58b5.jsonl`

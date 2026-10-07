@@ -15,6 +15,43 @@ relates_to:
 - BUG-3767
 blocks:
 - BUG-3764
+confidence_score: 95
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: conditional-contract-and-guard-depth
+  domain: outcome
+  criterion: complexity_depth
+  description: Conditional scope change across every reconcile process clause plus
+    a new shell guard with explicit frontmatter shape and delimiter validation.
+- id: extends-existing-reconcile-contract
+  domain: readiness
+  criterion: duplicate_implementations
+  description: Extends the existing --from-verify-evidence reconcile contract rather
+    than adding a new component; must not duplicate or widen ordinary reconcile scope.
+- id: model-edit-quality-unproven-by-pytest
+  domain: outcome
+  criterion: test_coverage
+  description: Scripted child-loop tests prove routing only; actual Program Design/Impact
+    edit quality depends on an opt-in model evaluation outside pytest.
+- id: shared-reconcile-callers-must-keep-scope
+  domain: outcome
+  criterion: change_surface
+  description: prepare-issue, reconcile_revision and unflagged callers share the reconcile
+    command and must retain the ordinary scope.
+- id: tuning-details-left-open
+  domain: outcome
+  criterion: ambiguity
+  description: max_steps 113 is provisional and ambiguous-delimiter evidence handling
+    is specified in prose with edge cases still to settle at implementation.
+- id: wide-contract-and-mirror-sweep
+  domain: outcome
+  criterion: complexity_breadth
+  description: 'About 9 change sites: command, bridge skill, loop YAML, three test
+    files, two docs, plus regenerated host mirrors.'
 ---
 
 # BUG-3763: refine-to-ready-issue has no rung to rewrite Program Design after a decision flips the design
@@ -194,7 +231,25 @@ This issue owns reconcile repair capability and loop exhaustion routing. BUG-376
 
 **Open** | Created: 2026-10-07 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across about 9 change sites (command, bridge skill, loop YAML, three test files, two docs, regenerated host mirrors).
+- Deep per-site complexity: a conditional scope change across every reconcile process clause plus a new shell guard with explicit shape and delimiter validation.
+- Scripted child-loop tests prove routing only; the quality of actual Program Design/Impact edits rests on an opt-in model evaluation outside pytest.
+- The `max_steps: 113` budget is provisional and ambiguous-delimiter handling still has edge cases to settle during implementation.
+- The reconcile command is shared with prepare-issue, `reconcile_revision` and unflagged callers, which must keep the ordinary scope.
+
+### Risk Factor Delta
+- Baseline: none recorded
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T01:59:32 - `46b6f9fa-ff1d-4adc-917b-97222f85316f.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:56:29 - `07f0fbdf-7493-4e19-9704-1bfc9798a017.jsonl`
 - `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:format-issue` - 2026-10-07T00:52:19 - `8092456a-7bf3-47b0-86f7-42712002052b.jsonl`
