@@ -44,6 +44,12 @@ risk_factors:
   criterion: complexity
   description: About nine change sites span queries, template, five test files and
     two reference docs.
+confidence_score: 90
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3733: Snapshot export and dashboard usage qualification
@@ -196,6 +202,7 @@ Verdict at time of check: **VALID** (2026-10-06; corrected contract on inspected
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-07T00:41:41 - `179a571f-b346-4676-99c5-427e664b8107.jsonl`
 - `/ll:ready-issue` - 2026-10-06T23:34:46 - `rollout-2026-10-06T17-27-26-01a1138b-1e26-7522-81f8-fe08a1540f42.jsonl`
 - Pre-implementation consumer review - 2026-10-06 - Reproduced sql.js rounding of an exact stored integer and required BigInt retrieval in the actual page query/render loop. Fixed the four-column schema and NULL-only missing-cost count semantics; invalid/overflow inputs remain separate. Opus confidence 0.78; existing related suites: 233 passed. Invalidated prior confidence scores with the CLI; no implementation or fresh score claimed.
 
