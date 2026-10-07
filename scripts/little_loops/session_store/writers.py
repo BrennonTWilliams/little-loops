@@ -24,6 +24,7 @@ import sys
 import threading
 import time
 import zlib
+from collections import Counter
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
@@ -358,6 +359,8 @@ def record_correction(
         if not capture.corrections:
             return
     content = content[:512]
+    # ``source`` must never be the reserved 'backfill' (the replay marker):
+    # ``rebuild()`` wipes ``source = 'backfill'`` rows and preserves all others (BUG-3761).
     conn = _connect_telemetry(db_path)
     ts = _now()
     try:
@@ -3661,11 +3664,25 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
         yield line, source_label
 
 
-def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+def _backfill_tool_events(
+    conn: sqlite3.Connection,
+    source: list[Path] | sqlite3.Cursor,
+    *,
+    skip_live: Counter[tuple[str | None, str, str]] | None = None,
+) -> int:
     """Seed ``tool_events`` from assistant tool-use blocks in session JSONL files.
 
     *source* is either a list of on-disk JSONL files (legacy) or a
     ``raw_events`` cursor (the :func:`rebuild` path) — see :func:`_iter_events`.
+
+    Replay rows always bind NULL ``bytes_in``/``bytes_out``; ``rebuild()`` relies on
+    that to tell them from byte-bearing hook rows (BUG-3761), so changing it here
+    needs a matching ``_REBUILD_TABLE_PREDICATES`` change.
+
+    *skip_live* (BUG-3761) is a multiset of ``(session_id, tool_name, args_hash)``
+    keys for surviving live hook rows. A tool_use block whose key has a remaining
+    count decrements it and is skipped (no INSERT, no index entry), so a live row
+    and its transcript twin yield one row. Mutated in place; ``None`` disables it.
     """
     count = 0
     for line, source_label in _iter_events(source):
@@ -3691,6 +3708,12 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
                 else None
             )
             mcp_server, mcp_tool = _parse_mcp_tool_name(tool_name)
+            args_hash = _hash_args(args)
+            if skip_live:
+                live_key = (session_id, tool_name, args_hash)
+                if skip_live.get(live_key, 0) > 0:
+                    skip_live[live_key] -= 1
+                    continue
             conn.execute(
                 "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
                 "result_size, bytes_in, bytes_out, cache_hit, agent_type, "
@@ -3700,7 +3723,7 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
                     ts,
                     session_id,
                     tool_name,
-                    _hash_args(args),
+                    args_hash,
                     None,
                     None,
                     None,

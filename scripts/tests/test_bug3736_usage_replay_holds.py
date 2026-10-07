@@ -489,7 +489,7 @@ class TestLegacySeeding:
         assert SCHEMA_VERSION == 60
         assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(0,)]
         assert lifecycle._USAGE_DERIVE_VERSION == "enh3651-v1"
-        assert lifecycle.REBUILD_DERIVE_VERSION == "enh3678-v1"
+        assert lifecycle.REBUILD_DERIVE_VERSION == "bug3761-v1"
 
     def test_rebuild_predicate_matches_shared_hold_fragment(self) -> None:
         predicate = lifecycle._REBUILD_TABLE_PREDICATES["usage_events"]

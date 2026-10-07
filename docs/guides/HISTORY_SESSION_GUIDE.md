@@ -216,6 +216,17 @@ Reads these sources sequentially:
 > `history.compaction.enabled` is true; otherwise they are cleared. Rebuild holds
 > the database write lock for its whole run, including any summarization calls.
 >
+> Live hook telemetry survives a rebuild: tool rows the PostToolUse hook wrote
+> (those with a populated `bytes_in` or `bytes_out`) and corrections captured live
+> (any `source` other than `backfill`) keep their fields and IDs and stay searchable,
+> and a transcript replay of the same tool call is not counted twice. Replay-derived
+> rows (both byte columns NULL; `source = 'backfill'`) are wiped and re-derived, so
+> they are lost if their raw source is gone. Rows deleted by a rebuild from an older
+> version are unrecoverable without a backup. Preserved correction text is not
+> rewritten by `ll-session redact`, which only rewrites `raw_events` (see BUG-3762).
+> The first rebuild after upgrading holds the write lock; hook telemetry written
+> during that window can be dropped at the 5 s busy timeout.
+>
 > The `SessionStart` hook rebuilds automatically only when the derivation
 > itself changed (tracked by a `rebuild_derive_version` stamp), not on every
 > schema upgrade, and only when the store is small enough (main database plus

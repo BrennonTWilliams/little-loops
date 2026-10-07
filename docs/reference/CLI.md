@@ -4708,6 +4708,14 @@ the missing coverage remains unknown rather than becoming zero.
 Wipes and re-derives `tool_events`, `message_events`, `assistant_messages`,
 `skill_events`, `sessions`, `user_corrections`, `summary_nodes`/
 `summary_spans`, and their `search_index` rows from `raw_events`. Idempotent.
+Live hook telemetry that `raw_events` cannot regenerate is kept: tool rows with a
+populated `bytes_in` or `bytes_out` (written by the PostToolUse hook) and corrections
+whose `source` is not `backfill`. Those rows keep every field and ID, are re-indexed
+for search, and a transcript replay of the same tool call is suppressed so invocation
+counts do not double. Rows classified as replay output (both byte columns NULL;
+`source = 'backfill'`) are wiped and re-derived, so they cannot be recovered if their
+raw source is gone. Rows already lost to an earlier rebuild are not restored; use a
+backup (BUG-3761).
 Issue/loop/commit/cli/file/test_run/orchestration tables are outside `raw_events`'s scope
 and are untouched (ENH-2581, ENH-2492).
 

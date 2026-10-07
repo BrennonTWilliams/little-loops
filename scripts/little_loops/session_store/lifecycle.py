@@ -26,6 +26,7 @@ import logging
 import sqlite3
 import subprocess
 import threading
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -62,6 +63,7 @@ from little_loops.session_store.writers import (
     _backfill_subagent_runs,
     _backfill_tool_events,
     _backfill_usage_events,
+    _index,
     _iter_events,
     _now,
     _pack_payload,
@@ -1036,6 +1038,12 @@ def recompress_raw_events(
 # so replay can neither regenerate them nor would it ever write them. summary_spans
 # stays fully wiped — retention nodes have no spans, and spans reference
 # message_events ids that this rebuild replaces.
+# tool_events and user_corrections are likewise mixed-origin (BUG-3761): the
+# PostToolUse hook writes byte-bearing tool rows and the prompt hook writes
+# corrections directly, with no raw event to replay. Replay always binds NULL
+# bytes_in/bytes_out (``_backfill_tool_events``) and the reserved source
+# 'backfill' (``mine_corrections_from_messages``), so those signals classify a
+# row as replayable; everything else survives and is re-indexed in ``rebuild()``.
 _REBUILD_TABLES = (
     "tool_events",
     "message_events",
@@ -1056,6 +1064,8 @@ _REBUILD_TABLE_PREDICATES = {
         "AND (h.channel = '*' OR h.channel IS usage_events.channel)))"
     ),
     "summary_nodes": "kind IS NOT 'retention'",
+    "tool_events": "bytes_in IS NULL AND bytes_out IS NULL",
+    "user_corrections": "source = 'backfill'",
 }
 
 _REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction", "usage")
@@ -1070,9 +1080,9 @@ _USAGE_DERIVE_VERSION = "enh3651-v1"
 # ``_USAGE_DERIVE_VERSION`` instead (incremental path), never this constant.
 # A mismatch makes every store rebuild once (a full wipe-and-replay); the
 # SessionStart size gate (:func:`rebuild_disposition`) defers that replay on a
-# large store. Compared with ``!=`` (an identifier, never ordered). ``test_rebuild_derive_fingerprint.py`` fails when the
-# derivation changes without a bump.
-REBUILD_DERIVE_VERSION = "enh3678-v1"
+# large store. Compared with ``!=`` (an identifier, never ordered).
+# ``test_enh3678_rebuild_derive_gate.py`` fails when the derivation changes without a bump.
+REBUILD_DERIVE_VERSION = "bug3761-v1"
 
 # Stores last rebuilt at or after this ``SCHEMA_VERSION`` but carrying no
 # ``rebuild_derive_version`` stamp were derived under schema-58 semantics, which
@@ -1781,8 +1791,10 @@ def rebuild(
 
     Wipes ``_REBUILD_TABLES`` plus the ``search_index`` rows for
     ``_REBUILD_SEARCH_KINDS`` (except rows ``_REBUILD_TABLE_PREDICATES`` preserves:
-    ``channel = 'live'`` usage events and ``kind = 'retention'`` summary nodes,
-    which cannot be replayed once their raw rows are pruned), then re-derives them by replaying every
+    ``channel = 'live'`` usage events, ``kind = 'retention'`` summary nodes,
+    byte-bearing hook tool rows, and non-``backfill`` corrections, none of which
+    can be replayed from ``raw_events``; surviving tool/correction rows are
+    re-indexed and their replay twins suppressed), then re-derives them by replaying every
     ``raw_events`` row through the same ``_backfill_*`` parsers the legacy
     JSONL path uses (via :func:`_iter_events`). Idempotent — safe to call
     repeatedly. On success, updates the ``last_rebuild_version`` meta key to
@@ -1823,6 +1835,35 @@ def rebuild(
             _REBUILD_SEARCH_KINDS,
         )
 
+        # BUG-3761: surviving live tool/correction rows lost their search entries to
+        # the blanket delete above; re-index them with the writers' own arguments.
+        # The Counter lets replay skip transcript twins of surviving live tool rows
+        # (matched on key, not ts: the hook stamps _now(), replay copies the transcript).
+        live_tools: Counter[tuple[str | None, str, str]] = Counter()
+        for tool_ts, tool_sid, tool_name, args_hash, agent_type in conn.execute(
+            "SELECT ts, session_id, tool_name, args_hash, agent_type FROM tool_events ORDER BY id"
+        ).fetchall():
+            live_tools[(tool_sid, tool_name, args_hash)] += 1
+            _index(
+                conn,
+                content=f"{tool_name} {agent_type or ''}".strip(),
+                kind="tool",
+                ref=tool_name,
+                anchor=str(tool_sid or ""),
+                ts=tool_ts,
+            )
+        for corr_ts, corr_sid, corr_content, corr_source in conn.execute(
+            "SELECT ts, session_id, content, source FROM user_corrections ORDER BY id"
+        ).fetchall():
+            _index(
+                conn,
+                content=corr_content,
+                kind="correction",
+                ref=corr_sid or "",
+                anchor=corr_source,
+                ts=corr_ts,
+            )
+
         def _raw_events_cursor(*, usage_order: bool = False) -> sqlite3.Cursor:
             ordering = (
                 "source_path, COALESCE(ordinal, line_no), line_no, id" if usage_order else "id"
@@ -1836,7 +1877,7 @@ def rebuild(
         # sessions first: assistant_messages/backfill order elsewhere relies on
         # the sessions table already being populated (ENH-1710).
         counts["sessions"] = _backfill_sessions(conn, _raw_events_cursor())
-        counts["tools"] = _backfill_tool_events(conn, _raw_events_cursor())
+        counts["tools"] = _backfill_tool_events(conn, _raw_events_cursor(), skip_live=live_tools)
         counts["messages"] = _backfill_messages(conn, _raw_events_cursor())
         counts["assistant_messages"] = _backfill_assistant_messages(conn, _raw_events_cursor())
         counts["skill_events"] = _backfill_skill_events(conn, _raw_events_cursor())

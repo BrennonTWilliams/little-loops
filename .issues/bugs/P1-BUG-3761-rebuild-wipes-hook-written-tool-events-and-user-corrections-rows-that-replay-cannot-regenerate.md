@@ -4,13 +4,14 @@ title: rebuild() wipes hook-written tool_events and user_corrections rows that r
   cannot regenerate
 type: BUG
 priority: P1
-status: open
+status: done
 discovered_date: '2026-10-06'
 labels:
 - history
 - telemetry
 - data-loss
 testable: true
+completed_at: '2026-10-07T01:35:37Z'
 decision_needed: false
 reconcile_attempted: true
 relates_to:
@@ -36,8 +37,8 @@ risk_factors:
   criterion: complexity
   description: Survivor re-indexing and twin suppression extend the BEGIN IMMEDIATE
     window against the 5s hook busy timeout; the forced first auto-rebuild on every
-    eligible store can drop a few hook telemetry rows; needs measurement and a
-    check that concurrent SessionStart workers cannot both rebuild
+    eligible store can drop a few hook telemetry rows; needs measurement and a check
+    that concurrent SessionStart workers cannot both rebuild
 - id: shared-rebuild-edit-coordination
   domain: outcome
   criterion: change_surface
@@ -47,8 +48,8 @@ risk_factors:
   domain: outcome
   criterion: complexity
   description: Suppressing replay twins of surviving live tool rows (multiset match
-    on session_id, tool_name, args_hash) is a new mechanism beyond the predicate
-    precedent; without it tool counts double after the first post-fix rebuild
+    on session_id, tool_name, args_hash) is a new mechanism beyond the predicate precedent;
+    without it tool counts double after the first post-fix rebuild
 - id: preserved-correction-outlives-redaction
   domain: outcome
   criterion: change_surface
@@ -266,11 +267,25 @@ Required-rule query returned no active required rules; learning-test assessment 
 
 Focused baseline checks passed: 101 tests across `TestRebuild`, PostToolUse hooks, derive-version gates, and the automatic worker. The real-writer loss probes are evidence for the missing regression coverage, not proof that the bug has been fixed. The full local suite remains the final implementation gate.
 
+## Resolution
+
+**Fixed** 2026-10-06 (Option B, as amended 2026-10-07).
+
+- `lifecycle.py`: `_REBUILD_TABLE_PREDICATES` gains `tool_events: bytes_in IS NULL AND bytes_out IS NULL` and `user_corrections: source = 'backfill'`; `rebuild()` re-indexes surviving tool/correction rows with the writers' own `_index()` arguments and builds a live-tool `Counter`; `REBUILD_DERIVE_VERSION = "bug3761-v1"`; fingerprint regenerated (frozen baseline untouched).
+- `writers.py`: `_backfill_tool_events(..., skip_live=Counter | None)` suppresses count-bounded transcript twins of surviving live rows (no INSERT, no index entry); provenance-contract comments on the replay/`record_correction` sites; `post_tool_use.py` coupling comment.
+- Tests: new `test_bug3761_rebuild_preserves_live_telemetry.py` (real hook + writer; preservation, FTS, twin suppression, idempotence, NULL keys, rollback, writer contracts), real `--auto-rebuild` worker test, gate/version-literal tests updated (frozen-baseline coverage retained via monkeypatch).
+- Docs: CLI.md, API.md, HISTORY_SESSION_GUIDE.md, ARCHITECTURE.md (bounded classifier, redaction carry-over, first-rebuild lock window).
+- Lock-duration measurement (one-off, synthetic): 20,000 surviving tool rows + 2,000 corrections rebuild in 0.073 s total, far inside the 5 s hook busy timeout.
+- Concurrency check: `rebuild()` serializes on `BEGIN IMMEDIATE`, but the worker's disposition recheck happens before it, so two simultaneous SessionStart workers could each rebuild back to back. Recorded, not fixed here; the rebuild is now idempotent for tools/corrections, so the second pass is wasted work, not data loss.
+- Full suite: 29232 passed; the only failures are pre-existing and unrelated (`test_next_loop_golden` float-ulp mismatch, `test_libsql_integration::TestLive` needing a live endpoint), both reproduced on a clean stash.
+
 ## Status
 
-**Open** | Created: 2026-10-06 | Priority: P1
+**Done** | Created: 2026-10-06 | Completed: 2026-10-06 | Priority: P1
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T01:35:37 - `0f80487b-9ecd-4599-919e-b780b862172c.jsonl`
+- `/ll:ready-issue` - 2026-10-07T01:21:18 - `27d2ae1e-6f7f-4536-988d-2e9430cab455.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:02:00 - `8092456a-7bf3-47b0-86f7-42712002052b.jsonl`
 - `/ll:ready-issue` - 2026-10-07T00:55:44 - `62355c4f-23ba-4c6f-bf44-9fe87ad6e7af.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-07T00:39:26 - `c822b1e8-eb73-465f-ac83-ee54531a264e.jsonl`
