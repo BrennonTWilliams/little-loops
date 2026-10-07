@@ -10,6 +10,43 @@ decision_needed: false
 unproven_mechanism: true
 verify_verdict: VALID
 spike_needed: true
+confidence_score: 95
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: decoded-allocation-8mib
+  domain: outcome
+  criterion: ambiguity
+  description: 8 MiB decoded limit per column doubles allocation growth; structurally
+    dense JSON allocation and ordinary-page/singleton co-retention unmeasured
+- id: dirty-row-request-fit
+  domain: outcome
+  criterion: complexity
+  description: Dirty expanded rows may not fit the 8 MiB guarded request estimate
+    and stay unredacted
+- id: expanded-reconciliation-lost-ack
+  domain: outcome
+  criterion: complexity
+  description: Lost/short-ack reconciliation must use the expanded bounded read without
+    false success or conflict
+- id: multi-site-shared-state-change
+  domain: outcome
+  criterion: complexity
+  description: About 8 sites with moderate shared plan/reconcile/write state across
+    _handle, _plan_row and _write_unit
+- id: report-contract-fanout
+  domain: outcome
+  criterion: change_surface
+  description: Additive report/problem fields reach CLI printer, exports, JSON contract,
+    tests and three docs
+- id: unproven-bounded-singleton-mechanism
+  domain: outcome
+  criterion: outcome_cap
+  description: Fixed 8 MiB singleton read/decode budgets and Step 1 proof are unproven;
+    unproven_mechanism caps outcome at 64
 ---
 
 ## Summary
@@ -55,8 +92,8 @@ Rows within the expanded single-row limits are actually validated under the curr
 - [ ] Promotion covers stored-input overflow, decoded-input byte overflow even for highly compressed small BLOBs, and replacement stored/decoded overflow. JSON recursion and sanitizer structural limits do not trigger larger byte budgets.
 - [ ] A fallback read observes both payload columns and host/event-type context in one statement. Concurrent changes, vanished rows, short/lost acknowledgements and bounded reconciliation never overwrite another version or equate unfetched values with original/desired bytes.
 - [ ] Existing `TestWireBounds` remains green. Actual local/remote singleton reads respect their caps; captured remote page and singleton responses remain below 32 MiB, every serialized write request remains at most 8 MiB, and retained replacements remain at most 8 MiB.
-- [ ] Malformed oversized values within the read budget retain specific validation reasons; in particular an oversized zero BLOB is invalid compression, rather than automatically a size refusal. Over-budget inputs are never fetched/decompressed without a hard bound.
-- [ ] Text and JSON distinguish size-budget failures from other failures, identify the budget and available stored size, and explain why an unchanged rerun cannot resolve them. Distinct size-refused rows remain visible in aggregate after diagnostic truncation; two refused columns count as one failed row.
+- [ ] Malformed oversized values retain specific validation reasons when detectable within the effective stored and decoded budgets; in particular an oversized zero BLOB is invalid compression. Decoded-byte exhaustion takes precedence over EOF/checksum/trailing defects that cannot yet be established within that bound. Over-budget inputs are never fetched/decompressed without a hard bound.
+- [ ] Text and JSON distinguish size-budget failures from other failures, identify the budget and available stored size, and explain why an unchanged rerun cannot resolve them. Include a row-level total-replacement budget diagnostic. Distinct size-refused rows remain visible in aggregate after diagnostic truncation; two refused columns count as one failed row. Guidance states that the entire refused row remains unchanged and may retain unredacted matches, including in a successfully validated sibling; discarded matches never enter successful-row counters.
 - [ ] Dry-run performs the same expanded validation and planning while writing no payload, schema, progress or telemetry. Mixed ordinary/expanded pages continue scanning once per row through the original keyset snapshot.
 - [ ] Synthetic over-cap ingest regressions cover both backfill and usage-source insertion: both compressed columns actually exceed 1 MiB, decoded sensitive markers are replaced, and benign large content remains intact. Ingest continues to sanitize before storage.
 - [ ] CLI/API/history-guide documentation states the fixed limits, new diagnostics, completion scope and manual remedy; no new public flag or config setting is introduced.
@@ -80,6 +117,8 @@ The decision recorded on 2026-10-06 selected separate single-row processing and 
 Clarification recorded as issue-scoped decision `66592853-37b3-4605-abc8-637fdbff52aa`, extending the original selection without changing its page/write safety requirements.
 
 A singleton with **two 8 MiB stored payloads** returns the same maximum 16 MiB of payload bytes as an ordinary page of eight rows with two 1 MiB columns. Derive the singleton stored limit from `PAGE_ROWS_MAX * STORED_CAP` and test that invariant. BLOB projection makes remote payload encoding base64, approximately 21.34 MiB plus bounded context/envelope overhead, below the existing 32 MiB captured-response ceiling. Capture the real response in tests rather than relying only on arithmetic. A fixed **8 MiB decoded limit per column** covers the reported 4.7 MB decoded row while limiting allocation growth to twice the ordinary decoded budget.
+
+Wire limits are not a heap bound. The current scan retains its ordinary page while handling a row, so up to 16 MiB of page payloads can coexist conservatively with a 16 MiB expanded observation, plus encoded replacements, parsed/sanitized objects and a reconciliation observation. The proof must measure these overlapping lifetimes, including mixed-page promotion and lost-ack reconciliation. Release obsolete partial plans and expanded observations promptly; process columns sequentially and do not retain expanded observations across rows. The conservative 32 MiB page-plus-singleton payload envelope is accepted provisionally, subject to the proof; it is not a 32 MiB total-memory guarantee.
 
 Separate chunk requests would need a new snapshot/identity protocol: `scripts/little_loops/session_store/libsql.py` executes independently, and `scripts/little_loops/session_store/hrana.py` sends stateless requests. Matching lengths, types or context cannot detect same-size changes or ABA. One SELECT avoids constructing a payload from different versions and needs no remote adapter extension.
 
@@ -139,12 +178,14 @@ Add optional defaulted fields to `RawRedactionProblem`:
 
 - `stored_bytes: int | None = None`: exact original stored column length, when column-specific; no decoded payload or source path.
 - `decoded_bytes: int | None = None`: exact decoded input size only when available; null when bounded decode exhausted its cap.
-- `limit_kind: str | None = None`: fixed vocabulary `stored`, `decoded`, `replacement_stored`, `replacement_decoded`, `request`.
+- `limit_kind: str | None = None`: fixed vocabulary `stored`, `decoded`, `replacement_stored`, `replacement_decoded`, `replacement_total`, `request`.
 - `limit_bytes: int | None = None`: the effective exhausted budget. Request problems use `column=None`; unavailable column sizes remain null.
+
+`replacement_total` identifies the aggregate `REPLACEMENT_BYTES_CAP`, independently of the serialized request limit. It uses `column=None`, null column sizes and the 8 MiB effective limit; do not report it as a per-column stored overflow. Release the candidate that would cross this bound, and do not promote again.
 
 Do not invent an exact decoded size after cap exhaustion. The diagnostic names the decoded budget that was exceeded; a bounded decoder knows only that output is larger than that limit.
 
-Append defaulted `oversize_refused: int = 0` to `RawRedactionReport`, counting **distinct rows** refused by size budgets, a subset of `failed`. Maintain the corresponding row-id set independently of retained `problems`, so truncation cannot suppress guidance. Keep existing row/application/count semantics and the completion expression. JSON always includes the new fields: null metadata for non-size problems and zero aggregate when no row is size-refused.
+Append defaulted `oversize_refused: int = 0` to `RawRedactionReport`, counting **distinct rows** refused by size budgets, a subset of `failed`. Maintain the corresponding row-id set independently of retained `problems`, so truncation cannot suppress guidance. Put it in the immutable `_Tally` and update it together with failed ids/diagnostics in one transition; interruption must not produce `oversize_refused > failed` or partial promotion accounting. Keep existing row/application/count semantics and the completion expression. JSON always includes the new fields: null metadata for non-size problems and zero aggregate when no row is size-refused.
 
 Carry an internal expanded-plan marker/effective bounds for reconciliation; both original and desired values may exceed the ordinary projection. Plans used for writing must contain both complete original payload observations and validated context; never bind missing over-cap values as NULL guards.
 
@@ -169,16 +210,16 @@ Expanded observations use the planned singleton helper; expanded writes reuse `_
 3. Count the row once after final planning; promotion does not duplicate `scanned`, `would_change`, attributed counts or failure ids. Keep keyset advancement/snapshot semantics. No generic retry loop for repeated promotion or changes.
 4. Clean rows produce no UPDATE. Dirty rows produce one atomic singleton unit only if all replacement limits, aggregate retained-replacement budget and the full request estimate fit. Check the remaining aggregate budget before retaining each column replacement in the plan; release an over-budget candidate immediately instead of accumulating two 8 MiB replacements. The 8 MiB retention bound covers planned/queued encoded replacements, not temporary serializer/compressor allocations or total heap. Include both original guards and every replacement in the estimate. Flush/release this unit before processing the next expanded row.
 5. On lost/short acknowledgement, use the expanded bounded read for expanded plans, including when only a replacement grew beyond the ordinary cap. Retain full-byte desired/original comparisons and at most one guarded retry. An unfetched oversized value is never proof of convergence; vanished/changed/unconfirmed outcomes retain existing accounting.
-6. A size refusal leaves the entire row intact, adds `unverifiable_oversize` with stage/limit metadata, and increments the distinct size-refused aggregate. A malformed value fetched within budget instead retains its validation code.
-7. Text mode renders retained row/column/size/budget detail and explicitly states how many details were omitted. Stored/decoded input failures mean content could not be fully validated. Replacement/request failures mean supported redactable content was found but **not written**; report this explicitly, not just as "could not verify." For size-refused rows, explain that rerunning unchanged cannot help: review the reported row ids and reduce or remove the affected payloads through backend administration before rerunning. Manual modification/deletion is an explicit operator choice with replay/data-loss consequences; this command never performs it. No promise that prune/compact or a nonexistent flag solves the problem, since prune/compact are refused remotely and are not targeted by row size. When all size details are omitted, still print the aggregate and honest fixed-limit guidance; state that omitted rows may include known-dirty payloads left unredacted, and do not claim JSON contains omitted ids.
+6. A size refusal leaves the entire row intact, adds `unverifiable_oversize` with stage/limit metadata, and increments the distinct size-refused aggregate. Preserve a specific validation code when that defect is detectable within both effective input bounds. When bounded decode exhausts its cap before it can establish EOF/checksum/trailing validity, report the decoded-byte refusal; never exceed the cap to find a more specific defect.
+7. Text mode renders retained row/column/size/budget detail and explicitly states how many details were omitted. Stored/decoded input failures mean content could not be fully validated. Replacement/request failures mean supported redactable content was found but **not written**; report this explicitly, not just as "could not verify." Every size-refusal message states that the whole row remains unchanged and may retain unredacted matches, including in a validated sibling discarded for row atomicity. For size-refused rows, explain that rerunning unchanged cannot help: review the reported row ids and reduce or remove the affected payloads through backend administration before rerunning. Manual modification/deletion is an explicit operator choice with replay/data-loss consequences; this command never performs it. No promise that prune/compact or a nonexistent flag solves the problem, since prune/compact are refused remotely and are not targeted by row size. When all size details are omitted, still print the aggregate and honest fixed-limit guidance; state that omitted rows may include known-dirty payloads left unredacted, and do not claim JSON contains omitted ids.
 
 ## Implementation Steps
 
-1. **Prove the bounded mechanism first.** Use synthetic local SQLite and the existing libSQL/Hrana stub to capture a singleton with two maximum-sized columns, prove its raw response never exceeds the full-page maximum, prove strict cap/cap+1 limits for both read tiers and output/request budgets, and demonstrate expanded lost-ack reconciliation. Exercise realistic and structurally dense valid-object decoded fixtures; record allocation/runtime observations for the 8 MiB decoded budget and sequential source lifetime. Record results before clearing the mechanism/spike flags. If the fixed budgets cannot be proved, revise this design rather than weakening guards.
+1. **Prove the bounded mechanism first.** Use synthetic local SQLite and the existing libSQL/Hrana stub to capture a singleton with two maximum-sized columns, prove its raw response never exceeds the full-page maximum, prove strict cap/cap+1 limits for both read tiers and per-column/total replacement and request budgets, and demonstrate expanded lost-ack reconciliation. Exercise realistic and structurally dense valid-object decoded fixtures; record allocation/runtime observations for the 8 MiB decoded budget, sequential source lifetime, retained ordinary-page plus singleton processing, and expanded planning/reconciliation. Record peak observations and retained-object lifetimes, not just wire arithmetic. Record results before clearing the mechanism/spike flags. If the fixed budgets cannot be proved, revise this design rather than weakening guards.
 2. Add failing regressions for the reproduced clean row, decoded-only overflow and dirty expanded fit/refusal. Fixtures use seeded incompressible benign content plus a separately controlled sensitive marker; assert stored/decoded premises and sanitizer counts. Repeated-character padding alone does not exercise the stored limit.
-3. Implement byte-limit stage metadata, internal bounds, coherent singleton refetch and one-time promotion. Cover replacement growth, unsupported context/storage, malformed compression/encoding/JSON, and preserved row atomicity. Keep ordinary callers on their existing defaults.
+3. Implement byte-limit stage metadata, internal bounds, coherent singleton refetch and one-time promotion. Cover replacement growth, unsupported context/storage, malformed compression/encoding/JSON, and preserved row atomicity. Include a trailing/corrupt compressed stream whose stored input fits but whose decoded output exceeds the effective cap: it must stop boundedly with a size refusal, while an oversized zero BLOB remains invalid compression. Keep ordinary callers on their existing defaults.
 4. Integrate singleton guarded writes, bounded replacement lifetime and expanded reconciliation. Exercise dirty normal siblings, both-large columns, mutation between page/fallback and between plan/write, disappearance, short/lost acknowledgement, one guarded retry and a refetch now above the expanded cap. Assert no false success, no false conflict from an unchanged oversized sibling, and exact untouched siblings/types. Rerun a successfully scrubbed expanded row and require zero changes/failures. Pin captured request estimates against oversized BLOB and escaped/non-ASCII TEXT values.
-5. Add report fields and CLI guidance. Test two refused columns as one failed/size-refused row; set `PROBLEM_CAP=1` with a non-size failure before a size failure and confirm the independent aggregate/guidance. Test JSON as one content-free object, complete/incomplete/interrupted exit codes, dry-run and zero telemetry.
+5. Add report fields and CLI guidance. Test two refused columns as one failed/size-refused row; set `PROBLEM_CAP=1` with a non-size failure before a size failure and confirm the independent aggregate/guidance. Test a dirty validated sibling with an input-refused sibling: both remain exact, discarded matches do not enter successful-row counters, and guidance warns of an unchanged atomic row with possible unredacted matches. Inject an interruption at the refusal-accounting boundary and require the aggregate to remain a subset of failed rows. Test JSON as one content-free object, complete/incomplete/interrupted exit codes, dry-run and zero telemetry.
 6. Add over-cap ingestion coverage at both independent write seams, asserting both compressed column sizes, sensitive-marker removal and benign-content preservation. No ingest behavior change is currently justified.
 7. Update the three affected docs and run the focused suite, then the authoritative `python -m pytest scripts/tests/` gate for implementation. Preserve existing wire/vocabulary/default-caller/remote-operation contracts. Run relevant lint/types only when production code changes.
 
@@ -195,11 +236,36 @@ Expanded observations use the planned singleton helper; expanded writes reuse `_
 
 ## Confidence Check Notes
 
+### Historical assessment
+
 The earlier 85/100 readiness and 63/100 outcome assessment preceded this review and is historical, not a score for the revised design. Its unresolved flag/replacement decisions and rejected-option directive drift have been removed. Do not carry those scores forward without a new assessment.
 
-Remaining risks are the increased decoded allocation, exact guarded-request fit, and expanded reconciliation. `unproven_mechanism: true` and `spike_needed: true` remain honest until the proof in Implementation Step 1 passes. No broader ingestion redesign or remote snapshot/chunk protocol is required by the selected design.
+Remaining risks are the increased decoded allocation and observation co-retention, exact guarded-request fit, and expanded reconciliation. `unproven_mechanism: true` and `spike_needed: true` remain honest until the proof in Implementation Step 1 passes. No broader ingestion redesign or remote snapshot/chunk protocol is required by the selected design.
+
+### Latest recorded assessment
+
+_Added by `/ll:confidence-check` on 2026-10-06_
+
+**Readiness Score**: 95/100 → proceed with the isolated mechanism proof; production implementation remains conditional on its result.
+**Outcome Confidence**: 64/100 → MODERATE (hard-capped from a raw 71 by `unproven_mechanism`)
+
+The recorded outcome is below this project's configured 65-point gate. This review clarifies contracts without recomputing the scores; passing proof and a fresh confidence assessment are required before treating production implementation as ready.
+
+### Concerns
+- Issue well-specified (15/20): the 8 MiB stored/decoded singleton limits are provisional until the Implementation Step 1 proof passes; the issue itself says to revise the design if they cannot be proved.
+
+### Outcome Risk Factors
+- Unproven mechanism: the cap holds outcome at 64 until Step 1 (singleton wire capture, cap/cap+1 bounds, expanded lost-ack reconciliation) is recorded and the flags cleared via a proven spike.
+- Deep per-site complexity (10/25): about 8 sites with moderate shared plan/reconcile/write state across `_handle`, `_plan_row` and `_write_unit`.
+- The 8 MiB decoded budget doubles allocation growth, and structurally dense valid JSON is unmeasured.
+- Dirty expanded rows may not fit the guarded 8 MiB request estimate and stay unredacted. This is by design but must be reported accurately.
+- Additive report/problem fields fan out to the CLI printer, exports, JSON contract, tests and three docs (change surface 18/25).
+
+### Risk Factor Delta
+- Baseline: none recorded
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T03:03:27 - `23c0001a-6fdc-4e90-a957-6cc6382e6a26.jsonl`
 - `/ll:confidence-check` - 2026-10-07T02:01:21 - `f53e748b-82f7-41b3-bce8-59be22735cbb.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:06:04 - `51f4678d-2b6a-45cf-bb75-d154b3120223.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-10-07T01:04:15 - `c24bb708-1ad0-4da8-9d25-50c9d7db6349.jsonl`
