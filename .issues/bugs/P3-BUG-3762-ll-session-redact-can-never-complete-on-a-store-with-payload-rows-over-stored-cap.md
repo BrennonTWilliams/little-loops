@@ -10,6 +10,8 @@ decision_needed: false
 unproven_mechanism: true
 verify_verdict: VALID
 spike_needed: true
+spike_attempted: true
+spike_completed: true
 confidence_score: 95
 outcome_confidence: 64
 score_complexity: 10
@@ -268,7 +270,42 @@ The recorded outcome is below this project's configured 65-point gate. Code refe
 - Retained: `decoded-allocation-8mib`, `dirty-row-request-fit`, `expanded-reconciliation-lost-ack`, `multi-site-shared-state-change`, `report-contract-fanout`, `unproven-bounded-singleton-mechanism`
 - Changed fields: none
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-10-07_
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| Singleton wire: one 2×8 MiB SELECT stays under the 32 MiB response ceiling and the full-page maximum; cap/cap+1 honored locally and remotely | `TestSingletonRead::test_cap_boundary_local_and_remote`, `::test_one_statement_coherent_read`, `::test_remote_wire_response_under_32mib_and_not_above_page`, `::test_over_cap_values_are_not_shipped` | ✓ pass |
+| Decoded budget: parameterized 8 MiB decoder is hard-bounded, ordered like today's `decode_payload`, structural limits never promote | `TestBoundedDecode::test_decoded_cap_boundary_8mib`, `::test_highly_compressed_small_blob_needs_promotion`, `::test_bomb_decode_is_hard_bounded`, `::test_decoded_exhaustion_precedes_unestablishable_defects`, `::test_oversized_zero_blob_is_invalid_compression`, `::test_recursion_has_no_byte_budget` | ✓ pass |
+| Request fit: estimate is remote-only, incremental, exact at cap/cap+1, and bounds the captured wire body; local dirty rows beyond it are scrubbed | `TestPlanBounds::test_local_dirty_expanded_scrubbed_beyond_request_estimate`, `::test_remote_dirty_over_request_refused_unchanged`, `::test_request_estimate_exact_boundary`, `::test_incremental_estimate_skips_later_column`, `::test_replacement_output_budgets` | ✓ pass |
+| Expanded lost-ack reconciliation: no false conflict from an oversized sibling or replacement-only growth; an over-cap version is a conflict, never convergence | `TestExpandedReconciliation::test_lost_ack_found_desired_with_expanded_read`, `::test_ordinary_read_misclassifies_oversized_sibling`, `::test_replacement_grown_past_ordinary_cap`, `::test_over_cap_version_is_conflict_not_convergence`, `::test_concurrent_change_and_vanish_never_overwrite` | ✓ pass |
+| Shared plan/write state: row atomicity composed with guarded write/reconcile on the expanded path | `TestPlanBounds::test_failed_sibling_discards_other_plan`, `TestPlanBounds::test_clean_expanded_row_needs_no_write` | ✓ pass |
+
+**Recorded absolute `tracemalloc` peaks** (Python 3.12.10, seeded fixtures; recorded, not gated — only a 1 GiB sanity ceiling applies):
+
+| Scenario | Peak | Fixture |
+|----------|------|---------|
+| Ordinary page (8×2×1 MiB) co-retained + singleton plan, BLOB/BLOB ~8 MiB decoded | 55.3 MiB | `aa24d789f292` |
+| Local dirty write, TEXT/TEXT ~8 MiB (≈31.7 MiB of bound parameters: both originals + both replacements) | 63.3 MiB | `aa24d789f292` |
+| Remote lost-ack reconcile with plan retained (includes the in-process stub's allocations) | 39.7 MiB | `3716d74f6a4d` |
+| Decoder refusing a 48 MiB zlib bomb at the 8 MiB cap | 16.1 MiB (~2× cap, transient) | n/a |
+| **Structurally dense JSON** (`[{},{},…]`, 8 MiB decoded, 8 KB stored) decode + sanitizer-style walk | **387.8 MiB** (~46× the decoded size) | `27247012fe6a` |
+
+**Findings to carry into implementation**
+
+- The decoder's transient peak is ~2× its decoded cap, so the 8 MiB limit costs ~16 MiB transient per column, sequentially.
+- The dense-JSON peak is the one surprising number. The fake sanitizer rebuilds the whole structure (as the real one does), so it covers parse plus a full copy. A stored size of 8 KB reaches it, so the 8 MiB decoded limit, not the stored limit, is the binding resource. Decide in Step 3 whether to accept it or bound structural size separately; the spike does not gate it.
+- Remote request fit, as measured: a dirty ~1.6 MiB-stored column with a ~1.6 MiB-stored clean sibling fits the estimate and writes (captured body ≤ estimate ≤ 8 MiB); a row with two dirty ~3.6 MiB-stored columns is refused as `request` on remote and scrubbed locally (~31.7 MiB of bound parameters).
+
+**Spike location**: `scripts/tests/spike/bug3762_singleton_redaction/` (plan: `.ll/spikes/spike-BUG-3762.md`)
+**Verification**: 32 spike tests (29 AC + 3 guard) pass, plus regressions `test_raw_redaction.py` (61) and the ENH-3752 spike (37): 130 tests across 3 commands.
+**Promotion**: fold into its production module under `project.src_dir` and its test under `project.test_dir`, in a separate PR.
+
 ## Session Log
+- `/ll:spike` - 2026-10-07T06:03:01 - `8c655ae6-6aea-48c9-b19a-e5c5f9c860df.jsonl`
 - `/ll:confidence-check` - 2026-10-07T05:51:23 - `8f69bdcc-23e5-40e5-af3a-a2f0f3e89cbf.jsonl`
 - `/ll:ready-issue` - 2026-10-07T03:56:46 - `3c6d0c53-4b3d-4add-9a0f-232a9cd13bc0.jsonl`
 - `/ll:confidence-check` - 2026-10-07T03:20:38 - `aecfbd08-532c-4197-ae58-4ddcb5df7be5.jsonl`
