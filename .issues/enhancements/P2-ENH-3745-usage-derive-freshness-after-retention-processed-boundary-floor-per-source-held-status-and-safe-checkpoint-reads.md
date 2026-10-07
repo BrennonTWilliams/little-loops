@@ -25,6 +25,53 @@ relates_to:
 - ENH-3751
 - ENH-3770
 testable: true
+confidence_score: 65
+outcome_confidence: 66
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: blocker-enh-3744-open
+  domain: readiness
+  criterion: dependencies
+  description: blocked_by ENH-3744 (pure candidate proof and prune veto) is still
+    open; hard override forces STOP.
+- id: broad-change-sites
+  domain: outcome
+  criterion: complexity_breadth
+  description: Roughly 6-15 change sites across lifecycle, sessions, schema, usage_refresh,
+    manifest, docs and many test suites.
+- id: deep-transaction-contract-changes
+  domain: outcome
+  criterion: complexity_depth
+  description: 'Deep per-site change: publication, pending and rollback contracts
+    change across both cursor writers, Codex fast path, rebuild and refresh.'
+- id: downstream-handoff-surface
+  domain: outcome
+  criterion: change_surface
+  description: Reader and storage seams are consumed by ENH-3732, ENH-3746 and ENH-3770,
+    and freshness is used in ctx_stats.
+- id: existing-checkpoint-helper-partial
+  domain: readiness
+  criterion: duplicate_implementations
+  description: _valid_usage_checkpoint and _set_usage_derive_checkpoint partially
+    cover the work and must be extended without a parallel path.
+- id: legacy-semantic-dual-path
+  domain: readiness
+  criterion: architecture_compliance
+  description: Legacy public freshness fallback coexists with new semantic completion,
+    risking two parallel proof pathways.
+- id: migration-schema-unspecified
+  domain: readiness
+  criterion: well_specified
+  description: Next append-only migration columns/tables and SourceDeriveCompletion
+    storage shape are described as proposed, not concretely specified.
+- id: open-design-choices
+  domain: outcome
+  criterion: ambiguity
+  description: Several choices remain proposed or conservative-option wording, such
+    as record shape and acceptable prefix-extension path.
 ---
 
 # ENH-3745: Usage derive freshness after retention: processed-boundary floor, per-source held status and safe checkpoint reads
@@ -216,8 +263,32 @@ No semantic candidate recognition/prune veto (ENH-3744), reconciliation/hold rel
 
 **Open** | Created: 2026-10-05 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 66/100 → MODERATE
+
+### Concerns
+- Scores before the override: duplicate implementations 15/20, architecture 15/20, rationale 20/20, well-specified 15/20, dependencies 0/20.
+- Several cited line numbers have drifted on `main` (for example `usage_source_freshness` is at `lifecycle.py:1725`, not `:1752`). Re-anchor them by symbol before implementing.
+- The legacy public freshness fallback and the new semantic completion are two proof pathways. The issue bounds them, but they need tests that keep them separate.
+
+### Gaps to Address
+- `blocked_by: ENH-3744` is still `open` (pure candidate proof and prune veto). Land it first, or remove the dependency if the proof/veto work no longer gates this issue.
+- Specify the append-only migration concretely (tables, columns, `schema_manifest.json` entry) and the storage shape behind `SourceDeriveCompletion`. Both are currently described as "proposed".
+
+### Outcome Risk Factors
+- Deep per-site complexity: publication, pending and rollback contracts change across both cursor writers, the Codex fast path, `rebuild` and parser refresh.
+- Broad enumeration across roughly 6-15 sites (lifecycle, sessions, schema, usage_refresh, manifest, docs, many test suites).
+
+### Risk Factor Delta
+- Baseline: none recorded
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-07T19:41:47 - `22334795-d531-4b66-95a2-305d57a6c53c.jsonl`
 - Pre-implementation review #5 - 2026-10-07 - Removed the completed BUG-3736 dependency. Added path/header-to-handle decoding and full-backfill transaction ownership, applied-row proof before atomic first publication, explicit validated stamping inputs, conservative prefix-extension evidence, and separate cache/usage components in the shared refresh obligation. Identified the existing version-mismatch replay test as an intentionally changed expectation. Supplied original-source acquisition evidence to ENH-3770 without granting ordinary replay qualification authority. `/ll:advise` with Opus (confidence 0.70) supported those changes and identified standalone destructive-rebuild invalidation as an additional gate; affected current completion/dependency facts become pending atomically, with prior boundaries historical only. Valid acquisition can commit pending when post-write proof is unavailable. Existing related baseline: 121 passed. No implementation or new readiness score claimed.
 
 - Pre-implementation review #4 - 2026-10-07 - Re-read checkpoint, cursor, ingestion, parser and rebuild seams against current tests. Replaced cross-issue atomic slices with whole-issue order ENH-3744 → ENH-3745 → ENH-3770; added no-delete pristine/live-only bootstrap, actual derive/publication guards, acquisition-plus-candidate completion, failure-only diagnostic persistence with a scope/witness compare-and-swap, no-cursor failure diagnostics and pre-parser decoding controls. Separated legacy public freshness compatibility from unavailable semantic completion, made the minimal value/qualification witness handoff mandatory, wired negative parser-refresh tracking separately from reconciliation, and moved held retries and deferred hardening out of this issue's gates. `/ll:advise` with Opus (confidence 0.73) supported whole-issue order and distinct semantic/legacy completion basis, zero-origin acquisition coverage and rejection-specific marker recovery. Historical log entries describe superseded delivery proposals. No implementation or new formal confidence score claimed.
