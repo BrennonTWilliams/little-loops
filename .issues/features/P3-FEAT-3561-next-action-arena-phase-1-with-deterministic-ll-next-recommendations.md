@@ -33,8 +33,8 @@ risk_factors:
 - id: checkpoint-choices-open
   domain: outcome
   criterion: ambiguity
-  description: Perf opt-in flag name and optional sample-vs-fixture comparison
-    choices are left to implementation; the usefulness review is non-gating.
+  description: Perf opt-in flag name and optional sample-vs-fixture comparison choices
+    are left to implementation; the usefulness review is non-gating.
 - id: cross-module-snapshot-logic
   domain: outcome
   criterion: complexity_depth
@@ -342,6 +342,7 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 - Changed fields: none
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T22:17:05 - `87493473-ea6b-483a-b17e-11637ca62e84.jsonl`
 - `/ll:verify-issues` - 2026-10-07T22:14:25 - `5a8ca7e2-7c4d-496f-88dd-45523e34be32.jsonl`
 - `/ll:confidence-check` - 2026-10-07T20:10:39 - `19789399-b723-497f-93b5-d0e097ae01b5.jsonl`
 - `/ll:confidence-check` - 2026-10-07T20:07:48 - `19789399-b723-497f-93b5-d0e097ae01b5.jsonl`
