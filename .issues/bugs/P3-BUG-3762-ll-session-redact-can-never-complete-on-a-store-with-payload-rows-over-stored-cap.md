@@ -308,6 +308,7 @@ _Added by `/ll:confidence-check` on 2026-10-07 (post-spike re-score)_
 - Changed fields: `decoded-allocation-8mib` — description
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T06:18:12 - `a272514e-787d-48a7-ac65-893a82e6e4bf.jsonl`
 - `/ll:spike` - 2026-10-07T06:03:01 - `8c655ae6-6aea-48c9-b19a-e5c5f9c860df.jsonl`
 - `/ll:confidence-check` - 2026-10-07T05:51:23 - `8f69bdcc-23e5-40e5-af3a-a2f0f3e89cbf.jsonl`
 - `/ll:ready-issue` - 2026-10-07T03:56:46 - `3c6d0c53-4b3d-4add-9a0f-232a9cd13bc0.jsonl`
