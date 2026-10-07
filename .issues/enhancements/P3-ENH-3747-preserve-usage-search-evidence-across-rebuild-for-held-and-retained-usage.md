@@ -15,6 +15,8 @@ labels:
 blocked_by:
 - BUG-3736
 relates_to:
+- BUG-3761
+- BUG-3766
 - BUG-3735
 - ENH-3731
 - ENH-3732
@@ -76,6 +78,7 @@ Reuse `search_index` rows of kind `usage` and the BUG-3736 hold marker.
 
 - Existing search reader and schema stay unchanged unless an actual missing reconstruction field requires an append-only migration. Inspect the existing usage-search writer before choosing preservation or reconstruction; preserve the existing indexed-channel set.
 - ENH-3744 owns hold release/replacement. Its future transitions are regression controls here, not a hard blocker on restoring Stage 1 search evidence. This issue is independent of canonical numeric publication but remains required for epic closure.
+- BUG-3761 adds normalized survivor-aware exclusions for tool/correction search entries in the same `rebuild()` DELETE. Preserve those exclusions when implementing usage search retention, and keep the kinds independent in regression tests. Coordinate the derive fingerprint/version update with that patch. BUG-3766 separately covers live skill telemetry; neither related bug is a prerequisite of this usage-search repair.
 
 ### Tests
 
