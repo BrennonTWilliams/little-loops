@@ -90,8 +90,10 @@ from little_loops.config.orchestration import (
     ComposerConfig,
     OrchestrationConfig,
 )
+from little_loops.next_arena.registry import ArenaSettings
 
 __all__ = [
+    "ArenaSettings",
     "BRConfig",
     "CLConfig",
     "HitlConfig",

@@ -2402,7 +2402,7 @@
     },
     "next": {
       "type": "object",
-      "description": "Next-action recommendation settings. Validated lazily by the consuming command (not at config load): invalid values make `ll-loop next-loop` exit 2 with one diagnostic. A local `.ll/ll.local.md` override merges per key; a local null removes a leaf so its default applies.",
+      "description": "Next-action recommendation settings: `loop_history` (consumed by `ll-loop next-loop`) and `verbs` (consumed by `ll-next`). Validated lazily by the consuming command (not at config load): invalid values make that command exit 2 with one diagnostic; each consumer validates only its own subtree. A local `.ll/ll.local.md` override merges per key; a local null removes a leaf so its default applies.",
       "properties": {
         "loop_history": {
           "type": "object",
@@ -2429,6 +2429,119 @@
                   "minimum": 0,
                   "default": 0.2,
                   "description": "Weight of the share of runs with status `completed`."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "verbs": {
+          "type": "object",
+          "description": "`ll-next` per-action-type scoring and selection settings. Validated lazily by `ll-next` (not at config load). Independent of `next.loop_history`.",
+          "properties": {
+            "implement-issue": {
+              "type": "object",
+              "description": "`ll-next` settings for the `implement-issue` action type.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "priority": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the filename-first priority (P0 best, P5 worst)."
+                    },
+                    "outcome": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the frontmatter outcome-confidence score."
+                    },
+                    "leverage": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.2,
+                      "description": "Weight of the downstream fan-out (distinct nonterminal dependents, saturating at 10)."
+                    },
+                    "effort": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.1,
+                      "description": "Weight of the inverse Impact-section Effort field."
+                    },
+                    "momentum": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.1,
+                      "description": "Weight of the recency of the latest Session Log timestamp (seven-day half-life)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                }
+              },
+              "additionalProperties": false
+            },
+            "refine-issue": {
+              "type": "object",
+              "description": "`ll-next` settings for the `refine-issue` action type.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "priority": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the filename-first priority (P0 best, P5 worst)."
+                    },
+                    "readiness_gap": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the maximum shortfall against the readiness and outcome thresholds."
+                    },
+                    "leverage": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.15,
+                      "description": "Weight of the downstream fan-out (distinct nonterminal dependents, saturating at 10)."
+                    },
+                    "staleness": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.15,
+                      "description": "Weight of the age of the captured_at / discovered_date, saturating at 30 days."
+                    },
+                    "momentum": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.1,
+                      "description": "Weight of the recency of the latest Session Log timestamp (seven-day half-life)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                },
+                "refine_cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 5,
+                  "description": "Maximum `/ll:refine-issue` runs recorded in an issue's Session Log before further refinement is reported as a diagnostic instead of recommended."
                 }
               },
               "additionalProperties": false

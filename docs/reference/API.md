@@ -736,9 +736,10 @@ Weighted geometric mean, computed in log space, over the axes that have a presen
 ```python
 BRConfig.next -> NextConfig
 NextConfig.resolve_loop_history_weights() -> dict[str, float]
+NextConfig.resolve_arena_settings() -> ArenaSettings
 ```
 
-`BRConfig.next` is a raw-preserving envelope of the merged `next` setting: constructing `BRConfig` (and `to_dict()`) never validates it. `resolve_loop_history_weights()` returns a fresh `{"frequency", "recency", "success"}` mapping in that order with defaults applied, or raises `NextConfigError` (a `ValueError`) naming the offending setting. See [`next`](CONFIGURATION.md#next).
+`BRConfig.next` is a raw-preserving envelope of the merged `next` setting: constructing `BRConfig` (and `to_dict()`) never validates it. `resolve_loop_history_weights()` returns a fresh `{"frequency", "recency", "success"}` mapping in that order with defaults applied, or raises `NextConfigError` (a `ValueError`) naming the offending setting. `resolve_arena_settings()` returns a frozen `ArenaSettings(weights, caps, refine_cap)`: per-action-type axis weights (read-only mappings in each type's fixed axis order), per-type selection caps and the refinement cap, with defaults applied. It validates only `next.verbs` and raises `NextConfigError` for unknown keys, boolean/negative/non-finite weights, non-positive or boolean caps, or an all-zero weight set. See [`next`](CONFIGURATION.md#next).
 
 ## little_loops.issue_parser
 

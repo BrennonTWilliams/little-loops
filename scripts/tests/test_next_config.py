@@ -136,7 +136,7 @@ class TestResolution:
             ({"loop_history": []}, "next.loop_history must be a mapping, got list"),
             ({"loop_history": {"weights": 1}}, "next.loop_history.weights must be a mapping"),
             ({"loop_history": {"weights": None}}, "next.loop_history.weights must be a mapping"),
-            ({"verbs": {}}, "next has unknown keys: 'verbs'"),
+            ({"bogus": {}}, "next has unknown keys: 'bogus'"),
             ({"loop_history": {"curve": 1}}, "next.loop_history has unknown keys: 'curve'"),
             ({"loop_history": {"weights": {"speed": 1}}}, "unknown keys: 'speed'"),
             ({"loop_history": {"weights": {"recency": True}}}, "recency must be a number"),

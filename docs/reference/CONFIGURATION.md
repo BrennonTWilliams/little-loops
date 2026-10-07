@@ -1106,27 +1106,46 @@ Pre-patch check configuration (ENH-3142). When enabled, candidate tests added or
 
 ### `next`
 
-Next-action recommendation settings. Currently only `ll-loop next-loop` consumes this section.
+Next-action recommendation settings. `loop_history` is consumed by `ll-loop next-loop`; `verbs` is consumed by `ll-next`. Each command validates only its own subtree.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `loop_history.weights.frequency` | `number` ≥ 0 | `0.50` | Weight of the log-scale run-count curve (uncapped; reference count 50). |
 | `loop_history.weights.recency` | `number` ≥ 0 | `0.30` | Weight of the seven-day half-life decay of the latest run. |
 | `loop_history.weights.success` | `number` ≥ 0 | `0.20` | Weight of the share of runs with status `completed`. |
+| `verbs.implement-issue.weights.priority` | `number` ≥ 0 | `0.30` | `ll-next` weight of the issue priority (P0 best). |
+| `verbs.implement-issue.weights.outcome` | `number` ≥ 0 | `0.30` | `ll-next` weight of the outcome-confidence score. |
+| `verbs.implement-issue.weights.leverage` | `number` ≥ 0 | `0.20` | `ll-next` weight of downstream fan-out. |
+| `verbs.implement-issue.weights.effort` | `number` ≥ 0 | `0.10` | `ll-next` weight of the inverse Impact-section `Effort` field. |
+| `verbs.implement-issue.weights.momentum` | `number` ≥ 0 | `0.10` | `ll-next` weight of recent Session Log activity. |
+| `verbs.implement-issue.cap` | `integer` ≥ 1 | `2` | Maximum `implement-issue` recommendations per `ll-next` selection round-robin. |
+| `verbs.refine-issue.weights.priority` | `number` ≥ 0 | `0.30` | `ll-next` weight of the issue priority (P0 best). |
+| `verbs.refine-issue.weights.readiness_gap` | `number` ≥ 0 | `0.30` | `ll-next` weight of the shortfall against the readiness and outcome thresholds. |
+| `verbs.refine-issue.weights.leverage` | `number` ≥ 0 | `0.15` | `ll-next` weight of downstream fan-out. |
+| `verbs.refine-issue.weights.staleness` | `number` ≥ 0 | `0.15` | `ll-next` weight of the age of `captured_at` / `discovered_date` (saturates at 30 days). |
+| `verbs.refine-issue.weights.momentum` | `number` ≥ 0 | `0.10` | `ll-next` weight of recent Session Log activity. |
+| `verbs.refine-issue.cap` | `integer` ≥ 1 | `2` | Maximum `refine-issue` recommendations per `ll-next` selection round-robin. |
+| `verbs.refine-issue.refine_cap` | `integer` ≥ 1 | `5` | Maximum `/ll:refine-issue` runs recorded in an issue's Session Log before `ll-next` reports the cap as a diagnostic instead of recommending another refinement. |
 
 ```json
 {
   "next": {
     "loop_history": {
       "weights": { "frequency": 0.50, "recency": 0.30, "success": 0.20 }
+    },
+    "verbs": {
+      "implement-issue": { "weights": { "priority": 0.30 }, "cap": 2 },
+      "refine-issue": { "refine_cap": 5 }
     }
   }
 }
 ```
 
 - Omitted sections and leaves take the defaults; a partial object is valid. Weights are **not normalized** (the weighted sum is neither rescaled nor clipped), a weight of `0` disables that axis, and at least one effective weight must be nonzero. Non-default weights can reorder recommendations by your choice.
+- `verbs` weights are per action type and apply to a weighted geometric mean over the axes that resolve for an issue; the weights of axes with no data are renormalized away, so they need not sum to `1.0`. Weights are resolved in each action type's fixed axis order regardless of the order you write them. A weight of `0` disables an axis, and at least one weight per action type must be nonzero. Caps are positive integers (not booleans). Only action types that `ll-next` supports appear under `verbs`; any other name is an unknown key.
 - `additionalProperties` is `false` at every level of the section: unknown keys are errors.
-- The section is validated when `ll-loop next-loop` runs, not when the config loads. Invalid values (wrong shape, unknown key, negative, non-numeric, non-finite, an explicit `null` left in the merged config, or all weights zero) make that command exit `2` with one stderr line naming the setting; every other command keeps working.
+- `loop_history` and `verbs` are validated independently: `ll-loop next-loop` ignores the contents of `verbs`, and `ll-next` ignores the contents of `loop_history`. An unknown key directly under `next` fails both.
+- `loop_history` is validated when `ll-loop next-loop` runs, and `verbs` when `ll-next` runs, not when the config loads. Invalid values (wrong shape, unknown key, negative, non-numeric, non-finite, an explicit `null` left in the merged config, or all weights zero) make that command exit `2` with one stderr line naming the setting; every other command keeps working.
 - A one-key override in `.ll/ll.local.md` preserves the sibling weights. A local `null` **removes** the key at that level (`next`, `next.loop_history`, `next.loop_history.weights`, or a single weight), so its default applies again. A `null` in `ll-config.json` itself is a value, not a reset, and is rejected here.
 
 ```markdown
