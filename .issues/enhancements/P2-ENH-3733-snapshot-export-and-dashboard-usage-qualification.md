@@ -24,6 +24,11 @@ risk_factors:
   criterion: architecture_compliance
   description: snapshot_integer_overflow is a consumer-only deviation from source/snapshot
     numeric parity.
+- id: int64-bigint-split-undecided
+  domain: outcome
+  criterion: ambiguity
+  description: Int64 subtotal guard and BigInt read may be split into P4 bugs if size
+    review gates it; not yet decided.
 - id: qualification-shared-state-depth
   domain: outcome
   criterion: complexity
@@ -44,6 +49,12 @@ risk_factors:
   criterion: complexity
   description: About nine change sites span queries, template, five test files and
     two reference docs.
+confidence_score: 90
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3733: Snapshot export and dashboard usage qualification
@@ -208,8 +219,22 @@ Verdict at time of check: **VALID** (2026-10-06; corrected contract on inspected
 - Proposal-vs-code check: no refuted mechanism found; every Integration Map entry maps to a criterion or step.
 - Opus consult (`claude-opus-5-5`, confidence 0.78) supported the exact reads and fixed column scope. Kept a real page-loop test despite its cheaper static/engine-only alternative, since those do not exercise the failing read/render seam. Existing related suites: **233 passed**; proposed implementation tests remain to be written.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Risk Factor Delta
+- Added: `int64-bigint-split-undecided`
+- No longer reported: none
+- Retained: `export-only-overflow-exception`, `qualification-shared-state-depth`, `snapshot-export-caller-surface`, `snapshot-selector-extension`, `wide-test-doc-site-count`
+- Changed fields: none
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-07T16:51:58 - `8d2a4672-0c21-4e88-b585-9393828cb9fc.jsonl`
 - Pre-implementation review - 2026-10-07 - Specified token-bearing predefined SQL, independent unrounded-value availability, isolated zero/small-positive/unpriced fixtures, regenerated-vs-retained legacy artifacts and discriminating WAL/channel-boundary tests. Corrected parent/epic API and population handoffs; Opus supported the changes (confidence 0.80). Existing baseline: 198 passed; issue corpus gates: 4 passed. Cleared prior confidence scores; no implementation or refreshed readiness score claimed.
 
 - `/ll:confidence-check` - 2026-10-07T16:31:43 - `0ab981ae-1c6f-4236-9e99-a0583a392d97.jsonl`

@@ -138,6 +138,7 @@ All six preserve the satisfied BUG-3736 edge and the shared delivery-stage publi
 **Deferred optional decision (1)**
 
 - **ENH-3703** — Evaluate family-prefix approximation after ENH-3719; implement or cancel with rationale before closure, unless scope is explicitly revised
+- **ENH-3770** — Guarded usage reconciliation, held-source derivation and hold release (ENH-3744/3745 MP3) (open)
 
 Standalone ENH-3649 (reader isolation/diagnostics) is done. Standalone ENH-3725 (cacheable-prefix minimum) relates to completed EPIC-2456. Neither is counted here.
 

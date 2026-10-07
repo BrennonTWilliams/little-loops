@@ -21,6 +21,48 @@ relates_to:
 - BUG-3735
 - ENH-3543
 size: Large
+confidence_score: 70
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: consumed-interfaces-unlanded
+  domain: readiness
+  criterion: well_specified
+  description: Session-status helper targets ENH-3744/3745 interfaces that do not
+    yet exist; signatures unverifiable
+- id: deep-multi-module-rewiring
+  domain: outcome
+  criterion: complexity
+  description: Nullable usage metrics, per-metric baselines and attached-member workspace
+    proof span four modules with shared state
+- id: interface-dependent-ambiguity
+  domain: outcome
+  criterion: ambiguity
+  description: Exact proof/progress interface shapes and compatibility details resolve
+    only after ENH-3744/3745 land
+- id: unresolved-blocker-enh-3744
+  domain: readiness
+  criterion: dependencies
+  description: blocked_by ENH-3744 (pure native proof) is open; its interfaces are
+    unlanded
+- id: unresolved-blocker-enh-3745
+  domain: readiness
+  criterion: dependencies
+  description: blocked_by ENH-3745 (source completion read) is open; its interfaces
+    are unlanded
+- id: wide-consumer-surface
+  domain: outcome
+  criterion: change_surface
+  description: QualityMetric, _usage_totals and rate path feed rework, workspace_activity,
+    CLI renderers and docs
+- id: workspace-transaction-ownership
+  domain: outcome
+  criterion: complexity
+  description: Attached-schema snapshot, TEMP views and query-only ordering across
+    caller/owned connections is error-prone
 ---
 
 # ENH-3732: Quality usage qualification, session derive status, and per-metric baselines
@@ -188,7 +230,20 @@ No producer algorithm, prune/replay storage, source-file freshness, snapshot/das
 
 ## Confidence Check Notes
 
-Historical checks in the session log predate the landed qualification/channel/safety core. On `main` those APIs exist; the session helper and shared ENH-3744/3745 handoffs remain proposed. Re-run verification/confidence after the prerequisites land; this review is not an implementation or readiness pass.
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- Spec is strong (no Program Design, parity, claim, structure or decision gaps; learning tests not required; no unproven-mechanism flag), but the session-status helper is written against ENH-3744/3745 interfaces that do not exist in the tree yet.
+- Complexity 10/25: nullable metrics, per-metric baselines and attached-member workspace proof span four modules with shared transaction state.
+
+### Gaps to Address
+- `blocked_by` ENH-3744 (open) and ENH-3745 (open) are unresolved; ENH-3731, BUG-3736 and ENH-3748 are done. Land ENH-3744/3745, then re-run this check. The Implementation Steps sequencing note already allows the status helper to start once ENH-3744's pure proof and ENH-3745's `read_source_derive_completion` exist.
+
+### Risk Factor Delta
+- Baseline: none recorded
 
 ## Verification Notes
 
