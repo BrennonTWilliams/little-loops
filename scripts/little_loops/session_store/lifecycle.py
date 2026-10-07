@@ -27,7 +27,7 @@ import sqlite3
 import subprocess
 import threading
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -49,9 +49,19 @@ from little_loops.session_store.sessions import (
     iter_events,
 )
 from little_loops.session_store.targets import HistoryTarget, LocalTarget
+from little_loops.session_store.usage_proof import (
+    RETENTION_LIMIT,
+    inspect_usage_candidates,
+    retention_reasons,
+)
+from little_loops.session_store.usage_proof_scope import (
+    UsageProofLimit,
+    collect_usage_proof_scope,
+)
 from little_loops.session_store.writers import (
     USAGE_NOT_HELD_SQL,
     SkillReplaySurvivor,
+    UsageReplayHolds,
     _backfill_assistant_messages,
     _backfill_commit_events,
     _backfill_issues_and_snapshots,
@@ -2294,10 +2304,15 @@ def compact(
 # ``usage_derive_unverified``: the derive checkpoint is missing, malformed, negative
 # or from another normalizer version. ``usage_derive_pending``: the checkpoint lags
 # the source's newest row. ``usage_replay_context_required``: part of the source is
-# still recent or uncompacted, and a partial source cannot be replayed faithfully.
+# still recent or uncompacted, or retained usage depends on context another source
+# would lose. Semantic veto (ENH-3744): ``usage_derive_gap`` (a recognized candidate
+# has no committed representation), ``usage_proof_unprovable`` (identity, grain,
+# order or retained input cannot be proved) and ``usage_proof_limit`` (the proof scope
+# crossed a private size bound).
 _RETENTION_UNVERIFIED = "usage_derive_unverified"
 _RETENTION_PENDING = "usage_derive_pending"
 _RETENTION_CONTEXT = "usage_replay_context_required"
+_RETENTION_LIMIT = RETENTION_LIMIT
 
 
 def _valid_usage_checkpoint(conn: sqlite3.Connection) -> int | None:
@@ -2317,49 +2332,160 @@ def _valid_usage_checkpoint(conn: sqlite3.Connection) -> int | None:
     return checkpoint if checkpoint >= 0 else None
 
 
+@dataclass
+class _PruneOverlay:
+    """Effects of earlier planned source deletions a dry run has not performed.
+
+    A real run sees them in the database; a dry run carries them here so later sources
+    plan against the same evidence and counts/reasons match an actual prune.
+    """
+
+    deleted: set[str] = field(default_factory=set)
+    markers: set[str] = field(default_factory=set)
+
+
+def _eligible_sources(conn: sqlite3.Connection, cutoff_str: str) -> list[str]:
+    """Sources holding at least one aged compacted raw row, in deterministic order."""
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT source_path FROM raw_events GROUP BY source_path "
+            "HAVING SUM(CASE WHEN ts < ? AND compacted = 1 THEN 1 ELSE 0 END) > 0 "
+            "ORDER BY source_path",
+            (cutoff_str,),
+        )
+    ]
+
+
+def _source_has_linked_usage(conn: sqlite3.Connection, source_path: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM usage_events WHERE channel IS NOT 'live' AND source_path = ? "
+            "UNION SELECT 1 FROM usage_events u JOIN raw_events r ON r.id = u.source_raw_event_id "
+            "WHERE u.channel IS NOT 'live' AND r.source_path = ? LIMIT 1",
+            (source_path, source_path),
+        ).fetchone()
+        is not None
+    )
+
+
+def _supplier_protected(
+    conn: sqlite3.Connection,
+    supplier: str | None,
+    host: str | None,
+    channel: str | None,
+    holds: UsageReplayHolds,
+    cutoff_str: str,
+    overlay: _PruneOverlay,
+) -> bool:
+    """Whether a represented candidate's actual observation supplier stays protected.
+
+    Protection follows the observation's stored ``source_path`` (or the host/channel
+    population when attribution is absent), never an observation ID or raw pointer.
+    """
+    if holds.holds(supplier, host, channel):
+        return True
+    if supplier is None:
+        return False
+    sql = "SELECT 1 FROM raw_events WHERE source_path = ?"
+    params: tuple[str, ...] = (supplier,)
+    if supplier in overlay.deleted:
+        sql += " AND NOT (ts < ? AND compacted = 1)"
+        params = (supplier, cutoff_str)
+    sql += " LIMIT 1"
+    return conn.execute(sql, params).fetchone() is not None
+
+
+def _semantic_veto(
+    conn: sqlite3.Connection, source_path: str, cutoff_str: str, overlay: _PruneOverlay
+) -> set[str]:
+    """Reasons the retained candidates of *source_path* forbid deleting its raw rows.
+
+    Evaluates the source's logical usage candidates against committed observations
+    **before** anything is deleted. The checkpoint and age/compaction gates stay
+    necessary conditions; this only adds a veto and never derives, prices, promotes
+    or releases a hold. Empty means the proof imposes no objection.
+    """
+    try:
+        scope = collect_usage_proof_scope(
+            conn, source_path, deleted_sources=overlay.deleted, cutoff=cutoff_str
+        )
+    except UsageProofLimit:
+        return {_RETENTION_LIMIT}
+    proofs = [
+        proof
+        for proof in inspect_usage_candidates(scope.records, scope.observations)
+        if proof.source_label == source_path
+    ]
+    reasons = set(retention_reasons(proofs))
+    if reasons:
+        return reasons
+    holds = load_usage_replay_holds(conn)
+    holds = UsageReplayHolds(holds.sources | frozenset(overlay.markers), holds.populations)
+    for proof in proofs:
+        if proof.correspondence != "represented":
+            continue
+        for supplier in proof.supplier_sources:
+            if supplier == source_path:
+                continue
+            if not _supplier_protected(
+                conn, supplier, proof.host, proof.channel, holds, cutoff_str, overlay
+            ):
+                return {_RETENTION_CONTEXT}
+    return set()
+
+
 def _plan_raw_prune(
-    conn: sqlite3.Connection, cutoff_str: str
+    conn: sqlite3.Connection,
+    cutoff_str: str,
+    *,
+    sources: list[str] | None = None,
+    overlay: _PruneOverlay | None = None,
 ) -> tuple[list[str], list[str], int, int, set[str]]:
-    """Decide which compacted, aged raw rows prune may delete (BUG-3736).
+    """Decide which compacted, aged raw rows prune may delete (BUG-3736, ENH-3744).
 
     Must run inside the transaction that deletes, so the derive checkpoint and
     source state it proves cannot change before commit. A source that may carry
     replay-derived usage (it has linked non-live usage, or the derive checkpoint
     does not cover it) is deleted whole or held whole: payload keys, raw pointers
-    and token equality are never used as proof of replayability. Returns
+    and token equality are never used as proof of replayability. A source the
+    checkpoint would allow deleting is additionally vetoed when the semantic proof
+    finds a candidate with no committed representation or one it cannot prove.
+    *sources* limits planning to those sources (prune plans and commits one source per
+    transaction); *overlay* carries a dry run's earlier planned deletions. Returns
     ``(delete_sources, marker_sources, deletable_rows, held_rows, reasons)`` where
     ``delete_sources`` are the sources whose aged compacted rows are removed and
     ``marker_sources`` is the subset of those that carry usage and need a hold marker.
     """
     checkpoint = _valid_usage_checkpoint(conn)
-    linked = {
-        row[0]
-        for row in conn.execute(
-            "SELECT source_path FROM usage_events "
-            "WHERE channel IS NOT 'live' AND source_path IS NOT NULL "
-            "UNION SELECT r.source_path FROM usage_events u "
-            "JOIN raw_events r ON r.id = u.source_raw_event_id WHERE u.channel IS NOT 'live'"
-        )
-    }
+    overlay = overlay if overlay is not None else _PruneOverlay()
     delete_sources: list[str] = []
     marker_sources: list[str] = []
     deletable = held = 0
     reasons: set[str] = set()
-    for source_path, total, eligible, max_id in conn.execute(
-        "SELECT source_path, COUNT(*), "
-        "SUM(CASE WHEN ts < ? AND compacted = 1 THEN 1 ELSE 0 END), MAX(id) "
-        "FROM raw_events GROUP BY source_path HAVING SUM(CASE WHEN ts < ? AND compacted = 1 "
-        "THEN 1 ELSE 0 END) > 0",
-        (cutoff_str, cutoff_str),
-    ).fetchall():
-        capable = checkpoint is None or source_path in linked or max_id > checkpoint
-        if not capable:
+    for source_path in sources if sources is not None else _eligible_sources(conn, cutoff_str):
+        total, eligible, max_id = conn.execute(
+            "SELECT COUNT(*), SUM(CASE WHEN ts < ? AND compacted = 1 THEN 1 ELSE 0 END), "
+            "MAX(id) FROM raw_events WHERE source_path = ?",
+            (cutoff_str, source_path),
+        ).fetchone()
+        if not eligible:
+            continue
+        capable = (
+            checkpoint is None or max_id > checkpoint or _source_has_linked_usage(conn, source_path)
+        )
+        if not capable or (checkpoint is not None and eligible == total and max_id <= checkpoint):
+            veto = _semantic_veto(conn, source_path, cutoff_str, overlay)
+            if veto:
+                held += eligible
+                reasons |= veto
+                continue
             delete_sources.append(source_path)
             deletable += eligible
-        elif checkpoint is not None and eligible == total and max_id <= checkpoint:
-            delete_sources.append(source_path)
-            marker_sources.append(source_path)
-            deletable += eligible
+            overlay.deleted.add(source_path)
+            if capable:
+                marker_sources.append(source_path)
+                overlay.markers.add(source_path)
         else:
             held += eligible
             if checkpoint is None:
@@ -2369,6 +2495,12 @@ def _plan_raw_prune(
             else:
                 reasons.add(_RETENTION_CONTEXT)
     return delete_sources, marker_sources, deletable, held, reasons
+
+
+_PARTIAL_PRUNE_NOTE = (
+    "history prune stopped at one source; earlier sources may already be committed. "
+    "Re-running prune is safe."
+)
 
 
 def prune(
@@ -2395,9 +2527,17 @@ def prune(
     is old, compacted and at or below a valid current-version usage derive
     checkpoint; otherwise the whole source is retained. Deleting such a source
     writes a ``usage_replay_holds`` marker in the same transaction, so a later
-    rebuild or catch-up leaves its retained usage alone. Proof, count, delete and
-    marker share one ``BEGIN IMMEDIATE`` transaction; a dry run reads one snapshot
-    and writes nothing.
+    rebuild or catch-up leaves its retained usage alone. A checkpoint alone never
+    proves the usage was captured (ENH-3744): a source whose recognized logical
+    candidates lack a compatible committed observation, or whose correspondence cannot
+    be proved, keeps its raw rows.
+
+    Each source is planned, protected and deleted in its own ``BEGIN IMMEDIATE``
+    transaction, re-reading every cross-source witness after earlier commits. A failure
+    rolls back only the failing source, stops further deletion and re-raises; sources
+    already committed stay committed and re-running is safe. A dry run reads one
+    snapshot, writes nothing, and carries earlier planned deletions in memory so its
+    counts and reasons match an actual prune absent concurrent changes.
 
     Args:
         db: Path to the history database.
@@ -2414,7 +2554,8 @@ def prune(
         - ``retained`` (dict[str, int]): ``{"raw_events": count}`` of aged compacted rows
           kept by the whole-source usage rule, each counted once
         - ``retention_reasons`` (list[str]): sorted subset of ``usage_derive_unverified``,
-          ``usage_derive_pending`` and ``usage_replay_context_required``
+          ``usage_derive_pending``, ``usage_replay_context_required``, ``usage_derive_gap``,
+          ``usage_proof_unprovable`` and ``usage_proof_limit``
         - ``vacuumed`` (bool): whether VACUUM ran (always False in dry_run)
     """
     refuse_on_remote(db, "prune")
@@ -2474,32 +2615,50 @@ def prune(
         cutoff = datetime.now(UTC) - timedelta(days=retention_cfg.raw_event_max_age_days)
         cutoff_str = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # Take the write lock before reading derive/source proof so a concurrent
-        # derive or refresh cannot invalidate it before the delete commits. A dry
-        # run needs only one consistent read snapshot.
-        conn.execute("BEGIN" if dry_run else "BEGIN IMMEDIATE")
-        try:
-            delete_sources, marker_sources, deleted_count, held_count, reasons = _plan_raw_prune(
-                conn, cutoff_str
-            )
-            if not dry_run:
-                now = _now()
-                conn.executemany(
-                    "INSERT OR IGNORE INTO usage_replay_holds"
-                    "(source_path, host, channel, reason, created_at) "
-                    "VALUES(?, '*', '*', 'pruned_whole_source', ?)",
-                    [(source_path, now) for source_path in marker_sources],
-                )
-                conn.executemany(
-                    "DELETE FROM raw_events WHERE source_path = ? AND ts < ? AND compacted = 1",
-                    [(source_path, cutoff_str) for source_path in delete_sources],
-                )
-                conn.commit()
-            else:
+        deleted_count = held_count = 0
+        reasons: set[str] = set()
+        if dry_run:
+            # One consistent read snapshot; earlier planned deletions live in the overlay.
+            overlay = _PruneOverlay()
+            conn.execute("BEGIN")
+            try:
+                for source_path in _eligible_sources(conn, cutoff_str):
+                    _, _, deleted, held, source_reasons = _plan_raw_prune(
+                        conn, cutoff_str, sources=[source_path], overlay=overlay
+                    )
+                    deleted_count += deleted
+                    held_count += held
+                    reasons |= source_reasons
+            finally:
                 conn.rollback()
-        except BaseException:
-            conn.rollback()
-            raise
+        else:
+            for source_path in _eligible_sources(conn, cutoff_str):
+                # Take the write lock before reading derive/source proof so a concurrent
+                # derive or refresh cannot invalidate it before this source commits.
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    delete_sources, marker_sources, deleted, held, source_reasons = _plan_raw_prune(
+                        conn, cutoff_str, sources=[source_path]
+                    )
+                    now = _now()
+                    conn.executemany(
+                        "INSERT OR IGNORE INTO usage_replay_holds"
+                        "(source_path, host, channel, reason, created_at) "
+                        "VALUES(?, '*', '*', 'pruned_whole_source', ?)",
+                        [(marker, now) for marker in marker_sources],
+                    )
+                    conn.executemany(
+                        "DELETE FROM raw_events WHERE source_path = ? AND ts < ? AND compacted = 1",
+                        [(delete, cutoff_str) for delete in delete_sources],
+                    )
+                    conn.commit()
+                except BaseException as exc:
+                    conn.rollback()
+                    exc.add_note(_PARTIAL_PRUNE_NOTE)
+                    raise
+                deleted_count += deleted
+                held_count += held
+                reasons |= source_reasons
 
         result["deleted"] = {"raw_events": deleted_count}
         result["retained"] = {"raw_events": held_count}

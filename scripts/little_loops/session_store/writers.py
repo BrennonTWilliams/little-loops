@@ -43,6 +43,13 @@ from little_loops.session_store.backend import (
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_store
 from little_loops.session_store.schema import _LOOP_EVENT_TYPES
 from little_loops.session_store.targets import RemoteTarget
+from little_loops.session_store.usage_proof import (
+    codex_components,
+    codex_count_signature,
+    is_adjacent_record,
+    is_codex_native_record,
+    recognize_claude_usage,
+)
 
 if TYPE_CHECKING:
     from little_loops.subprocess_utils import ObservedAtBasis, TokenProvenance, TokenScopeKind
@@ -3889,60 +3896,43 @@ def normalize_host_usage(
         or state.session_id != record.session_id
     ):
         raise ValueError("HostUsageState does not match replay source, host, and session")
-    if record.host in {"codex", "kimi-code"} or record.payload.get("type") != "assistant":
-        return []
-    payload = record.payload
-    message = payload.get("message")
-    if not isinstance(message, dict):
-        return []
-    usage = message.get("usage")
-    if not isinstance(usage, dict):
-        return []
-    if usage.get("input_tokens") is None and usage.get("output_tokens") is None:
-        return []
-    # BUG-3530: a NULL session_id row would be classified as live and survive
-    # rebuild, so an assistant usage observation needs a source session ID.
-    session_id = payload.get("sessionId")
-    if not isinstance(session_id, str) or not session_id:
-        return []
-
-    from little_loops.session_store.claude_usage import (
-        CLAUDE_USAGE_CONTRACT,
-        claude_transcript_contract,
+    recognized = recognize_claude_usage(
+        record.payload,
+        host=record.host,
+        host_basis=record.host_basis,
+        usage_contract=record.usage_contract,
     )
-
-    native_contract = claude_transcript_contract(
-        payload, host=record.host, host_basis=record.host_basis
-    )
-    message_id = message.get("id")
-    # A malformed current-version Claude snapshot with a producer ID is not
-    # another request; the last valid snapshot for that ID wins.
-    if (
-        record.host == "claude-code"
-        and record.host_basis == "handle"
-        and payload.get("version") == "2.1.284"
-        and isinstance(message_id, str)
-        and message_id
-        and native_contract is None
-    ):
+    # BUG-3530: a NULL session_id row would be classified as live and survive rebuild, so
+    # ``missing_session`` yields nothing; a malformed current-version Claude snapshot with
+    # a producer ID is not another request (``omission``): the last valid snapshot wins.
+    if recognized is None or recognized.kind != "candidate" or recognized.session_id is None:
         return []
-    qualified = (
-        record.usage_contract == CLAUDE_USAGE_CONTRACT and native_contract == CLAUDE_USAGE_CONTRACT
-    )
-    observation_key = (
-        json.dumps([record.host, session_id, message_id], separators=(",", ":"))
-        if qualified and isinstance(message_id, str) and message_id
-        else None
-    )
     return [
         UsageObservation(
-            session_id=session_id,
-            model=message.get("model"),
-            usage=usage,
-            qualified=qualified,
-            observation_key=observation_key,
+            session_id=recognized.session_id,
+            model=recognized.model,
+            usage=recognized.usage,
+            qualified=recognized.qualified,
+            observation_key=recognized.observation_key,
         )
     ]
+
+
+def usage_replay_record_from_row(payload: dict[str, Any], row: Sequence[Any]) -> UsageReplayRecord:
+    """Build a replay record from a decoded stored payload and its ``_usage_raw_cursor`` row."""
+    return UsageReplayRecord(
+        payload=payload,
+        source_label=str(row[1]),
+        host=row[2],
+        host_basis=row[3] if len(row) > 3 else None,
+        event_type=str(row[4] if len(row) > 4 else payload.get("type") or ""),
+        ts=str((row[5] if len(row) > 5 else payload.get("timestamp")) or ""),
+        session_id=row[6] if len(row) > 6 else payload.get("sessionId"),
+        line_no=row[7] if len(row) > 7 else None,
+        ordinal=row[8] if len(row) > 8 else None,
+        usage_contract=row[9] if len(row) > 9 else None,
+        raw_event_id=row[10] if len(row) > 10 else None,
+    )
 
 
 def _iter_usage_replay_records(
@@ -3957,19 +3947,7 @@ def _iter_usage_replay_records(
                 continue
             if not isinstance(payload, dict):
                 continue
-            yield UsageReplayRecord(
-                payload=payload,
-                source_label=str(row[1]),
-                host=row[2],
-                host_basis=row[3] if len(row) > 3 else None,
-                event_type=str(row[4] if len(row) > 4 else payload.get("type") or ""),
-                ts=str((row[5] if len(row) > 5 else payload.get("timestamp")) or ""),
-                session_id=row[6] if len(row) > 6 else payload.get("sessionId"),
-                line_no=row[7] if len(row) > 7 else None,
-                ordinal=row[8] if len(row) > 8 else None,
-                usage_contract=row[9] if len(row) > 9 else None,
-                raw_event_id=row[10] if len(row) > 10 else None,
-            )
+            yield usage_replay_record_from_row(payload, row)
         return
 
     from little_loops.session_store.claude_usage import claude_transcript_contract
@@ -4056,12 +4034,8 @@ class _CodexCandidate:
     conflict: bool = False
 
 
-def _codex_count_signature(info: dict[str, Any]) -> str | None:
-    total = info.get("total_token_usage")
-    last = info.get("last_token_usage")
-    if not isinstance(total, dict) or not isinstance(last, dict):
-        return None
-    return json.dumps([total, last], sort_keys=True, separators=(",", ":"))
+_codex_count_signature = codex_count_signature
+_codex_components = codex_components
 
 
 def _is_adjacent_record(
@@ -4069,31 +4043,7 @@ def _is_adjacent_record(
     record: UsageReplayRecord,
     usage: dict[str, Any],
 ) -> bool:
-    if previous is None or previous[0] != usage:
-        return False
-    _, ordinal, line_no = previous
-    if ordinal is not None and record.ordinal is not None:
-        return record.ordinal == ordinal + 1
-    return line_no is not None and record.line_no == line_no + 1
-
-
-def _codex_components(
-    usage: dict[str, Any],
-) -> tuple[int | None, int | None, int | None, int | None, bool]:
-    """Return disjoint components and whether a producer count is complete."""
-    from little_loops.subprocess_utils import normalize_codex_input
-
-    split = normalize_codex_input(usage)
-    output = usage.get("output_tokens")
-    valid_output = type(output) is int and output >= 0
-    complete = split.consistent and valid_output
-    return (
-        split.uncached_input,
-        output if valid_output else None,
-        split.cache_read,
-        split.cache_write,
-        complete,
-    )
+    return is_adjacent_record(previous, record.ordinal, record.line_no, usage)
 
 
 def _write_host_usage_observation(
@@ -4258,12 +4208,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     holds = load_usage_replay_holds(conn)
     for replay in _iter_usage_replay_records(source):
         record = replay.payload
-        is_codex_record = replay.event_type in {
-            "session_meta",
-            "turn_context",
-            "token_usage_record",
-            "event_msg",
-        } and (replay.host == "codex" or replay.event_type == "session_meta")
+        is_codex_record = is_codex_native_record(replay.event_type, replay.host)
         # BUG-3736: a held source's retained usage cannot be reconstructed from the
         # raw rows that survive; replaying them would roll it back or duplicate it.
         if holds.holds(

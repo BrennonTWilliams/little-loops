@@ -3,10 +3,11 @@ id: ENH-3744
 type: ENH
 title: Semantic usage-candidate proof, derive-gap retention and prune veto
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T20:27:33Z'
+completed_at: '2026-10-07T20:09:42Z'
 parent: EPIC-3562
 labels:
 - observability
@@ -167,6 +168,20 @@ The initial finite payload-path contract already present in `pii.py` is:
 
 Host/session/position envelope columns are separate from payload paths; numeric usage components are captured values, not identity exemptions. Test event-specific registry shapes and sanitizer preservation/refusal, and keep future unsupported native paths unprovable until fixture and registry parity establish them.
 
+### Deviations
+
+- 2026-10-07: Proof helper, types and shared native recognition live in the new pure module
+  `session_store/usage_proof.py`; the bounded storage adapter (`collect_usage_proof_scope`,
+  `inspect_retained_source`) lives in `session_store/usage_proof_scope.py` rather than in
+  `lifecycle.py`, so read-only consumers import it without the lifecycle module. The pure
+  helper takes duck-typed `UsageReplayRecord` values (type-checking import only) to avoid a
+  `writers` cycle. `UsageCandidateProof` carries `supplier_positions` (line/ordinal of each
+  matched supplier) instead of a separate position object.
+- `_plan_raw_prune` kept its name and 5-tuple return but gained `sources=`/`overlay=` keywords
+  (prune plans one source per transaction); `test_prune_holds_the_write_lock_while_proving`
+  forwards them. Related-source context is limited to rows sharing a Claude key or Codex
+  response ID in the same session plus exact observation raw links.
+
 ## Integration Map
 
 ### Files to Modify
@@ -199,16 +214,16 @@ Update pure usage-proof and prune contracts in `docs/reference/API.md`, bounded 
 
 ## Acceptance Criteria
 
-- [ ] A current checkpoint cannot hide a missing logical candidate in either prune branch; its raw remains retained with `usage_derive_gap`. Genuine coalesced/deduplicated snapshots and compatible represented audit rows do not create false gaps.
-- [ ] Envelope/native/observation host-session-channel contradictions and incompatible captured values remain bounded-unprovable with retained raw/context. An older matching native key or a raw pointer alone cannot certify a newer or differently captured candidate.
-- [ ] Actual Claude terminal omissions and Codex rate-limit-only notifications fabricate no usage. Unsupported native grain, unregistered identity paths and corrupt retained inputs remain protected; absent qualification-only context or a NULL qualification marker does not invalidate proved audit correspondence or promote qualification.
-- [ ] Internal proof exports matched committed observation references and all required native context/raw dependencies. Native dedup, conflicts, unkeyed notifications, nonadvancing totals and adjacency match concrete producer parity tests; insufficient surviving evidence takes a conservative retention fallback.
-- [ ] Every native identity path read by proof is protected in `pii._protocol_rules` for its supported host/event type; a parity test fails loudly and unsupported paths yield a bounded retention reason.
-- [ ] Prune plans/protects/deletes per source atomically, revalidates cross-source witnesses after earlier commits and preserves required context regardless of source order. A source failure rolls back only that source, stops further deletion and reports that prior commits may have occurred; retry is idempotent.
-- [ ] Retained decode failures never disappear from proof. Recognized benign non-usage remains harmless. Whole-scope item/byte budgets and bounded packed expansion yield `usage_proof_limit`/unprovable with no partial success and conservative component/context retention; no streaming carry-forward implementation is required.
-- [ ] Dry-run uses one read snapshot plus virtual prior-source effects, writes nothing and matches actual multi-source semantic plans/counts/reasons absent concurrent changes. Observation protection follows actual supplier source/population predicates, never an observation ID/raw pointer or candidate-source substitute. Prune and pure proof never derive, price, promote or release holds.
-- [ ] The importable pure interface works with read-only consumer inputs and exposes no native keys/paths in shareable statuses. Retained-only proof does not certify absent historical source inventories; ENH-3745 can later supply its durable pre-raw failure evidence.
-- [ ] The whole issue lands independently without ENH-3745/3747 changes, cursor/checkpoint semantics changes, storage migration, derive-version bump, `rebuild()` fingerprint change or replay of an already-linked raw row. `python -m pytest scripts/tests/` exits 0.
+- [x] A current checkpoint cannot hide a missing logical candidate in either prune branch; its raw remains retained with `usage_derive_gap`. Genuine coalesced/deduplicated snapshots and compatible represented audit rows do not create false gaps.
+- [x] Envelope/native/observation host-session-channel contradictions and incompatible captured values remain bounded-unprovable with retained raw/context. An older matching native key or a raw pointer alone cannot certify a newer or differently captured candidate.
+- [x] Actual Claude terminal omissions and Codex rate-limit-only notifications fabricate no usage. Unsupported native grain, unregistered identity paths and corrupt retained inputs remain protected; absent qualification-only context or a NULL qualification marker does not invalidate proved audit correspondence or promote qualification.
+- [x] Internal proof exports matched committed observation references and all required native context/raw dependencies. Native dedup, conflicts, unkeyed notifications, nonadvancing totals and adjacency match concrete producer parity tests; insufficient surviving evidence takes a conservative retention fallback.
+- [x] Every native identity path read by proof is protected in `pii._protocol_rules` for its supported host/event type; a parity test fails loudly and unsupported paths yield a bounded retention reason.
+- [x] Prune plans/protects/deletes per source atomically, revalidates cross-source witnesses after earlier commits and preserves required context regardless of source order. A source failure rolls back only that source, stops further deletion and reports that prior commits may have occurred; retry is idempotent.
+- [x] Retained decode failures never disappear from proof. Recognized benign non-usage remains harmless. Whole-scope item/byte budgets and bounded packed expansion yield `usage_proof_limit`/unprovable with no partial success and conservative component/context retention; no streaming carry-forward implementation is required.
+- [x] Dry-run uses one read snapshot plus virtual prior-source effects, writes nothing and matches actual multi-source semantic plans/counts/reasons absent concurrent changes. Observation protection follows actual supplier source/population predicates, never an observation ID/raw pointer or candidate-source substitute. Prune and pure proof never derive, price, promote or release holds.
+- [x] The importable pure interface works with read-only consumer inputs and exposes no native keys/paths in shareable statuses. Retained-only proof does not certify absent historical source inventories; ENH-3745 can later supply its durable pre-raw failure evidence.
+- [ ] The whole issue lands independently without ENH-3745/3747 changes, cursor/checkpoint semantics changes, storage migration, derive-version bump, `rebuild()` fingerprint change or replay of an already-linked raw row. `python -m pytest scripts/tests/` exits 0. _(Full-suite run: only the unrelated `test_next_loop_golden` float-ULP assertion and the live-endpoint `test_libsql_integration` expired-JWT errors fail; every ENH-3744 and session-store test passes.)_
 
 ## Implementation Steps
 
@@ -221,6 +236,28 @@ Update pure usage-proof and prune contracts in `docs/reference/API.md`, bounded 
 ## Scope Boundaries
 
 No writer mutation, held-source derivation/retry, reconciliation, parser refresh, hold release, checkpoint/cursor semantics, independent freshness/completion storage, search restoration, reader admission, legacy promotion or repricing. Those belong to ENH-3745, ENH-3770 and their reader/search follow-ups. Conservative unprovable evidence may retain storage indefinitely; surface a bounded reason rather than silently discard it. No new whole-source completeness claim can come from a retained-only candidate window.
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-10-07
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/usage_proof.py` (new): pure `inspect_usage_candidates`, `UsageCandidateProof`, `UsageReplayFailure`, shared Claude/Codex recognition seams, `PROOF_IDENTITY_PATHS`.
+- `scripts/little_loops/session_store/usage_proof_scope.py` (new): total retained-input decode adapter and bounded whole-scope collection (`usage_proof_limit`).
+- `scripts/little_loops/session_store/writers.py`: writer delegates to the shared seams; `usage_replay_record_from_row`.
+- `scripts/little_loops/session_store/lifecycle.py`: semantic prune veto in both checkpoint branches, supplier protection, per-source transactions with fail-fast partial commit, dry-run overlay.
+- `scripts/tests/test_enh3744_usage_candidate_proof.py` (new, 63 tests); `test_bug3736_usage_replay_holds.py` forwards the new planner keywords.
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`.
+
+### Verification Results
+- Tests: PASS for all ENH-3744 and session-store suites (29,511 passed). The full run also shows 1 failure (`test_next_loop_golden` float ULP, untouched code) and 8 errors (`test_libsql_integration` live endpoint, expired JWT); both are unrelated to this change.
+- Lint: PASS for changed files (`ruff check scripts/` reports 2 pre-existing import-order findings in `scripts/tests/spike/`)
+- Types: PASS (`mypy scripts/little_loops/`)
+- Integration: PASS
 
 ## Status
 
@@ -261,6 +298,8 @@ Re-run `/ll:confidence-check` for the amended contract before implementation; th
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-07T20:09:42 - `0a381b00-d094-43f9-90d3-306555b6a005.jsonl`
+- `/ll:ready-issue` - 2026-10-07T19:44:16 - `c7082427-a750-436b-b45f-d610e00faa21.jsonl`
 - `/ll:confidence-check` - 2026-10-07T19:38:03 - `587cf4a4-7f35-4772-8156-1bc4c32d25a5.jsonl`
 - Pre-implementation review #5 - 2026-10-07 - Pinned actual supplier/population hold predicates, separate protection versus correspondence references, dry-run virtual source effects, finite sanitizer paths and paginated/reset native-order controls. Replaced unspecified windows with whole-scope item/encoded/decoded caps and conservative component fallback; aggregate-only calibration of the 32 largest encoded Claude sources supports the initial constants but does not claim Codex coverage. Removed stale confidence ambiguity without rescoring. `/ll:advise` with Opus (confidence 0.70) supported applied-row transactional proof, scoped whole-input limits, component-specific refresh obligations and standalone rebuild invalidation in ENH-3745; its size-calibration uncertainty prompted the read-only aggregate probe. Existing producer/hold/incremental/refresh baseline: 121 passed. No implementation or new readiness score claimed.
 

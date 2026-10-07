@@ -430,7 +430,7 @@ class TestAtomicPrune:
         real = lifecycle._plan_raw_prune
         seen: list[str] = []
 
-        def contend(conn: sqlite3.Connection, cutoff: str) -> Any:
+        def contend(conn: sqlite3.Connection, cutoff: str, **kwargs: Any) -> Any:
             other = sqlite3.connect(str(db), timeout=0)
             try:
                 other.execute("BEGIN IMMEDIATE")
@@ -439,7 +439,7 @@ class TestAtomicPrune:
                 seen.append(str(exc))
             finally:
                 other.close()
-            return real(conn, cutoff)
+            return real(conn, cutoff, **kwargs)
 
         monkeypatch.setattr(lifecycle, "_plan_raw_prune", contend)
         prune(db, config=_CFG)
