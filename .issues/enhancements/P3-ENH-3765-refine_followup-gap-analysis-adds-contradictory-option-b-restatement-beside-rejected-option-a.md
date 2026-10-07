@@ -8,6 +8,9 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T00:49:19Z'
+relates_to:
+- BUG-3763
+- BUG-3764
 ---
 
 # ENH-3765: refine_followup gap-analysis adds contradictory Option B restatement beside rejected Option A
@@ -22,7 +25,7 @@ An implementer or later automated pass reading that section has to guess which d
 
 ## Current Behavior
 
-`/ll:refine-issue --auto --gap-analysis` (Step 5c in `commands/refine-issue.md`) is additive-only by contract: "never removes existing content". When the residual `format-check` finding is `unapplied_decision` on a rejected option, it still writes. It appends an Option B restatement and a "the older bullets describe the rejected option" note to Program Design and Impact, leaving the rejected Option A text in place. The run reports that the gate still fails, and `refine_followup` in `scripts/little_loops/loops/refine-to-ready-issue.yaml` has no signal to route on, so the loop's single gate-refine budget is spent on a no-op.
+`/ll:refine-issue --auto --gap-analysis` is additive-only by contract. On the observed run it appended an Option B restatement beside rejected Option A text in Program Design and Impact. It also added useful AC/research findings, so the pass was not a literal no-op, but it could not discharge the rewrite obligation. `refine_followup` has an unconditional next state; its prose output does not control routing. The shared loop retry counter is incremented before the command runs. That counter is separate from the lifetime `max_refine_count` exemption provided by the gap-analysis Session Log discriminator.
 
 ## Expected Behavior
 

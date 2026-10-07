@@ -8,13 +8,16 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T00:49:19Z'
+relates_to:
+- BUG-3763
+- ENH-3765
 ---
 
 # BUG-3764: verify-issues labels Program Design drift inconsistently between DIRECTIVE_DRIFT and NON_VALID
 
 ## Summary
 
-`/ll:verify-issues --check --auto` returned different verdicts for the same Program Design drift across three consecutive passes on BUG-3761 (run `.loops/.history/2026-10-07T000313-refine-to-ready-issue`):
+`/ll:verify-issues --check --auto` used different verdict categories for unresolved Program Design drift across three passes on BUG-3761 (run `.loops/.history/2026-10-07T000313-refine-to-ready-issue`). Reconcile and gap-analysis edited the issue between passes, so this trace demonstrates an ambiguous classification contract, not nondeterminism on byte-identical input:
 
 - Pass 1 and pass 2: `DIRECTIVE_DRIFT` (routed to `check_reconcile_limit`).
 - Pass 3: `NON_VALID`, which `ll-issues next-obligation` surfaces as `VERIFY:other` (routed to `check_gate_refine_limit`). The pass-3 output reasoned that Program Design is not among the sections `DIRECTIVE_DRIFT` covers.
@@ -29,9 +32,9 @@ Program Design / Impact drift against a selected decision matches neither the `D
 
 ## Steps to Reproduce
 
-1. Take an issue whose selected decision contradicts its `## Program Design` section (e.g. BUG-3761 after `/ll:decide-issue --auto` selected Option B over the section's Option A).
-2. Run `/ll:verify-issues BUG-3761 --check --auto` three times without editing the issue.
-3. Observe the persisted `verify_verdict` vary between `DIRECTIVE_DRIFT` and `NON_VALID`, and `ll-issues next-obligation` flip between `VERIFY:DIRECTIVE_DRIFT` and `VERIFY:other`.
+1. Create a disposable fixture whose selected decision contradicts its `## Program Design`; optionally include an ordinary AC gap and stale Impact estimates. The current BUG-3761 file has been manually repaired.
+2. Verify the fixture, reconcile its ACs, verify again, then perform additive gap-analysis and verify again. This matches the observed edits between iterations 15, 21 and 30.
+3. The historical trace classified the first two passes as `DIRECTIVE_DRIFT` and the third as `NON_VALID`, explicitly because Program Design was outside the documented remedy scope. A fixed-input model evaluation is a separate validation, not an established reproduction from that trace.
 
 ## Expected Behavior
 

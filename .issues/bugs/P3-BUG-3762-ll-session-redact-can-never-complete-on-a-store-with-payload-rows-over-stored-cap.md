@@ -9,6 +9,7 @@ labels: []
 decision_needed: false
 unproven_mechanism: true
 verify_verdict: NON_VALID
+
 ---
 
 ## Summary
@@ -126,6 +127,18 @@ _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 
 - **Tests**: `scripts/tests/test_raw_redaction.py` — `TestWireBounds` (`:197`; must keep passing), `TestVocabulary` (`:104`, pins the reason set), `TestRowFailures.test_unsupported_storage_and_resource_limit` (`:449`, builds its over-cap row with `zeroblob(STORED_CAP + 1)` — all zeros, not valid zlib/JSON, and asserts `resource_limit` for `(1, "parsed_json")` and `report.failed == 2`; this existing contract changes or is narrowed by the fix), `TestBoundedDecode.test_decoded_cap_boundary`. `scripts/tests/test_ll_session.py::TestRedactSubcommand` pins the `redact_raw_events` call kwargs exactly (`{"batch_size": 7, "dry_run": True}`), so a new keyword threaded from the CLI must update those assertions. No test asserts on `Incomplete:` / `Failed:` text, and none builds a valid over-cap payload (clean or dirty) — the synthetic rows the acceptance criteria call for do not exist yet. `scripts/tests/test_enh3751_sanitize_raw_events.py` has no over-cap ingest case.
+
+_Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
+
+- **Conventions in force (pattern-finder)**:
+  - **Capped reads are one shape.** Bounded reads project `typeof(c)`, `length(CAST(c AS BLOB))` and `CASE WHEN length(..) <= cap THEN CAST(c AS BLOB) END`; `value is None` with a non-NULL `length` means "over cap" (`raw_redaction.py` `_projection`/`_projection_sql`; duplicated in the spike copy `scripts/tests/spike/enh3752_raw_redaction/redaction_core.py:39`). `_fetch_one` reuses that projection, so a single-row refetch cannot return oversize bytes either. No site anywhere slices a BLOB or reads one in pieces: `substr(` appears only in `schema.py` (issue-id parsing) and `zeroblob` only in tests.
+    ⚠ Unproven mechanism — no codebase site reads a BLOB in chunks
+  - **`decode_payload` is the only bounded zlib decoder.** `usage_refresh._decode_stored_payload` (`usage_refresh.py:87`) is a second decode path that also emits `resource_limit` (`:105`), and `usage_refresh._STORED_SELECT` (`:62`) reads `CAST(col AS BLOB)` with no cap. `writers._unpack_payload` is unbounded. Any cap-parameterized decode must leave `usage_refresh` semantics unchanged.
+  - **Every refusal is a `(column, reason)` pair.** `_plan_column` raises `_refuse(reason)`, `_plan_row` collects the pairs, and `_Run._handle` turns them into `RawRedactionProblem` plus `failed_ids`. `_Run.report()` derives `complete` from `exhausted and no stop_reason and not (failed_ids or conflict_ids or unconfirmed_ids)`, so a new outcome must feed one of those three sets or change that expression to keep exit code 1.
+  - **Reason vocabulary is closed and test-pinned on the `raw_redaction` side.** `TestVocabulary` (`test_raw_redaction.py:105`) hard-codes the 13-name `extra` set and the 6 stop reasons; `pii.HISTORY_ERROR_REASONS` is pinned separately (`test_pii.py:1064`). `_Tally.problem` does no runtime membership check, so a test is the only enforcement.
+  - **`--batch` on `redact` is the flag-shape evidence**: `type=_positive_int`, `metavar="N"`, explicit default (`cli/session.py:419`). Contested: `_positive_int` is defined twice, identically (`cli/session.py:503`, `cli/history.py:56`), and sibling subparsers in the same file use plain `type=int` for `--batch`. The implementer chooses which validator a new flag follows.
+  - **No "pass a kwarg only when set" idiom exists in `cli/`.** `_main_redact` passes `batch_size`/`dry_run` unconditionally; the nearest cases always pass a `getattr(args, ..., None)` value (`cli/session.py:1009`). `test_dispatch_passes_target_batch_and_dry_run` pins the exact kwargs dict, so a new flag either passes conditionally (no precedent) or that assertion is updated.
+  - **Bound tests follow a small set of shapes** in `test_raw_redaction.py`: synthetic over-cap row via `UPDATE ... SET col = zeroblob(?)` (`test_unsupported_storage_and_resource_limit`), cap/cap+1 boundary pairs (`test_decoded_cap_boundary`), `monkeypatch.setattr(rr, "PROBLEM_CAP", 2)` constant overrides, `_fetch_page` spies recording `kw["limit"]`, and `HranaStub` request/response size spies (`TestWireBounds`).
 
 ### Dependent Files (Callers/Importers)
 
@@ -251,6 +264,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-10-07T01:06:04 - `51f4678d-2b6a-45cf-bb75-d154b3120223.jsonl`
+- `/ll:refine-issue:gap-analysis` - 2026-10-07T01:04:15 - `c24bb708-1ad0-4da8-9d25-50c9d7db6349.jsonl`
 - `/ll:verify-issues` - 2026-10-07T01:01:29 - `fec5599b-fa5e-41b8-98dd-172ad808fa28.jsonl`
 - `/ll:wire-issue` - 2026-10-07T00:59:39 - `62355c4f-23ba-4c6f-bf44-9fe87ad6e7af.jsonl`
 - `/ll:decide-issue` - 2026-10-07T00:51:15 - `6b41f46f-0778-4eee-bd27-b06a454db20a.jsonl`

@@ -8,13 +8,16 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T00:49:18Z'
+relates_to:
+- BUG-3764
+- ENH-3765
 ---
 
 # BUG-3763: refine-to-ready-issue has no rung to rewrite Program Design after a decision flips the design
 
 ## Summary
 
-`refine-to-ready-issue` has no state that can rewrite a `## Program Design` section after `/ll:decide-issue` selects a different option than the one the section was written for. The loop dead-ends at `record_gate_unmet` → `failed` even though every other gate is clean.
+`refine-to-ready-issue` has no targeted repair that can rewrite a `## Program Design` section after `/ll:decide-issue` selects a different option than the one the section was written for. The observed run ended at `record_gate_unmet` → `failed` with this repair still unowned. Acceptance-criteria gaps also appeared during the run; the trace does not establish that every other gate was clean.
 
 Observed on BUG-3761 (run `.loops/.history/2026-10-07T000313-refine-to-ready-issue`, 33 iterations, 38 min, `failed`):
 
@@ -31,8 +34,8 @@ When `/ll:decide-issue --auto` selects an option different from the one `## Prog
 
 ## Steps to Reproduce
 
-1. Take an issue with a `decision_needed` point and a `## Program Design` section written for Option A (e.g. BUG-3761 before the run below).
-2. Run `ll-loop run refine-to-ready-issue` on it; `resolve_decision_mid_refine` runs `/ll:decide-issue --auto` and selects Option B.
+1. Create a disposable fixture with competing options, a canonical selected-option callout, and a `## Program Design` section written for the rejected option. Include stale Impact Effort/Risk lines and preserved decision/research history. BUG-3761 has since been manually repaired, so its current file is not a reproducer.
+2. Run the child-loop harness on that fixture, scripting `resolve_decision_mid_refine` to select Option B. Use a separate disposable live evaluation to assess actual model edits.
 3. Observe `verify_issue` → `DIRECTIVE_DRIFT` → `reconcile_issue` (fixes Acceptance Criteria, refuses Program Design/Impact) → second `DIRECTIVE_DRIFT` → `refine_followup` (additive-only).
 4. Observe the third verify → `VERIFY:other` → `check_gate_refine_limit` exhausted → `record_gate_unmet` → `failed`, with `ll-issues format-check` still reporting `unapplied_decision`.
 
