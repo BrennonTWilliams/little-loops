@@ -20,39 +20,14 @@ relates_to:
 - ENH-3730
 - BUG-3735
 - ENH-3543
+- ENH-3770
 size: Large
-confidence_score: 70
-outcome_confidence: 71
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
 risk_factors:
-- id: consumed-interfaces-unlanded
-  domain: readiness
-  criterion: well_specified
-  description: Session-status helper targets ENH-3744/3745 interfaces that do not
-    yet exist; signatures unverifiable
 - id: deep-multi-module-rewiring
   domain: outcome
   criterion: complexity
   description: Nullable usage metrics, per-metric baselines and attached-member workspace
     proof span four modules with shared state
-- id: interface-dependent-ambiguity
-  domain: outcome
-  criterion: ambiguity
-  description: Exact proof/progress interface shapes and compatibility details resolve
-    only after ENH-3744/3745 land
-- id: unresolved-blocker-enh-3744
-  domain: readiness
-  criterion: dependencies
-  description: blocked_by ENH-3744 (pure native proof) is open; its interfaces are
-    unlanded
-- id: unresolved-blocker-enh-3745
-  domain: readiness
-  criterion: dependencies
-  description: blocked_by ENH-3745 (source completion read) is open; its interfaces
-    are unlanded
 - id: wide-consumer-surface
   domain: outcome
   criterion: change_surface
@@ -73,7 +48,7 @@ Make agent-quality token/cost figures obey the landed usage qualification policy
 
 ## Parent Issue
 
-Decomposed from ENH-3723. Its recorded Decision (commit `01747bb96`) requires all-measured quality baselines/verdicts, makes phantom-zero and unknown-containing windows unavailable, and preserves `_rate_metrics`' absence-equals-zero default for non-usage metrics. ENH-3731, ENH-3748 and BUG-3736 are done; ENH-3744/3745 remain implementation prerequisites. No new readiness score is claimed.
+Decomposed from ENH-3723. Its recorded Decision (commit `01747bb96`) requires all-measured quality baselines/verdicts, makes phantom-zero and unknown-containing windows unavailable, and preserves `_rate_metrics`' absence-equals-zero default for non-usage metrics. All structured prerequisites, including ENH-3744/3745, are `done` on inspected branch `main`. Consume their landed APIs below. ENH-3770 owns production observation-witness population; this reader can land independently with conservative proof and retained-as-of handling. Historical scores were cleared because their unlanded-interface/dependency premise no longer holds; re-run `/ll:confidence-check` before implementation.
 
 ## Current Behavior
 
@@ -91,12 +66,14 @@ On inspected branch `main`, `_usage_totals` in `scripts/little_loops/issue_histo
 | In-scope session-local raw maximum above the validated member scan high-water | `derive_lagging`; unrelated later session IDs do not taint it |
 | Contract/channel/key/context or retained input cannot be proved | `derive_status_unavailable`; unavailable |
 | Any proved logical candidate lacks committed/native-coalesced representation | `derive_gap`; unavailable even if another observation exists |
-| Validated source-local pending work remains after preceding checks | `derive_pending`; an advanced scan high-water cannot certify it |
+| Validated source-local usage work remains after preceding checks | `derive_pending`; an advanced scan high-water cannot certify it; cache-only work is not a usage blocker |
 | In-scope observations and preceding checks pass | `complete`; apply shared qualification independently for tokens and cost |
 | Fully covered recognized non-usage raw, no in-scope observations | `derived_no_usage`; contributes nothing, not an observed zero |
 | Neither raw nor usage for an attributed session | `no_evidence`; unavailable |
 
-Retained observations whose raw was legitimately pruned retain their recorded as-of qualification without requiring cursors or current source-file availability. A conservation hold alone neither rejects them nor proves completeness. Consult durable pending evidence even when no raw remains; legitimate retention cannot erase known outstanding work. Actual outstanding/unprovable in-scope work still blocks each fractionally attributed window. An entirely observation-free window is `no_observations`; retain any contributing derive failures as diagnostics rather than hiding them behind that label.
+Retained observations whose raw was legitimately pruned retain their recorded as-of qualification without requiring cursors or current source-file availability. A conservation hold alone neither rejects them nor proves completeness. Missing production observation witnesses alone do not erase this retained-as-of allowance. Consult durable pending evidence even when no raw remains; legitimate retention cannot erase known outstanding usage work. Actual outstanding/unprovable in-scope work still blocks each fractionally attributed window. An entirely observation-free window is `no_observations`; retain any contributing derive failures as diagnostics rather than hiding them behind that label.
+
+Absent/mismatched global checkpoints or current derive versions alone do not retroactively reject otherwise legitimate retained-as-of observations with no surviving candidate or known outstanding usage work. Those checks certify current retained work/completion; relevant pending/new-candidate scope or version mismatches still block. The recorded qualification is a historical consumption fact, not ENH-3746's whole-figure source freshness/as-of certificate. Older stores missing the storage needed to rule out relevant outstanding work still fail closed; this allowance does not invent absent proof.
 
 - Build complete window populations before applying `qualify_usage`, separately for tokens and cost (`require_cost=True`). Missing/invalid/audit-only contributors cannot produce complete-subset values. Estimated/mixed qualified values remain labeled numeric consumption, with no trend verdict; a qualified observed zero is zero.
 - Keep qualification, sample insufficiency and trend eligibility separate. `insufficient_history` means only that the sample gate failed. Text/markdown show unavailable with a bounded reason, JSON/YAML use `null`; all formats preserve provenance and actual period. Cost coverage stays a diagnostic, not permission to publish a partial figure above 50%.
@@ -155,7 +132,11 @@ Workspace totals: `_open_union` → explicit read transaction → member-qualifi
 ### Decision Rules
 
 - Reuse ENH-3744's pure native recognition/coalescing/correspondence and ENH-3745's validated retained-state completion. Observations satisfy conservation separately from qualification. Exact surviving raw linkage may prove an unkeyed audit representation; values/timestamps cannot. Decode failures and unregistered contracts are unavailable, never affirmative non-usage.
-- A matching native key alone does not prove that a retained observation represents a later snapshot. Consume the proof's compatible generation/order and applied-value position; an unresolved newer snapshot remains unavailable even when an older observation with that key survives. Envelope/payload/observation identity disagreements are unprovable, never attributed to a different session to make its window complete.
+- Use `usage_proof_scope.inspect_retained_source(conn, source, channel="transcript", schema=schema)` for retained correspondence and `usage_source_state.read_source_derive_completion`, `pending_obligations`, `read_source_head` and `read_observation_witness` for committed state. Reuse `lifecycle._read_usage_checkpoint` with member-qualified reads (extend its schema seam if needed); do not copy checkpoint validation into the reader. The proof adapter owns decoding, related-source collection and whole-scope item/byte limits. Map `UsageProofLimit` / `UsageProofUnavailable` to bounded `derive_status_unavailable` for affected in-scope/uncertain sessions; never certify a partially collected scope or fall back to `main`.
+- The adapter's current `channel` argument filters correspondence after collection, so it does not yet enforce acquisition-before-budget scope. Omit positively proved excluded-only sources before proof; where mixed sources need channel-aware collection, extend the shared `usage_proof_scope` seam to omit positively irrelevant inputs before budget/materialization while preserving all required native context and ambiguous inputs. Do not introduce another decoder/recognizer in `history_reader`. Excluded observations cannot enter qualification/counts; genuinely unprovable or over-limit relevant context still fails closed.
+- Distinguish `SourceDeriveCompletion.outstanding` and each `SourcePending.usage_pending`: `raw_cache` alone does not make usage unavailable, while `usage`, `both` and unprovable relevant usage state do. The completion reader may report semantic usage completion with cache work still outstanding. Absence of a source head cannot erase existing usage obligations, including older generations.
+- Discover member-local source/session associations from retained raw, observations, applied suppliers/qualification dependencies and positively verified pending-only scope. A source head's session is not an exhaustive inventory: a transcript may contain multiple sessions, and `pending_obligations` reconstructs scopes without host/session. Whole-source or unlocatable/pruned usage obligations taint every associated in-scope session unless shared committed evidence positively excludes the entire obligation. Ignore a bounded obligation only when its complete range/affected observations prove unrelated sessions or excluded channels; a different head session or vanished raw is not negative proof. Do not taint unrelated sources or invent evidence for absent member/session pairs.
+- A matching native key alone does not prove that a retained observation represents a later snapshot. `UsageCandidateProof` carries supplier positions and correspondence, but no generation certificate; combine it with sufficient compatible committed generation/order and applied-value evidence where representation relies on a newer/coalesced supplier. Neither `represented` nor a larger supplying raw ID alone proves that order. An unresolved newer snapshot remains unavailable even when an older observation with that key survives. Envelope/payload/observation identity disagreements are unprovable, never attributed to a different session to make its window complete. This ordering check does not impose a witness requirement on otherwise legitimately pruned retained-as-of observations with no known outstanding work.
 - The helper reuses a caller-owned transaction; when none exists it owns only its read transaction. The full analysis must pin proof, attribution, usage and compositions together. Never commit or close a caller's transaction/connection. Helpers run on query-only connections; no migration, refresh or writes. When analysis owns its connection, use the existing backend `open_history_readonly(..., ensure=False)` seam and handle `HistoryError` with the existing empty/unavailable behavior. Do not use the migrating `_connect_readonly` wrapper or change its other callers. An older schema can expose audit observations but cannot supply absent proof; fail closed without upgrading it or creating a missing store.
 - Usage trend eligibility is explicit: sample-sufficient, qualified, all-measured, no blocking derive status and a known calendar period. Consumption may remain numeric in the `unknown` period, but that period is never a usage target or baseline at either stage. Estimated/mixed windows keep numeric consumption with `trend_eligible=False`; absence of usage metadata fails closed for usage metrics. Preserve non-usage eligibility and the existing zero-baseline classifier separately from the regression zero-mean guard.
 - Compute usage regression means without overflowing a representable result: for nonnegative eligible values, use a stable sum of values divided by their count, rather than `sum(values) / count`. Two valid `1e308` priors must yield `1e308`, not infinity. This changes usage baseline arithmetic only; it does not reclassify valid stored costs or change correction/fix/retry behavior.
@@ -171,13 +152,14 @@ Workspace totals: `_open_union` → explicit read transaction → member-qualifi
 ### Files to Modify
 
 - `scripts/little_loops/history_reader/usage.py` — new session helper/result and identity/proof queries at the existing SQL chokepoint; `history_reader/__init__.py` — re-export, docstring and `__all__`.
+- `scripts/little_loops/session_store/usage_proof_scope.py` — shared channel-aware bounded collection if required; preserve prune's existing unfiltered proof. `session_store/lifecycle.py` — member-qualified `_read_usage_checkpoint` seam if required, with unchanged local validation.
 - `scripts/little_loops/issue_history/agent_quality.py` — strict owned-connection open, nullable window usage/metric metadata, `_usage_totals`, `_rate_metrics`, `QualityMetric.to_dict`, `_format_metric_line` and markdown cells; `_STANDARD_NOTES`, `_definitions` and module docstring.
 - `scripts/little_loops/issue_history/quality_regressions.py` — explicit all-measured target/baseline eligibility, measured-zero inclusion, `_REGRESSION_NOTES` and diagnostic wording; preserve zero-mean and retry branches.
 - `scripts/little_loops/issue_history/workspace_quality.py` — attached-schema proof, transaction/connection ownership, conservative injection and member-qualified local identities. Create TEMP views before enabling query-only; keep the attach-limit/totals-skipped behavior and close owned resources on every exit.
 
 ### Dependent Files
 
-- `scripts/little_loops/session_store/lifecycle.py`, `writers.py`, `claude_usage.py`, `usage_refresh.py` — consume shared proof/progress and refresh invalidation; ENH-3744/3745 own writer/storage changes.
+- `scripts/little_loops/session_store/usage_proof.py`, `usage_source_state.py`, `lifecycle.py`, `writers.py`, `claude_usage.py`, `usage_refresh.py` — consume landed proof/progress and refresh invalidation. ENH-3770 owns guarded mutation and production supplier/context witnesses; this issue adds neither writer mutation nor storage migration.
 - `scripts/little_loops/cli/history.py` — single-repo caller uses default local proof; workspace proof remains inside aggregation.
 - `scripts/little_loops/session_store/backend.py` and `history_reader/_base.py` — reuse the existing strict opener/error types; the migrating compatibility wrapper and its unrelated callers remain unchanged.
 - `scripts/little_loops/issue_history/rework.py` and `_utils.py` — shared definitions/window/verdict helpers; preserve rework output, four definitions and the correlational note. `workspace_activity.py` uses workspace helpers; avoid unrelated signature changes.
@@ -186,6 +168,7 @@ Workspace totals: `_open_union` → explicit read transaction → member-qualifi
 
 - `scripts/tests/test_issue_history_agent_quality.py` — add explicit measured provenance fixtures while retaining unknown controls; nullable rendering, independent baseline stages, estimated/mixed targets, zero/zero-mean and older-period output, authoritative injected map/missing key, four definitions and seven-key non-usage serialization. Assert exact additive usage metadata and sample/derive/qualification reason precedence, including simultaneous failures. Test one session touching two issues in the same window and one outside it: qualification counts reflect original rows once per window, while weighted numerators retain the all-associated-issues divisor. Test numeric `unknown`-period consumption with no usage baseline/verdict at either stage. With measured cost windows `[1e308, 1e308, 1.5e308]`, K=2 and valid per-window proof, assert a finite mean `1e308`, magnitude 0.5 and a regression event. Retain the direct `_usage_totals` bucket contract in `test_enh3532_codex_rollout_usage.py` while allowing unavailable values.
 - `scripts/tests/test_enh3732_session_derive_status.py` (new) — real Claude ingestion/derive/prune with coalesced snapshots, two candidates/one observation, audit correspondence through raw links, corrupt/mismatched contracts, omitted/no-usage/excluded-only evidence, session-local lag, complete requested-session coverage, source loss and retained as-of behavior. Assert frozen result, package exports, query-only execution, byte-identical source files and forbidden source/derive/pricing calls. Exercise the full default analysis on current/older/missing stores with schema ensuring forbidden; assert no upgrade/create and unavailable absent proof. Exercise both an existing caller transaction and an idle caller connection: reuse/end only owned read transactions, preserve caller transactions and keep caller connections open on success and failure.
+- Use landed storage helpers to test `raw_cache`-only versus `usage`/`both` pending, older-generation obligations after raw prune and a multi-session transcript with a head naming only its last session. Test complete-range unrelated/excluded pending controls, missing/mismatched supplier generations despite affirmative correspondence, missing witnesses with legitimate retained-as-of evidence, excluded-heavy acquisition scopes and bounded mixed/uncertain proof-limit/unavailable failures. These tests must not call producer reconciliation to make the reader pass.
 - `scripts/tests/test_feat3410_workspace_quality.py` and `test_feat3418_workspace_quality.py` — member-local checkpoints, colliding IDs with unrelated audit groups, shared sessions, member-order permutations, absent/out-of-scope members and a WAL commit during analysis. Add the asymmetric case: A associates session S with an issue; B has S usage plus an unresolved candidate but no S issue association; B must still taint totals. A third member with no S evidence must not. Assert proof and usage use the same attached-member snapshot, no first-member certification, one-member totals parity, exact union relations, attach-limit handling and owned-resource cleanup.
 - `scripts/tests/test_cli_history.py` — actual usage-bearing text/markdown/JSON/YAML output. Preserve `test_usage_selection_chokepoint_gate.py` and `test_history_store_chokepoint_gate.py`; no new raw SQLite history openers or token/cost SQL outside the existing seam.
 
@@ -205,6 +188,7 @@ Update `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/HISTORY_SE
 - [ ] Valid finite usage priors with a finite representable mean cannot lose a regression to intermediate sum overflow; measured `[1e308, 1e308, 1.5e308]` yields mean `1e308` and magnitude 0.5 for K=2.
 - [ ] Workspace totals pin member proof and all contributor queries to the same attached revisions; collisions, shared sessions, concurrent commit and permutation controls preserve accepted member-additive populations and bounded diagnostics.
 - [ ] Source-local pending evidence survives an advanced global scan high-water; older same-key observations and envelope/session mismatches cannot certify unresolved snapshots. Asymmetric shared-session members contribute proof whenever their evidence contributes to totals, independently of local issue associations.
+- [ ] Cache-only pending does not blank proved usage; usage/both/unknown relevant work still blocks. Multi-session sources and pruned/older-generation obligations cannot disappear behind the source head's last session. Shared adapter bounds and missing-member failures produce bounded unavailable diagnostics without partial proof or cross-member fallback; excluded-only/heavy controls preserve transcript acquisition scope.
 - [ ] Full default analysis never creates/migrates a history store; older stores fail closed for absent proof. Existing caller transactions/connections survive both success and failure. Numeric `unknown`-period usage cannot become a baseline or trend target at either stage.
 - [ ] `python -m pytest scripts/tests/` exits 0, including chokepoint and documentation gates.
 
@@ -216,13 +200,13 @@ Update `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/guides/HISTORY_SE
 
 ## Scope Boundaries
 
-No producer algorithm, prune/replay storage, source-file freshness, snapshot/dashboard, repricing, legacy promotion or ENH-3730 availability redesign. The shared ENH-3744/3745 handoff is required before this issue closes.
+No producer algorithm, prune/replay storage migration, source-file freshness, snapshot/dashboard, repricing, legacy promotion or ENH-3730 availability redesign. Consume the landed shared proof/completion handoff. No scheduling edge to ENH-3746 or ENH-3770 is required; insufficient relevant proof stays unavailable and legitimate retained-as-of observations follow the allowance above.
 
 ## Implementation Steps
 
-**Sequencing (2026-10-07):** the stable usage-mean arithmetic (priors near `1e308`) is a robustness control with no realistic USD-cost trigger; implement it after the status helper and nullable-metric work, and split it into a standalone P4 bug if size review gates this issue. The session-status helper depends on ENH-3744's pure proof and ENH-3745's `read_source_derive_completion` only; it does not need ENH-3744's reconciliation/hold-release half or ENH-3746 (see EPIC-3562 Review Notes, 2026-10-07, for the proposed slicing).
+**Sequencing (2026-10-07):** the stable usage-mean arithmetic (priors near `1e308`) is a robustness control with no realistic USD-cost trigger; implement it after the status helper and nullable-metric work, and split it into a standalone P4 bug if size review gates this issue. The proof/completion APIs have landed. Reconciliation/hold release now belongs to ENH-3770 and is not a prerequisite for this conservative reader.
 
-1. After ENH-3744/3745 land together, implement and test the query-only session-status helper against their actual interfaces.
+1. Re-run `/ll:confidence-check`, then implement/test the query-only session helper using the landed bounded proof, member-qualified checkpoint and component-aware source-state APIs; resolve acquisition scoping in the shared adapter.
 2. Use strict owned-connection reads; build transcript-scoped complete window populations, nullable usage numerators and the fixed additive per-metric metadata; preserve original contributor counts, attribution and generic rate defaults.
 3. Apply independent all-measured baseline/target eligibility and update every renderer, definition and note.
 4. Obtain totals proof on attached-member snapshots, inject the deterministic conservative map and keep local identities member-qualified.
@@ -230,7 +214,9 @@ No producer algorithm, prune/replay storage, source-file freshness, snapshot/das
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-10-07_
+**Historical assessment, superseded for dependency readiness by this review:** ENH-3744/3745 are now `done`, their APIs resolve on `main`, and the old top-level scores/resolved interface risks were cleared. Re-run `/ll:confidence-check` against the revised scope; this review claims no new score.
+
+_Added by `/ll:confidence-check` on 2026-10-07, before those prerequisites landed_
 
 **Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
 **Outcome Confidence**: 71/100 → MODERATE
@@ -240,12 +226,19 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 - Complexity 10/25: nullable metrics, per-metric baselines and attached-member workspace proof span four modules with shared transaction state.
 
 ### Gaps to Address
-- `blocked_by` ENH-3744 (open) and ENH-3745 (open) are unresolved; ENH-3731, BUG-3736 and ENH-3748 are done. Land ENH-3744/3745, then re-run this check. The Implementation Steps sequencing note already allows the status helper to start once ENH-3744's pure proof and ENH-3745's `read_source_derive_completion` exist.
+- Resolved on 2026-10-07: all structured prerequisites are `done`; the earlier interface/dependency STOP no longer applies. The remaining implementation complexity and the revised proof/scoping cases need a fresh check.
 
 ### Risk Factor Delta
 - Baseline: none recorded
 
 ## Verification Notes
+
+Pre-implementation review on `main` at `55f52f0ad` (2026-10-07): all structured prerequisites are now `done`; the earlier dependency STOP and its top-level scores are superseded. No refreshed implementation-confidence score is claimed.
+
+- Named the landed bounded retained-proof, checkpoint and source-state APIs; separated cache-only work, multi-session/older-generation pending attribution and correspondence from sufficient supplier-generation/order proof. Required acquisition scoping and bounds to remain in the shared adapter.
+- Preserved legitimate raw-pruned historical qualification despite absent current checkpoint/version or production observation witnesses, while known/unprovable relevant usage work and missing required proof storage still fail closed. This historical qualification does not certify source freshness.
+- `/ll:advise` with Opus (`--signal user_requested`, confidence 0.78) supported independent conservative readers and component-aware pending. Retained the existing bounded reason vocabulary and member-additive population rather than adding advisor-proposed payload/reason fields or changing workspace semantics. The advisor's cache-rate `raw_cache` concern does not apply to parser-derived message/tool cache obligations.
+- All three reviewed issues pass format/dependency and program-design checks; learning-test assessment is `not_required`. Existing proof/state/checkpoint/refresh/qualification/cache-rate/quality/workspace/chokepoint suites and the repository-wide prose-dependency gate: **330 passed**. These are current-behavior controls, not tests of the future implementation.
 
 Pre-implementation review on `main` at `ec36b137d` (2026-10-06): contract corrected; readiness remains **BLOCKED** by ENH-3744/3745.
 
@@ -258,6 +251,8 @@ Pre-implementation review on `main` at `ec36b137d` (2026-10-06): contract correc
 
 ## Session Log
 
+- Pre-implementation landed-handoff review - 2026-10-07 - Updated resolved dependencies and actual shared APIs, cleared historical readiness scores, added component-aware/multi-session pending and bounded acquisition controls, and preserved raw-pruned historical qualification without claiming applied-value freshness. Opus confidence 0.78 supported independent reader delivery; relevant existing suites and prose gate: 330 passed. No implementation or fresh numerical readiness score.
+- `/ll:ready-issue` - 2026-10-07T23:18:25 - `d4950fb6-e6e8-449c-ae1d-00ebb49011d8.jsonl`
 - `/ll:confidence-check` - 2026-10-07T16:36:38 - `2df55fef-6809-48a2-9c94-dc2d5f791646.jsonl`
 - Pre-implementation epic review - 2026-10-07 - Added sequencing (status helper first; overflow-mean robustness last/splittable) and recorded which ENH-3744/3745 pieces this issue actually consumes (pure proof + source completion read) for the pending slicing decision. No scope change; no implementation or readiness claim.
 - `/ll:ready-issue` - 2026-10-06T23:34:46 - `rollout-2026-10-06T17-27-26-01a1138b-1e26-7522-81f8-fe08a1540f42.jsonl`
