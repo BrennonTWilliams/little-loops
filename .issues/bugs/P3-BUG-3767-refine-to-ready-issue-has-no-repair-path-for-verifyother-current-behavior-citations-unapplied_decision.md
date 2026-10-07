@@ -133,5 +133,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-10-07T01:17:50 - `67f77c85-f910-4236-837b-e92f1170426b.jsonl`
 - `/ll:format-issue` - 2026-10-07T01:16:48 - `7610b26f-db95-4e3a-b048-687107034721.jsonl`
 - `/ll:capture-issue` - 2026-10-07T01:12:58 - `26bbdec0-accc-4f17-94d6-3d59f60b2e3f.jsonl`
