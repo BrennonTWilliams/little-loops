@@ -116,7 +116,7 @@ Add a two-source session whose selected source is fresh while the second has an 
 
 ## Implementation Steps
 
-1. Add/test the identity-only retained-ingestion predicate without changing the metric population; preserve negative identity/hold/cursor controls.
+1. Add/test the identity-only retained-ingestion predicate without changing the metric population; preserve negative identity/hold/cursor controls. **Land the source-set half of the figure-boundary check here (2026-10-07 clarification):** "every in-scope contributor maps to the selected source spelling/resolved path" needs only existing source attribution and no ENH-3744/3745 witness storage, and it fixes the reproduced multi-source mislabel (four contributing observations, `fresh` from the selected file while the other file is `stale`) without waiting for the paired handoff. Only the applied-value-position half (beyond-prefix replacements, dedup survivors, qualification-context frontier) waits for that handoff; until then a figure with any contributor whose position is unprovable takes the fail-closed `figure_boundary_unproven` branch specified above.
 2. After the paired ENH-3744/3745 handoff, pin admission/coverage/boundary reads, pass the existing connection through freshness, and validate every contributor's applied-value lineage against the selected-source boundary before publishing freshness/as-of.
 3. Exercise real prune/rebuild/source-loss and concurrent-commit text/JSON cases; verify payload and chokepoint compatibility, then run the local suite.
 
@@ -129,6 +129,8 @@ No source freshness boundary storage/algorithm, semantic prune/replay/hold chang
 **Open** | Created: 2026-10-05 | Priority: P2
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-07 - Split the figure-boundary check into a source-set half (existing attribution, no new witness storage; lands with the admission helper and fixes the reproduced multi-source `fresh` mislabel) and an applied-value-position half (waits for the ENH-3744/3745 handoff, fail-closed `figure_boundary_unproven` meanwhile). Opus consult (confidence 0.72) recommended the same separation. No implementation or readiness claim.
 
 - Pre-implementation handoff review - 2026-10-06 - Reproduced a four-observation multi-source Claude figure labeled fresh while its other source was stale. Required whole-figure contributor/boundary coverage in addition to one read revision, including later applied snapshots and other-source dedup survivors. Chose bounded unknown freshness/NULL as-of without filtering values or changing absence/payload contracts; tied lineage ownership to the paired ENH-3744/3745 handoff. Opus confidence 0.74 supported the check; absence codes were not reused for a populated freshness result. Targeted existing policy/lifecycle/reader/quality/workspace/dashboard/chokepoint suites: 293 passed. No implementation or readiness score claimed.
 

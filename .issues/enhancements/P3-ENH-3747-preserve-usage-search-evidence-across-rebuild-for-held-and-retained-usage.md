@@ -78,6 +78,7 @@ Reuse `search_index` rows of kind `usage` and the BUG-3736 hold marker.
 
 - Existing search reader and schema stay unchanged unless an actual missing reconstruction field requires an append-only migration. Inspect the existing usage-search writer before choosing preservation or reconstruction; preserve the existing indexed-channel set.
 - ENH-3744 owns hold release/replacement. Its future transitions are regression controls here, not a hard blocker on restoring Stage 1 search evidence. This issue is independent of canonical numeric publication but remains required for epic closure.
+  **Ordering (2026-10-07):** ENH-3744's source-scoped reconciliation stops re-deriving unchanged unheld observations. Verified in `lifecycle._derive_usage_incremental_conn` (the reset path deletes every `kind = 'usage'` search row but only unheld non-live usage rows) and `rebuild` (blanket kind wipe): today only held and live observations lose search entries, but once reconciliation preserves unchanged rows every preserved observation does. Implement this issue before ENH-3744's reconciliation lands (it is unblocked now, BUG-3736 being done) and scope the restoration to *every surviving committed usage observation that replay does not re-derive*, not only held-source and live rows.
 - BUG-3761 is done: `scripts/little_loops/session_store/lifecycle.py:1838` re-indexes surviving tools/corrections after the blanket search-kind deletion and suppresses their replay twins; it does not add survivor exclusions to that DELETE. Preserve this restoration when implementing usage search retention, and keep the kinds independent in regression tests. BUG-3766 separately covers live skill telemetry and a subsequent derive-version bump. Neither related bug is a prerequisite or imposes a landing order here; whichever patch lands later must retain earlier preservation logic and update its own derivation fingerprint/version together.
 
 ### Tests
@@ -86,7 +87,7 @@ Reuse `search_index` rows of kind `usage` and the BUG-3736 hold marker.
 
 ## Acceptance Criteria
 
-- [ ] After rebuild and incremental reset, retained and live usage search rows for held sources still resolve and have no duplicates.
+- [ ] After rebuild and incremental reset, retained and live usage search rows for held sources still resolve and have no duplicates. The restoration covers every surviving committed usage observation replay does not re-derive, so ENH-3744's preserved-unheld rows need no second mechanism (test with an unheld Claude/Codex observation that a future reconciliation would preserve rather than re-derive).
 - [ ] No dangling entries remain for replaced observations; channels never indexed stay unindexed.
 - [ ] Repeated replay leaves the search index unchanged.
 - [ ] Search previews/anchors retain existing sanitization and resolve after raw pruning/source loss; hold release/replacement removes stale entries and preserves unrelated live searches. A forced replay failure rolls back index and observation changes together.
@@ -108,5 +109,6 @@ Out of scope: prune/replay preservation, freshness, reader admission.
 
 ## Session Log
 
+- Pre-implementation epic review - 2026-10-07 - Widened restoration scope and fixed ordering: ENH-3744's reconciliation will preserve unchanged unheld observations without re-deriving them, which would widen today's search loss (held + live) to every preserved observation unless this lands first. Verified against the reset and rebuild paths. Opus consult (confidence 0.72) independently flagged the same coupling. No implementation claim.
 - Pre-implementation epic review - 2026-10-05 - Temporary-store rebuild retained two usage observations but reduced usage search entries from two to zero. Added concrete index/reader ownership, sanitization, replacement and rollback controls; kept search independent of numeric publication and required for epic closure. No implementation or new score is claimed.
 - BUG-3766 pre-implementation review - 2026-10-06 - Corrected the BUG-3761 integration note to the landed blanket-delete/survivor-reindex behavior and removed the obsolete shared-rollout assumption. No usage-search implementation is claimed.

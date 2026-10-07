@@ -178,6 +178,8 @@ No producer algorithm, prune/replay storage, source-file freshness, snapshot/das
 
 ## Implementation Steps
 
+**Sequencing (2026-10-07):** the stable usage-mean arithmetic (priors near `1e308`) is a robustness control with no realistic USD-cost trigger; implement it after the status helper and nullable-metric work, and split it into a standalone P4 bug if size review gates this issue. The session-status helper depends on ENH-3744's pure proof and ENH-3745's `read_source_derive_completion` only; it does not need ENH-3744's reconciliation/hold-release half or ENH-3746 (see EPIC-3562 Review Notes, 2026-10-07, for the proposed slicing).
+
 1. After ENH-3744/3745 land together, implement and test the query-only session-status helper against their actual interfaces.
 2. Use strict owned-connection reads; build transcript-scoped complete window populations, nullable usage numerators and the fixed additive per-metric metadata; preserve original contributor counts, attribution and generic rate defaults.
 3. Apply independent all-measured baseline/target eligibility and update every renderer, definition and note.
@@ -201,6 +203,7 @@ Pre-implementation review on `main` at `ec36b137d` (2026-10-06): contract correc
 
 ## Session Log
 
+- Pre-implementation epic review - 2026-10-07 - Added sequencing (status helper first; overflow-mean robustness last/splittable) and recorded which ENH-3744/3745 pieces this issue actually consumes (pure proof + source completion read) for the pending slicing decision. No scope change; no implementation or readiness claim.
 - `/ll:ready-issue` - 2026-10-06T23:34:46 - `rollout-2026-10-06T17-27-26-01a1138b-1e26-7522-81f8-fe08a1540f42.jsonl`
 - Pre-implementation consumer review - 2026-10-06 - Added strict non-migrating quality reads, fixed additive usage metadata/reason semantics, original-contributor qualification counts and independent known-period/gap/zero trend controls. Reproduced intermediate baseline-sum overflow and required a stable finite usage mean. Opus confidence 0.78; existing related suites: 233 passed. ENH-3744/3745 still block implementation closeout; no implementation or fresh confidence score claimed.
 

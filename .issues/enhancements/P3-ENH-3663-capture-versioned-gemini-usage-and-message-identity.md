@@ -57,7 +57,7 @@ and reader are verified.
 - [ ] For a selected usage-bearing source: The ENH-3674 handoff identifies a captured provider/version-qualified contract and an evidenced exact-version or compatibility rule, with matching and mismatch/absent-identity fixtures. Runtime values come from a verified native source; missing evidence remains audit-only/unavailable rather than inheriting a host-wide supported verdict.
 - [ ] For a selected usage-bearing source: Capture sanitized, versioned Gemini live and full-enough stored sessions with tool use and resume under working Vertex/model configuration; retain the session header and repeated-ID records needed for parser and identity tests.
 - [ ] For a selected usage-bearing source: Record per-metric/channel `supported`, evidence-backed `unsupported`, or `unknown` verdicts for input, output, and cache read/write; record the thoughts/output relationship separately. Establish inclusivity, omissions, request grain/reset behavior, and whether repeated IDs replace one observation or identify independent requests.
-- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger.
+- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger. Also record the native field path(s) that carry request/replay identity, model and the usage-bearing fields, and the event type the adapter will store them under — the input to the delivery's history-sanitizer path registration (EPIC-3562 § Shared Delivery Ownership).
 - [ ] For a selected usage-bearing source: Give ENH-3674 a replay-ready fixture and identity rule. ENH-3674 owns preserving native `tokens` through the file-level parser and proving stored ingestion, trigger, and reader behavior.
 - [ ] If Vertex/model access remains unavailable, record the exact configuration blocker, leave current-version availability `unknown`, and keep this issue open or `blocked`; the unversioned historical pair alone cannot certify the current contract.
 
@@ -115,6 +115,8 @@ Include a matching fixture and unmatched-provider, unsupported/unproved-version,
 **Open** | Created: 2026-09-29 | Priority: P3
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-07 - Added the native identity-path recording requirement: ENH-3751 now sanitizes every raw_events insert and `pii._protocol_rules` is the only protection for replay-identity fields, so the matching delivery needs these paths from this evidence. No captured proof or readiness claim.
 
 - Pre-implementation epic review - 2026-10-05 - Connected the existing acquisition-channel/logical-candidate evidence to ENH-3744's shared pure proof and ENH-3745's source-local progress contract. Native evidence/access/partial-support closeout rules remain unchanged; no captured proof or readiness pass is claimed.
 

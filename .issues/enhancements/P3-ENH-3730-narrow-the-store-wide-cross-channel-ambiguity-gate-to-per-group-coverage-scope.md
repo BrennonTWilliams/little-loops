@@ -47,6 +47,8 @@ Preserve the declared ENH-3748 logical `channel=` acquisition scope. Determine o
 
 The 2026-10-05 distribution above is the baseline. Do not implement the discarded “each group is independent, ignore unrelated unidentified rows” shortcut. Until this decision is recorded, `decision_needed: true` remains; an issue-file review is not an implementation-readiness pass.
 
+**Reviewer recommendation (2026-10-07, Opus-concurring): option 2.** The recorded distribution (33 live rows with no verified host act as wildcards across every host; 262 more are wildcards within their host; none is a verified host/session pair) means conservative domains leave every possible opposite-channel group unresolved store-wide, so the measured benefit on this store is nil — option 2's "no-op" branch. Cancel with that rationale (BUG-3735/ENH-3748 behavior stays as landed) unless a store with few wildcard rows is shown to benefit. Cancelling removes a closure blocker from EPIC-3562. `decision_needed: true` stays until a human records the decision (`/ll:decide-issue ENH-3730`).
+
 ## Proposed Solution
 
 The only admissible narrowing policy is conservative potential-overlap domains:
@@ -139,5 +141,6 @@ The only admissible narrowing policy is conservative potential-overlap domains:
 
 ## Session Log
 
+- Pre-implementation epic review - 2026-10-07 - Recorded a reviewer recommendation for option 2 (retain the gate, cancel with rationale): the existing distribution makes conservative domains a no-op on this store. Opus consult (confidence 0.72) agreed. Decision left to the human; no status change.
 - Pre-implementation epic review - 2026-10-05 - Opus critique (confidence 0.74) rejected independent-group certification without wildcard domains. Added a concrete decision/design/integration/test contract and the read-only live distribution (33 host-wildcard, 262 verified-host/unproved-session, no verified-host/session live rows). Kept BUG-3735 correctness separate and recorded uncertainty about availability benefit.
 - `/ll:capture-issue` - 2026-10-05T02:23:32 - `dd4da702-03cb-4aad-8b85-189a7f98afba.jsonl`

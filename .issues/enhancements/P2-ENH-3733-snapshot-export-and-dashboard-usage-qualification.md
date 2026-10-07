@@ -64,7 +64,7 @@ Decomposed from ENH-3723. Recorded Decision (commit `01747bb96`) makes legacy NU
 
 ## Current Behavior
 
-On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops/session_store/queries.py` qualifies only model coverage and per-column missingness. A partial/unknown row with numeric stored cost can supply canonical token/cost components. `_SnapshotTotals` accepts invalid/non-finite costs; the predefined dashboard query omits qualification reasons and NULL renders as an empty cell. A temporary-store probe with two valid `2**62` token contributors qualifies in the source reader but crashes snapshot export because the resulting Python integer exceeds SQLite's signed integer range. Separately, the dashboard's default `stmt.getAsObject()` read rounds an exactly stored `9007199254740993` to `9007199254740992`; the bundled sql.js supports exact BigInt reads. Source schema is currently 60; computed snapshot tables are not source migrations.
+On inspected branch `main`, `_snapshot_usage_selection` in `scripts/little_loops/session_store/queries.py` qualifies only model coverage and per-column missingness. A partial/unknown row with numeric stored cost can supply canonical token/cost components. `_SnapshotTotals` accepts invalid/non-finite costs; the predefined dashboard query omits qualification reasons and NULL renders as an empty cell. A temporary-store probe with two valid `2**62` token contributors qualifies in the source reader but crashes snapshot export because the resulting Python integer exceeds SQLite's signed integer range. Separately, the dashboard's default `stmt.getAsObject()` read rounds an exactly stored `9007199254740993` to `9007199254740992`; the bundled sql.js supports exact BigInt reads. Source schema is currently 61 (2026-10-07; v60/v61 are unrelated loop/skill columns); computed snapshot tables are not source migrations.
 
 ## Expected Behavior
 
@@ -177,6 +177,8 @@ No qualification-core change, new source-history migration, quality/derive-statu
 
 ## Implementation Steps
 
+**Sequencing (2026-10-07):** this issue's only blocker (ENH-3731) is done and it has no dependency on the retention/progress followups, so it is the cheapest unblocked win in the epic. Do the core model-wide qualification, metadata columns and predefined-SQL work first. The SQLite signed-int64 subtotal guard and the dashboard exact-integer (`useBigInt`) read are real, reproduced robustness controls but need token sums above `2**53`/`2**62` to matter in practice; keep them in this issue unless size review gates it, in which case split them into standalone P4 bugs — they must not delay the qualification work.
+
 1. Build per-model audit groups and independent token/cost qualification using the landed API; align logical buckets and audit validity.
 2. Add the four bounded metadata columns, synchronize allowlist/DDL/tuple and bump allowlist/hash pins. Preserve Option C, old/empty behavior and a coherent export snapshot.
 3. Update predefined SQL/guidance and exact shared row reads; execute the SQL through normal pytest and the generated page's query/render loop through the Node gate.
@@ -190,7 +192,7 @@ Historical missing-core checks in the log are superseded: ENH-3731/3748 exist on
 
 Verdict at time of check: **VALID** (2026-10-06; corrected contract on inspected `main` at `ec36b137d`, not an implementation or refreshed confidence pass).
 
-- Current-behavior claims hold on `main`: the snapshot selector builds per-channel totals from selected rows without calling `qualify_usage`, the totals class accepts any numeric cost (no finite check), `read_schema_version` runs before the export transaction begins, and the source schema version is 60.
+- Current-behavior claims hold on `main`: the snapshot selector builds per-channel totals from selected rows without calling `qualify_usage`, the totals class accepts any numeric cost (no finite check), `read_schema_version` runs before the export transaction begins, and the source schema version was 60 at that check (61 on 2026-10-07; the export must keep reading it dynamically).
 - Referenced API exists: `UsageQualification` (with `counts`, `policy_version`, `rejected_contributors`, `component_counts`), `qualify_usage`, `USAGE_QUALIFICATION_REASONS`, `UNKNOWN_MODEL_BUCKET` and `row_channel` in the token-provenance module.
 - Allowlist pins hold: allowlist version 3 with a lockstep test class pinning version and hash; the dashboard template's predefined query already reads the audit table; the Node gate honors `LL_REQUIRE_NODE`.
 - Actual vendored sql.js/WASM probe: default row retrieval returned `9007199254740992` for SQL integer `9007199254740993`; BigInt retrieval preserved the exact decimal. Added shared page-loop precision controls through the signed-64-bit boundary, including custom SQL, without a vendor change.
@@ -202,6 +204,7 @@ Verdict at time of check: **VALID** (2026-10-06; corrected contract on inspected
 
 ## Session Log
 
+- Pre-implementation epic review - 2026-10-07 - Refreshed the schema note (v61), added sequencing: first unblocked implementation in the epic; core qualification before the int64 guard/BigInt read, which are low-likelihood robustness controls and may be split as P4 bugs if size review requires. Opus consult (confidence 0.72) recommended running this first and splitting those two controls; split not applied because the 2026-10-06 review deliberately kept them after reproducing both. No implementation or readiness claim; confidence needs a rerun for the revised contract.
 - `/ll:confidence-check` - 2026-10-07T00:41:41 - `179a571f-b346-4676-99c5-427e664b8107.jsonl`
 - `/ll:ready-issue` - 2026-10-06T23:34:46 - `rollout-2026-10-06T17-27-26-01a1138b-1e26-7522-81f8-fe08a1540f42.jsonl`
 - Pre-implementation consumer review - 2026-10-06 - Reproduced sql.js rounding of an exact stored integer and required BigInt retrieval in the actual page query/render loop. Fixed the four-column schema and NULL-only missing-cost count semantics; invalid/overflow inputs remain separate. Opus confidence 0.78; existing related suites: 233 passed. Invalidated prior confidence scores with the CLI; no implementation or fresh score claimed.

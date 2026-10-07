@@ -56,7 +56,7 @@ stored ingestion, trigger and reader are proven.
 - [ ] For a selected usage-bearing source: The ENH-3673 handoff identifies a captured provider/version-qualified contract and an evidenced exact-version or compatibility rule, with matching and mismatch/absent-identity fixtures. Runtime values come from a verified native source; missing evidence remains audit-only/unavailable rather than inheriting a host-wide supported verdict.
 - [ ] For a selected usage-bearing source: Capture a sanitized, versioned Qwen live/transcript pair with tool use and resume under working authentication. Preserve enough of the native assistant record, including `message.parts`, to make the transcript usable in `iter_events` parser tests; the current reduced usage pair yields no event.
 - [ ] For a selected usage-bearing source: Record per-metric/channel `supported`, evidence-backed `unsupported`, or `unknown` verdicts for input, output, and cache read/write; record the thought/output relationship separately. Prove or leave explicit the inclusivity, omission, grain/reset, and UI/assistant request-join semantics.
-- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger.
+- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger. Also record the native field path(s) that carry request/replay identity, model and the usage-bearing fields, and the event type the adapter will store them under — the input to the delivery's history-sanitizer path registration (EPIC-3562 § Shared Delivery Ownership).
 - [ ] For a selected usage-bearing source: Give ENH-3673 the complete-enough native fixture and duplicate-pair rule. ENH-3673 proves that the parser preserves `usageMetadata` and that one response produces one stored observation and a fresh selected read.
 - [ ] If authentication or nonzero cache behavior remains unavailable, record the exact blocker and keep those semantics `unknown`; keep this evidence issue open or `blocked` rather than claiming unsupported telemetry.
 
@@ -114,6 +114,8 @@ Include a matching fixture and unmatched-provider, unsupported/unproved-version,
 **Open** | Created: 2026-09-29 | Priority: P3
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-07 - Added the native identity-path recording requirement: ENH-3751 now sanitizes every raw_events insert and `pii._protocol_rules` is the only protection for replay-identity fields, so the matching delivery needs these paths from this evidence. No captured proof or readiness claim.
 
 - Pre-implementation epic review - 2026-10-05 - Connected the existing acquisition-channel/logical-candidate evidence to ENH-3744's shared pure proof and ENH-3745's source-local progress contract. Native evidence/access/partial-support closeout rules remain unchanged; no captured proof or readiness pass is claimed.
 

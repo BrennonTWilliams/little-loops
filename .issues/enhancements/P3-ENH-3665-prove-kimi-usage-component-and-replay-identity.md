@@ -53,7 +53,7 @@ ingestion, trigger and reader are verified.
 - [ ] For a selected usage-bearing source: The ENH-3676 handoff identifies a captured provider/version-qualified contract and an evidenced exact-version or compatibility rule, with matching and mismatch/absent-identity fixtures. Runtime values come from a verified native source; missing evidence remains audit-only/unavailable rather than inheriting a host-wide supported verdict.
 - [ ] For a selected usage-bearing source: Capture or cite version-pinned producer evidence for `inputOther`, cache creation, output/reasoning, omissions, and `usageScope: turn` grain; preserve request, usage, and copied event context across a tool call and resume.
 - [ ] For a selected usage-bearing source: Record per-metric/channel `supported`, evidence-backed `unsupported`, or `unknown` verdicts. Prove a native request key or specify a replay-safe source-position key that survives incremental derive and full rebuild without counting copied context events.
-- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger.
+- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger. Also record the native field path(s) that carry request/replay identity, model and the usage-bearing fields, and the event type the adapter will store them under — the input to the delivery's history-sanitizer path registration (EPIC-3562 § Shared Delivery Ownership).
 - [ ] For a selected usage-bearing source: Give ENH-3676 the native fixture and dedup rule. ENH-3676 owns parsing `usage.record`, stored ingestion, current-session trigger, and reader proof.
 - [ ] If this is the first of ENH-3660/3665 to land, add the common README verdict table and parameterized typed-map evidence test; otherwise add Kimi rows to that test. Define how source-cited provisional evidence remains `unknown` in the map.
 - [ ] If the live channel or nonzero cache-creation case remains unobservable, record why and keep that channel/metric `unknown`; one no-usage sample or zero-only field is not evidence of absence.
@@ -112,6 +112,8 @@ Include a matching fixture and unmatched-provider, unsupported/unproved-version,
 **Open** | Created: 2026-09-29 | Priority: P3
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-07 - Added the native identity-path recording requirement: ENH-3751 now sanitizes every raw_events insert and `pii._protocol_rules` is the only protection for replay-identity fields, so the matching delivery needs these paths from this evidence. No captured proof or readiness claim.
 
 - Pre-implementation epic review - 2026-10-05 - Connected the existing acquisition-channel/logical-candidate evidence to ENH-3744's shared pure proof and ENH-3745's source-local progress contract. Native evidence/access/partial-support closeout rules remain unchanged; no captured proof or readiness pass is claimed.
 
