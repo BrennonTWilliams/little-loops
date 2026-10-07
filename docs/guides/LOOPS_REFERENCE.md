@@ -151,7 +151,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `VERIFY:absent` | `check_verify_retries` (one retry, then `mark_evidence_absent_infra`, terminal class `infra`) |
 | `VERIFY:PROPOSAL_UNSOUND` | `check_proposal_revision_budget` (BUG-3574) |
 | `VERIFY:DIRECTIVE_DRIFT`, `ACCEPTANCE_CRITERIA` | `check_reconcile_limit` (one `reconcile_issue` pass) |
-| `VERIFY:CLAIMS_OUTDATED` | `check_claim_correction_budget` (BUG-3637; one `correct_claims` pass, own counter — exhausted routes directly to `record_gate_unmet`, never `check_gate_refine_limit`, since `refine_followup` is additive-only and cannot fix a stale claim) |
+| `VERIFY:CLAIMS_OUTDATED` | `check_claim_correction_budget` (BUG-3637; one `correct_claims` pass, own counter — exhausted routes directly to `record_gate_unmet`, never `check_gate_refine_limit`, since `refine_followup` is additive-only and cannot fix a stale claim; also carries a uniquely-supported Current Behavior citation line-number correction, BUG-3767 — the assertion is preserved and any ambiguity stays `NON_VALID`) |
 | `PLACEHOLDERS` | `check_placeholder_format_fallback` (BUG-3740; spends the one shared `/ll:format-issue` fallback via `format_issue_post`, because `refine_followup` is additive-only and never fills an existing template placeholder; fallback already spent → `check_gate_refine_limit`) |
 | `VERIFY:EVIDENCE_UNVERIFIED`, `VERIFY:other`, `DESIGN` | `check_gate_refine_limit` |
 | `HEDGES` | `check_hedge_attempts` |

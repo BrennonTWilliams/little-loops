@@ -3,10 +3,11 @@ id: BUG-3767
 type: BUG
 title: Current Behavior citation corrections have no bounded repair path
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T01:12:47Z'
+completed_at: '2026-10-07T02:28:58Z'
 relates_to:
 - BUG-3763
 - BUG-3764
@@ -213,6 +214,12 @@ This issue owns only the bounded Current Behavior citation exception and its exi
 - `docs/guides/LOOPS_REFERENCE.md` — claim-correction routing and one-attempt budget.
 - `docs/reference/CLI.md` — current verdict/token and citation evidence contracts.
 
+## Resolution
+
+**Fixed** (2026-10-06). Added the bounded Current Behavior citation-location exception to `commands/verify-issues.md` (§2C scope rule and exception block, §2.5 evidence shape and precedence note, §4 in-place/`--from-evidence` revalidation, B8 clarification). No classifier, token, counter, route or step-cap change. Docs updated (`COMMANDS.md`, `LOOPS_REFERENCE.md`); gemini/qwen/kimi-code mirrors regenerated via `ll-adapt`. Added `scripts/tests/test_bug3767_current_behavior_citation_correction.py` (contract pins).
+
+**Not done**: the disposable model edit-quality evaluation (actual surgical edits/refusals) was not run; it remains an outstanding risk recorded above. Full suite: 29277 passed; unrelated failures only — `test_next_loop_golden::test_raw_additive_scores_match_legacy` (1-ulp float diff) and 8 `test_libsql_integration::TestLive` setup errors (live endpoint).
+
 ## Status
 
 **Open** | Created: 2026-10-07 | Priority: P3
@@ -232,6 +239,8 @@ Historical assessment by `/ll:confidence-check` on 2026-10-06, before the scope 
 Prompt-guided assertion proof and surgical edits still need disposable model evaluation. The command repeats its correction scope in several places and generated mirrors; stale copies could reintroduce conflicting instructions. Original risk notes about an unresolved option, 16-site token/topology change and four changed step-cap pins no longer describe the selected scope.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T02:28:58 - `627ef542-68a7-4a80-bb3c-0107764043f9.jsonl`
+- `/ll:ready-issue` - 2026-10-07T02:17:25 - `e2422c75-89f3-4490-b522-b26884fe5958.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:59:42 - `438bda79-5f23-4d11-b7b8-bf0e892b50ac.jsonl`
 - `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`
 - `/ll:confidence-check` - 2026-10-07T01:31:37 - `e18126dd-317b-417c-86ac-4401ea214536.jsonl`

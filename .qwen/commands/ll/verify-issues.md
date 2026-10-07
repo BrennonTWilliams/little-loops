@@ -252,7 +252,9 @@ Program Design gate's arming.
    found" errors). Otherwise, an empty list, unknown property/result values, or
    conflicting entries for one occurrence/property → silent fallback to model
    judgment, matching B7. Skipped under `--from-evidence`; runs read-only under
-   `--check`; it never repairs citations.
+   `--check`; it never repairs citations (the §4 Current Behavior citation-location
+exception is a separate owner — B8 stays a read-only, property-exact evidence
+consumer).
 
    Two sources. **Blocking** findings come from the top-level blocking gap lists
    (no occurrence key — a plain path mention has no `examined_refs` entry, so match
@@ -329,7 +331,8 @@ place is unsafe because an independent `--check` re-pass cannot catch it (the
 rewritten issue would be internally consistent), so any finding whose fix
 requires changing Summary, Current Behavior, Expected Behavior, Root Cause,
 Motivation, Steps to Reproduce, or Proposed Solution stays `NON_VALID`, never
-`CLAIMS_OUTDATED`, regardless of how narrow the actual text change looks.
+`CLAIMS_OUTDATED`, regardless of how narrow the actual text change looks —
+with the single bounded exception below for Current Behavior citation numbers.
 `## Context` is in neither list above: a finding whose fix touches it (e.g. a
 blocking citation key surfaced by check B8) is an `OUTDATED`/`NEEDS_UPDATE` finding
 outside the correctable scope, so it stays `NON_VALID`.
@@ -337,6 +340,44 @@ outside the correctable scope, so it stays `NON_VALID`.
 `POSSIBLE_REGRESSION`, and `DEP_ISSUES` are never `CLAIMS_OUTDATED` — they
 always persist as `NON_VALID` (never-auto-correct set). When an issue has
 findings in both scopes, `NON_VALID` wins (see verdict precedence in §2.5).
+
+**Current Behavior citation-location exception (BUG-3767).** A stale source
+citation inside `## Current Behavior` is `CLAIMS_OUTDATED` — not `NON_VALID` —
+only when the finding is a pure citation-location correction whose original
+assertion remains true unchanged. All of the following must hold; if any is
+ambiguous or unsupported, decline the exception and the finding stays
+`NON_VALID`:
+
+- **Edit surface**: only the numeric line/range suffix of an existing citation
+  in the *same source file*, applied as an exact-substring replacement of that
+  numeric span. Accept an explicit `path:N` / `path:N-M`, or shorthand `:N` only
+  when the same sentence/bullet names its source file unambiguously. Never change
+  the path or the asserted symbol, introduce a new anchor, or expand shorthand
+  through a prose rewrite; everything else in Current Behavior stays
+  byte-identical.
+- **Unique original occurrence**: the original citation must be uniquely
+  locatable. Repeated identical citations need uniquely discriminating local
+  context; otherwise decline.
+- **Unique replacement, proven against source**: the sentence/bullet must carry a
+  symbol literal or backticked code expression that directly identifies the
+  asserted source (plus its enclosing symbol when needed). That literal must occur
+  verbatim exactly once in the file (or named enclosing symbol), be present at the
+  replacement range and absent at the old range. A nearest function name, bare
+  prose pointer, merely in-range line, or a literal occurring in several branches
+  does not qualify. Read the source directly and confirm the existing assertion
+  still holds verbatim — `resolve_anchor` / anchor-sweep are optional mechanical
+  aids only and never establish eligibility or the replacement.
+- **Nothing else changes**: asserted symbols, literals, thresholds, conditions,
+  behavior, causation, scope, rationale, code snippets and incident evidence are
+  premise, not metadata. A location pointing at a different fact, a changed source
+  assertion, or an unsupported premise stays `NON_VALID`; never substitute another
+  true statement to make the issue verify. Historical quotations and
+  decision/research provenance are not current-state correction targets — if their
+  age is unclear, report uncertainty instead of rewriting history.
+
+Raw `unapplied_decision` candidates never determine the verdict. All other
+premise sections keep their exclusion above; this is not a general
+factual-rewrite permission.
 
 #### E. Validate Dependency References
 
@@ -474,7 +515,16 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
   write a one-line `verify_evidence:` field as a **double-quoted YAML
   scalar** on a single line (no newlines, `"` and `\` escaped), one item per
   stale claim, `; `-separated, each item shaped `<section>: '<stale text>' ->
-  <current truth>` (single quotes inside an item avoid `"` escaping), e.g.
+  <current truth>` (single quotes inside an item avoid `"` escaping). Enumerate
+  every eligible finding and replace the evidence together with the verdict. A
+  `Current Behavior:` item under the §2C citation-location exception must name
+  the original citation occurrence with its unique local context, the old/new
+  range in the same file, the identifying literal and enclosing symbol, and direct
+  support that the assertion is unchanged, e.g. `Current Behavior:
+  '<path>:<old>' [context: '<unique local text>'] -> '<path>:<new>' [anchor:
+  '<literal>' in '<symbol>', support: '<unchanged assertion proof>']`. Paraphrase
+  any payload containing `; ` so that sequence appears only between items. Other
+  examples:
   `verify_evidence: "Confidence Check Notes: 'BUG-3628 is open' -> BUG-3628 is
   done; Integration Map: 'prepare-issue.yaml (91 lines)' -> 90 lines"`. Naming
   the section lets `correct_claims` apply the fix without re-locating the
@@ -495,6 +545,11 @@ into the file as if it were true. `CLAIMS_OUTDATED` outranks
 `PROPOSAL_UNSOUND`/`DIRECTIVE_DRIFT` per §B6's existing "claim-verdict wins"
 rule — a proposal built on an outdated premise must have that premise
 corrected first, or the proposal-repair path re-derives the same fiction.
+An otherwise-correctable citation plus lower-priority directive drift therefore
+persists `CLAIMS_OUTDATED` first; the fresh verification after the correction
+rediscovers any remaining drift rather than treating the citation edit as its
+repair. Any noncorrectable/current-premise or never-auto-correct finding prevents
+a `CLAIMS_OUTDATED` verdict.
 
 If the field already exists in the frontmatter, replace its value in place;
 otherwise insert it alongside the issue's other single-line frontmatter
@@ -533,16 +588,26 @@ does not count as a correction of a stale claim — it must also be rewritten
 status/line-count reference), bounded by §2C's correctable-scope rule (never
 rewrite Summary / Current Behavior / Expected Behavior / Root Cause /
 Motivation / Steps to Reproduce / Proposed Solution here; those verdicts stay
-`NON_VALID` and read-only). This applies:
+`NON_VALID` and read-only) — except the §2C Current Behavior
+citation-location exception, which authorizes replacing only the numeric
+line/range span of an eligible citation (exact substring; every other byte of
+Current Behavior unchanged). This applies:
 - **Under `--from-evidence`** (non-check mode): read the issue's
   `verify_evidence` frontmatter field. If absent or empty, make no edits and
   exit — the following `--check` re-pass then decides. Otherwise, re-check
   **only** the listed claims against the codebase and rewrite each confirmed
   stale claim in place; do not run the full 2A-2E sweep and do not apply
-  fixes beyond the `verify_evidence` work list.
+  fixes beyond the `verify_evidence` work list. A `Current Behavior:` item is
+  additionally authority to edit only when the issue's current `verify_verdict`
+  is `CLAIMS_OUTDATED`: re-read the issue and the source before each numeric-span
+  replacement and revalidate the original occurrence, unique literal, old/new
+  ranges and unchanged assertion. Stale evidence that no longer uniquely matches,
+  or evidence recorded for a different verdict, confers no edit authority.
 - **In a normal (non-`--from-evidence`) non-check run**, for any in-scope
   `OUTDATED`/`NEEDS_UPDATE` finding the 2A-2E sweep itself surfaces: rewrite it
-  in place the same way, in addition to the full sweep's other work. A plain
+  in place the same way, in addition to the full sweep's other work. An eligible
+  Current Behavior citation needs its own fresh `CLAIMS_OUTDATED` classification
+  in that run and follows the same bounds. A plain
   `/ll:verify-issues <ID>` run (no `--from-evidence`) keeps its normal
   full-sweep behavior regardless of any `verify_evidence` a prior run left
   behind — the flag is explicit, never inferred from the field's presence.

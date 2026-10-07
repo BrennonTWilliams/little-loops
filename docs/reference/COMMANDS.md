@@ -206,6 +206,8 @@ Verify all issue files against current codebase state.
 - `--auto` — Non-interactive: applies all non-destructive changes without prompting; skips setting resolved issue status
 - `--check` — Check-only mode for FSM loop evaluators: run verification without applying changes, print `[ID] verify: [verdict]` per non-VALID issue, exit 1 if any non-VALID, exit 0 if all valid (implies `--auto`)
 
+**Citation corrections:** A stale factual reference (an issue status, file path, line number or count) outside the issue's premise sections is classified `CLAIMS_OUTDATED` and corrected in place by a single targeted pass, then re-verified independently. The premise sections (Summary, Current Behavior, Expected Behavior, Root Cause, Motivation, Steps to Reproduce, Proposed Solution) are never rewritten, with one bounded exception: the numeric line/range of a Current Behavior source citation may be replaced when the cited location is uniquely identified by a code literal in the sentence, the file is unchanged, and the original assertion still holds verbatim at the new location. Any ambiguity, changed assertion or path/symbol change stays `NON_VALID`. When citation findings coexist with directive drift, the citation is corrected first and the next verification rediscovers the drift.
+
 ### `/ll:align-issues`
 Validate active issues against key documents for relevance and alignment.
 
