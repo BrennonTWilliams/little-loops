@@ -132,7 +132,7 @@ Extend, never duplicate, the core registry: add both verbs at their canonical po
 
 ### Call Path
 
-Existing `resolve_loop_path` / `load_and_validate` / `cmd_next_loop` source paths and FEAT-3561's dependency graph → new `assess_resolve_blockers` and `assess_run_loops` (dispatched from FEAT-3561's `assess_candidates` / `generate_candidates`) → FEAT-3681's utility scorer → core `select_candidates` → rendering. No event is written.
+Existing `resolve_loop_path` / `load_and_validate` / `cmd_next_loop` source paths and FEAT-3561's dependency graph → new `assess_resolve_blockers` and `assess_run_loops` within the core's shared `assess_candidates` pass (gate/axis evidence and FEAT-3681 utility/coverage/within-verb ranks once) → eligible projection through core `generate_candidates` → core `select_candidates` round-robin fill → rendering. Explain reuses those assessments and ranks; no separate scoring path or event write is added.
 
 ## Implementation Steps
 

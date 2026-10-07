@@ -39,7 +39,7 @@ Holding issue for the pieces cut from FEAT-3711 after an Opus review (2026-10-03
 
 ## Revive criteria
 
-- FEAT-3711 shipped with real `recommendation_events` rows; the recorded core checkpoint and real mixed-verb usage establish arena usefulness (implementation-bucket agreement alone neither proves nor disproves that value); a plan to measure pressure's effect exists.
+- FEAT-3711 shipped with real `recommendation_events` rows; real mixed-verb `ll-next` usage (optionally informed by ENH-3771's usefulness procedure) establishes arena usefulness (implementation-bucket agreement alone neither proves nor disproves that value); a plan to measure pressure's effect exists. No recorded core checkpoint or GO is required.
 - Before automatic loop attribution, establish matching offer/producer proof for the parse-time YAML source bundle: top-level definition, `from:` parent chain, imported fragment libraries and child contracts actually consumed during assessment, with their effective resolution/bytes captured at the relevant offer/invocation. FEAT-3769 (the loop generator split from FEAT-3561) deliberately ships `fingerprint_scope="v1/top-level-bytes+resolved-inputs"`; equal v1 fingerprints do not prove inherited/imported behavior equality. Old offers/producer rows without the wider proof stay `unknown` for automatic attribution and cannot be upgraded from today's files. Decide the bounded source/provenance seam here on revival; no dependency registry, telemetry expansion or extra source hashing is required of the active epic's explicit-acceptance slices.
 
 ## Status
