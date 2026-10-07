@@ -12,8 +12,7 @@ labels:
 - observability
 - history
 - usage-retention
-blocked_by:
-- BUG-3736
+blocked_by: []
 relates_to:
 - BUG-3735
 - ENH-3731
@@ -25,21 +24,42 @@ relates_to:
 - ENH-3770
 testable: true
 risk_factors:
+- id: bounded-window-limit-unspecified
+  domain: readiness
+  criterion: specification
+  description: Memory/batch window size and the carry-forward context rule for bounded
+    processing are not pinned to concrete limits
+- id: native-correspondence-context
+  domain: outcome
+  criterion: complexity
+  description: Producer-specific snapshot dominance and dedup context must remain
+    valid across independently committed source prune transactions
+- id: per-source-prune-transaction-restructure
+  domain: outcome
+  criterion: complexity
+  description: Prune moves from one operation-wide BEGIN IMMEDIATE to per-source transactions
+    with cross-source revalidation and fail-fast partial commits
 - id: sanitizer-identity-registration
   domain: readiness
   criterion: specification
   description: Every native identity path read by proof needs sanitizer-registry parity;
     unregistered evidence must remain bounded-unprovable rather than disappear
-- id: native-correspondence-context
-  domain: outcome
-  criterion: complexity
-  description: Producer-specific snapshot dominance and dedup context must remain valid
-    across independently committed source prune transactions
-- id: standalone-scope-rescore-needed
+- id: stale-blocked-by-bug-3736
   domain: readiness
-  criterion: specification
-  description: Pre-split confidence scores are obsolete; rerun confidence-check for the
-    standalone pure-proof and prune-veto scope before implementation
+  criterion: dependencies
+  description: blocked_by still lists BUG-3736, which is completed; frontmatter edge
+    is stale
+- id: writer-replay-seam-factoring
+  domain: outcome
+  criterion: change_surface
+  description: Factoring native recognition/dedup seams out of writers.py replay paths
+    must leave writer mutation and replay behavior unchanged
+confidence_score: 85
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3744: Semantic usage-candidate proof, derive-gap retention and prune veto
@@ -197,8 +217,32 @@ No writer mutation, held-source derivation/retry, reconciliation, parser refresh
 
 The 2026-10-07 pre-split check recorded readiness **75/100** and outcome confidence **50/100**, with dimension scores complexity 5, test coverage 25, ambiguity 10 and change surface 10. It assessed combined proof/storage/reconciliation work and its mixed-owner delivery plan. Those scores and the paired-landing/destructive-path risk findings are historical, not current readiness or active gates; their frontmatter fields have been cleared. The standalone pure-proof/prune-veto scope needs a fresh `/ll:confidence-check`. No new score is claimed by this review.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- `blocked_by` still lists BUG-3736, which is completed; remove the stale edge so dependency tooling does not misreport.
+- Bounded-window processing ("memory/batch limits") has no concrete limit or carry-forward rule; pin one before implementing the fallback.
+- Every native identity path the proof reads must be in `pii._protocol_rules`; enumerate the supported Claude/Codex paths up front so the parity test has a finite target.
+
+### Outcome Risk Factors
+- Deep-ish per-site complexity: prune moves from one operation-wide `BEGIN IMMEDIATE` to per-source transactions with cross-source witness revalidation and fail-fast partial commits.
+- Factoring native recognition/dedup seams out of `writers.py` replay paths must not change writer mutation or replay behavior; existing producer/incremental/Codex suites are the regression net.
+- Snapshot-dominance and dedup context must stay valid across independently committed source prunes regardless of source order.
+
+### Risk Factor Delta
+- Added: `bounded-window-limit-unspecified`, `per-source-prune-transaction-restructure`, `stale-blocked-by-bug-3736`, `writer-replay-seam-factoring`
+- No longer reported: `standalone-scope-rescore-needed`
+- Retained: `native-correspondence-context`, `sanitizer-identity-registration`
+- Changed fields: none
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-07T18:56:20 - `000f8816-1881-424d-9310-315d32e525a7.jsonl`
 - Pre-implementation review #4 - 2026-10-07 - Replaced mixed-owner partial merge points with whole-issue order ENH-3744 → ENH-3745 → ENH-3770 (ENH-3747 independent before ENH-3770). Removed active reconciliation, checkpoint/storage, hold-release and deferred-promotion obligations from this issue and cleared obsolete pre-split scores. Pinned matched observation/context evidence, captured-value compatibility, audit correspondence separate from missing qualification-only context, native Codex parity, cross-source prune revalidation and fail-fast partial-commit/retry semantics. Opus second opinion (confidence 0.73) supported the whole-issue order, an additional veto over existing eligibility and the acquisition-accounting handoff; the parent review ran existing baseline controls (131 passed). Preserved earlier logs below as historical decisions; no implementation or new readiness score claimed.
 
 _Earlier entries describe superseded combined scope and partial merge points; the current Delivery Plan and scope above control implementation._
