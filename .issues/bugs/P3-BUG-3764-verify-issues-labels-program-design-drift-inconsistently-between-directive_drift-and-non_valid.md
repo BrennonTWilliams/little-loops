@@ -26,11 +26,6 @@ risk_factors:
   criterion: change_surface
   description: Loop guard, reconcile-issue, selector tests and four host mirrors depend
     on the changed contract
-- id: semantic-evaluation-unexecuted
-  domain: outcome
-  criterion: ambiguity
-  description: The fixed disposable fixtures and expected verdicts are enumerated;
-    actual label, complete evidence and body-preservation outcomes remain unmeasured
 - id: failclosed-guard-edit
   domain: outcome
   criterion: complexity
@@ -46,6 +41,11 @@ risk_factors:
   criterion: complexity
   description: B6 prose, verdict table, check-mode persistence, 4.1 post-fix sync,
     docs and three generated mirrors must stay consistent
+- id: semantic-evaluation-unexecuted
+  domain: outcome
+  criterion: ambiguity
+  description: The fixed disposable fixtures and expected verdicts are enumerated;
+    actual label, complete evidence and body-preservation outcomes remain unmeasured
 ---
 
 # BUG-3764: verify-issues labels Program Design drift inconsistently between DIRECTIVE_DRIFT and NON_VALID
@@ -254,6 +254,7 @@ This issue owns classification, evidence production/synchronization and the mini
 **Open** | Created: 2026-10-07 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T03:20:40 - `d0c6965a-f073-4230-9107-254c09a30024.jsonl`
 - `/ll:verify-issues` - 2026-10-07T03:14:58 - `d0c6965a-f073-4230-9107-254c09a30024.jsonl`
 - `/ll:confidence-check` - 2026-10-07T03:02:33 - `a01917d3-707e-49be-b1b2-6bcd8c610f5e.jsonl`
 - `/ll:ready-issue` - 2026-10-07T01:51:25 - `a47df9fa-6eb0-42c9-bccf-a5644c5b0d50.jsonl`

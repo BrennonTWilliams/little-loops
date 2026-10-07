@@ -267,6 +267,7 @@ The recorded outcome is below this project's configured 65-point gate. This revi
 - Baseline: none recorded
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-07T03:20:38 - `aecfbd08-532c-4197-ae58-4ddcb5df7be5.jsonl`
 - `/ll:verify-issues` - 2026-10-07T03:14:57 - `d0c6965a-f073-4230-9107-254c09a30024.jsonl`
 - `/ll:confidence-check` - 2026-10-07T03:03:27 - `23c0001a-6fdc-4e90-a957-6cc6382e6a26.jsonl`
 - `/ll:confidence-check` - 2026-10-07T02:01:21 - `f53e748b-82f7-41b3-bce8-59be22735cbb.jsonl`
