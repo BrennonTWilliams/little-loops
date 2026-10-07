@@ -4,7 +4,8 @@ type: BUG
 title: verify-issues labels Program Design drift inconsistently between DIRECTIVE_DRIFT
   and NON_VALID
 priority: P3
-status: open
+status: done
+completed_at: '2026-10-07T04:00:00Z'
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T00:49:19Z'
@@ -257,11 +258,14 @@ This issue owns classification, evidence production/synchronization and the mini
 - Tests: guard matrix + strict-YAML/real-parser/actual-guard roundtrip (`test_bug3763_decision_drift_repair.py`), contract pins (`test_enh3250_...`), verdict-only probe matrix (`test_ll_issues_check_verify_verdict.py`). Full suite: 29348 passed; 1 unrelated float-ULP failure in `test_next_loop_golden.py` and 8 live-libsql errors (no endpoint).
 - Remaining: run the fixed F01-F15 / M01-M08 disposable evaluation against the real `/ll:verify-issues --check --auto` command (initial run + at most two revision rounds) and record results under `postmortems/`; the joint BUG-3767 mixed-citation pytest fixture is not added.
 
+**Closure note (2026-10-07)** — Closed on the deterministic scope. The live F01-F15 / M01-M08 classification evaluation and the joint BUG-3767 mixed-citation pytest fixture were NOT run; no results exist under `postmortems/`. Final suite: 29348 passed; unrelated failures only (`test_next_loop_golden.py` float ULP; 8 `test_libsql_integration.py` errors from an expired live JWT).
+
 ## Status
 
-**Open** | Created: 2026-10-07 | Priority: P3
+**Done** | Created: 2026-10-07 | Completed: 2026-10-07 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-07T04:00:00 - finalized (status done)
 - `/ll:manage-issue` - 2026-10-07T03:38:04 - `80bcb8f4-2b8f-4764-95dc-7f5c03710f8c.jsonl`
 - `/ll:ready-issue` - 2026-10-07T03:25:49 - `8faf0342-ec33-464c-846f-bae2c7c2e26a.jsonl`
 - `/ll:confidence-check` - 2026-10-07T03:20:40 - `d0c6965a-f073-4230-9107-254c09a30024.jsonl`
