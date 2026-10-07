@@ -45,7 +45,7 @@ Keep an implementer's directives coherent while retaining useful refinement. BUG
 
 When `--gap-analysis` is active, resolve/read the issue and run `ll-issues format-check <ID> --format json` before any body write or scheduled findings application. Explicitly cover ordinary research, covered-triage, dry-run and late-gate paths. Read the structured `unapplied_decision_detail` candidates; do not parse human reason strings.
 
-A nonzero format-check exit may still carry valid JSON with findings. Distinguish that from a failed command, unreadable issue or malformed payload. On an indeterminate preflight, make no body edits, report that the protection could not be assessed, and retain the ordinary non-dry-run Session Log convention. Do not silently treat failure as an empty candidate set.
+A nonzero format-check exit may still carry valid JSON with findings. Distinguish that from a failed command, unreadable issue or malformed payload. On an indeterminate preflight, make no body edits, report that the protection could not be assessed, and retain the ordinary non-dry-run Session Log convention when the target is safely readable; otherwise report that logging could not be completed. Do not silently treat failure as an empty candidate set.
 
 ### Section protection
 

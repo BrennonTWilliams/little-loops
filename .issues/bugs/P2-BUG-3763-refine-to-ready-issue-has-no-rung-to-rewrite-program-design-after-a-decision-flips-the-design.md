@@ -19,7 +19,7 @@ blocks:
 
 ## Summary
 
-The existing `DIRECTIVE_DRIFT` remedy cannot rewrite Program Design or decision-derived Impact estimates. When a recorded selection differs from those passages, reconciliation declines them and additive refinement leaves the rejected design intact. Extend the existing evidence-gated reconciliation contract narrowly, and stop sending persistent directive drift to additive refinement after its one repair attempt.
+The existing `DIRECTIVE_DRIFT` remedy cannot rewrite Program Design or decision-derived Impact estimates. When a recorded selection differs from those passages, reconciliation declines them and additive refinement leaves the rejected design intact. Extend the existing evidence-gated reconciliation contract narrowly, and stop sending persistent decision-derived design drift to additive refinement after its one repair attempt.
 
 Observed on BUG-3761 in `.loops/.history/2026-10-07T000313-refine-to-ready-issue`: 33 iterations, 38m11s, terminal `failed`, run record `deferred`. The verify passes also found AC gaps, so the trace does not establish that every other gate was clean.
 
@@ -46,7 +46,7 @@ Provide a repair owner for selected-decision propagation without broadening ordi
 
 ## Proposed Solution
 
-**Selected approach: conditional extension of the existing `--from-verify-evidence` contract, plus a residual-drift guard after reconciliation exhaustion.** No new flag, verdict, Python entry point, or retry counter.
+**Selected approach: conditional extension of the existing `--from-verify-evidence` contract, plus a residual decision-drift guard after reconciliation exhaustion.** No new flag, verdict, Python entry point, or retry counter.
 
 ### Repair eligibility and bounds
 
@@ -59,18 +59,18 @@ Provide a repair owner for selected-decision propagation without broadening ordi
 
 ### Exhaustion routing
 
-Insert a shell state named `check_residual_directive_drift` on `check_reconcile_limit.on_no`, before `check_gate_refine_limit`. Query `ll-issues check-verify-verdict <ID> --directive-drift` using the existing shell-exit convention:
+Insert a shell state named `check_residual_decision_drift` on `check_reconcile_limit.on_no`, before `check_gate_refine_limit`. It matches only when `ll-issues check-verify-verdict <ID> --directive-drift` succeeds and the current artifact's `verify_evidence` names Program Design or Impact. Resolve the target with `ll-issues path`, read frontmatter through the existing parser in the shell state, and match canonical section prefixes in the existing `; `-separated evidence contract. Do not inspect free-form model stdout or route from raw format-check candidates. Use the existing shell-exit convention:
 
 - Match: go directly to `record_gate_unmet`, preserving the existing `GATE_UNMET:DIRECTIVE_DRIFT_NON_CONVERGENCE` message and `directive_drift_nonconvergence` evidence reference.
-- No match or probe error: retain the existing fallback to `check_gate_refine_limit`. Keep the counter-error handling unchanged and cover it explicitly.
+- No match, absent/malformed evidence, unrecognized section prefix or probe/read error: retain the existing fallback to `check_gate_refine_limit`. Keep the counter-error handling unchanged and capture guard errors for diagnostics.
 
-One reconciliation per run remains the bound. If a prior ineligible AC-route reconcile spent it before design drift was discovered, fail explicitly rather than resetting the counter or silently granting another repair. This is a known bounded limitation; VERIFY normally precedes ACCEPTANCE_CRITERIA. All persistent `DIRECTIVE_DRIFT`, including ordinary AC/Step/Integration Map drift, now stops before additive retry. Budget checks still increment on entry: distinguish counter value 2 from two executed repairs.
+One reconciliation per run remains the bound. If a prior ineligible AC-route reconcile spent it before design drift was discovered, fail explicitly rather than resetting the counter or silently granting another repair. This is a known bounded limitation; VERIFY normally precedes ACCEPTANCE_CRITERIA. Ordinary AC/Step/Integration Map drift without named design/estimate evidence retains its additive fallback. The observed gap pass added useful ACs, so bypassing every DIRECTIVE_DRIFT case would remove a valid recovery path. Budget checks still increment on entry: distinguish counter value 2 from two executed repairs.
 
 ### Decision Rationale
 
 Review on 2026-10-06 selected this narrow variant of original Option A. Full refinement would expand edits and research unnecessarily; widening decide's Phase 7c would defeat its candidate-versus-edit and bounded-analysis protections. A separate rewrite rung remains a follow-up only if live evaluation demonstrates missed classification or a real need for an independent budget.
 
-`/ll:advise` with `claude-opus-5-5` recommended this approach at confidence 0.75. Its dissent favored a post-decision rewrite rung if verifier classification proves unreliable. Its principal limitations are thin selected-option descriptions and an already-spent reconcile budget; both must end as explicit unmet obligations, not invented designs.
+`/ll:advise` with `claude-opus-5-5` recommended this approach at confidence 0.75. Its dissent favored a post-decision rewrite rung if verifier classification proves unreliable. Its principal limitations are thin selected-option descriptions and an already-spent reconcile budget; both must end as explicit unmet obligations, not invented designs. The review narrows Opus's suggested all-DIRECTIVE_DRIFT exhaustion guard to section-named design/estimate drift: the trace itself shows that additive refinement can still repair missing ACs.
 
 ## Review Findings
 
@@ -87,14 +87,14 @@ Review on 2026-10-06 selected this narrow variant of original Option A. Full ref
 - `commands/reconcile-issue.md` — conditional rewrite eligibility, preservation, evidence reading, in-place edits, check-mode and score lifecycle.
 - `skills/ll-reconcile-issue/SKILL.md` — bridge description and argument documentation; the command remains the contract source.
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — exhaustion guard, route comments, capture/diagnostic context and state-budget explanation. Recount `max_steps` only if the added valid path requires it.
-- `scripts/tests/test_reconcile_issue_command.py`, `scripts/tests/test_builtin_loops.py`, `scripts/tests/test_bug3695_directive_drift_repair.py` — contract pins and existing-route expectations; update the old persistent-drift fall-through assertions intentionally.
-- Extend the existing child-loop harness cases in `scripts/tests/test_bug3695_directive_drift_repair.py` with the decision-drift routing and evidence-lifecycle matrix.
+- `scripts/tests/test_reconcile_issue_command.py`, `scripts/tests/test_builtin_loops.py`, `scripts/tests/test_bug3695_directive_drift_repair.py` — contract pins and existing-route expectations; preserve the ordinary AC-only fall-through assertions.
 - `docs/reference/COMMANDS.md`, `docs/guides/LOOPS_REFERENCE.md` — conditional scope and exhaustion behavior.
 
 ### Dependent Files (Callers/Importers)
 
 - `commands/verify-issues.md` — the widened evidence producer is owned by BUG-3764 and lands after this repair contract.
 - `scripts/little_loops/cli/issues/check_verify_verdict.py` — existing `--directive-drift` probe, unchanged.
+- `scripts/little_loops/frontmatter.py` — existing `parse_frontmatter` reader for the shell guard, unchanged.
 - `scripts/little_loops/cli/issues/next_obligation.py`, `scripts/little_loops/cli/issues/run_record.py` — unchanged token mapping and closed terminal-class contract.
 - `scripts/little_loops/loops/prepare-issue.yaml`, `scripts/little_loops/loops/refine-to-ready-issue.yaml` — unflagged reconcile callers, shared AC route and `reconcile_revision` must retain their scope.
 
@@ -106,9 +106,9 @@ Review on 2026-10-06 selected this narrow variant of original Option A. Full ref
 ### Tests
 
 - Successful scripted repair: one flagged reconcile, normalize, clear old verdict/evidence, fresh VALID verdict, fresh scores and `done`; assert additive retry count remains zero.
-- Persistent drift: one reconcile, exhaustion guard, `record_gate_unmet`, closed `gate_unmet` class and existing non-convergence evidence; no `refine_followup`, no decomposition.
+- Persistent section-named design/estimate drift: one reconcile, exhaustion guard, `record_gate_unmet`, closed `gate_unmet` class and existing non-convergence evidence; no `refine_followup`, no decomposition.
 - Earlier ineligible AC-route reconcile, then discovered design drift: explicit exhaustion without an extra repair or counter reset.
-- VALID plus AC-route exhaustion, NON_VALID/`VERIFY:other`, missing verdict, and guard errors retain their documented fallback/infra behavior.
+- Ordinary AC-only DIRECTIVE_DRIFT, empty/malformed evidence, VALID plus AC-route exhaustion, NON_VALID/`VERIFY:other`, missing verdict, and guard errors retain their documented fallback/infra behavior.
 - Contract fixtures for no flag, another verdict, empty evidence, absent/ambiguous selection, insufficient winner detail, `--check`, no-op scores and provenance preservation.
 - Opt-in model evaluation on disposable copies verifies actual Program Design/Impact edits and protected-byte preservation. Scripted effects establish routing, not model compliance or convergence.
 
@@ -124,13 +124,14 @@ No new setting. Counters and any evaluation artifacts remain isolated under the 
 
 ### Types
 
-Existing `verify_verdict: str`, escaped single-line `verify_evidence: str`, and the selected-option/rationale text supply eligibility. `FormatGaps.unapplied_decision_detail: list[dict[str, str]]` remains advisory candidate evidence for semantic review; it is not unconditional edit authority.
+Existing `verify_verdict: str`, escaped single-line `verify_evidence: str`, and the selected-option/rationale text supply eligibility. The exhaustion guard also checks the canonical section names in current evidence; an empty or unparseable value is not a positive match. `FormatGaps.unapplied_decision_detail: list[dict[str, str]]` remains advisory candidate evidence for semantic review; it is not unconditional edit authority.
 
 ### Signatures
 
 No new Python signature. The existing interfaces are:
 
 - `classify_verify_verdict(verdict: object) -> str` — unchanged shared classifier backing the shell probe.
+- `parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, Any]` — existing parser used to read current section-named evidence.
 - `ll-issues check-verify-verdict <ID> --directive-drift` — existing query used by the new shell guard.
 - `/ll:reconcile-issue <ID> --from-verify-evidence` — existing invocation with the conditional contract extension above.
 
@@ -140,13 +141,13 @@ The only new executable loop component is the shell guard described above.
 
 `VERIFY:DIRECTIVE_DRIFT` -> `check_reconcile_limit` -> eligible `reconcile_issue` -> `normalize_structure` -> `clear_verify_verdict` -> `verify_issue`.
 
-On exhaustion: `check_reconcile_limit` -> `check_residual_directive_drift` -> `record_gate_unmet` for persisted drift, otherwise the existing additive-budget fallback.
+On exhaustion: `check_reconcile_limit` -> `check_residual_decision_drift` -> `record_gate_unmet` for persisted section-named design/estimate drift, otherwise the existing additive-budget fallback.
 
 ## Implementation Steps
 
 1. Extend only the evidence-gated reconcile contract and bridge metadata, with the bounds above. Keep ordinary scope, current evidence entailment rules and read-only mode intact.
 2. Add the shell exhaustion guard and diagnostic capture; preserve per-run counter isolation and closed run-record classes.
-3. Add real-child harness tests and contract pins; amend prior BUG-3695 tests that expected additive fallback for persistent drift.
+3. Add real-child harness tests and contract pins; retain prior BUG-3695 AC-only additive fallback cases and add the section-named decision-drift matrix.
 4. Add the disposable opt-in model evaluation for actual edit quality, false-positive/history preservation, Impact-only evidence and insufficient source detail. Record its result separately from pytest.
 5. Update command/loop documentation, run the focused tests, `ll-loop validate refine-to-ready-issue`, and finally `python -m pytest scripts/tests/`. Classification changes belong to BUG-3764; command-level additive protection belongs to ENH-3765.
 
@@ -157,13 +158,13 @@ This issue owns reconcile repair capability and loop exhaustion routing. BUG-376
 ## Impact
 
 - **Severity**: A selected-decision propagation gap can fail preparation after a long run; the observed run lasted 38m11s.
-- **Affected**: Evidence-gated reconciliation and persistent directive-drift exhaustion. Normal AC-route and unflagged reconciliation protections remain required.
+- **Affected**: Evidence-gated reconciliation and persistent decision-derived design-drift exhaustion. Normal AC-route and unflagged reconciliation protections remain required.
 
 ## Acceptance Criteria
 
 - The contract permits one eligible pass to rewrite all specifically evidenced rejected-option Program Design directives and Impact Effort/Risk lines from the recorded selection, with no new mechanism or lost provenance. Disposable model evaluation verifies the edit behavior.
 - Real-child scripted tests reach `done` after successful repair and fresh verification/scoring, with one reconcile and no additive retry.
-- Persistent drift, including an already-spent reconcile budget, reaches `record_gate_unmet` with the existing non-convergence evidence and no additive pass or decomposition.
+- Persistent section-named design/estimate drift, including an already-spent reconcile budget, reaches `record_gate_unmet` with the existing non-convergence evidence and no additive pass or decomposition.
 - Missing eligibility and check/no-op modes preserve their documented scope and mutation rules. Raw false-positive candidates do not authorize edits or forced scanner clearance.
 - Existing higher/absent verdict paths, non-drift exhaustion and guard-error behavior pass the regression matrix; focused and full local tests and loop validation pass.
 
