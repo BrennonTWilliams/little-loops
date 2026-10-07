@@ -9,8 +9,8 @@ discovered_date: '2026-10-04'
 captured_at: '2026-10-04T01:29:51Z'
 parent: EPIC-3710
 blocked_by:
-- FEAT-3561
 - BUG-3737
+- ENH-3771
 blocks:
 - FEAT-3711
 - FEAT-3713
@@ -85,7 +85,7 @@ Existing `session_store.db.resolve_history_target(..., root=project_root)` → n
 
 ## Implementation Steps
 
-1. Implement after BUG-3737 and FEAT-3561. Pin the request, per-source coverage and compatible-column contracts; make remote rejection precede opening. Verify the corrected literal-path primitive through the new reader rather than repairing it again.
+1. Implement after BUG-3737, FEAT-3561 and ENH-3771's recorded GO (this issue is `blocked_by` ENH-3771). Pin the request, per-source coverage and compatible-column contracts; make remote rejection precede opening. Verify the corrected literal-path primitive through the new reader rather than repairing it again.
 2. Implement explicit short-timeout connection, consistent transaction and bounded CLI ID paging; preserve independent source failures and reject unscoped shared-store recency.
 3. Keep point-query/schema-readiness extension ownership in FEAT-3711; test independent request errors, empty-request no-open behavior and as-of/observation boundaries using only the existing CLI source here.
 4. Add no-write, lock, out-of-order timestamp, mid-fetch error, redirected-store and concurrent-writer fixtures; document the API and limits.

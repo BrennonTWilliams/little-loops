@@ -9,9 +9,9 @@ discovered_date: '2026-10-03'
 captured_at: '2026-10-03T17:45:16Z'
 parent: EPIC-3710
 blocked_by:
-- FEAT-3561
 - FEAT-3769
 - FEAT-3721
+- ENH-3771
 relates_to:
 - ENH-3752
 - ENH-3678
@@ -105,7 +105,7 @@ CLI → pure project snapshot → generators/scoring → select → bounded atom
 
 ## Implementation Steps
 
-1. Implement after FEAT-3561, FEAT-3769 and FEAT-3721; claim the next free schema version.
+1. Implement after FEAT-3561, FEAT-3769 and FEAT-3721 (and so ENH-3771's recorded GO); claim the next free schema version.
 2. Add migration, project ownership/action payload, consumed lookup index, classification/exports and rebuild-preservation tests; verify the derivation fingerprint is unchanged.
 3. Add strict schema preflight and reuse ENH-3752's existing-store no-ensure opener with `timeout=0.25` and explicit transaction/cleanup ownership, then recording, transactional `accept`, point-query `feedback`, `--no-record` and recommendation/feedback schema extensions; document schema-not-ready and remote-unsupported behavior.
 4. Update docs/tests; keep default round-robin deterministic.

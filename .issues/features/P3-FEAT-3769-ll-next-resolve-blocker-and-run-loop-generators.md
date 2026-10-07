@@ -9,7 +9,7 @@ discovered_date: '2026-10-07'
 captured_at: '2026-10-07T08:36:16Z'
 parent: EPIC-3710
 blocked_by:
-- FEAT-3561
+- ENH-3771
 blocks:
 - FEAT-3711
 - FEAT-3713
@@ -35,7 +35,7 @@ After FEAT-3561 the arena recommends `implement-issue` and `refine-issue` only. 
 
 ## Motivation
 
-Root-blocker and loop recommendations round out the issue-centric core, but neither is needed to decide whether the arena is useful (the FEAT-3561 checkpoint). Building them after a recorded "go" avoids paying for loop-definition capture, resolution-order replication and history joins if the checkpoint says pause. The graph and refinement/implementation adapters they consume already exist in the core.
+Root-blocker and loop recommendations round out the issue-centric core, but neither is needed to decide whether the arena is useful (the ENH-3771 checkpoint). Building them after a recorded "go" avoids paying for loop-definition capture, resolution-order replication and history joins if the checkpoint says pause. The graph and refinement/implementation adapters they consume already exist in the core.
 
 ## Proposed Solution
 
@@ -136,7 +136,7 @@ Existing `resolve_loop_path` / `load_and_validate` / `cmd_next_loop` source path
 
 ## Implementation Steps
 
-1. Implement after FEAT-3561 and its recorded checkpoint "go" decision; consume its registry/Schema/`ProjectState` extension seams.
+1. Implement after FEAT-3561 and ENH-3771's recorded "go" decision (this issue is `blocked_by` ENH-3771); consume its registry/Schema/`ProjectState` extension seams.
 2. Add `resolve-blocker` over the core graph/adapters with its fan-out/reachability evidence.
 3. Add the captured-buffer loop-loading seam, resolution-order/context snapshot, logical-name history join and `loop` action variant, then the loop axes/curves.
 4. Extend consumed config/Schema/registry and cross-consumer fixtures; extend the structural perf checks and the opt-in `perf` gate with loop definitions and run records.
@@ -156,6 +156,7 @@ After the checkpoint records "go", a user running `ll-next` also sees the root b
 ## Acceptance Criteria
 
 - [ ] `resolve-blocker` and `run-loop` register at their canonical registry positions; per-verb `next.verbs.*` entries and the matrix defaults are in `config-schema.json`, pinned by fixtures, with default weights summing to 1.0 per verb. No closed verb list is duplicated, and the registry/Schema/config extension leaves FEAT-3561's implement/refine fixtures unchanged.
+- [ ] Root-blocker actions, and any modeled issue-reference loop input that uses the issue-path resolver, call the core's all-status inventory check (`ambiguous_issue_id`, numeric-source uniqueness, `unsupported_issue_filename`; moved here from FEAT-3561, which tests only its implement/refine actions) and own fixtures for those consumers; a prerequisite or one-sided `blocks` declaration through an ambiguous node cannot make a blocker look root or satisfied.
 - [ ] Both verbs have tested candidate sources and explicit empty-source behavior. Deleted/invalid loops and unresolved inputs never emit runnable commands; never-run valid loops use per-bucket fallback; every emitted loop action has its required arguments resolved. Root-blocker targets require satisfied dependencies and recommend the refinement step when unready; direct-prerequisite satisfaction is distinguished from downstream reachability, with bounded samples/saturated counts and no "immediately unlocked" claim for multi-blocked or transitive descendants.
 - [ ] Loop curves are lower-bounded as specified; the nominal-default-weight property test (`(worst/best)^w ≥ 0.6`, weights summing to 1.0) covers resolve-blocker and run-loop axes including frequency's `0.4` floor; a loop with no valid run records has all three history axes missing; legacy next-loop curves/output are unchanged and tested side by side.
 - [ ] Loop identity includes the declared top-level fingerprint scope. A fixture changes an inherited parent/imported fragment while leaving top-level bytes and resolved arguments fixed: the fresh expanded assessment changes, the limited fingerprint may remain equal, and no cached assessment or offer suppression follows from that equality. Output/docs make no whole-definition or future-execution equivalence claim. Fingerprint material contains no absolute paths (project-relative or `builtin:` form only).
@@ -169,7 +170,7 @@ After the checkpoint records "go", a user running `ll-next` also sees the root b
 
 ## Related
 
-- EPIC-3710 (parent). FEAT-3561 (core; prerequisite and checkpoint owner), FEAT-3711 and FEAT-3713 (follow-ons blocked by this slice so four landed verbs and the `loop` action variant are settled; FEAT-3713 adds the final two verbs and both arrival orders are tested), FEAT-3721 (reader; independent of this slice). FEAT-3681 (done; scorer/config foundation). FEAT-3714, FEAT-3722 (deferred).
+- EPIC-3710 (parent). FEAT-3561 (core; prerequisite) and ENH-3771 (checkpoint owner; this issue's `blocked_by`), FEAT-3711 and FEAT-3713 (follow-ons blocked by this slice so four landed verbs and the `loop` action variant are settled; FEAT-3713 adds the final two verbs and both arrival orders are tested), FEAT-3721 (reader; independent of this slice). FEAT-3681 (done; scorer/config foundation). FEAT-3714, FEAT-3722 (deferred).
 
 ## Review Notes
 
