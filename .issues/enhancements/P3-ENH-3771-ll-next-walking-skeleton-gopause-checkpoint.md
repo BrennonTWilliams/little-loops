@@ -3,23 +3,20 @@ id: ENH-3771
 type: ENH
 title: ll-next walking-skeleton go/pause checkpoint
 priority: P3
-status: deferred
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-10-07'
 captured_at: '2026-10-07T20:23:28Z'
 parent: EPIC-3710
-blocked_by:
-- FEAT-3561
-blocks:
-- FEAT-3769
-- FEAT-3711
-- FEAT-3713
-- FEAT-3721
+blocked_by: []
+blocks: []
 deferred_by: human
 deferred_date: '2026-10-07T20:24:42Z'
 ---
 
 # ENH-3771: ll-next walking-skeleton go/pause checkpoint
+
+> **Cancelled as a gate (2026-10-07).** The maintainer decided to assume GO, so nothing waits on this issue; FEAT-3769, FEAT-3721, FEAT-3711 and FEAT-3713 are `blocked_by` FEAT-3561 again. The procedure below is kept as an optional, non-gating usefulness review to run once `ll-next` works. It was cancelled, not completed, so it carries no GO evidence.
 
 ## Summary
 
@@ -71,4 +68,4 @@ This checkpoint supplies usefulness evidence for [EPIC-3710's adoption and migra
 
 ## Status
 
-**Deferred** (human; awaiting FEAT-3561) | Created: 2026-10-07 | Priority: P3
+**Cancelled** (gate dropped by maintainer decision) | Created: 2026-10-07 | Priority: P3

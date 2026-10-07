@@ -11,7 +11,7 @@ parent: EPIC-3710
 blocked_by:
 - FEAT-3769
 - FEAT-3721
-- ENH-3771
+- FEAT-3561
 relates_to:
 - FEAT-3722
 - FEAT-3711
@@ -146,7 +146,7 @@ Pure sprint-content parser using the existing Sprint/SprintOptions data model wi
 
 ## Implementation Steps
 
-1. Implement after FEAT-3561, FEAT-3769 and FEAT-3721's shared reader (and so ENH-3771's recorded GO); pin sprint weights/curves, both verbs' gates, scope identity and exact sprint-history qualification; capture has activity thresholds and no scoring weights.
+1. Implement after FEAT-3561, FEAT-3769 and FEAT-3721's shared reader; pin sprint weights/curves, both verbs' gates, scope identity and exact sprint-history qualification; capture has activity thresholds and no scoring weights.
 2. Add pure sprint/scope/commit adapters with absence/invalid/external dependency cases before wiring dispatch. Pin offered definition/scope identity and the streaming loader's exact/partial/saturated evidence before scoring or gate projection.
 3. Extend consumed config, selection vocabulary/output Schema/explain and verb-specific coverage; use bounded history requests without producer registration or a FEAT-3711 dependency.
 4. Run fixed-clock fixtures, no-write/backend-degradation/invocation tests and update docs.

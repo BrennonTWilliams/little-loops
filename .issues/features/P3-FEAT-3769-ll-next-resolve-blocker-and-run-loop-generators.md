@@ -9,7 +9,7 @@ discovered_date: '2026-10-07'
 captured_at: '2026-10-07T08:36:16Z'
 parent: EPIC-3710
 blocked_by:
-- ENH-3771
+- FEAT-3561
 blocks:
 - FEAT-3711
 - FEAT-3713
@@ -23,7 +23,7 @@ relates_to:
 
 ## Summary
 
-Add the `resolve-blocker` and `run-loop` generators to the `ll-next` core (FEAT-3561): root-blocker recommendations over the core's dependency graph and runnable-loop recommendations over configured loop definitions and filesystem run history. Split out of FEAT-3561 by the 2026-10-07 pre-implementation review so the epic's go/pause checkpoint (implement-issue + refine-issue + `--explain`) happens **before** the most specialized work: the captured-buffer loop-loading seam in `fsm/validation/structural_rules.py`, runner-order context resolution, the persisted-logical-name history join, the limited loop fingerprint scope and the loop history axes. These contracts moved here verbatim from FEAT-3561; none was weakened. This slice extends the core's registry, config, output Schema and `ProjectState`; it reads filesystem loop run records but adds no `history.db` access, writes or history DB schema bump. Its output Schema version advances under the core's published-contract rule.
+Add the `resolve-blocker` and `run-loop` generators to the `ll-next` core (FEAT-3561): root-blocker recommendations over the core's dependency graph and runnable-loop recommendations over configured loop definitions and filesystem run history. Split out of FEAT-3561 by the 2026-10-07 pre-implementation review so the core (implement-issue + refine-issue + `--explain`) can ship and be used **before** the most specialized work: the captured-buffer loop-loading seam in `fsm/validation/structural_rules.py`, runner-order context resolution, the persisted-logical-name history join, the limited loop fingerprint scope and the loop history axes. These contracts moved here verbatim from FEAT-3561; none was weakened. This slice extends the core's registry, config, output Schema and `ProjectState`; it reads filesystem loop run records but adds no `history.db` access, writes or history DB schema bump. Its output Schema version advances under the core's published-contract rule.
 
 ## Current Behavior
 
@@ -35,7 +35,7 @@ After FEAT-3561 the arena recommends `implement-issue` and `refine-issue` only. 
 
 ## Motivation
 
-Root-blocker and loop recommendations round out the issue-centric core, but neither is needed to decide whether the arena is useful (the ENH-3771 checkpoint). Building them after a recorded "go" avoids paying for loop-definition capture, resolution-order replication and history joins if the checkpoint says pause. The graph and refinement/implementation adapters they consume already exist in the core.
+Root-blocker and loop recommendations round out the issue-centric core, but neither is needed to decide whether the arena is useful (ENH-3771's optional usefulness review). Building them after the core lands lets that review, if run, inform loop-definition capture, resolution-order replication and history joins. The graph and refinement/implementation adapters they consume already exist in the core.
 
 ## Proposed Solution
 
@@ -136,7 +136,7 @@ Existing `resolve_loop_path` / `load_and_validate` / `cmd_next_loop` source path
 
 ## Implementation Steps
 
-1. Implement after FEAT-3561 and ENH-3771's recorded "go" decision (this issue is `blocked_by` ENH-3771); consume its registry/Schema/`ProjectState` extension seams.
+1. Implement after FEAT-3561 (this issue is `blocked_by` FEAT-3561; the epic assumes GO); consume its registry/Schema/`ProjectState` extension seams.
 2. Add `resolve-blocker` over the core graph/adapters with its fan-out/reachability evidence.
 3. Add the captured-buffer loop-loading seam, resolution-order/context snapshot, logical-name history join and `loop` action variant, then the loop axes/curves.
 4. Extend consumed config/Schema/registry and cross-consumer fixtures; extend the structural perf checks and the opt-in `perf` gate with loop definitions and run records.
@@ -144,14 +144,14 @@ Existing `resolve_loop_path` / `load_and_validate` / `cmd_next_loop` source path
 
 ## Impact
 
-- **Priority:** P3 — completes the four-verb core after the checkpoint.
+- **Priority:** P3 — completes the four-verb core after the core lands.
 - **Effort:** Medium — two generators and the loop-specific loading/identity/history contracts.
 - **Risk:** Medium — wrong source/definition attribution would make a persuasive but unrunnable or mis-joined loop recommendation; mitigated by captured-buffer hashing, fail-closed resolution and explicit name-based labeling.
 - **Breaking Change:** No; existing `next-*` CLIs, including `ll-loop next-loop`, are untouched.
 
 ## Use Case
 
-After the checkpoint records "go", a user running `ll-next` also sees the root blocker that unlocks the most remaining work and a loop worth running again (or a never-run loop as a fallback), each with the same explain evidence as issue actions.
+After FEAT-3561, a user running `ll-next` also sees the root blocker that unlocks the most remaining work and a loop worth running again (or a never-run loop as a fallback), each with the same explain evidence as issue actions.
 
 ## Acceptance Criteria
 
@@ -170,7 +170,7 @@ After the checkpoint records "go", a user running `ll-next` also sees the root b
 
 ## Related
 
-- EPIC-3710 (parent). FEAT-3561 (core; prerequisite) and ENH-3771 (checkpoint owner; this issue's `blocked_by`), FEAT-3711 and FEAT-3713 (follow-ons blocked by this slice so four landed verbs and the `loop` action variant are settled; FEAT-3713 adds the final two verbs and both arrival orders are tested), FEAT-3721 (reader; independent of this slice). FEAT-3681 (done; scorer/config foundation). FEAT-3714, FEAT-3722 (deferred).
+- EPIC-3710 (parent). FEAT-3561 (core; prerequisite and this issue's `blocked_by`; ENH-3771's optional usefulness review is non-gating), FEAT-3711 and FEAT-3713 (follow-ons blocked by this slice so four landed verbs and the `loop` action variant are settled; FEAT-3713 adds the final two verbs and both arrival orders are tested), FEAT-3721 (reader; independent of this slice). FEAT-3681 (done; scorer/config foundation). FEAT-3714, FEAT-3722 (deferred).
 
 ## Review Notes
 
