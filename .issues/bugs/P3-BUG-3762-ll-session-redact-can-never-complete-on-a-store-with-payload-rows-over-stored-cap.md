@@ -75,6 +75,7 @@ Either every row is actually scanned, or the report clearly separates rows that 
 _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 
 **Option A**: Process oversized rows separately, one at a time, outside the 8-row page — fetch each under its own byte budget, decode and scan it, and write back through a single-row request (issue "Proposed Direction" item 1). Keeps page and wire bounds intact; needs a bounded fetch for a column the capped `_projection` returns as `NULL`, and a write guard that fits `REQUEST_BYTES_CAP`.
+> **Selected:** Option A — keeps page/wire bounds untouched and reaches `complete: true` for clean oversize rows (no write needed); Option C's distinct outcome is the floor for rows beyond the per-row bound or dirty rows whose write guard cannot fit.
 ⚠ Unproven mechanism — no existing site reads blob chunks or decodes above DECODED_CAP
 
 **Option B**: Decode refused rows within an explicit larger opt-in bound (e.g. `--max-row-bytes`) and report `complete: true` when they scan clean (item 2). Smaller change, but `_fetch_one` and `_fetch_page` share the capped projection, so the bound must reach `_projection` and the 8-row page worst case (8 × 2 × `STORED_CAP` = 16 MiB, pinned by `test_captured_page_response_under_32mib`) grows with it.
@@ -82,6 +83,27 @@ _Added by `/ll:refine-issue` — 2026-10-07 — based on codebase analysis:_
 **Option C**: Report-only — emit a distinct `unverifiable_oversize`-style outcome with row ids and stored sizes and a remedy that holds on local and remote targets (item 3). Does not reach `complete: true`, so on its own it fails the first Acceptance Criterion; viable only as the report-side floor for rows still beyond any opt-in bound.
 
 **Recommended**: Option A — with Option C's distinct outcome retained for rows that exceed the per-row bound, so a refusal is never silent and never reads as "rerun". Option B's flag can supply the per-row budget for A.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-10-06.
+
+**Selected**: Option A (with Option C's `unverifiable_oversize` outcome as the report-side floor)
+
+**Reasoning**: A clean oversize row needs only fetch, decode and scan — `_plan_column` already returns `(None, {})` for a clean column — so A reaches `complete: true` for the reported case (six clean rows) while leaving `PAGE_ROWS_MAX`, the 16 MiB page worst case and `TestWireBounds` untouched. B routes a larger bound through the `_projection_sql()` shared by `_fetch_page` and `_fetch_one`, growing the page worst case and the response bound pinned at 32 MiB. C scores highest on raw simplicity/risk but cannot satisfy the first Acceptance Criterion alone, so it is selected only as the floor for rows A cannot verify (beyond the per-row bound, or dirty rows whose full-bytes write guard exceeds `REQUEST_BYTES_CAP`).
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 2/3 | 1/3 | 2/3 | 2/3 | 7/12 |
+| Option B | 2/3 | 1/3 | 1/3 | 1/3 | 5/12 |
+| Option C | 2/3 | 3/3 | 3/3 | 3/3 | 11/12 (fails AC1 standalone — not eligible as sole fix) |
+
+**Key evidence**:
+- Option A: reuses `_fetch_one` (`raw_redaction.py:293`), single-statement `execute` and `_reconcile_one`'s single-row `UPDATE_SQL` path; `_Col.length` already detects and sizes oversize columns. Against: no `substr`/blob-chunk read or cap-parameterized `decode_payload` exists anywhere (`DECODED_CAP` at `:210-219`), remote reads materialize the whole base64 result (`libsql.py:124`), and `UPDATE_SQL`'s full-bytes guard costs ~4.4 MB on a 3.3 MB row. The unproven fetch/decode mechanism remains (`unproven_mechanism: true`); the dirty-row write-back is the real unknown.
+- Option B: `--batch`/`batch_size` is a clean flag-plumbing template (`cli/session.py:417`, `:586`), but the bound must reach `_projection_sql`, `decode_payload`, the `STORED_CAP` replacement check (`:391`) and `REQUEST_BYTES_CAP` (`:445`, `:725`), and `test_captured_page_response_under_32mib` has no dependency on the flag.
+- Option C: new reason code is a one-line vocabulary addition plus `TestVocabulary` edit; sizes need a field on frozen `RawRedactionProblem` (update `_redact_report` helper). No remote-valid remedy command exists — `prune`/`compact` are remote-refused and keyed on source path/age (`backend.py:97-104`).
 
 ## Integration Map
 
