@@ -18,7 +18,7 @@ relates_to:
 
 ## Summary
 
-**Baseline landed 2026-10-06 (PR #43); the contribution-aware residual below remains open.** The `ll-loop run` usage table showed `est_cost` as `n/a` for any model ID absent from `MODEL_PRICING` with no explanation. Add a footer naming unpriced model IDs (including IDs on rows that also have incomplete tokens), and correct the stale cost-table documentation. Split out of BUG-3696 (2026-10-04 Opus review) so the one-line Sonnet 5.5 price could land and unblock BUG-3701 without waiting on this matrix. The estimate uses published API list prices regardless of subscription/API billing; it is not the user's billed amount.
+**Baseline landed 2026-10-06 (PR #43); the contribution-aware residual below remains open.** Complete the `ll-loop run` footer so it names authoritative contribution models rather than a row's last-event summary, use the estimator's current pricing table, and correct the remaining CLI paragraph/docstring drift. The aggregate-model footer, JSON behavior and general docs sweep already landed. Split out of BUG-3696 (2026-10-04 Opus review) so the one-line Sonnet 5.5 price could land independently. The estimate uses published API list prices regardless of subscription/API billing; it is not the user's billed amount.
 
 **Scope:** human-readable diagnostics and docs only. No pricing changes (BUG-3696 owns the Sonnet 5.5 rate), no family-prefix fallback (ENH-3703), no stable-JSON change, no cost-ceiling change, no history backfill, no change to model/token normalization or cost aggregation.
 
@@ -46,7 +46,7 @@ A change merged outside this issue's workflow implemented the **aggregate-model*
 2. `PerStateCost.table_row()` renders `n/a`, and `_compute_totals` leaves the run's total cost null. Known-cost subtotals are not presented as complete totals.
 3. `estimate_cost_usd` returns `None` only for a model absent from `MODEL_PRICING` or any null token component. `INTRO_PRICING` is empty and `as_of` only affects it, so neither adds a third unpriced reason.
 4. BUG-3724 is done: new action rows carry authoritative `usage_contributions` by model/batch/pricing date; the flat model/token summary is audit-only when that key exists. An absent key retains legacy aggregate pricing. A present empty/non-list envelope or invalid model attribution fails closed and never falls back to the parent last-model summary. Legacy JSON-null models still become the `"None"` sentinel after `str()`. The footer must follow these actual contribution/legacy branches.
-5. Stale docs: CLI/observability text still describes `~$` fallback, `0.0` unknown costs, a printed `TOTAL` row and thousands separators, and mis-defines the `input` and `cache` columns.
+5. PR #43 corrected the fallback, null-cost, table-row and column-definition docs. Remaining drift is the duplicated CLI mixed-model paragraph, its premature contribution-footer claim, and the `CostReport` docstring's future-tense BUG-3724 handoff; no second general docs sweep is required.
 
 ## Expected Behavior
 
@@ -73,11 +73,11 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 
 1. **(Field and legacy-row collection landed in PR #43; residual = the contribution branch.)** `CostReport.unpriced_models: list[str]` exists and is populated from the aggregate `str(row.get("model", "unknown"))`. BUG-3724 has landed: move the collection after the `USAGE_CONTRIBUTIONS_KEY` branch decision so it inspects every authoritative contribution model when the key is present, and the aggregate model only for the legacy absent-key branch. Never use the parent model as a fallback for a present invalid contribution envelope. Check exact membership independently of the token-completeness branch. Do not infer missing prices from `cost is None` or `has_unknown_model`.
 2. **Read the same table the estimator reads. (Residual — landed code binds `MODEL_PRICING` by name.)** Look up `MODEL_PRICING` as a module attribute at call time (`from little_loops import pricing`, then `pricing.MODEL_PRICING`), not through a `from ... import MODEL_PRICING` binding, so a test that patches the table affects the estimator and the footer identically. Tests use `patch.dict` or patch the module attribute; they must never leave the two readers disagreeing.
-3. **Sentinel set.** The missing-model sentinels, after `str()` and `.strip()`, are `{"unknown", "None", ""}` (whitespace-only strings collapse into `""`). `"None"` is a real production case from a JSON-null model, not a hypothetical. A sentinel is never reported as a model; a concrete ID is reported verbatim, with no prefix/suffix normalization.
+3. **Sentinel set.** Preserve the landed case-insensitive `_is_missing_model_sentinel`: after string conversion where the legacy branch already uses it, `.strip().lower()` matches `{"unknown", "none", ""}` (whitespace-only strings collapse into `""`). JSON-null legacy models become `"None"`; contribution objects with missing/non-string model identities set the missing-ID diagnostic without stringifying arbitrary values into concrete IDs. A sentinel is never included in `unpriced_models`; a concrete ID is reported verbatim, with no prefix/suffix normalization.
 4. Render the footer in `table()` when the list is non-empty and the report has states. **(Landed with the PR #43 wording; the original `no pricing for model(s): … report an ID if it should be priced` text is superseded — see the 2026-10-07 decision above.)** Concrete IDs: `Note: <ids> not priced; cost shown is n/a.` Sentinels: one `Note: usage rows with no price identifier (unknown, None, "") contribute to n/a.` line without report/upgrade advice. Mixed concrete IDs and sentinels produce both lines, concrete first. A missing rate makes the affected state and run total unavailable rather than subtracting a contribution. The footer is end-user-facing; do not tell users to edit a Python module or promise that upgrading supplies a deliberately unsupported model's price. Do not serialize the list; `read_json` defaults it to empty.
 5. **Contribution-aware diagnostics (completed BUG-3724 handoff).** Reuse the accounting branch/validated model extraction in `from_usage_jsonl`; a small local helper may avoid duplicated branch rules, with no persisted schema change. Enumerate each concrete authoritative contribution ID even when its tokens are incomplete, so a known last model cannot hide an earlier unpriced model. Missing/non-string/blank model identities get the missing-ID diagnostic. A present empty/non-list envelope or non-mapping item does not invent a concrete missing-price ID and cannot use the parent model. Preserve any existing invalid-attribution reason independently of model-price diagnostics; concrete IDs on readable contribution objects may still explain a real missing table entry without repairing the malformed attribution. Test a priced parent with an earlier unpriced contribution, an unpriced parent with all-priced contributions, incomplete contributions, and malformed/empty envelopes. Legacy rows cannot recover earlier model identities and remain exact-ID legacy estimates; document that limitation only for the absent-key path. No new fallback or attribution repair is part of this footer.
 
-6. Correct the stale docs: `~$` fallback, `0.0` unknown costs, a printed `TOTAL` row, thousands separators. Fix the column definitions: `input` is the aggregate `input_tokens` field without cache tokens; `cache` combines `cache_read_tokens` and `cache_creation_tokens`. State that costs are exact-ID estimates, that state/run costs become null if any contributor is unpriced, and that stored null history costs are not back-filled. Distinguish the broad `has_unknown_model` flag (any unpriceable contribution) from this missing-price diagnostic; incomplete tokens alone still produce `n/a` without the footer. Record the exact-match limitation: dated, `anthropic.`-prefixed or `[1m]` model IDs stay unpriced and the footer now names them.
+6. Remove the duplicated `Mixed-model actions (BUG-3724)` CLI paragraph, align its footer description with the completed contribution branch and fix the stale `CostReport` docstring. Preserve the already-landed exact-ID, null-cost, no-backfill and input/cache column guidance; known incomplete tokens still produce `n/a` without a missing-price footer.
 
 ## Integration Map
 
@@ -86,9 +86,6 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 - `scripts/little_loops/fsm/cost_graph.py` — **residual:** switch to call-time `pricing.MODEL_PRICING`, move diagnostic collection behind the contribution-vs-legacy branch in `from_usage_jsonl`, and fix the stale "Once BUG-3724 lands" docstring (field, footer and `to_dict`/`read_json` behavior landed in PR #43); keep `to_dict`, `read_json` parsing and `_compute_totals` semantics
 - `scripts/tests/test_fsm_cost_graph.py`, `scripts/tests/test_usage_reporter.py`, `scripts/tests/test_cli_cost_table.py` — **residual:** contribution-aware cases (none of the landed tests exercises a contribution-bearing row); replace the hand-patched dual-binding table test with a single `pricing.MODEL_PRICING` patch
 - `docs/reference/CLI.md` — per-state summary (~L1005–1057): footer/columns/flags landed in PR #43; **residual:** remove the verbatim-duplicated `Mixed-model actions (BUG-3724)` paragraph (appears twice), and keep the "Last-event-model limitation" paragraph's contribution claim only after the code makes it true
-- `docs/reference/API.md` — `## little_loops.pricing` (~L12630) description of exact-ID cost semantics; keep the heading pinned by `test_wiring_reference_docs.py`
-- `docs/observability/realized-savings-verification.md:39` — replace stale `cost_usd: 0.0` with null
-- `docs/observability/tier0-traces.md:147` — document the footer alongside existing table output
 
 ### Dependent Files
 
@@ -97,25 +94,20 @@ New host-reported model IDs silently erase state/run cost visibility and leave g
 - `fsm/executor.py:_check_cost_ceiling` — unchanged; an unpriced cost still follows `cost_ceiling_unknown`
 - `issue_history/agent_quality.py` — null-cost coverage semantics remain accurate
 - `fsm/__init__.py` — existing `CostReport` export; no new symbol
+- `docs/reference/API.md`, `docs/observability/realized-savings-verification.md`, `docs/observability/tier0-traces.md` — PR #43's exact-ID/null-cost/footer guidance is already present; preserve it without a second sweep
 
 ### Tests
 
-**Residual test set (2026-10-07):** the four tests below landed in PR #43 for the aggregate-model branch. Add only the contribution-aware cases to `test_fsm_cost_graph.py` (and one stdout-footer case in `test_usage_reporter.py`): (a) a row with `usage_contributions` [unpriced, priced] and a priced last-event aggregate `model` names the unpriced ID; (b) an unpriced aggregate `model` with all-priced contributions yields no note and a numeric state cost; (c) a missing/sentinel contribution model sets the sentinel line; (d) an empty/non-list envelope or non-mapping item names no concrete ID and does not fall back to the parent model; (e) a contribution with incomplete tokens still names its unpriced model. Patch only `pricing.MODEL_PRICING` once and assert footer and estimator agree. Do not re-pin footer bytes.
+**Residual test set (2026-10-07):** add contribution-aware cases to `test_fsm_cost_graph.py` (and one stdout-footer case in `test_usage_reporter.py`): (a) `usage_contributions` [unpriced, priced] with a priced parent names the earlier unpriced ID; (b) an unpriced parent with all-priced contributions yields no note and numeric state cost; (c) missing/non-string/blank/case-insensitive sentinel contribution identities set only the missing-ID line; (d) empty/non-list envelopes and non-mapping items invent no ID and cannot use the parent model; (e) incomplete contributions still name their concrete unpriced model, while known incomplete models do not. Include a malformed sibling beside a readable unpriced contribution: name that concrete ID while retaining unavailable invalid-attribution cost. Patch only `pricing.MODEL_PRICING` once and assert footer and estimator agree.
 
-Four tests, deliberately not an exhaustive byte-pinning matrix (over-specified wording tests make the footer brittle for little added protection); **landed as written in PR #43 for the aggregate branch**:
-
-1. **Parametrized classification matrix** (`test_fsm_cost_graph.py`): model {known, unknown concrete, each sentinel `unknown`/`None`/`""`/whitespace} × tokens {complete, explicit null component, positive `*_missing`}. Unknown+incomplete names the ID; known+incomplete does not. Include multiple unpriced IDs across states, repeated IDs, mixed priced/unpriced contributors (one sorted footer; affected state and run costs null; complete known-only states keep numeric costs), and dated, `anthropic.`-prefixed and `[1m]` Sonnet 5.5 IDs staying unpriced and appearing verbatim. Legacy absent-token keys keep their zero defaults. Patch the table with `patch.dict` in at least one case to prove footer and estimator read the same table.
-2. **Exact bytes** (`test_cli_cost_table.py`): one footer-present table (concrete-only, sentinel-only and mixed two-line block, including trailing newline), one complete all-priced table byte-identical to the legacy output, and a no-states report with no footer. `fixture_jsonl` in `test_fsm_cost_graph.py` and `test_cli_cost_table.py` uses unpriced Sonnet 4.5, so its table deliberately gains the footer; do not relabel it as priced. Preserve the reporter's existing silence for missing/empty files.
-3. **Unknown-model JSON round-trip**: `loaded.to_dict() == report.to_dict()`, null costs preserved, no `unpriced_models` key, loaded list empty, loaded table has no footer. Do not assert dataclass equality. The existing `test_enh3538_token_observations.py` incomplete-known-model round-trip stays valid but cannot alone prove unknown-model metadata loss.
-4. **Reporter** (`test_usage_reporter.py`): `_print_usage_summary` with an unknown-model fixture and a `cost_output_json` destination together: stdout contains the footer while the written JSON keeps its locked keys and null costs with no diagnostic list. A second case uses the observed run's exact-ID Sonnet 5.5 projection (first row: 14 input, 5748 output, 433686 cache-read, 70335 cache-creation → $0.3200827, rendered `$0.3201`) and asserts the price renders with no footer and no `n/a`. Relies on the Sonnet 5.5 rate already in `MODEL_PRICING`.
-
-Keep the locked per-state/top-level JSON key tests.
+Preserve the existing aggregate classification/exact-ID, table-byte, JSON round-trip/locked-key, empty-file and reporter/projection tests from PR #43. Their current 51-test baseline passes; do not recreate or re-pin those controls.
 
 ## Program Design
 
 ### Types
 
-- `CostReport.unpriced_models: list[str]` — diagnostic-only, default empty; sorted, de-duplicated effective pricing IDs absent from `pricing.MODEL_PRICING`, including the reserved missing-ID sentinels; read legacy aggregate IDs only when the contribution key is absent; otherwise inspect authoritative contribution identities; absent from stable JSON
+- `CostReport.unpriced_models: list[str]` — diagnostic-only, default empty; sorted, de-duplicated concrete effective pricing IDs absent from `pricing.MODEL_PRICING`, excluding missing-ID sentinels; read legacy aggregate IDs only when the contribution key is absent; otherwise inspect authoritative contribution identities; absent from stable JSON
+- `CostReport.unpriced_missing_sentinels: bool` — existing independent missing-identifier flag, default false and absent from stable JSON; never put placeholders or stringified non-string contribution models in `unpriced_models`
 
 ### Signatures
 
@@ -138,7 +130,7 @@ Keep the locked per-state/top-level JSON key tests.
 ## Impact
 
 - **Priority**: P3 — diagnoses silent `n/a` cost for any host-reported model outside the pricing table
-- **Effort**: Medium — footer, four tests and a four-doc sweep (much of it pre-existing doc drift)
+- **Effort**: Small — contribution-aware diagnostics, one table-binding repair, focused regression cases and the remaining CLI/docstring corrections
 - **Risk**: Low — diagnostics only; no fallback, aggregation or JSON change
 - **Breaking Change**: No (tables with unpriced models gain a footer line)
 
@@ -157,7 +149,7 @@ Keep the locked per-state/top-level JSON key tests.
 
 ## Related
 
-- BUG-3696 — adds the Sonnet 5.5 price and alias/rank/price coverage; landed; test 4's priced projection relies on the rate
+- BUG-3696 — adds the Sonnet 5.5 price and alias/rank/price coverage; landed; the existing priced reporter projection relies on the rate
 - BUG-3701 — alias/rank correction; independent of this footer
 - ENH-3703 — deferred family-prefix approximate pricing decision after this footer; retained under EPIC-3562
 - BUG-3724 — completed model/batch/date contribution accounting; consume its authoritative contribution and fail-closed invalid-attribution contract
@@ -176,6 +168,8 @@ Keep the locked per-state/top-level JSON key tests.
 **Open** | Created: 2026-10-04 | Priority: P3
 
 ## Session Log
+
+- Pre-implementation consumer review - 2026-10-07 - Reproduced both parent/contribution disagreement defects at `659639f17`: a priced parent hides an earlier unpriced ID; an unpriced parent over priced contributions emits a false footer despite numeric state cost. Reconciled the concrete-ID list/separate sentinel flag and preserved landed case-insensitive sentinels. Reduced directives to the residual contribution/table-binding/CLI/docstring work; existing cost/report suites: 51 passed. No implementation or new score claimed.
 
 - Pre-implementation epic review - 2026-10-07 - Found PR #43 (`75cbb57eb`, merged 2026-10-06 outside the issue workflow) had landed the aggregate-model footer, tests and docs while this issue and EPIC-3562 still described it as untouched. Verified residual gaps on `main`: no contribution-aware enumeration (earlier unpriced contribution behind a priced last model is never named; unpriced aggregate over all-priced contributions emits a false note), name-bound `MODEL_PRICING`, stale docstring, CLI.md claims contribution enumeration that does not exist and carries the BUG-3724 paragraph twice. Rewrote scope to the residual; kept landed wording (Opus's reword suggestion not adopted: byte-pinned tests, marginal benefit). 51 landed cost tests pass. No implementation claimed.
 
