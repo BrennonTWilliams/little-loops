@@ -20,6 +20,33 @@ relates_to:
 - FEAT-3722
 - BUG-3715
 - BUG-3737
+confidence_score: 100
+outcome_confidence: 73
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
+risk_factors:
+- id: output-contract-bump
+  domain: outcome
+  criterion: change_surface
+  description: Output schema_version 2 to 3 touches render, cli/next, package_data
+    and drift fixtures.
+- id: reader-type-widening
+  domain: outcome
+  criterion: complexity
+  description: Widening FEAT-3721's cli-specific history reader types and dispatch
+    in place changes a landed contract.
+- id: transactional-write-semantics
+  domain: outcome
+  criterion: complexity
+  description: 'First writer on the existing-store seam: BEGIN IMMEDIATE, collated
+    ON CONFLICT and in-transaction readback.'
+- id: wide-file-surface
+  domain: outcome
+  criterion: complexity
+  description: About 20 change sites across session_store, next_arena, cli, config
+    and docs; breadth scores 0.
 ---
 
 # FEAT-3711: ll-next recommendation events and explicit acceptance
@@ -186,3 +213,7 @@ A user sees recorded recommendation IDs and explicitly accepts one from another 
 ## Status
 
 **Open** | Created: 2026-10-03 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-10-08T05:24:23 - `ec9a9402-6796-4072-8370-3f622c1f9b32.jsonl`
