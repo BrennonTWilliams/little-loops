@@ -276,7 +276,7 @@ The closure/refusal/exact-pin/publication rules in Proposed Solution are normati
 
 ## Implementation Steps
 
-1. Consume the landed FEAT-3716 resolver/report/trace contract. Build the placement plan with unsupported-shape and collision fixtures before CLI wiring.
+1. Consume the landed FEAT-3716 resolver/report/trace contract (its Steps 1–2 interface, which FEAT-3716's checkpoint freezes; if FEAT-3716 splits, this issue blocks on the resolver/report half only). Never use a `load_and_validate(source_data=...)` load as export input: it has no root byte snapshot. Build the placement plan with unsupported-shape and collision fixtures before CLI wiring.
 2. Add exact-only `requires` field, load diagnostics, execution-boundary enforcement and round-trip stamping; validate every runnable placement.
 3. Build isolated closure proof and new-directory staging/promotion; verify failure leaves inputs/destination untouched.
 4. Add export CLI, report allowances and concise README with supported bundle-directory lifecycle commands.
@@ -330,6 +330,8 @@ Dynamic candidate-domain declarations; nested fragment-library imports; asset di
 
 ## Review Notes
 
+2026-10-08 follow-up from the FEAT-3716 review (`/ll:advise` Opus, confidence 0.78): FEAT-3716 now reuses FEAT-3769's ambient `resolution_context` for cwd/draft-Note handling, renames its operation context to `LoopAnalysisContext` (kwarg `analysis_context`), pre-declares a split line (resolver/report half vs CLI/pilot half) and pins launch-form incompleteness (about nine shipped loops are expected to be refused as opaque-launch; five echo-usage false positives are being removed). Export-refusal fixtures should not assume a particular shipped portable distribution. No change to this issue's own contract.
+
 2026-10-07 pre-implementation review: added conservative exact/normalized placement and alias checks, type-aware YAML parity, command-scoped recipient telemetry isolation and post-pin-refusal cross-host suppression. A temporary-directory resolver probe on this Mac showed `worker.yaml` shadowed by differently cased `Worker.fsm.yaml`; pure parser probes showed boolean/integer value and key mappings compare equal. An independent read-only history-discovery probe selected an ancestor from an extracted bundle, while a local `.git` masked it. A patched foreground probe returned exit 1 for `requirement_error=True` yet invoked the cross-host helper once; no real host/subprocess was dispatched. Two `/ll:advise` Opus consults supported the bounded corrections (confidence 0.80/0.78); accepted command-scoped overrides, sidecar checks and nested propagation fixtures, while rejecting the advisor's unsupported claim that ordinary `BRConfig(Path.cwd())` itself walks upward. Existing flow/cross-host/session-store/runner tests passed (90). Current code/pyproject identity is 1.167.0 and metadata is 1.165.0, so a real export rehearsal still requires matching metadata/wheel. These checks are not implemented export acceptance; existing prerequisites and FEAT-3716's outcome gate remain.
 
 2026-10-06 targeted follow-up review with `/ll:advise --signal user_requested --host claude-code --model opus` (confidence 0.72): accepted an explicit proof-driver protocol/strict report decoder and FEAT-3716's bounded operational-launch incompleteness. Retained the isolated subprocess, source-drift rechecks and fatal pin enforcement/private invalidity: the advisor's proposed simplifications would weaken the already chosen Python-execution and source-provenance contracts. A temporary-directory probe of current `promote_run_artifact` published a partial file from an `error` result with an empty `on:` allowlist; the helper does not inspect the termination cause. Added a narrow `requirement_error` publication guard and file/template/direct-helper regression requirements while preserving error archival. Existing promotion tests passed (25); structure/design/learning-proof checks passed. These are source/probe/spec checks, not export acceptance or a full-suite run.
@@ -367,6 +369,7 @@ A consultant exports brainstorm for a client who will install the matching wheel
 
 
 ## Session Log
+- FEAT-3716 follow-up review; seam reuse, split checkpoint and `source_data` exclusion noted; no contract change - 2026-10-08
 - Pre-implementation review; normalized alias collisions, typed YAML parity, extracted-bundle history isolation and fatal-refusal post-run guard; `/ll:advise` Opus - 2026-10-07
 - Targeted pre-implementation review; `/ll:advise` Opus confidence 0.72; checked proof transport, operational-launch refusals and no artifact publication after pin refusal; 25 promotion tests passed - 2026-10-06
 - Pre-implementation review on main; two `/ll:advise` Opus consults, confidence 0.80/0.84; alias/enforcement/final-layout contract updates - 2026-10-06
