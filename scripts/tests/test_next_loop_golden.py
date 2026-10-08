@@ -162,7 +162,11 @@ class TestRawScores:
         assert set(history) == set(RAW_SCORES)
         for name, runs in history.items():
             got = next_loop._score_loop(runs, as_of=NOW, weights=DEFAULT_WEIGHTS)
-            assert got == RAW_SCORES[name], name
+            want = RAW_SCORES[name]
+            # log1p/exp last-bit results differ across libm builds (macOS vs glibc), so the
+            # float score is compared to 1e-12; the success rate and timestamp stay exact.
+            assert got[0] == pytest.approx(want[0], rel=1e-12), name
+            assert got[1:] == want[1:], name
 
     def test_empty_runs_fast_path(self) -> None:
         assert next_loop._score_loop([], as_of=NOW, weights=DEFAULT_WEIGHTS) == (0.0, 1.0, None)
