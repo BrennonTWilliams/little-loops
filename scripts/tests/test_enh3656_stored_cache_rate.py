@@ -365,19 +365,40 @@ class TestEnH3746RetainedIngestionAdmission:
 
 
 class TestEnH3746FreshnessSnapshotIsolation:
-    """ENH-3746 AC #5: admission, figure and freshness share one committed
-    read snapshot — a WAL append/derive cannot bump the figure's freshness
-    between the reads.
+    """ENH-3746 AC #5 (partial coverage): the rate-path code uses a
+    single SQLite connection across the admission + selection +
+    freshness reads so the three reads cannot see a connection-open race.
 
-    The implementation shares a single SQLite connection across the
-    admission + selection + freshness reads. These tests verify that the
-    connection-sharing keeps the freshness field consistent with the figure.
+    The implementation shares a single ``sqlite3.Connection`` between the
+    admission predicate (``_has_verified_retained_ingestion`` /
+    ``_has_ingested_raw``), ``select_usage_coverage`` and
+    ``usage_source_freshness(..., conn=conn)``.
+
+    These tests pin the connection-sharing contract by verifying the
+    freshness field reflects the latest committed cursor state — they do
+    NOT simulate a concurrent writer committing *between* the
+    selection and freshness reads. The deeper race contract (a
+    concurrent ``refresh_usage_source`` that bumps the cursor between
+    our two reads) is left as a follow-up: SQLite's WAL mode gives
+    each statement a fresh snapshot, and a true BEGIN IMMEDIATE on the
+    readonly connection is blocked by ``PRAGMA query_only=ON``. A
+    proper race test needs an isolation harness (separate process or
+    a held-clock injection) that's out of scope for this PR.
+
+    Note: these tests do not guard against a regression to two
+    connections, since both single-threaded test paths read the latest
+    committed cursor regardless of connection count. The connection-
+    sharing pattern is a *latency / connection-open* optimization, not
+    a snapshot-isolation mechanism in WAL mode without explicit
+    transactions.
     """
 
     def test_bumped_cursor_visible_after_race(self, tmp_path: Path) -> None:
-        """After a cursor bump from a separate connection commits, the
-        function's freshness field reflects the bumped cursor — proving
-        the read path picks up the latest committed values."""
+        """When a separate connection commits a cursor bump before the
+        call, the function's freshness field reflects the bumped offset
+        and timestamp. Pins the contract that the read path picks up
+        the latest committed values.
+        """
         db, handle = _captured_session(tmp_path)
         refresh_usage_source(db, handle.path)
         initial_offset = handle.path.stat().st_size
@@ -408,20 +429,14 @@ class TestEnH3746FreshnessSnapshotIsolation:
 
         stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
         assert diagnostic is None and stored is not None
-        # The post-bump offset is what the read sees, since the writer's
-        # commit landed before the function's BEGIN IMMEDIATE.
         assert stored["as_of_offset"] == initial_offset + 1000
         assert stored["as_of"] == "2099-01-01T00:00:00"
 
-    def test_begin_immediate_keeps_freshness_consistent_with_figure(self, tmp_path: Path) -> None:
-        """Verify the BEGIN IMMEDIATE inside ``_compute_cache_rate_from_usage``
-        keeps the freshness field consistent with the figure even when a
-        separate writer commits the cursor bump while the call is in
-        progress.
-
-        Without BEGIN IMMEDIATE, SQLite's WAL gives each statement a
-        fresh snapshot and a concurrent cursor bump is visible to the
-        second read — the regression this test catches.
+    def test_pre_and_post_bump_cursor_consistency(self, tmp_path: Path) -> None:
+        """Two sequential calls see pre-bump and post-bump cursor values
+        consistently with the figure. ``hit_rate_pct`` is unchanged by
+        the cursor bump (the figure is independent of the cursor), but
+        the freshness field reflects the committed state of the cursor.
         """
         db, handle = _captured_session(tmp_path)
         refresh_usage_source(db, handle.path)
@@ -438,15 +453,13 @@ class TestEnH3746FreshnessSnapshotIsolation:
             pre_bump_updated_at = row[1]
             assert row[0] == initial_offset
 
-        # Call the function reads the pre-bump cursor. With BEGIN IMMEDIATE
-        # held for the call, any concurrent writer is blocked; after the
-        # call, the next read sees the post-bump cursor.
+        # Pre-bump call: reads the pre-bump cursor.
         stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
         assert diagnostic is None and stored is not None
         assert stored["as_of_offset"] == initial_offset
         assert stored["as_of"] == pre_bump_updated_at
 
-        # Now bump the cursor and verify a subsequent call sees it.
+        # Bump the cursor and verify a subsequent call sees it.
         writable = connect(db)
         try:
             writable.execute(
