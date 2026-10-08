@@ -17,6 +17,23 @@ blocks:
 relates_to:
 - ENH-3720
 - ENH-3679
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
+risk_factors:
+- id: bounded-read-shared-state
+  domain: outcome
+  criterion: complexity
+  description: New reader couples one transaction, shared deadline, shape checks and
+    partial-coverage accounting across several functions
+- id: row-coverage-field-shapes-open
+  domain: outcome
+  criterion: ambiguity
+  description: CliInvocationRow and HistoryReadCoverage field names/shapes are described
+    but not pinned; FEAT-3713 consumes them
 ---
 
 # FEAT-3721: ll-next shared read-only HistorySnapshot reader
@@ -148,6 +165,7 @@ A ready sprint can be recommended while its recent history is partial or unavail
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-08T00:50:34 - `73ebc884-e68a-40d3-b4e7-6385a1865b79.jsonl`
 - `/ll:ready-issue` - 2026-10-08T00:45:25 - `54533f29-9cc9-44eb-81ce-f0474be499a0.jsonl`
 
 ## Status
