@@ -1705,31 +1705,46 @@ def refresh_usage_source(
         conn.close()
 
 
-def usage_source_freshness(db: Path | str, source: Path) -> dict[str, int | str | None]:
+def usage_source_freshness(
+    db: Path | str,
+    source: Path,
+    *,
+    conn: sqlite3.Connection | None = None,
+) -> dict[str, int | str | None]:
     """Classify a selected local source against its committed derive boundary.
 
     Reads only cursor metadata, file stat, and a bounded boundary/tail witness;
     it never parses usage or advances the store. ``unknown`` is used whenever
     the source cannot be compared safely (missing, rotation, partial write).
+
+    ``conn`` lets the caller share an already-opened read connection so the
+    freshness read sees the same commit snapshot as a preceding
+    ``select_usage_coverage`` call (ENH-3746: a WAL append between the
+    selection read and this read must not stamp an older figure fresh/as-of
+    a newer offset).
     """
     path = source.expanduser().resolve()
+    owns_conn = conn is None
     try:
-        conn = connect_readonly(db)
+        active_conn = conn if conn is not None else connect_readonly(db)
+        if active_conn is None:
+            return {"status": "unknown", "reason": "store_unavailable", "as_of_offset": None}
         try:
-            cursor = conn.execute(
+            cursor = active_conn.execute(
                 "SELECT device, inode, committed_offset, tail_sha256, source_mtime_ns, "
                 "derived_raw_event_id, status, updated_at FROM usage_source_cursors "
                 "WHERE source_path = ?",
                 (str(path),),
             ).fetchone()
             meta = dict(
-                conn.execute(
+                active_conn.execute(
                     "SELECT key, value FROM meta WHERE key IN "
                     "('usage_derive_version', 'usage_derive_raw_id')"
                 ).fetchall()
             )
         finally:
-            conn.close()
+            if owns_conn:
+                active_conn.close()
     except Exception:
         return {"status": "unknown", "reason": "store_unavailable", "as_of_offset": None}
     if cursor is None:

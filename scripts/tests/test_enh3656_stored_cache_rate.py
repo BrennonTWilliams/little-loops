@@ -239,3 +239,244 @@ def test_json_stderr_distinguishes_four_store_absences(tmp_path: Path, monkeypat
         captured = capsys.readouterr()
         json.loads(captured.out)
         assert "ingested without qualified usage observations" in captured.err
+
+
+class TestEnH3746RetainedIngestionAdmission:
+    """ENH-3746: ``_compute_cache_rate_from_usage`` admits a stored session
+    when a verified source-attributed ``usage_events`` row exists, even
+    after the original ``raw_events`` rows have been pruned (BUG-3736
+    retention). The legacy raw-only check still admits a fresh
+    ``refresh_usage_source`` ingest that lacks qualified observations.
+
+    Six scenarios covered:
+      1. Raw pruned, replay admit → rate stays visible
+      2. Raw preserved, replay absent (legacy path) → admitted
+      3. Raw preserved, replay absent, no qualified observation → ingested_without_usage
+      4. Neither raw nor replay → session_not_ingested
+      5. Other-host usage row does not admit (identity probe must match)
+      6. Unverified usage row does not admit (``_verified_usage_identity`` is False)
+    """
+
+    def test_retained_replay_admits_after_raw_prune(self, tmp_path: Path) -> None:
+        """After raw_events rows are deleted, a verified usage_events row
+        still admits the session."""
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        before_raw = _compute_cache_rate_from_usage(handle, db)[0]
+        assert before_raw is not None  # sanity: live raw path admits
+        with connect(db) as conn:
+            # Prune all raw_events rows whose path matches the handle.
+            conn.execute(
+                "DELETE FROM raw_events WHERE source_path IN (?, ?) AND host = ? AND session_id = ?",
+                (
+                    str(handle.path),
+                    str(handle.path.expanduser().resolve()),
+                    handle.host,
+                    handle.session_id,
+                ),
+            )
+            conn.commit()
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        # The replay path picks up — the verified usage_events row proves
+        # historical ingestion even with no raw.
+        assert diagnostic is None and stored is not None
+        assert stored["hit_rate_pct"] == before_raw["hit_rate_pct"] == 77
+
+    def test_raw_only_admits_fresh_ingest_with_no_observations(self, tmp_path: Path) -> None:
+        """A fresh refresh_usage_source ingest on a no_usage record admits
+        the session via the legacy raw path (no usage_events row yet)."""
+        db, handle = _captured_session(tmp_path)
+        no_usage = {
+            "type": "assistant",
+            "sessionId": handle.session_id,
+            "timestamp": "2026-09-29T01:00:00Z",
+            "message": {"id": "msg-no-usage", "role": "assistant", "content": []},
+        }
+        handle.path.write_text(json.dumps(no_usage) + "\n", encoding="utf-8")
+        refresh_usage_source(db, handle.path)
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        # Legacy raw check admits the handle-path raw row, but no
+        # qualified observation → ``ingested_without_usage``.
+        assert diagnostic == "ingested_without_usage"
+        assert stored is None
+
+    def test_raw_preserved_replay_admits(self, tmp_path: Path) -> None:
+        """A normal refresh + compute rate cycle admits via the legacy
+        raw-only path (this is the existing happy path, regression-only)."""
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic is None and stored is not None
+        assert stored["hit_rate_pct"] == 77
+
+    def test_session_with_neither_raw_nor_replay_is_not_ingested(self, tmp_path: Path) -> None:
+        """Empty store + no usage_events row → session_not_ingested."""
+        db, handle = _captured_session(tmp_path)
+        # Neither refresh_usage_source nor any other writer has run.
+        _, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic == "session_not_ingested"
+
+    def test_other_host_usage_does_not_admit(self, tmp_path: Path) -> None:
+        """A usage_events row with the right session_id but a different host
+        does not satisfy _verified_usage_identity, so admission fails."""
+        db, handle = _captured_session(tmp_path)
+        with connect(db) as conn:
+            conn.execute(
+                "INSERT INTO usage_events(ts, host, host_basis, session_id, model, "
+                "input_tokens, output_tokens, cache_read_input_tokens, "
+                "cache_creation_input_tokens, cost_usd, channel, identity_basis, "
+                "provenance) "
+                "VALUES(?, ?, 'handle', ?, 'claude-haiku-4-5-20251001', "
+                "10, 5, 1, 0, 0.001, 'transcript', 'host_observed', 'measured')",
+                (
+                    "2026-09-29T07:00:00Z",
+                    "codex",  # different host from the handle's "claude-code"
+                    handle.session_id,
+                ),
+            )
+            conn.commit()
+        _, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic == "session_not_ingested"
+
+    def test_unverified_usage_does_not_admit(self, tmp_path: Path) -> None:
+        """A usage_events row with host_basis != 'handle' fails the
+        _verified_usage_identity check (live/rollout channels) and does
+        not admit even though host+session_id match."""
+        db, handle = _captured_session(tmp_path)
+        with connect(db) as conn:
+            conn.execute(
+                "INSERT INTO usage_events(ts, host, host_basis, session_id, model, "
+                "input_tokens, output_tokens, cache_read_input_tokens, "
+                "cache_creation_input_tokens, cost_usd, channel, identity_basis, "
+                "provenance) "
+                "VALUES(?, ?, ?, ?, 'claude-haiku-4-5-20251001', "
+                "10, 5, 1, 0, 0.001, ?, NULL, 'measured')",
+                (
+                    "2026-09-29T07:00:00Z",
+                    handle.host,
+                    "ingest",  # not 'handle' → unverified
+                    handle.session_id,
+                    "live",
+                ),
+            )
+            conn.commit()
+        _, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic == "session_not_ingested"
+
+
+class TestEnH3746FreshnessSnapshotIsolation:
+    """ENH-3746 AC #5 (partial coverage): the rate-path code uses a
+    single SQLite connection across the admission + selection +
+    freshness reads so the three reads cannot see a connection-open race.
+
+    The implementation shares a single ``sqlite3.Connection`` between the
+    admission predicate (``_has_verified_retained_ingestion`` /
+    ``_has_ingested_raw``), ``select_usage_coverage`` and
+    ``usage_source_freshness(..., conn=conn)``.
+
+    These tests pin the connection-sharing contract by verifying the
+    freshness field reflects the latest committed cursor state — they do
+    NOT simulate a concurrent writer committing *between* the
+    selection and freshness reads. The deeper race contract (a
+    concurrent ``refresh_usage_source`` that bumps the cursor between
+    our two reads) is left as a follow-up: SQLite's WAL mode gives
+    each statement a fresh snapshot, and a true BEGIN IMMEDIATE on the
+    readonly connection is blocked by ``PRAGMA query_only=ON``. A
+    proper race test needs an isolation harness (separate process or
+    a held-clock injection) that's out of scope for this PR.
+
+    Note: these tests do not guard against a regression to two
+    connections, since both single-threaded test paths read the latest
+    committed cursor regardless of connection count. The connection-
+    sharing pattern is a *latency / connection-open* optimization, not
+    a snapshot-isolation mechanism in WAL mode without explicit
+    transactions.
+    """
+
+    def test_bumped_cursor_visible_after_race(self, tmp_path: Path) -> None:
+        """When a separate connection commits a cursor bump before the
+        call, the function's freshness field reflects the bumped offset
+        and timestamp. Pins the contract that the read path picks up
+        the latest committed values.
+        """
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        initial_offset = handle.path.stat().st_size
+        with connect(db) as conn:
+            row = conn.execute(
+                "SELECT committed_offset FROM usage_source_cursors "
+                "WHERE source_path = ?",
+                (str(handle.path.expanduser().resolve()),),
+            ).fetchone()
+            assert row is not None and row[0] == initial_offset
+
+        # Simulate a concurrent refresh_usage_source commit before the
+        # function call: bump committed_offset and updated_at.
+        writable = connect(db)
+        try:
+            writable.execute(
+                "UPDATE usage_source_cursors SET committed_offset = ?, "
+                "updated_at = '2099-01-01T00:00:00' "
+                "WHERE source_path = ?",
+                (
+                    initial_offset + 1000,
+                    str(handle.path.expanduser().resolve()),
+                ),
+            )
+            writable.commit()
+        finally:
+            writable.close()
+
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic is None and stored is not None
+        assert stored["as_of_offset"] == initial_offset + 1000
+        assert stored["as_of"] == "2099-01-01T00:00:00"
+
+    def test_pre_and_post_bump_cursor_consistency(self, tmp_path: Path) -> None:
+        """Two sequential calls see pre-bump and post-bump cursor values
+        consistently with the figure. ``hit_rate_pct`` is unchanged by
+        the cursor bump (the figure is independent of the cursor), but
+        the freshness field reflects the committed state of the cursor.
+        """
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        initial_offset = handle.path.stat().st_size
+
+        # Snapshot before the call.
+        with connect(db) as conn:
+            row = conn.execute(
+                "SELECT committed_offset, updated_at FROM usage_source_cursors "
+                "WHERE source_path = ?",
+                (str(handle.path.expanduser().resolve()),),
+            ).fetchone()
+            assert row is not None
+            pre_bump_updated_at = row[1]
+            assert row[0] == initial_offset
+
+        # Pre-bump call: reads the pre-bump cursor.
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic is None and stored is not None
+        assert stored["as_of_offset"] == initial_offset
+        assert stored["as_of"] == pre_bump_updated_at
+
+        # Bump the cursor and verify a subsequent call sees it.
+        writable = connect(db)
+        try:
+            writable.execute(
+                "UPDATE usage_source_cursors SET committed_offset = ?, "
+                "updated_at = '2099-01-01T00:00:00' "
+                "WHERE source_path = ?",
+                (
+                    initial_offset + 1000,
+                    str(handle.path.expanduser().resolve()),
+                ),
+            )
+            writable.commit()
+        finally:
+            writable.close()
+
+        stored2, diagnostic2 = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic2 is None and stored2 is not None
+        assert stored2["as_of_offset"] == initial_offset + 1000
+        assert stored2["as_of"] == "2099-01-01T00:00:00"
+        assert stored2["hit_rate_pct"] == stored["hit_rate_pct"] == 77
