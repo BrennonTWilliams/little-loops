@@ -1,20 +1,30 @@
-"""ll-next: advisory cross-verb next-action recommendations (FEAT-3561).
+"""ll-next: advisory cross-verb next-action recommendations (FEAT-3561, FEAT-3711).
 
 Reads the project's issue files (and, when a loop action type is in scope, its loop
 definitions and filesystem run history) once, scores ``implement-issue``, ``refine-issue``,
 ``resolve-blocker`` and ``run-loop`` candidates deterministically, and prints up to N
-recommendations (or explains one target). It is read-only and advisory: no ``history.db``
-access, no git, no writes, no telemetry, and it never runs the copied actions.
+recommendations (or explains one target). It is advisory and never runs the copied actions;
+selection reads only the project's files (no git, no incidental telemetry).
+
+Recording (FEAT-3711): a normal invocation also appends one ``shown`` event per offered
+recommendation to the *existing* local ``history.db`` (it never creates or migrates the store)
+and prints each saved ``rec_id``. ``--no-record`` and ``--explain`` write nothing. Two
+subcommands dispatch on the first argument: ``accept REC_ID`` appends an idempotent explicit
+acknowledgement, and ``feedback REC_ID`` is a read-only lookup (``accepted`` or ``unknown``).
 
 Usage:
-    ll-next [--json] [--top N] [--type VERB ...] [--explain VERB TARGET]
+    ll-next [--json] [--top N] [--type VERB ...] [--no-record] [--explain VERB TARGET]
+    ll-next accept REC_ID
+    ll-next feedback [--json] REC_ID
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from little_loops.next_arena.registry import registered_verbs
 
@@ -38,8 +48,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ll-next",
         description=(
-            "Recommend what to do next across action types (advisory; nothing is executed "
-            "or written). Run the copied actions from the printed project root."
+            "Recommend what to do next across action types (advisory; nothing is executed). "
+            "Offered recommendations are recorded in the existing local history store unless "
+            "--no-record, --explain or the capture settings disable it. Run the copied actions "
+            "from the printed project root."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
@@ -54,6 +66,9 @@ Examples:
   %(prog)s --json                            Machine-readable envelope (see output-schema.json)
   %(prog)s --explain refine-issue FEAT-0123  Why this verb does or does not apply to the issue
   %(prog)s --explain run-loop NAME           Why a loop (exact command operand) is or is not offered
+  %(prog)s --no-record                       Recommend without recording the offers
+  %(prog)s accept REC_ID                     Explicitly acknowledge a recorded recommendation
+  %(prog)s feedback REC_ID [--json]          Look up a recorded recommendation (accepted/unknown)
 
 Exit codes:
   0 - recommendations (or a target assessment for --explain) were printed
@@ -76,6 +91,11 @@ Exit codes:
         choices=verbs,
         metavar="VERB",
         help=f"Restrict to an action type (repeatable): {', '.join(verbs)}",
+    )
+    parser.add_argument(
+        "--no-record",
+        action="store_true",
+        help="Do not record the offered recommendations (--explain never records either)",
     )
     parser.add_argument(
         "--explain",
@@ -128,6 +148,205 @@ def _fail(message: str) -> int:
     return _EXIT_USAGE
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _subcommand_parser(name: str, description: str, *, json_flag: bool) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"ll-next {name}",
+        description=description,
+        epilog="Exit codes: 0 success, 1 REC_ID unknown in this project, 2 usage, "
+        "configuration or storage error.",
+    )
+    if json_flag:
+        parser.add_argument("--json", action="store_true", help="Emit one JSON document")
+    parser.add_argument(
+        "rec_id",
+        metavar="REC_ID",
+        help="Recommendation ID printed by `ll-next` (8-4-4-4-12 hyphenated UUID, any case)",
+    )
+    return parser
+
+
+def _parse_subcommand(
+    parser: argparse.ArgumentParser, argv: list[str]
+) -> tuple[argparse.Namespace | None, int | None, str | None]:
+    """Parse a subcommand's argv; returns ``(args, exit_code, canonical_rec_id)``."""
+    from little_loops.next_arena.recording import canonical_rec_id
+
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:  # --help (0) and argparse usage errors (2)
+        return None, (exc.code if isinstance(exc.code, int) else _EXIT_USAGE), None
+    try:
+        return args, None, canonical_rec_id(args.rec_id)
+    except ValueError:
+        parser.print_usage(sys.stderr)
+        return (
+            None,
+            _fail(f"REC_ID must be a hyphenated UUID (8-4-4-4-12), got {args.rec_id!r}"),
+            None,
+        )
+
+
+def _history_context(
+    sub: str,
+) -> tuple[Path, str, Any, dict[str, str]] | int:
+    """Project root, project key and frozen history target for a historical subcommand.
+
+    Resolves only the root, the project config file (unreadable config exits 2) and the consumed
+    history target; arena settings, project collection and ``next.*`` validation are bypassed.
+    """
+    from little_loops.config import BRConfig
+    from little_loops.next_arena.recording import freeze_history_target, project_key_for
+    from little_loops.paths import find_project_root
+
+    root = find_project_root(Path.cwd())
+    if root is None:
+        return _fail(
+            "no little-loops project found (no .ll/ directory in the current directory or "
+            "its parents); run ll-init in your project first"
+        )
+    try:
+        BRConfig(root)
+    except Exception as exc:  # unreadable/invalid project config
+        return _fail(f"could not load project configuration: {exc}")
+    try:
+        target, provenance = freeze_history_target(root)
+    except Exception as exc:
+        return _fail(f"could not resolve the history store for {sub}: {exc}")
+    return root, project_key_for(root), target, provenance
+
+
+def _main_accept(argv: list[str]) -> int:
+    """``ll-next accept REC_ID``: idempotent explicit acknowledgement of a recorded offer."""
+    parser = _subcommand_parser(
+        "accept",
+        "Explicitly acknowledge a recorded recommendation (idempotent). Acceptance records "
+        "that you took the offer; it proves neither causation nor that work started or "
+        "succeeded. Needs the existing history store (see `ll-session migrate`).",
+        json_flag=False,
+    )
+    _args, code, rec_id = _parse_subcommand(parser, argv)
+    if rec_id is None:
+        return code if code is not None else _EXIT_USAGE
+    context = _history_context("accept")
+    if isinstance(context, int):
+        return context
+    _root, project_key, target, _provenance = context
+
+    from little_loops.next_arena.recording import new_invocation_id, record_accepted
+    from little_loops.next_arena.render import render_accept_text
+
+    result = record_accepted(
+        rec_id,
+        target=target,
+        project_key=project_key,
+        invocation_id=new_invocation_id(),
+        now=_utc_now,
+    )
+    if result.status in {"accepted", "already_accepted"} and result.offer is not None:
+        print(
+            render_accept_text(
+                rec_id,
+                result.offer,
+                result.accepted_at or "",
+                already=result.status == "already_accepted",
+            )
+        )
+        return _EXIT_OK
+    if result.status == "unknown":
+        print(f"ll-next: no recommendation {rec_id} in this project.", file=sys.stderr)
+        return _EXIT_NONE
+    hint = (
+        " (run `ll-session migrate` to prepare the history store)"
+        if result.reason == "schema_not_ready"
+        else ""
+    )
+    return _fail(f"cannot accept {rec_id}: {result.reason}{hint}")
+
+
+def _main_feedback(argv: list[str]) -> int:
+    """``ll-next feedback REC_ID``: read-only lookup reporting ``accepted`` or ``unknown``."""
+    parser = _subcommand_parser(
+        "feedback",
+        "Look up a recorded recommendation: `accepted` (explicit acknowledgement present) or "
+        "`unknown` (offer found, acceptance unknown). There is no `ignored` state. Read-only.",
+        json_flag=True,
+    )
+    args, code, rec_id = _parse_subcommand(parser, argv)
+    if args is None or rec_id is None:
+        return code if code is not None else _EXIT_USAGE
+    context = _history_context("feedback")
+    if isinstance(context, int):
+        return context
+    _root, project_key, target, provenance = context
+
+    from little_loops.next_arena.history import RecommendationLookup, read_history_snapshot
+    from little_loops.next_arena.recording import FeedbackResult, lookup_feedback
+    from little_loops.next_arena.render import (
+        build_feedback_document,
+        render_feedback_text,
+        render_json,
+    )
+
+    snapshot = read_history_snapshot(
+        target,
+        as_of=_utc_now(),
+        requests=[RecommendationLookup(project_key=project_key, rec_id=rec_id)],
+        now=_utc_now,
+    )
+    result = lookup_feedback(snapshot, rec_id, provenance=provenance)
+    if isinstance(result, FeedbackResult):
+        exit_code = _EXIT_OK if result.found else _EXIT_NONE
+    else:
+        exit_code = _EXIT_USAGE
+    if args.json:
+        print(render_json(build_feedback_document(rec_id, result)))
+    elif exit_code == _EXIT_USAGE:
+        print(render_feedback_text(rec_id, result), file=sys.stderr)
+    else:
+        print(render_feedback_text(rec_id, result))
+    return exit_code
+
+
+def _record_offers(
+    config: Any, root: Path, args: argparse.Namespace, selected: Any, as_of: datetime
+) -> tuple[dict[str, Any], list[str]]:
+    """Gate, then atomically record the shown rows; never changes the recommendations or exit."""
+    from little_loops.next_arena.recording import (
+        RecordingStatus,
+        automatic_recording_gate,
+        freeze_history_target,
+        new_invocation_id,
+        project_key_for,
+        record_shown,
+    )
+
+    # The env kill switch and every config gate are evaluated before any target resolution.
+    reason = automatic_recording_gate(
+        config, no_record=args.no_record, explain=False, has_offers=bool(selected)
+    )
+    if reason is not None:
+        return RecordingStatus("disabled", reason).to_dict(), []
+    try:
+        target, _provenance = freeze_history_target(root)
+        result = record_shown(
+            selected,
+            target=target,
+            project_key=project_key_for(root),
+            invocation_id=new_invocation_id(),
+            as_of=as_of,
+            requested_top=args.top,
+            requested_types=list(args.types or []),
+            now=_utc_now,
+        )
+    except Exception:  # best-effort: recording trouble never changes recommendations or exit
+        return RecordingStatus("unavailable", "write_failed").to_dict(), []
+    return result.recording.to_dict(), list(result.rec_ids)
+
+
 def main_next() -> int:
     """Entry point for the ll-next command.
 
@@ -136,8 +355,13 @@ def main_next() -> int:
         no eligible candidate or the explain target is absent, 2 for usage/configuration
         errors (concise stderr, empty stdout).
     """
+    raw_argv = sys.argv[1:]
+    if raw_argv[:1] == ["accept"]:  # historical subcommands dispatch before the flat parser
+        return _main_accept(raw_argv[1:])
+    if raw_argv[:1] == ["feedback"]:
+        return _main_feedback(raw_argv[1:])
     parser = _build_parser()
-    argv, protected_target = _protect_target(sys.argv[1:])
+    argv, protected_target = _protect_target(raw_argv)
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:  # --help (0) and argparse usage errors (2)
@@ -196,6 +420,8 @@ def main_next() -> int:
     try:
         config = BRConfig(root)
         settings = config.next.resolve_arena_settings()
+        if not (args.no_record or args.explain):
+            config.next.resolve_recording_enabled()  # validate before any storage is touched
     except NextConfigError as exc:
         return _fail(f"invalid configuration: {exc}")
     except Exception as exc:  # unreadable/invalid project config
@@ -229,6 +455,7 @@ def main_next() -> int:
                 project_root=root,
                 as_of=state.as_of,
                 selection_policy=policy,
+                recording={"status": "disabled", "reason": "explain"},
                 explanation=explanation,
                 diagnostics=diagnostics,
             )
@@ -253,12 +480,17 @@ def main_next() -> int:
         caps=settings.caps,
     )
     diagnostics = collect_diagnostics(state_diagnostics, assessments, order)
+    recording, rec_ids = _record_offers(
+        config, root, args, selected, state.as_of
+    )  # before rendering: IDs are exposed only for rows actually saved
     if args.json:
         envelope = build_envelope(
             project_root=root,
             as_of=state.as_of,
             selection_policy=selection_policy(top=args.top, bucket_order=order, caps=settings.caps),
+            recording=recording,
             recommendations=selected,
+            rec_ids=rec_ids,
             diagnostics=diagnostics,
         )
         print(render_json(envelope))
@@ -269,6 +501,8 @@ def main_next() -> int:
                 recommendations=selected,
                 bucket_order=order,
                 diagnostics=diagnostics,
+                recording=recording,
+                rec_ids=rec_ids,
             )
         )
     return _EXIT_OK if selected else _EXIT_NONE

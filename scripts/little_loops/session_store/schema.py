@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 62
+SCHEMA_VERSION = 63
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -113,6 +113,9 @@ _KINDLESS_TABLES = frozenset(
         # recent row for an issue, so there is no "recent by kind" concept to
         # register. See record_prepatch_evidence/read_prepatch_evidence.
         "prepatch_evidence",
+        # (FEAT-3711) ll-next shown/accepted rows are looked up by exact rec_id, never searched
+        # by kind, and are outside the rebuild wipe (no source to replay them from).
+        "recommendation_events",
     }
 )
 
@@ -1702,7 +1705,45 @@ _MIGRATIONS: list[str] = [
         ON usage_completion_dependencies(dependency_source_path, dependency_generation_id,
                                          dependency_derive_version);
     """,
+    # v63 (FEAT-3711): append-only ``ll-next`` recommendation events -- a ``shown`` row per
+    # offered recommendation and one ``accepted_explicit`` acknowledgement copied from it.
+    # No foreign keys, plain TEXT/BINARY columns. ``UNIQUE (rec_id, kind)`` makes accept
+    # retries idempotent and is the lookup index (an exact-identity point seek; no other
+    # index has a consumer). ``session_id`` is always NULL in v1. Excluded from
+    # _REBUILD_TABLES/_REBUILD_SEARCH_KINDS (no kind): the rows have no transcript or raw
+    # source to replay, so a rebuild() wipe would be unrecoverable data loss.
+    """
+    CREATE TABLE recommendation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        rec_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('shown', 'accepted_explicit')),
+        ts TEXT NOT NULL,
+        project_key TEXT NOT NULL,
+        session_id TEXT,
+        invocation_id TEXT NOT NULL,
+        as_of TEXT NOT NULL,
+        rank INTEGER NOT NULL CHECK (rank >= 1),
+        action_type TEXT NOT NULL,
+        action_key TEXT NOT NULL,
+        action_fingerprint TEXT NOT NULL,
+        target TEXT NOT NULL,
+        target_key TEXT NOT NULL,
+        action_spec TEXT NOT NULL,
+        requested_top INTEGER,
+        requested_types TEXT NOT NULL,
+        UNIQUE (rec_id, kind)
+    );
+    """,
 ]
+
+#: First schema version that carries ``recommendation_events`` (FEAT-3711), derived from the
+#: migration list so the write-readiness floor follows the assigned migration, never a literal.
+RECOMMENDATION_EVENTS_MIN_VERSION: int = next(
+    index + 1
+    for index, script in enumerate(_MIGRATIONS)
+    if "CREATE TABLE recommendation_events" in script
+)
 
 
 def _configure_connection(

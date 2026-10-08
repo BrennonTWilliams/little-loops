@@ -443,6 +443,7 @@ class TestMigrationAndDeriveVersion:
             "usage_observation_witnesses",
             "usage_observation_dependencies",
             "usage_completion_dependencies",
+            "recommendation_events",  # v63 (FEAT-3711)
         ):
             conn.execute(f"DROP TABLE {table}")
         conn.execute("UPDATE meta SET value = '60' WHERE key = 'schema_version'")
@@ -455,7 +456,7 @@ class TestMigrationAndDeriveVersion:
         ensure_db(db)
         ensure_db(db)  # repeat is a no-op
         assert _rows(db, "SELECT origin FROM skill_events") == [(None,)]
-        assert _rows(db, "SELECT value FROM meta WHERE key = 'schema_version'") == [("62",)]
+        assert _rows(db, "SELECT value FROM meta WHERE key = 'schema_version'") == [("63",)]
         rebuild(db)
         assert _rows(db, "SELECT origin FROM skill_events") == [("legacy",)]
 

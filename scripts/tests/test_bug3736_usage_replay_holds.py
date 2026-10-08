@@ -111,6 +111,7 @@ def _downgrade_and_remigrate(db: Path) -> None:
             "usage_observation_witnesses",
             "usage_observation_dependencies",
             "usage_completion_dependencies",
+            "recommendation_events",  # v63 (FEAT-3711)
         ):
             conn.execute(f"DROP TABLE {table}")
         conn.execute("UPDATE meta SET value = '58' WHERE key = 'schema_version'")
@@ -495,7 +496,7 @@ class TestLegacySeeding:
     ) -> None:
         db = tmp_path / "h.db"
         ensure_db(db)
-        assert SCHEMA_VERSION == 62
+        assert SCHEMA_VERSION == 63
         assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(0,)]
         assert lifecycle._USAGE_DERIVE_VERSION == "enh3651-v1"
         assert lifecycle.REBUILD_DERIVE_VERSION == "bug3766-v1"

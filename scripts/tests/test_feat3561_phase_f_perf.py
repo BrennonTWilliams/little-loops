@@ -316,6 +316,7 @@ def test_smoke_full_collect_assess_select_path(smoke_project: Path) -> None:
         project_root=smoke_project,
         as_of=state.as_of,
         selection_policy=selection_policy(top=10, bucket_order=order, caps=settings.caps),
+        recording={"status": "disabled", "reason": "no_record"},
         recommendations=selected,
         diagnostics=collect_diagnostics(state.diagnostics, assessments, order),
     )
@@ -382,6 +383,7 @@ def test_no_reads_or_parses_at_assessment_selection_or_render_time(
             project_root=smoke_project,
             as_of=state.as_of,
             selection_policy=selection_policy(top=None, bucket_order=order, caps=settings.caps),
+            recording={"status": "disabled", "reason": "no_record"},
             recommendations=selected,
             diagnostics=collect_diagnostics(state.diagnostics, assessments, order),
         )
@@ -597,6 +599,7 @@ def test_ten_thousand_issue_assess_and_select_within_budget(tmp_path: Path) -> N
             project_root=tmp_path,
             as_of=state.as_of,
             selection_policy=selection_policy(top=10, bucket_order=order, caps=settings.caps),
+            recording={"status": "disabled", "reason": "no_record"},
             recommendations=selected,
             diagnostics=collect_diagnostics(state.diagnostics, assessments, order),
         )
@@ -738,6 +741,7 @@ def test_two_hundred_definitions_and_ten_thousand_runs_within_budget(tmp_path: P
             project_root=tmp_path,
             as_of=state.as_of,
             selection_policy=selection_policy(top=10, bucket_order=order, caps=settings.caps),
+            recording={"status": "disabled", "reason": "no_record"},
             recommendations=selected,
             diagnostics=collect_diagnostics(state.diagnostics, assessments, order),
         )

@@ -127,7 +127,7 @@ def test_variants_and_schema_version() -> None:
     assert ACTION_VARIANTS == ("slash", "loop")
     assert RESERVED_VARIANTS == ("sprint", "scan")
     assert not set(ACTION_VARIANTS) & set(RESERVED_VARIANTS)
-    assert SCHEMA_VERSION == 2
+    assert SCHEMA_VERSION == 3  # FEAT-3711: recording/rec_id envelope contract
 
 
 def test_registry_is_read_only() -> None:

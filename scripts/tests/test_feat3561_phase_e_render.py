@@ -70,6 +70,7 @@ def _envelope(tmp_path: Path, *, top: int | None = None, explain: tuple[str, str
             project_root=state.project_root,
             as_of=state.as_of,
             selection_policy=policy,
+            recording={"status": "disabled", "reason": "explain"},
             explanation=render.build_explanation(named, alternates),
             diagnostics=[] if named else [render.target_not_found(target, verb)],
         )
@@ -83,6 +84,7 @@ def _envelope(tmp_path: Path, *, top: int | None = None, explain: tuple[str, str
         project_root=state.project_root,
         as_of=state.as_of,
         selection_policy=policy,
+        recording={"status": "disabled", "reason": "no_record"},
         recommendations=selected,
         diagnostics=render.collect_diagnostics(state.diagnostics, assessments, order),
     )
@@ -235,6 +237,7 @@ def test_empty_result_validates(tmp_path: Path) -> None:
         selection_policy=selection_policy(
             top=None, bucket_order=registered_verbs(), caps=dict.fromkeys(registered_verbs(), 2)
         ),
+        recording={"status": "disabled", "reason": "nothing_to_record"},
         diagnostics=render.collect_diagnostics(state.diagnostics, assessments, registered_verbs()),
     )
     assert envelope["recommendations"] == [] and envelope["explanation"] is None
@@ -259,7 +262,15 @@ def test_schema_rejects_malformed_recommendations(tmp_path: Path) -> None:
     assert broken(lambda d: d["recommendations"][0]["action_spec"].update(variant="loop"))
     assert broken(lambda d: d["recommendations"][0]["action_spec"].pop("variant"))
     assert broken(lambda d: d["recommendations"][0].update(action_type="bogus-verb"))
-    assert broken(lambda d: d.update(schema_version=3))
+    assert broken(lambda d: d.update(schema_version=2))
+    # FEAT-3711: `recording` is required on every envelope; `rec_id` is required-nullable.
+    assert broken(lambda d: d.pop("recording"))
+    assert broken(lambda d: d["recommendations"][0].pop("rec_id"))
+    assert broken(lambda d: d["recommendations"][0].update(rec_id="not-a-uuid"))
+    assert broken(lambda d: d.update(recording={"status": "recorded", "reason": "no_record"}))
+    assert broken(lambda d: d.update(recording={"status": "disabled", "reason": "bogus"}))
+    assert broken(lambda d: d.update(recording={"status": "unavailable", "reason": None}))
+    assert broken(lambda d: d.update(as_of="2026-10-07T12:00:00Z"))
     assert broken(lambda d: d.update(explanation={"assessment": None, "alternates": []}))
     assert broken(lambda d: d.update(extra_key=1))
     assert broken(lambda d: d["recommendations"][0].update(action_fingerprint="sha256:zz"))
@@ -298,17 +309,28 @@ def test_envelope_key_order_and_as_of_format() -> None:
         project_root="/p",
         as_of=datetime(2026, 10, 7, 12, 0, 5, 999, tzinfo=UTC),
         selection_policy=selection_policy(top=None, bucket_order=("implement-issue",), caps={}),
+        recording={"status": "recorded", "reason": None},
     )
     assert list(envelope) == [
         "schema_version",
         "project_root",
         "as_of",
         "selection_policy",
+        "recording",
         "recommendations",
         "explanation",
         "diagnostics",
     ]
-    assert envelope["as_of"] == "2026-10-07T12:00:05Z"
+    # FEAT-3711: the envelope renders the instant at fixed microsecond precision ...
+    assert envelope["as_of"] == "2026-10-07T12:00:05.000999Z"
+    whole = render.build_envelope(
+        project_root="/p",
+        as_of=AS_OF,
+        selection_policy=selection_policy(top=None, bucket_order=("implement-issue",), caps={}),
+        recording={"status": "recorded", "reason": None},
+    )
+    assert whole["as_of"] == "2026-10-07T12:00:00.000000Z"
+    # ... while the public second-precision formatter keeps its behavior for other callers.
     assert render.format_as_of(AS_OF) == "2026-10-07T12:00:00Z"
 
 

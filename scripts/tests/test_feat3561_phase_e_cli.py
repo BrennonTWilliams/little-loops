@@ -499,6 +499,15 @@ def test_module_imports_no_history_helpers() -> None:
         elif isinstance(node, ast.ImportFrom):
             imported.add(node.module or "")
             imported.update(alias.name for alias in node.names)
-    forbidden_parts = ("session_store", "subprocess", "history", "git", "cli_event_context")
+    # FEAT-3711: recording/accept/feedback read and write the existing history store, but only
+    # through the next_arena seams -- never the session store, git, subprocess or the
+    # incidental-telemetry ``cli_event_context``.
+    forbidden_parts = ("session_store", "subprocess", "git", "cli_event_context")
     offenders = {name for name in imported if any(part in name for part in forbidden_parts)}
     assert not offenders, offenders
+    history_imports = {name for name in imported if "history" in name}
+    assert history_imports <= {
+        "little_loops.next_arena.history",
+        "read_history_snapshot",
+        "freeze_history_target",
+    }, history_imports

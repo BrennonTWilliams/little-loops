@@ -710,3 +710,123 @@ def export_history(
                 logger.warning("export_history: skipping %s: %s", table, exc)
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- recommendations
+# FEAT-3711: read side of the ``recommendation_events`` table (``ll-next`` shown/accepted rows).
+# Every identity predicate is spelled ``COLLATE BINARY`` so a compatible BINARY identity index is
+# used even when the columns were declared NOCASE; the shape probe pins that index through
+# metadata (never by name) before any identity data is queried.
+
+#: Stored columns in table order (``id`` excluded); the writers and the reader share this list.
+RECOMMENDATION_EVENT_COLUMNS: tuple[str, ...] = (
+    "event_id",
+    "rec_id",
+    "kind",
+    "ts",
+    "project_key",
+    "session_id",
+    "invocation_id",
+    "as_of",
+    "rank",
+    "action_type",
+    "action_key",
+    "action_fingerprint",
+    "target",
+    "target_key",
+    "action_spec",
+    "requested_top",
+    "requested_types",
+)
+
+#: Event kinds a point lookup reads; uniqueness of ``(rec_id, kind)`` bounds it to two rows.
+RECOMMENDATION_KINDS: tuple[str, str] = ("shown", "accepted_explicit")
+
+RECOMMENDATION_LOOKUP_SQL = (
+    f"SELECT {', '.join(RECOMMENDATION_EVENT_COLUMNS)} FROM main.recommendation_events "
+    "WHERE rec_id COLLATE BINARY = ? AND project_key COLLATE BINARY = ? "
+    "AND kind COLLATE BINARY IN ('shown', 'accepted_explicit')"
+)
+
+
+@dataclass(frozen=True)
+class RecommendationSchemaStatus:
+    """What an existing store offers ``recommendation_events`` consumers.
+
+    ``stamp`` is the recorded schema version (``None`` when unreadable); ``read_compatible``
+    means the table and its ``(rec_id, kind)`` BINARY unique index have the consumed shape;
+    ``write_ready`` additionally requires a stamp from the owning migration up to the installed
+    runtime's version. ``reason`` explains the first failure (``None`` when write-ready).
+    """
+
+    stamp: int | None
+    write_ready: bool
+    read_compatible: bool
+    reason: str | None = None
+
+
+def recommendation_schema_status(conn: sqlite3.Connection) -> RecommendationSchemaStatus:
+    """Probe *conn*'s existing store through metadata only (no identity data is queried).
+
+    Never scans, repairs or migrates. A view, virtual table, missing column, or a unique index
+    that is partial, expression-based, differently ordered or not BINARY-collated is
+    incompatible -- a name match alone is never trusted.
+    """
+    from little_loops.session_store.schema import (
+        RECOMMENDATION_EVENTS_MIN_VERSION,
+        SCHEMA_VERSION,
+    )
+
+    stamp: int | None = None
+    try:
+        row = conn.execute("SELECT value FROM main.meta WHERE key = 'schema_version'").fetchone()
+        stamp = int(row[0]) if row is not None else None
+    except (sqlite3.OperationalError, ValueError, TypeError):
+        stamp = None
+    shape_reason = _recommendation_shape_reason(conn)
+    read_compatible = shape_reason is None
+    if shape_reason is not None:
+        return RecommendationSchemaStatus(stamp, False, False, shape_reason)
+    if stamp is None or stamp < RECOMMENDATION_EVENTS_MIN_VERSION or stamp > SCHEMA_VERSION:
+        return RecommendationSchemaStatus(stamp, False, read_compatible, "schema_not_ready")
+    return RecommendationSchemaStatus(stamp, True, True, None)
+
+
+def _recommendation_shape_reason(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute(
+        "SELECT type, sql FROM main.sqlite_master WHERE name = ? COLLATE NOCASE",
+        ("recommendation_events",),
+    ).fetchone()
+    if row is None:
+        return "missing_table"
+    sql = (row[1] or "").lstrip().upper()
+    if row[0] != "table" or sql.startswith("CREATE VIRTUAL"):
+        return "incompatible_table"
+    info = conn.execute("PRAGMA main.table_info(recommendation_events)").fetchall()
+    if not set(RECOMMENDATION_EVENT_COLUMNS) <= {r[1].lower() for r in info}:
+        return "incompatible_table"
+    for index in conn.execute("PRAGMA main.index_list(recommendation_events)").fetchall():
+        # index_list columns: seq, name, unique, origin, partial
+        if not index[2] or index[4]:
+            continue
+        # index_xinfo columns: seqno, cid, name, desc, coll, key
+        keys = [
+            (r[2], r[1], r[3], r[4])
+            for r in conn.execute(f'PRAGMA main.index_xinfo("{index[1]}")').fetchall()
+            if r[5]
+        ]
+        if len(keys) != 2:
+            continue
+        (n1, c1, d1, coll1), (n2, c2, d2, coll2) = keys
+        if (
+            (n1 or "").lower() == "rec_id"
+            and (n2 or "").lower() == "kind"
+            and c1 >= 0
+            and c2 >= 0
+            and not d1
+            and not d2
+            and (coll1 or "").upper() == "BINARY"
+            and (coll2 or "").upper() == "BINARY"
+        ):
+            return None
+    return "incompatible_index"

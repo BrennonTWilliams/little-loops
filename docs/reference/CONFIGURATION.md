@@ -1106,7 +1106,7 @@ Pre-patch check configuration (ENH-3142). When enabled, candidate tests added or
 
 ### `next`
 
-Next-action recommendation settings. `loop_history` is consumed by `ll-loop next-loop`; `verbs` is consumed by `ll-next`. Each command validates only its own subtree.
+Next-action recommendation settings. `loop_history` is consumed by `ll-loop next-loop`; `verbs` and `recording` are consumed by `ll-next`. Each command validates only its own subtree.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -1135,6 +1135,7 @@ Next-action recommendation settings. `loop_history` is consumed by `ll-loop next
 | `verbs.run-loop.weights.recency` | `number` ≥ 0 | `0.30` | `ll-next` weight of the seven-day half-life decay of the latest qualifying run (lower-bounded at 0.2). |
 | `verbs.run-loop.weights.success` | `number` ≥ 0 | `0.20` | `ll-next` weight of the share of recognized terminal runs (`completed`, `failed`, `timed_out`) that completed (lower-bounded at 0.2). |
 | `verbs.run-loop.cap` | `integer` ≥ 1 | `2` | Maximum `run-loop` recommendations per `ll-next` selection round-robin. |
+| `recording.enabled` | `boolean` | `true` | Record each recommendation `ll-next` offers (a `shown` event with a `rec_id`) in the existing local history store. Recording also requires `analytics.enabled` not to be `false`, an `analytics.capture.cli_commands` list that matches `ll-next`, and `LL_ANALYTICS_CAPTURE` not set to `0`/`false`/`off`. It never creates or migrates the store (run `ll-session migrate`). `ll-next accept` / `feedback` ignore this toggle. |
 | `verbs.refine-issue.refine_cap` | `integer` ≥ 1 | `5` | Maximum `/ll:refine-issue` runs recorded in an issue's Session Log before `ll-next` reports the cap as a diagnostic instead of recommending another refinement. |
 
 ```json
@@ -1155,8 +1156,8 @@ Next-action recommendation settings. `loop_history` is consumed by `ll-loop next
 - `verbs` weights are per action type and apply to a weighted geometric mean over the axes that resolve for an issue; the weights of axes with no data are renormalized away, so they need not sum to `1.0`. Weights are resolved in each action type's fixed axis order regardless of the order you write them. A weight of `0` disables an axis, and at least one weight per action type must be nonzero. Caps are positive integers (not booleans). Only action types that `ll-next` supports appear under `verbs`; any other name is an unknown key.
 - `next.loop_history.weights` (legacy `ll-loop next-loop`) does **not** affect the `run-loop` verb of `ll-next`: its defaults are the same 0.50/0.30/0.20, but they are tuned through `next.verbs.run-loop.weights`. Likewise `next.verbs` does not affect `ll-loop next-loop`.
 - `additionalProperties` is `false` at every level of the section: unknown keys are errors.
-- `loop_history` and `verbs` are validated independently: `ll-loop next-loop` ignores the contents of `verbs`, and `ll-next` ignores the contents of `loop_history`. An unknown key directly under `next` fails both.
-- `loop_history` is validated when `ll-loop next-loop` runs, and `verbs` when `ll-next` runs, not when the config loads. Invalid values (wrong shape, unknown key, negative, non-numeric, non-finite, an explicit `null` left in the merged config, or all weights zero) make that command exit `2` with one stderr line naming the setting; every other command keeps working.
+- `loop_history`, `verbs` and `recording` are validated independently: `ll-loop next-loop` ignores the contents of `verbs` and `recording`, and `ll-next` ignores the contents of `loop_history`. A malformed `recording` fails only a recording `ll-next` run (exit `2`); `--no-record`, `--explain`, `accept` and `feedback` do not read it. An unknown key directly under `next` fails both.
+- `loop_history` is validated when `ll-loop next-loop` runs, and `verbs` and `recording` when `ll-next` runs, not when the config loads. Invalid values (wrong shape, unknown key, negative, non-numeric, non-finite, an explicit `null` left in the merged config, or all weights zero) make that command exit `2` with one stderr line naming the setting; every other command keeps working.
 - A one-key override in `.ll/ll.local.md` preserves the sibling weights. A local `null` **removes** the key at that level (`next`, `next.loop_history`, `next.loop_history.weights`, or a single weight), so its default applies again. A `null` in `ll-config.json` itself is a value, not a reset, and is rejected here.
 
 ```markdown

@@ -130,11 +130,16 @@ from little_loops.session_store.lifecycle import (
 )
 from little_loops.session_store.omp import normalize_omp_session
 from little_loops.session_store.queries import (
+    RECOMMENDATION_EVENT_COLUMNS,
+    RECOMMENDATION_KINDS,
+    RECOMMENDATION_LOOKUP_SQL,
+    RecommendationSchemaStatus,
     build_snapshot_db,
     export_history,
     export_tables_help,
     fts_phrase,
     recent,
+    recommendation_schema_status,
     search,
 )
 from little_loops.session_store.qwen import is_raw_qwen_record, normalize_qwen_record
@@ -149,6 +154,7 @@ from little_loops.session_store.schema import (
     _KINDLESS_TABLES,
     _LOOP_EVENT_TYPES,
     _MIGRATIONS,
+    RECOMMENDATION_EVENTS_MIN_VERSION,
     SCHEMA_VERSION,
     VALID_KINDS,
     _apply_migrations,
@@ -204,11 +210,13 @@ from little_loops.session_store.writers import (
     _pack_payload,
     _parse_mcp_tool_name,
     _unpack_payload,
+    acknowledge_recommendation_event,
     admit_retry,
     canonicalize_issue_id,
     cli_event_context,
     hook_event_context,
     host_layout_for,
+    insert_shown_recommendation_events,
     is_correction,
     mine_corrections_from_messages,
     normalize_issue_id,
@@ -245,6 +253,14 @@ from little_loops.session_store.writers import (
 __all__ = [
     "DEFAULT_DB_PATH",
     "SCHEMA_VERSION",
+    "RECOMMENDATION_EVENTS_MIN_VERSION",
+    "RECOMMENDATION_EVENT_COLUMNS",
+    "RECOMMENDATION_KINDS",
+    "RECOMMENDATION_LOOKUP_SQL",
+    "RecommendationSchemaStatus",
+    "recommendation_schema_status",
+    "insert_shown_recommendation_events",
+    "acknowledge_recommendation_event",
     "VALID_KINDS",
     "REGISTERED_HOSTS",
     "ensure_db",

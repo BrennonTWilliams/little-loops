@@ -2196,6 +2196,119 @@
       ],
       "type": "table"
     },
+    "recommendation_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "event_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "rec_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "project_key",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "invocation_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "as_of",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "rank",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "action_type",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "action_key",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "action_fingerprint",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_key",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "action_spec",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "requested_top",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "requested_types",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
     "research_triage_events": {
       "columns": [
         {
@@ -3718,5 +3831,5 @@
       "type": "table"
     }
   },
-  "schema_version": 62
+  "schema_version": 63
 }

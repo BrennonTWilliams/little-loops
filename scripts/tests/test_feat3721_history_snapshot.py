@@ -12,6 +12,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,13 @@ from little_loops.next_arena.history import (
     RecentSprintInvocations,
     read_history_snapshot,
 )
-from little_loops.session_store import Deadline
+from little_loops.next_arena.recording import project_key_for
+from little_loops.session_store import (
+    RECOMMENDATION_EVENTS_MIN_VERSION,
+    RECOMMENDATION_LOOKUP_SQL,
+    SCHEMA_VERSION,
+    Deadline,
+)
 from little_loops.session_store import deadline as deadline_mod
 from little_loops.session_store.backend import (
     BackendConfig,
@@ -32,6 +39,7 @@ from little_loops.session_store.backend import (
     RemoteTarget,
 )
 from little_loops.session_store.db import resolve_history_target
+from tests.recommendation_support import event_row, insert_row, make_real_store, replace_table
 
 AS_OF = datetime(2026, 10, 7, 12, 0, tzinfo=UTC)
 OBSERVED = datetime(2026, 10, 7, 12, 0, 5, tzinfo=UTC)
@@ -679,3 +687,318 @@ def test_core_modules_do_not_import_the_reader() -> None:
     )
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
+
+
+# ------------------------------------------------------------------------------ FEAT-3711
+# Real recommendation_lookup / recommendation_schema request kinds over migrated stores.
+
+
+class TestRecommendationRequests:
+    @staticmethod
+    def snap(path: Path, project: Path, *requests: Any, target: Any = None) -> hist.HistorySnapshot:
+        return read_history_snapshot(
+            target or LocalTarget(path),
+            as_of=AS_OF,
+            requests=list(requests),
+            now=lambda: OBSERVED,
+        )
+
+    @staticmethod
+    def lookup(rec_id: str, root: Path) -> hist.RecommendationLookup:
+        return hist.RecommendationLookup(project_key=project_key_for(root), rec_id=rec_id)
+
+    def test_lookup_returns_the_projects_rows_only(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        shown = event_row(project)
+        insert_row(db, shown)
+        insert_row(db, event_row(project, rec_id=shown["rec_id"], kind="accepted_explicit"))
+        insert_row(db, event_row(project))  # another offer of this project: not requested
+        foreign = event_row("/elsewhere")
+        insert_row(db, foreign)
+        snap = self.snap(db, project, self.lookup(shown["rec_id"], project))
+        result = snap.results_by_request["recommendation_lookup"]
+        assert result.availability == "available"
+        assert sorted(r.kind for r in result.rows) == ["accepted_explicit", "shown"]
+        assert {r.project_key for r in result.rows} == {project_key_for(project)}
+        assert result.coverage.returned_rows == 2
+        # the identity exists globally, but is not this project's: no rows
+        other = self.snap(db, project, self.lookup(foreign["rec_id"], project))
+        assert other.results_by_request["recommendation_lookup"].rows == ()
+
+    def test_foreign_project_and_absent_id_are_indistinguishable(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        foreign = event_row("/elsewhere")
+        insert_row(db, foreign)
+        absent = str(uuid.uuid4())
+        a = self.snap(db, project, self.lookup(foreign["rec_id"], project))
+        b = self.snap(db, project, self.lookup(absent, project))
+        assert a.results_by_request["recommendation_lookup"].rows == ()
+        assert (
+            a.results_by_request["recommendation_lookup"].availability
+            == b.results_by_request["recommendation_lookup"].availability
+            == "available"
+        )
+
+    def test_schema_probe_reports_write_ready_on_a_current_store(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        status = (
+            self.snap(db, project, hist.RecommendationSchemaProbe())
+            .results_by_request["recommendation_schema"]
+            .schema_status
+        )
+        assert status is not None
+        assert (status.write_ready, status.read_compatible, status.reason) == (True, True, None)
+        assert status.stamp == SCHEMA_VERSION
+
+    @pytest.mark.parametrize("stamp", [RECOMMENDATION_EVENTS_MIN_VERSION - 1, SCHEMA_VERSION + 1])
+    def test_older_or_newer_stamp_blocks_writes_but_not_reads(
+        self, project: Path, stamp: int
+    ) -> None:
+        db = make_real_store(owned(project))
+        row = event_row(project)
+        insert_row(db, row)
+        conn = sqlite3.connect(db)
+        conn.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (str(stamp),))
+        conn.commit()
+        conn.close()
+        snap = self.snap(
+            db, project, self.lookup(row["rec_id"], project), hist.RecommendationSchemaProbe()
+        )
+        status = snap.results_by_request["recommendation_schema"].schema_status
+        assert status is not None and status.stamp == stamp
+        assert (status.write_ready, status.read_compatible) == (False, True)
+        assert status.reason == "schema_not_ready"
+        lookup = snap.results_by_request["recommendation_lookup"]
+        assert lookup.availability == "available" and len(lookup.rows) == 1
+
+    @pytest.mark.parametrize(
+        ("name", "reason"),
+        [
+            ("partial", "incompatible_index"),
+            ("expression", "incompatible_index"),
+            ("wrong_key", "incompatible_index"),
+            ("nocase", "incompatible_index"),
+            ("view", "incompatible_table"),
+            ("missing", "missing_table"),
+        ],
+    )
+    def test_lookalikes_are_rejected_before_identity_data_is_queried(
+        self, project: Path, name: str, reason: str
+    ) -> None:
+        db = make_real_store(owned(project))
+        variants: dict[str, dict[str, Any]] = {
+            "partial": {
+                "ddl_tail": "",
+                "extra": (
+                    "CREATE UNIQUE INDEX u ON recommendation_events(rec_id, kind) WHERE rank >= 1",
+                ),
+            },
+            "expression": {
+                "ddl_tail": "",
+                "extra": ("CREATE UNIQUE INDEX u ON recommendation_events(lower(rec_id), kind)",),
+            },
+            "wrong_key": {
+                "ddl_tail": "",
+                "extra": ("CREATE UNIQUE INDEX u ON recommendation_events(kind, rec_id)",),
+            },
+            "nocase": {
+                "ddl_tail": "",
+                "extra": (
+                    "CREATE UNIQUE INDEX u ON recommendation_events"
+                    "(rec_id COLLATE NOCASE, kind COLLATE NOCASE)",
+                ),
+            },
+        }
+        if name in variants:
+            replace_table(db, **variants[name])
+        elif name == "view":
+            conn = sqlite3.connect(db)
+            conn.execute("DROP TABLE recommendation_events")
+            conn.execute("CREATE TABLE real_events AS SELECT 1 AS rec_id")
+            conn.execute("CREATE VIEW recommendation_events AS SELECT * FROM real_events")
+            conn.commit()
+            conn.close()
+        else:
+            conn = sqlite3.connect(db)
+            conn.execute("DROP TABLE recommendation_events")
+            conn.commit()
+            conn.close()
+        snap = self.snap(
+            db, project, self.lookup(str(uuid.uuid4()), project), hist.RecommendationSchemaProbe()
+        )
+        lookup = snap.results_by_request["recommendation_lookup"]
+        assert (lookup.availability, lookup.reason) == ("unavailable", reason)
+        status = snap.results_by_request["recommendation_schema"].schema_status
+        assert status is not None
+        assert (status.write_ready, status.read_compatible, status.reason) == (False, False, reason)
+
+    def test_malformed_shape_leaves_cli_evidence_intact(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        conn = sqlite3.connect(db)
+        conn.executemany(f"INSERT INTO cli_events {COLUMNS} VALUES (?,?,?,?,?,?)", [sprint_row(1)])
+        conn.execute("DROP TABLE recommendation_events")
+        conn.commit()
+        conn.close()
+        snap = self.snap(
+            db,
+            project,
+            RecentSprintInvocations(project, ("alpha",)),
+            self.lookup(str(uuid.uuid4()), project),
+            hist.RecommendationSchemaProbe(),
+        )
+        assert snap.results_by_request["sprint_invocations"].availability == "available"
+        assert len(snap.results_by_request["sprint_invocations"].rows) == 1
+        assert snap.results_by_request["recommendation_lookup"].availability == "unavailable"
+        assert snap.results_by_request["recommendation_schema"].availability == "available"
+
+    def test_two_kinds_share_one_snapshot_with_independent_slots(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        row = event_row(project)
+        insert_row(db, row)
+        snap = self.snap(
+            db, project, self.lookup(row["rec_id"], project), hist.RecommendationSchemaProbe()
+        )
+        assert set(snap.results_by_request) == {"recommendation_lookup", "recommendation_schema"}
+        lookup = snap.results_by_request["recommendation_lookup"]
+        schema = snap.results_by_request["recommendation_schema"]
+        assert lookup.schema_status is None and schema.rows == ()
+        assert lookup.coverage.returned_rows == 1 and schema.coverage.returned_rows == 0
+        assert snap.read_observed_at == OBSERVED
+
+    def test_duplicate_kinds_rejected_before_opening(self, project: Path) -> None:
+        missing = LocalTarget(owned(project))  # never created: opening would report unavailable
+        with pytest.raises(ValueError, match="duplicate"):
+            self.snap(
+                missing.path,
+                project,
+                hist.RecommendationSchemaProbe(),
+                hist.RecommendationSchemaProbe(),
+            )
+        assert not missing.path.exists()
+
+    def test_remote_target_gives_every_requested_kind_one_reason(self, project: Path) -> None:
+        cfg = BackendConfig(provider="turso", url="https://example.invalid", project_id="p")
+        snap = self.snap(
+            owned(project),
+            project,
+            self.lookup(str(uuid.uuid4()), project),
+            hist.RecommendationSchemaProbe(),
+            target=RemoteTarget(cfg),
+        )
+        reasons = {k: r.reason for k, r in snap.results_by_request.items()}
+        assert reasons == {
+            "recommendation_lookup": "remote_unsupported_v1",
+            "recommendation_schema": "remote_unsupported_v1",
+        }
+
+    def test_request_local_error_preserves_the_other_result(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = make_real_store(owned(project))
+        row = event_row(project)
+        insert_row(db, row)
+
+        def boom(*_a: Any, **_k: Any) -> Any:
+            raise RuntimeError("probe bug")
+
+        monkeypatch.setattr(hist, "_read_recommendation_schema", boom)
+        snap = self.snap(
+            db, project, self.lookup(row["rec_id"], project), hist.RecommendationSchemaProbe()
+        )
+        assert snap.results_by_request["recommendation_schema"].reason == "unexpected_error"
+        assert snap.results_by_request["recommendation_lookup"].availability == "available"
+
+    def test_expiry_marks_unstarted_requests_unavailable_without_statements(
+        self, project: Path, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = make_real_store(owned(project))
+        row = event_row(project)
+        insert_row(db, row)
+        real = hist._read_recommendation_lookup
+
+        def expire_after(session: Any, request: Any) -> Any:
+            result = real(session, request)
+            clock.t = 5.0  # the shared one-second deadline is now spent
+            return result
+
+        statements: list[str] = []
+        monkeypatch.setattr(hist, "_read_recommendation_lookup", expire_after)
+        monkeypatch.setattr(
+            hist,
+            "_read_recommendation_schema",
+            lambda *a, **k: statements.append("ran") or hist.HistoryReadResult("available"),
+        )
+        snap = self.snap(
+            db, project, self.lookup(row["rec_id"], project), hist.RecommendationSchemaProbe()
+        )
+        assert snap.results_by_request["recommendation_lookup"].availability == "available"
+        late = snap.results_by_request["recommendation_schema"]
+        assert (late.availability, late.reason) == ("unavailable", "deadline_exhausted")
+        assert statements == []
+
+    def test_lookup_transfers_at_most_two_rows_even_with_other_kinds(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        rec = str(uuid.uuid4())
+        # a newer store may hold more kinds: lift the CHECK and add a third kind for this id
+        replace_table(db, ddl_tail="UNIQUE (rec_id, kind)")
+        for kind in ("shown", "accepted_explicit", "future_kind"):
+            insert_row(db, event_row(project, rec_id=rec, kind=kind))
+        result = self.snap(db, project, self.lookup(rec, project)).results_by_request[
+            "recommendation_lookup"
+        ]
+        assert sorted(r.kind for r in result.rows) == ["accepted_explicit", "shown"]
+
+    @pytest.mark.parametrize("declared", ["TEXT", "TEXT COLLATE NOCASE"])
+    def test_lookup_plan_is_an_indexed_seek_without_sorting(
+        self, project: Path, declared: str
+    ) -> None:
+        db = make_real_store(owned(project))
+        if declared != "TEXT":  # NOCASE-declared identity columns beside a BINARY identity index
+            replace_table(
+                db,
+                ddl_tail="UNIQUE (rec_id, kind)",
+                rec=declared,
+                kind=declared,
+                pk=declared,
+                extra=(
+                    "CREATE UNIQUE INDEX uq_bin ON recommendation_events"
+                    "(rec_id COLLATE BINARY, kind COLLATE BINARY)",
+                ),
+            )
+        conn = sqlite3.connect(db)
+        plan = " ".join(
+            str(r[3])
+            for r in conn.execute("EXPLAIN QUERY PLAN " + RECOMMENDATION_LOOKUP_SQL, ("a", "b"))
+        )
+        conn.close()
+        assert "USING INDEX" in plan and "SCAN" not in plan and "TEMP B-TREE" not in plan
+        row = event_row(project)
+        insert_row(db, row)
+        result = self.snap(db, project, self.lookup(row["rec_id"], project)).results_by_request[
+            "recommendation_lookup"
+        ]
+        assert result.availability == "available" and len(result.rows) == 1
+
+    def test_malformed_stored_value_makes_only_the_lookup_unavailable(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        row = event_row(project)
+        insert_row(db, row)
+        conn = sqlite3.connect(db)
+        conn.execute("UPDATE recommendation_events SET rank = 'x' WHERE 1")
+        conn.commit()
+        conn.close()
+        snap = self.snap(
+            db, project, self.lookup(row["rec_id"], project), hist.RecommendationSchemaProbe()
+        )
+        assert snap.results_by_request["recommendation_lookup"].reason == "malformed_event"
+        assert snap.results_by_request["recommendation_schema"].availability == "available"
+
+    def test_lookup_leaves_the_main_database_untouched(self, project: Path) -> None:
+        db = make_real_store(owned(project))
+        row = event_row(project)
+        insert_row(db, row)
+        before = digest(db)
+        self.snap(
+            db, project, self.lookup(row["rec_id"], project), hist.RecommendationSchemaProbe()
+        )
+        assert digest(db) == before

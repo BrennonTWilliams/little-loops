@@ -2402,7 +2402,7 @@
     },
     "next": {
       "type": "object",
-      "description": "Next-action recommendation settings: `loop_history` (consumed by `ll-loop next-loop`) and `verbs` (consumed by `ll-next`). Validated lazily by the consuming command (not at config load): invalid values make that command exit 2 with one diagnostic; each consumer validates only its own subtree. A local `.ll/ll.local.md` override merges per key; a local null removes a leaf so its default applies.",
+      "description": "Next-action recommendation settings: `loop_history` (consumed by `ll-loop next-loop`), `verbs` and `recording` (consumed by `ll-next`). Validated lazily by the consuming command (not at config load): invalid values make that command exit 2 with one diagnostic; each consumer validates only its own subtree. A local `.ll/ll.local.md` override merges per key; a local null removes a leaf so its default applies.",
       "properties": {
         "loop_history": {
           "type": "object",
@@ -2432,6 +2432,18 @@
                 }
               },
               "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "recording": {
+          "type": "object",
+          "description": "`ll-next` recommendation recording (FEAT-3711). Validated lazily by `ll-next` before it opens storage; explicit `ll-next accept`/`feedback` do not consult it.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Record each offered recommendation (a `shown` event with a `rec_id`) in the existing local history store. Recording never creates or migrates the store and also honors `analytics.enabled`, `analytics.capture.cli_commands` and the `LL_ANALYTICS_CAPTURE` kill switch."
             }
           },
           "additionalProperties": false

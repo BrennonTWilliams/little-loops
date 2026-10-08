@@ -241,8 +241,9 @@ class NextConfigError(ValueError):
 
 
 # Allowed keys at each consumed level; mirrored by ``config-schema.json``.
-_NEXT_ROOT_KEYS: tuple[str, ...] = ("loop_history", "verbs")
+_NEXT_ROOT_KEYS: tuple[str, ...] = ("loop_history", "recording", "verbs")
 _NEXT_LOOP_HISTORY_KEYS: tuple[str, ...] = ("weights",)
+_NEXT_RECORDING_KEYS: tuple[str, ...] = ("enabled",)
 # Canonical axis order: the additive sum's left-to-right order depends on it.
 LOOP_HISTORY_WEIGHT_AXES: tuple[str, ...] = ("frequency", "recency", "success")
 DEFAULT_LOOP_HISTORY_WEIGHTS: dict[str, float] = {
@@ -346,6 +347,30 @@ class NextConfig:
         if not any(weights.values()):
             raise NextConfigError("next.loop_history.weights: at least one weight must be nonzero")
         return weights
+
+    def resolve_recording_enabled(self) -> bool:
+        """Return validated ``next.recording.enabled`` for ``ll-next`` shown-offer recording.
+
+        Defaults to ``True``. Only the ``recording`` subtree (plus the shared root-key
+        allowlist) is validated, so a malformed value never affects the legacy loop-weight or
+        ``next.verbs`` consumers, and explicit ``accept``/``feedback`` do not call this.
+
+        Raises:
+            NextConfigError: ``next.recording`` is not a mapping with only an ``enabled``
+                boolean.
+        """
+        if not self.present:
+            return True
+        root = self._mapping("next", self.raw, _NEXT_ROOT_KEYS)
+        if "recording" not in root:
+            return True
+        recording = self._mapping("next.recording", root["recording"], _NEXT_RECORDING_KEYS)
+        enabled = recording.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise NextConfigError(
+                f"next.recording.enabled must be a boolean, got {_describe_type(enabled)}"
+            )
+        return enabled
 
     def resolve_arena_settings(self) -> ArenaSettings:
         """Return validated effective ``next.verbs`` settings for ``ll-next`` (FEAT-3561).

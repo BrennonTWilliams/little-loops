@@ -4,9 +4,12 @@ Pure functions over already-assessed data (FEAT-3561 phase E). Nothing here read
 clock, cwd, environment, files (other than the packaged schema asset), git or the history
 DB. The JSON envelope is::
 
-    {schema_version, project_root, as_of, selection_policy,
+    {schema_version, project_root, as_of, selection_policy, recording,
      recommendations, explanation, diagnostics}
 
+* ``recording`` is ``{status, reason}`` on every envelope (``recorded``/``disabled``/
+  ``unavailable``); each recommendation carries a nullable ``rec_id``, present only after the
+  whole shown batch committed. ``as_of`` is microsecond-precision UTC (FEAT-3711);
 * recommendation mode: ``explanation`` is ``null`` and ``recommendations`` holds complete,
   runnable candidates (action identity is never null);
 * explain mode: ``recommendations`` is ``[]`` and ``explanation`` is
@@ -17,7 +20,8 @@ DB. The JSON envelope is::
 Axis objects keep canonical per-verb order (``sort_keys`` is never used for payloads) and
 ``allow_nan=False`` guarantees no NaN/Infinity ever reaches the output.
 
-The checked-in ``output-schema.json`` is generated from this module::
+The checked-in ``output-schema.json`` and ``feedback-schema.json`` (the ``ll-next feedback
+--json`` document) are generated from this module::
 
     python -m little_loops.next_arena.render --write-schema
 """
@@ -32,12 +36,14 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from little_loops.next_arena.actions import (
     ACTION_KEY_TABLE,
     ACTION_KEYS,
     FINGERPRINT_SCOPE_V1,
+    render_action,
+    spec_from_dict,
 )
 from little_loops.next_arena.candidates import (
     FAIL,
@@ -55,16 +61,32 @@ from little_loops.next_arena.registry import (
     registered_verbs,
 )
 
+if TYPE_CHECKING:
+    from little_loops.next_arena.recording import FeedbackResult, FeedbackUnavailable
+
 __all__ = [
     "DIAGNOSTIC_LIMIT_TEXT",
+    "FEEDBACK_SCHEMA_ASSET",
+    "FEEDBACK_SCHEMA_FILENAME",
+    "FEEDBACK_SCHEMA_VERSION",
+    "RECORDING_DISABLED_REASONS",
+    "RECORDING_UNAVAILABLE_REASONS",
     "SCHEMA_ASSET",
     "SCHEMA_FILENAME",
     "build_envelope",
+    "build_feedback_document",
+    "build_feedback_schema",
+    "feedback_schema_text",
+    "load_feedback_schema",
+    "render_accept_text",
+    "render_feedback_text",
+    "write_feedback_schema",
     "build_explanation",
     "build_output_schema",
     "bucket_diagnostics",
     "collect_diagnostics",
     "format_as_of",
+    "format_instant",
     "load_output_schema",
     "output_schema_text",
     "render_explain_text",
@@ -77,11 +99,33 @@ __all__ = [
 
 SCHEMA_FILENAME = "output-schema.json"
 SCHEMA_ASSET = ("next_arena", SCHEMA_FILENAME)
+FEEDBACK_SCHEMA_FILENAME = "feedback-schema.json"
+FEEDBACK_SCHEMA_ASSET = ("next_arena", FEEDBACK_SCHEMA_FILENAME)
+#: Version of the ``ll-next feedback --json`` document (independent of the envelope's).
+FEEDBACK_SCHEMA_VERSION = 1
+#: Closed ``recording.reason`` vocabularies (FEAT-3711); status ``recorded`` carries no reason.
+RECORDING_DISABLED_REASONS: tuple[str, ...] = (
+    "no_record",
+    "explain",
+    "config_disabled",
+    "env_kill_switch",
+    "analytics_disabled",
+    "command_not_captured",
+    "nothing_to_record",
+)
+RECORDING_UNAVAILABLE_REASONS: tuple[str, ...] = (
+    "remote_unsupported_v1",
+    "schema_not_ready",
+    "write_failed",
+)
 #: Maximum diagnostics listed in human output (JSON always carries all of them).
 DIAGNOSTIC_LIMIT_TEXT = 12
 
 _SCHEMA_ID = "https://little-loops.dev/schemas/ll-next-output.json"
+_FEEDBACK_SCHEMA_ID = "https://little-loops.dev/schemas/ll-next-feedback.json"
 _ISO_DRAFT = "https://json-schema.org/draft/2020-12/schema"
+_UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+_INSTANT_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
 
 
 # ------------------------------------------------------------------------------ envelope
@@ -90,6 +134,16 @@ _ISO_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 def format_as_of(as_of: datetime) -> str:
     """Render the captured clock as ``YYYY-MM-DDTHH:MM:SSZ`` (UTC, second precision)."""
     return as_of.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def format_instant(instant: datetime) -> str:
+    """Render an instant as ``YYYY-MM-DDTHH:MM:SS.ffffffZ`` (UTC, always microseconds).
+
+    The recommendation-event storage and v3 envelope/feedback contract: fractional instants
+    are retained and a whole second renders as an explicit ``.000000Z``. ``format_as_of`` keeps
+    its second precision for its other callers.
+    """
+    return instant.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _json_default(value: Any) -> Any:
@@ -126,17 +180,28 @@ def build_envelope(
     project_root: Path | str,
     as_of: datetime,
     selection_policy: Mapping[str, Any],
+    recording: Mapping[str, Any],
     recommendations: Sequence[Candidate] = (),
+    rec_ids: Sequence[str | None] = (),
     explanation: Mapping[str, Any] | None = None,
     diagnostics: Iterable[Diagnostic] = (),
 ) -> dict[str, Any]:
-    """Assemble the output envelope (key order is part of the contract)."""
+    """Assemble the output envelope (key order is part of the contract).
+
+    *recording* is the required ``{status, reason}`` object; *rec_ids* parallels
+    *recommendations* (``None`` entries, or an empty sequence, mean no usable ID).
+    """
+    ids = list(rec_ids) + [None] * (len(recommendations) - len(rec_ids))
     return {
         "schema_version": SCHEMA_VERSION,
         "project_root": str(project_root),
-        "as_of": format_as_of(as_of),
+        "as_of": format_instant(as_of),
         "selection_policy": dict(selection_policy),
-        "recommendations": [c.to_dict() for c in recommendations],
+        "recording": {"status": recording["status"], "reason": recording["reason"]},
+        "recommendations": [
+            {"rec_id": rec_id, **c.to_dict()}
+            for c, rec_id in zip(recommendations, ids, strict=False)
+        ],
         "explanation": None if explanation is None else dict(explanation),
         "diagnostics": [d.to_dict() for d in sort_diagnostics(diagnostics)],
     }
@@ -326,12 +391,28 @@ def _alternate_text(alt: Any) -> str:
     )
 
 
+def _recording_line(recording: Mapping[str, Any]) -> str | None:
+    status, reason = recording["status"], recording["reason"]
+    if status == "recorded":
+        return "Recording: recorded (accept one with `ll-next accept REC_ID`)"
+    if reason == "nothing_to_record":
+        return None
+    hint = (
+        " - run `ll-session migrate` to prepare the history store"
+        if reason == "schema_not_ready"
+        else ""
+    )
+    return f"Recording: {status} ({reason}){hint}"
+
+
 def render_text(
     *,
     project_root: Path | str,
     recommendations: Sequence[Candidate],
     bucket_order: Sequence[str],
     diagnostics: Sequence[Diagnostic] = (),
+    recording: Mapping[str, Any] | None = None,
+    rec_ids: Sequence[str | None] = (),
 ) -> str:
     """Human output for recommendation mode (also the empty/exit-1 rendering)."""
     root = str(project_root)
@@ -342,10 +423,16 @@ def render_text(
     else:
         lines.append("ll-next: no eligible candidate across " + ", ".join(bucket_order) + ".")
     lines.extend(_root_hint(root))
-    for position, cand in enumerate(recommendations, start=1):
+    recording_line = _recording_line(recording) if recording is not None else None
+    if recording_line is not None:
+        lines.append(recording_line)
+    ids = list(rec_ids) + [None] * (len(recommendations) - len(rec_ids))
+    for position, (cand, rec_id) in enumerate(zip(recommendations, ids, strict=False), start=1):
         lines.append("")
         lines.append(f"{position}. [{cand.action_type}] {cand.target}")
         lines.append(f"   {cand.display_command}")
+        if rec_id is not None:
+            lines.append(f"   rec_id: {rec_id}")
         lines.append(f"   {cand.selection_reason}")
         lines.append(f"   axes: {_axes_line(cand)}")
         if cand.alternates:
@@ -544,6 +631,7 @@ def _loop_variant_schema() -> dict[str, Any]:
 _VARIANT_SCHEMAS = {"slash": _slash_variant_schema, "loop": _loop_variant_schema}
 
 _RECOMMENDATION_ONLY = (
+    "rec_id",
     "action_type",
     "action_key",
     "action_fingerprint",
@@ -633,6 +721,7 @@ def build_output_schema() -> dict[str, Any]:
     recommendation_props = dict(common)
     recommendation_props.update(
         {
+            "rec_id": _nullable({"type": "string", "pattern": _UUID_PATTERN}),
             "action_key": {"type": "string", "enum": action_keys},
             "action_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
             "action_spec": _ref("action_spec"),
@@ -669,6 +758,7 @@ def build_output_schema() -> dict[str, Any]:
             "project_root",
             "as_of",
             "selection_policy",
+            "recording",
             "recommendations",
             "explanation",
             "diagnostics",
@@ -677,16 +767,47 @@ def build_output_schema() -> dict[str, Any]:
         "properties": {
             "schema_version": {"const": SCHEMA_VERSION},
             "project_root": {"type": "string", "minLength": 1},
-            "as_of": {
-                "type": "string",
-                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
-            },
+            "as_of": {"type": "string", "pattern": _INSTANT_PATTERN},
             "selection_policy": _ref("selection_policy"),
+            "recording": _ref("recording"),
             "recommendations": {"type": "array", "items": _ref("recommendation")},
             "explanation": _nullable(_ref("explanation")),
             "diagnostics": {"type": "array", "items": _ref("diagnostic")},
         },
         "$defs": {
+            "recording": {
+                "description": (
+                    "Whether the offered rows were stored. `rec_id` values are present only "
+                    "when status is `recorded`. Observational: removing it and the IDs leaves "
+                    "identical recommendations."
+                ),
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "required": ["status", "reason"],
+                        "additionalProperties": False,
+                        "properties": {"status": {"const": "recorded"}, "reason": {"type": "null"}},
+                    },
+                    {
+                        "type": "object",
+                        "required": ["status", "reason"],
+                        "additionalProperties": False,
+                        "properties": {
+                            "status": {"const": "disabled"},
+                            "reason": {"enum": list(RECORDING_DISABLED_REASONS)},
+                        },
+                    },
+                    {
+                        "type": "object",
+                        "required": ["status", "reason"],
+                        "additionalProperties": False,
+                        "properties": {
+                            "status": {"const": "unavailable"},
+                            "reason": {"enum": list(RECORDING_UNAVAILABLE_REASONS)},
+                        },
+                    },
+                ],
+            },
             "selection_policy": {
                 "type": "object",
                 "required": [
@@ -837,16 +958,276 @@ def write_output_schema(path: Path | None = None) -> Path:
     return target
 
 
+# ------------------------------------------------------------------- feedback / accept
+
+
+def _offer_document(offer: Any) -> dict[str, Any]:
+    """The stored offer as the feedback document renders it (``display_command`` derived)."""
+    stored = json.loads(offer.action_spec)
+    spec = {"variant": stored["variant"], **{k: v for k, v in stored.items() if k != "variant"}}
+    return {
+        "rec_id": offer.rec_id,
+        "as_of": offer.as_of,
+        "shown_at": offer.ts,
+        "invocation_id": offer.invocation_id,
+        "rank": offer.rank,
+        "action_type": offer.action_type,
+        "action_key": offer.action_key,
+        "action_fingerprint": offer.action_fingerprint,
+        "target": offer.target,
+        "target_key": offer.target_key,
+        "display_command": render_action(spec_from_dict(stored)),
+        "action_spec": spec,
+        "requested_top": offer.requested_top,
+        "requested_types": json.loads(offer.requested_types),
+    }
+
+
+def build_feedback_document(
+    rec_id: str, result: FeedbackResult | FeedbackUnavailable
+) -> dict[str, Any]:
+    """The single ``ll-next feedback --json`` document for exits 0, 1 and 2 (key order is contract).
+
+    ``state`` exists only for a found offer (``accepted`` | ``unknown``); an absent or
+    foreign-project ID is ``found: false`` / ``state: null`` / ``rec_id_not_found``; a storage
+    problem is ``availability: unavailable`` with its reason, never a state.
+    """
+    observed = result.read_observed_at
+    provenance = None if result.provenance is None else dict(result.provenance)
+    base: dict[str, Any] = {
+        "schema_version": FEEDBACK_SCHEMA_VERSION,
+        "rec_id": rec_id,
+    }
+    from little_loops.next_arena.recording import FeedbackResult  # lazy: recording imports us
+
+    if isinstance(result, FeedbackResult):
+        base.update(
+            {
+                "found": result.found,
+                "state": result.state,
+                "availability": "available",
+                "reason": result.reason,
+                "offer": None if result.offer is None else _offer_document(result.offer),
+                "accepted_at": result.accepted_at,
+            }
+        )
+    else:
+        base.update(
+            {
+                "found": False,
+                "state": None,
+                "availability": "unavailable",
+                "reason": result.reason,
+                "offer": None,
+                "accepted_at": None,
+            }
+        )
+    base["read_observed_at"] = None if observed is None else format_instant(observed)
+    base["provenance"] = provenance
+    return base
+
+
+def _offer_line(offer: Mapping[str, Any]) -> str:
+    return f"[{offer['action_type']}] {offer['target']}: {offer['display_command']}"
+
+
+def render_accept_text(rec_id: str, offer: Any, accepted_at: str, *, already: bool) -> str:
+    """The one human line ``ll-next accept`` prints (no ``--json`` in v1)."""
+    verb = "already accepted" if already else "accepted"
+    return (
+        f"ll-next: {verb} {rec_id} - offered {_offer_line(_offer_document(offer))} "
+        f"(offered as of {offer.as_of}; acknowledged {accepted_at})"
+    )
+
+
+def render_feedback_text(rec_id: str, result: FeedbackResult | FeedbackUnavailable) -> str:
+    """Human ``ll-next feedback`` output: the offer, its state and the read provenance."""
+    document = build_feedback_document(rec_id, result)
+    lines = [f"ll-next feedback {rec_id}"]
+    if document["availability"] == "unavailable":
+        lines.append(f"unavailable: {document['reason']}")
+        if document["reason"] == "schema_not_ready":
+            lines.append("Run `ll-session migrate` to prepare the history store.")
+        elif document["reason"] == "remote_unsupported_v1":
+            lines.append("Recommendation events are local SQLite only in v1.")
+    elif not document["found"]:
+        lines.append("not found: no recommendation with this ID exists in this project.")
+    else:
+        offer = document["offer"]
+        if document["state"] == "accepted":
+            lines.append(f"state: accepted (explicitly acknowledged {document['accepted_at']})")
+        else:
+            lines.append("state: unknown (offer found, acceptance unknown)")
+        lines.append(f"offered: {_offer_line(offer)}")
+        lines.append(
+            f"  rank {offer['rank']}, offered as of {offer['as_of']}; "
+            "the historical offered action, not today's assessment"
+        )
+    provenance = document["provenance"]
+    if provenance is not None:
+        lines.append(f"store: {provenance['store']} ({provenance['source']})")
+    if document["read_observed_at"] is not None:
+        lines.append(f"read observed at {document['read_observed_at']}")
+    return "\n".join(lines)
+
+
+def _feedback_branch(
+    *, found: bool, state: str | None, availability: str = "available"
+) -> dict[str, Any]:
+    """One mutually exclusive outcome shape of the feedback document (state/offer coupling)."""
+    properties: dict[str, Any] = {
+        "found": {"const": found},
+        "state": {"const": state},
+        "availability": {"const": availability},
+        "offer": {"type": "object"} if found else {"type": "null"},
+        "accepted_at": {"type": "string"} if state == "accepted" else {"type": "null"},
+        "reason": {"type": "null"} if found else {"type": "string"},
+    }
+    return {"type": "object", "properties": properties}
+
+
+def build_feedback_schema() -> dict[str, Any]:
+    """Generate the ``ll-next feedback --json`` JSON Schema (offer reuses the action_spec union)."""
+    variants = list(ACTION_VARIANTS)
+    instant = {"type": "string", "pattern": _INSTANT_PATTERN}
+    return {
+        "$schema": _ISO_DRAFT,
+        "$id": _FEEDBACK_SCHEMA_ID,
+        "title": "ll-next feedback --json output",
+        "description": (
+            "Output document of `ll-next feedback REC_ID --json`. Generated by "
+            "little_loops.next_arena.render.build_feedback_schema(); do not edit by hand. "
+            "`state` is `accepted` or `unknown` (offer found, acceptance unknown) and exists "
+            "only for a found offer; there is no `ignored` state."
+        ),
+        "type": "object",
+        "required": [
+            "schema_version",
+            "rec_id",
+            "found",
+            "state",
+            "availability",
+            "reason",
+            "offer",
+            "accepted_at",
+            "read_observed_at",
+            "provenance",
+        ],
+        "additionalProperties": False,
+        "properties": {
+            "schema_version": {"const": FEEDBACK_SCHEMA_VERSION},
+            "rec_id": {"type": "string", "pattern": _UUID_PATTERN},
+            "found": {"type": "boolean"},
+            "state": {"enum": ["accepted", "unknown", None]},
+            "availability": {"enum": ["available", "unavailable"]},
+            "reason": _nullable({"type": "string", "pattern": "^[a-z0-9_]+$"}),
+            "offer": _nullable(_ref("offer")),
+            "accepted_at": _nullable(instant),
+            "read_observed_at": _nullable(instant),
+            "provenance": _nullable(_ref("provenance")),
+        },
+        "oneOf": [
+            _feedback_branch(found=True, state="accepted"),
+            _feedback_branch(found=True, state="unknown"),
+            _feedback_branch(found=False, state=None, availability="available"),
+            _feedback_branch(found=False, state=None, availability="unavailable"),
+        ],
+        "$defs": {
+            "provenance": {
+                "type": "object",
+                "required": ["store", "source"],
+                "additionalProperties": False,
+                "properties": {
+                    "store": {"type": "string", "minLength": 1},
+                    "source": {
+                        "enum": ["LL_HISTORY_DB", "history.db_path", "default", "history.backend"]
+                    },
+                },
+            },
+            "action_spec": {"oneOf": [_VARIANT_SCHEMAS[v]() for v in variants]},
+            "offer": {
+                "type": "object",
+                "description": (
+                    "The immutable stored offer: the historical action as it was recommended, "
+                    "not a reassessment against today's gates, files or definitions."
+                ),
+                "required": [
+                    "rec_id",
+                    "as_of",
+                    "shown_at",
+                    "invocation_id",
+                    "rank",
+                    "action_type",
+                    "action_key",
+                    "action_fingerprint",
+                    "target",
+                    "target_key",
+                    "display_command",
+                    "action_spec",
+                    "requested_top",
+                    "requested_types",
+                ],
+                "additionalProperties": False,
+                "properties": {
+                    "rec_id": {"type": "string", "pattern": _UUID_PATTERN},
+                    "as_of": instant,
+                    "shown_at": instant,
+                    "invocation_id": {"type": "string", "pattern": _UUID_PATTERN},
+                    "rank": {"type": "integer", "minimum": 1},
+                    "action_type": {"type": "string", "minLength": 1},
+                    "action_key": {"type": "string", "minLength": 1},
+                    "action_fingerprint": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+                    "target": {"type": "string", "minLength": 1},
+                    "target_key": {"type": "string", "minLength": 1},
+                    "display_command": {"type": "string", "minLength": 1},
+                    "action_spec": _ref("action_spec"),
+                    "requested_top": _nullable({"type": "integer", "minimum": 1}),
+                    "requested_types": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+    }
+
+
+def feedback_schema_text() -> str:
+    """The canonical serialized feedback schema (exactly what the checked-in file contains)."""
+    return json.dumps(build_feedback_schema(), indent=2, ensure_ascii=False) + "\n"
+
+
+def load_feedback_schema() -> dict[str, Any]:
+    """Load the packaged ``feedback-schema.json`` via ``importlib.resources``."""
+    traversable = importlib.resources.files("little_loops")
+    for part in FEEDBACK_SCHEMA_ASSET:
+        traversable = traversable.joinpath(part)
+    loaded = json.loads(traversable.read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def write_feedback_schema(path: Path | None = None) -> Path:
+    """(Re)generate the checked-in feedback schema; maintainer helper."""
+    target = path or Path(__file__).with_name(FEEDBACK_SCHEMA_FILENAME)
+    target.write_text(feedback_schema_text(), encoding="utf-8")
+    return target
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """``python -m little_loops.next_arena.render --write-schema`` regenerates the asset."""
+    """``python -m little_loops.next_arena.render --write-schema`` regenerates both assets."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args == ["--write-schema"]:
         print(write_output_schema())
+        print(write_feedback_schema())
         return 0
     if args == ["--print-schema"]:
         sys.stdout.write(output_schema_text())
         return 0
-    print("usage: python -m little_loops.next_arena.render (--write-schema | --print-schema)")
+    if args == ["--print-feedback-schema"]:
+        sys.stdout.write(feedback_schema_text())
+        return 0
+    print(
+        "usage: python -m little_loops.next_arena.render "
+        "(--write-schema | --print-schema | --print-feedback-schema)"
+    )
     return 2
 
 

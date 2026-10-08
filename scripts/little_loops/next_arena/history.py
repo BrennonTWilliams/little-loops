@@ -24,7 +24,9 @@ Contract (see ``docs/reference/API.md``):
   evidence ("never ran"). Truncation (``partial``) is classified from the deadline object's
   state or a fired fixed cap, never from error text.
 * **Bounded work.** ``cli_events`` has no binary/time index, so the sprint request walks
-  descending primary-key ID ranges (``NOT INDEXED``) under fixed span/window/row caps.
+  descending primary-key ID ranges (``NOT INDEXED``) under fixed span/window/row caps. The
+  recommendation lookup is an exact ``(rec_id, kind)`` point seek (at most two rows), and the
+  schema probe reads metadata only.
 * **Observed snapshot, not reconstruction.** The transaction is internally consistent but not
   atomic with the earlier issue/git/filesystem :class:`ProjectState`; ``as_of`` is carried for
   the consumer's time-window evidence (timestamps are not parsed or filtered here) and mutable
@@ -40,7 +42,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from little_loops.next_arena.inputs import Diagnostic, sort_diagnostics
 from little_loops.session_store.backend import HistoryTarget as HistoryTarget
@@ -51,6 +53,12 @@ from little_loops.session_store.backend import (
     connect_readonly,
 )
 from little_loops.session_store.deadline import Deadline
+from little_loops.session_store.queries import (
+    RECOMMENDATION_EVENT_COLUMNS,
+    RECOMMENDATION_LOOKUP_SQL,
+    RecommendationSchemaStatus,
+    recommendation_schema_status,
+)
 
 __all__ = [
     "CliInvocationRow",
@@ -60,10 +68,15 @@ __all__ = [
     "HistoryRequestKind",
     "HistorySnapshot",
     "RecentSprintInvocations",
+    "RecommendationEventRow",
+    "RecommendationLookup",
+    "RecommendationSchemaProbe",
+    "RecommendationSchemaStatus",
+    "decode_recommendation_row",
     "read_history_snapshot",
 ]
 
-HistoryRequestKind = Literal["sprint_invocations"]
+HistoryRequestKind = Literal["sprint_invocations", "recommendation_lookup", "recommendation_schema"]
 Availability = Literal["available", "partial", "unavailable"]
 
 #: One shared budget for the whole snapshot (opening, probes, queries, fetches, decoding).
@@ -114,8 +127,28 @@ class RecentSprintInvocations:
         object.__setattr__(self, "sprint_names", tuple(self.sprint_names))
 
 
-#: The closed request union; FEAT-3711 extends it with its table-specific requests.
-HistoryReadRequest = RecentSprintInvocations
+@dataclass(frozen=True)
+class RecommendationLookup:
+    """Exact ``(project_key, rec_id)`` point lookup of one recommendation's shown/accepted rows.
+
+    Independent of the CLI history caps; ownership is the ``project_key`` predicate, so a
+    foreign project's identical ``rec_id`` is simply absent.
+    """
+
+    kind: ClassVar[HistoryRequestKind] = "recommendation_lookup"
+    project_key: str
+    rec_id: str
+
+
+@dataclass(frozen=True)
+class RecommendationSchemaProbe:
+    """Metadata-only probe of the ``recommendation_events`` table, index and schema stamp."""
+
+    kind: ClassVar[HistoryRequestKind] = "recommendation_schema"
+
+
+#: The closed request union; each kind owns an independent ``results_by_request`` slot.
+HistoryReadRequest = RecentSprintInvocations | RecommendationLookup | RecommendationSchemaProbe
 
 
 @dataclass(frozen=True)
@@ -128,6 +161,29 @@ class CliInvocationRow:
     args: tuple[str, ...]
     exit_code: int | None
     duration_ms: int | None
+
+
+@dataclass(frozen=True)
+class RecommendationEventRow:
+    """One stored ``recommendation_events`` row (``action_spec``/``requested_types`` are JSON)."""
+
+    event_id: str
+    rec_id: str
+    kind: str
+    ts: str
+    project_key: str
+    session_id: str | None
+    invocation_id: str
+    as_of: str
+    rank: int
+    action_type: str
+    action_key: str
+    action_fingerprint: str
+    target: str
+    target_key: str
+    action_spec: str
+    requested_top: int | None
+    requested_types: str
 
 
 @dataclass(frozen=True)
@@ -158,9 +214,11 @@ class HistoryReadResult:
 
     availability: Availability
     reason: str | None = None
-    rows: tuple[CliInvocationRow, ...] = ()
+    rows: tuple[CliInvocationRow | RecommendationEventRow, ...] = ()
     coverage: HistoryReadCoverage = HistoryReadCoverage()
     diagnostics: tuple[Diagnostic, ...] = ()
+    #: Populated only by the ``recommendation_schema`` probe.
+    schema_status: RecommendationSchemaStatus | None = None
 
 
 @dataclass(frozen=True)
@@ -220,6 +278,9 @@ def read_history_snapshot(
             reason = _failure_reason(exc, deadline)
             return _store_unavailable(requests, as_of, reason, detail=str(exc))
         for request in requests:
+            if deadline.expired():  # unstarted requests issue no statements
+                results[request.kind] = _unavailable(request.kind, "deadline_exhausted")
+                continue
             results[request.kind] = _read_request(session, request, target)
     finally:
         conn.close()
@@ -305,6 +366,10 @@ def _read_request(
     session: _Session, request: HistoryReadRequest, target: LocalTarget
 ) -> HistoryReadResult:
     try:
+        if isinstance(request, RecommendationLookup):
+            return _read_recommendation_lookup(session, request)
+        if isinstance(request, RecommendationSchemaProbe):
+            return _read_recommendation_schema(session, request)
         return _read_sprint_invocations(session, request, target)
     except Exception as exc:  # programming/decoder errors: this request only, rows discarded
         return _unavailable(request.kind, "unexpected_error", f"{type(exc).__name__}: {exc}")
@@ -373,7 +438,7 @@ def _decode_row(row: sqlite3.Row) -> CliInvocationRow | Literal["oversized", "ma
 
 
 def _read_sprint_invocations(
-    session: _Session, request: HistoryReadRequest, target: LocalTarget
+    session: _Session, request: RecentSprintInvocations, target: LocalTarget
 ) -> HistoryReadResult:
     kind = request.kind
     conn, deadline = session.conn, session.deadline
@@ -481,4 +546,100 @@ def _read_sprint_invocations(
         rows=tuple(rows),
         coverage=coverage,
         diagnostics=(_diagnostic(kind, "partial", primary, detail),),
+    )
+
+
+# ------------------------------------------------------------------------ recommendations
+
+
+def decode_recommendation_row(row: sqlite3.Row | Sequence[Any]) -> RecommendationEventRow | None:
+    """Decode one ``RECOMMENDATION_EVENT_COLUMNS``-ordered row; ``None`` when a value is mistyped.
+
+    SQLite is dynamically typed, so a NOT NULL ``TEXT`` column can still hold a blob or number.
+    A mistyped row is never partially trusted.
+    """
+    values = tuple(row[i] for i in range(len(RECOMMENDATION_EVENT_COLUMNS)))
+    (
+        event_id,
+        rec_id,
+        kind,
+        ts,
+        project_key,
+        session_id,
+        invocation_id,
+        as_of,
+        rank,
+        action_type,
+        action_key,
+        action_fingerprint,
+        target,
+        target_key,
+        action_spec,
+        requested_top,
+        requested_types,
+    ) = values
+    text = (
+        event_id,
+        rec_id,
+        kind,
+        ts,
+        project_key,
+        invocation_id,
+        as_of,
+        action_type,
+        action_key,
+        action_fingerprint,
+        target,
+        target_key,
+        action_spec,
+        requested_types,
+    )
+    if not all(isinstance(v, str) for v in text):
+        return None
+    if session_id is not None and not isinstance(session_id, str):
+        return None
+    if isinstance(rank, bool) or not isinstance(rank, int):
+        return None
+    if requested_top is not None and (
+        isinstance(requested_top, bool) or not isinstance(requested_top, int)
+    ):
+        return None
+    return RecommendationEventRow(*values)
+
+
+def _read_recommendation_schema(
+    session: _Session, request: RecommendationSchemaProbe
+) -> HistoryReadResult:
+    kind = request.kind
+    try:
+        status = recommendation_schema_status(session.conn)
+        session.observe()
+    except (sqlite3.Error, HistoryUnavailable) as exc:
+        return _unavailable(kind, _failure_reason(exc, session.deadline), str(exc))
+    return HistoryReadResult("available", schema_status=status)
+
+
+def _read_recommendation_lookup(
+    session: _Session, request: RecommendationLookup
+) -> HistoryReadResult:
+    kind = request.kind
+    conn = session.conn
+    try:
+        status = recommendation_schema_status(conn)
+        session.observe()
+        if not status.read_compatible:
+            return _unavailable(kind, status.reason or "incompatible_table")
+        fetched = conn.execute(
+            RECOMMENDATION_LOOKUP_SQL, (request.rec_id, request.project_key)
+        ).fetchall()
+    except (sqlite3.Error, HistoryUnavailable) as exc:
+        return _unavailable(kind, _failure_reason(exc, session.deadline), str(exc))
+    rows: list[RecommendationEventRow] = []
+    for raw in fetched:
+        decoded = decode_recommendation_row(raw)
+        if decoded is None:
+            return _unavailable(kind, "malformed_event")
+        rows.append(decoded)
+    return HistoryReadResult(
+        "available", rows=tuple(rows), coverage=HistoryReadCoverage(returned_rows=len(rows))
     )

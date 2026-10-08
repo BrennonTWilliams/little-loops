@@ -9,6 +9,7 @@
     "project_root",
     "as_of",
     "selection_policy",
+    "recording",
     "recommendations",
     "explanation",
     "diagnostics"
@@ -16,7 +17,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": 2
+      "const": 3
     },
     "project_root": {
       "type": "string",
@@ -24,10 +25,13 @@
     },
     "as_of": {
       "type": "string",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
     },
     "selection_policy": {
       "$ref": "#/$defs/selection_policy"
+    },
+    "recording": {
+      "$ref": "#/$defs/recording"
     },
     "recommendations": {
       "type": "array",
@@ -53,6 +57,71 @@
     }
   },
   "$defs": {
+    "recording": {
+      "description": "Whether the offered rows were stored. `rec_id` values are present only when status is `recorded`. Observational: removing it and the IDs leaves identical recommendations.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "status",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "const": "recorded"
+            },
+            "reason": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "status",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "const": "disabled"
+            },
+            "reason": {
+              "enum": [
+                "no_record",
+                "explain",
+                "config_disabled",
+                "env_kill_switch",
+                "analytics_disabled",
+                "command_not_captured",
+                "nothing_to_record"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "status",
+            "reason"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "const": "unavailable"
+            },
+            "reason": {
+              "enum": [
+                "remote_unsupported_v1",
+                "schema_not_ready",
+                "write_failed"
+              ]
+            }
+          }
+        }
+      ]
+    },
     "selection_policy": {
       "type": "object",
       "required": [
@@ -451,6 +520,7 @@
       "type": "object",
       "description": "A runnable recommendation: complete, non-null action identity.",
       "required": [
+        "rec_id",
         "action_type",
         "action_key",
         "action_fingerprint",
@@ -474,6 +544,17 @@
       ],
       "additionalProperties": false,
       "properties": {
+        "rec_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "action_type": {
           "type": "string",
           "enum": [

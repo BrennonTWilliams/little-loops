@@ -28,6 +28,7 @@ from little_loops.next_arena.candidates import (
     assess_candidates,
     candidates_from_assessments,
 )
+from little_loops.next_arena.registry import SCHEMA_VERSION
 from little_loops.next_arena.selection import bucket_order_for, select_candidates
 from tests.next_arena_candidates_support import issue, ready_issue
 from tests.next_arena_loop_support import (
@@ -598,7 +599,7 @@ def test_type_run_loop_recommends_the_best_loop(cli: Any, cli_root: Path) -> Non
     assert rec["action_key"] == "run-loop" and rec["target_key"] == "loop:alpha"
     assert rec["action_spec"]["variant"] == "loop"
     assert rec["display_command"] == "ll-loop run -- alpha"
-    assert envelope["schema_version"] == 2
+    assert envelope["schema_version"] == SCHEMA_VERSION
 
 
 def test_text_output_for_a_loop_recommendation(cli: Any, cli_root: Path) -> None:
@@ -712,7 +713,7 @@ def test_real_builtins_never_leak_validation_warnings_to_stdout_or_stderr(
     assert envelope["recommendations"] == []
     codes = {d["code"] for d in envelope["diagnostics"]}
     assert "loop_validation_warning" not in codes and "gate_failed" in codes
-    assert envelope["schema_version"] == 2
+    assert envelope["schema_version"] == SCHEMA_VERSION
 
 
 def test_help_documents_the_new_action_types(capsys: pytest.CaptureFixture[str]) -> None:

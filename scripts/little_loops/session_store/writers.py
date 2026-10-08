@@ -25,7 +25,7 @@ import threading
 import time
 import zlib
 from collections import Counter
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -41,6 +41,7 @@ from little_loops.session_store.backend import (
     translate_sqlite_errors,
 )
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_store
+from little_loops.session_store.queries import RECOMMENDATION_EVENT_COLUMNS
 from little_loops.session_store.schema import _LOOP_EVENT_TYPES
 from little_loops.session_store.targets import RemoteTarget
 from little_loops.session_store.usage_proof import (
@@ -4823,3 +4824,84 @@ def mine_corrections_from_messages(conn: sqlite3.Connection, config: dict | None
             )
             count += 1
     return count
+
+
+# --------------------------------------------------------------------------- recommendations
+# FEAT-3711: ``recommendation_events`` SQL for ``ll-next``. These run inside a transaction the
+# caller owns (``BEGIN IMMEDIATE`` ... ``COMMIT``/``ROLLBACK`` on an existing-store connection),
+# so neither helper commits, creates the table, migrates, or swallows an integrity failure.
+
+_RECOMMENDATION_INSERT_SQL = (
+    "INSERT INTO main.recommendation_events ("
+    + ", ".join(RECOMMENDATION_EVENT_COLUMNS)
+    + ") VALUES ("
+    + ", ".join("?" for _ in RECOMMENDATION_EVENT_COLUMNS)
+    + ")"
+)
+
+# Copies every offer column from the immutable ``shown`` row; only event_id, kind, ts and
+# invocation_id are the acknowledging run's own. The shown-row/project WHERE precedes ON CONFLICT
+# (SQLite parser ambiguity), and the BINARY conflict target matches the migration's identity index
+# so an unrelated differently-collated constraint still raises instead of being ignored.
+_RECOMMENDATION_ACK_SQL = (
+    "INSERT INTO main.recommendation_events ("
+    + ", ".join(RECOMMENDATION_EVENT_COLUMNS)
+    + ") SELECT "
+    + ", ".join(
+        {
+            "event_id": ":event_id",
+            "kind": "'accepted_explicit'",
+            "ts": ":ts",
+            "invocation_id": ":invocation_id",
+        }.get(column, column)
+        for column in RECOMMENDATION_EVENT_COLUMNS
+    )
+    + " FROM main.recommendation_events "
+    "WHERE rec_id COLLATE BINARY = :rec_id AND kind COLLATE BINARY = 'shown' "
+    "AND project_key COLLATE BINARY = :project_key "
+    "ON CONFLICT(rec_id COLLATE BINARY, kind COLLATE BINARY) DO NOTHING"
+)
+
+
+def insert_shown_recommendation_events(
+    conn: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
+) -> None:
+    """Plain-``INSERT`` every shown row; any constraint or UUID collision raises.
+
+    Deliberately not ``INSERT OR IGNORE``: that silently discards NOT NULL/CHECK violations and
+    unrelated conflicts, so a partially recorded batch could expose IDs that were never stored.
+    The caller rolls the whole batch back on the first exception.
+    """
+    for row in rows:
+        conn.execute(
+            _RECOMMENDATION_INSERT_SQL,
+            tuple(row[column] for column in RECOMMENDATION_EVENT_COLUMNS),
+        )
+
+
+def acknowledge_recommendation_event(
+    conn: sqlite3.Connection,
+    *,
+    rec_id: str,
+    project_key: str,
+    event_id: str,
+    ts: str,
+    invocation_id: str,
+) -> int:
+    """Append an ``accepted_explicit`` row copied from the project's ``shown`` row.
+
+    Returns the number of rows inserted: 0 when no such shown row exists in this project, or when
+    the identity was already acknowledged (an idempotent replay). The caller reads the pair back
+    in the same transaction before reporting success.
+    """
+    cursor = conn.execute(
+        _RECOMMENDATION_ACK_SQL,
+        {
+            "event_id": event_id,
+            "ts": ts,
+            "invocation_id": invocation_id,
+            "rec_id": rec_id,
+            "project_key": project_key,
+        },
+    )
+    return int(cursor.rowcount)

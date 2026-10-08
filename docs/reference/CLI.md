@@ -3764,19 +3764,22 @@ queries instead of the `ll:codebase-*` agents — is
 
 ### ll-next
 
-Recommend what to do next across action types. `ll-next` reads your issue files once (and, when a loop action type is in scope, your loop definitions and archived loop runs), scores `implement-issue`, `refine-issue`, `resolve-blocker` and `run-loop` candidates deterministically, and prints the best of each type with the evidence behind it. It is **advisory and read-only**: it never runs the actions it prints, and it writes nothing (no history database, no git, no files).
+Recommend what to do next across action types. `ll-next` reads your issue files once (and, when a loop action type is in scope, your loop definitions and archived loop runs), scores `implement-issue`, `refine-issue`, `resolve-blocker` and `run-loop` candidates deterministically, and prints the best of each type with the evidence behind it. It is **advisory**: it never runs the actions it prints, and selection reads only your project files (no git, no incidental telemetry). A normal run also [records what it offered](#ll-next-recording) in your existing local history database, and `accept` / `feedback` let you acknowledge and look up an offer; `--no-record` and `--explain` write nothing.
 
 Each recommendation carries a copyable command: a `/ll:*` slash command for issue actions, or `ll-loop run -- NAME` for a loop. Run it from the **project root** that `ll-next` prints; slash commands and the `ll-*` tools do not all resolve a project from a subdirectory.
 
 **Usage:**
 ```bash
-ll-next [--json] [--top N] [--type VERB ...] [--explain VERB TARGET]
+ll-next [--json] [--top N] [--type VERB ...] [--no-record] [--explain VERB TARGET]
+ll-next accept REC_ID
+ll-next feedback [--json] REC_ID
 ```
 
 **Flags:**
 | Flag | Description |
 |------|-------------|
-| `--json` | Emit one JSON envelope (`schema_version`, `project_root`, `as_of`, `selection_policy`, `recommendations`, `explanation`, `diagnostics`). The JSON Schema ships with the package as `little_loops/next_arena/output-schema.json`. |
+| `--json` | Emit one JSON envelope (`schema_version`, `project_root`, `as_of`, `selection_policy`, `recording`, `recommendations`, `explanation`, `diagnostics`). `recording` is `{status, reason}` on every envelope and each recommendation carries a nullable `rec_id`; `as_of` is microsecond-precision UTC. The JSON Schema ships with the package as `little_loops/next_arena/output-schema.json`. |
+| `--no-record` | Do not record the offered recommendations (the output still reports `recording: disabled (no_record)`). `--explain` never records either. |
 | `--top N` | Select up to `N` recommendations, filling round-robin across the action types in a fixed order (`implement-issue`, `refine-issue`, `resolve-blocker`, then `run-loop`) with a per-type cap (default 2, `next.verbs.<verb>.cap`). Without `--top`, `ll-next` makes exactly one pass: the best candidate of each action type. `N` must be a positive integer. |
 | `--type VERB` | Restrict to an action type. Repeatable; choices are `implement-issue`, `refine-issue`, `resolve-blocker` and `run-loop`. Loop definitions and run history are read only when `run-loop` is in scope. |
 | `--explain VERB TARGET` | Show the full assessment of `TARGET` for `VERB`: gates, per-axis evidence, why it was or was not eligible, and the other action type's assessment of the same issue. `TARGET` is the full issue ID exactly as spelled in its filename (for example `FEAT-0123`; bare numbers and paths are not accepted), or, for `run-loop`, the exact loop command operand as printed (a name from `ll-loop list`; it may start with a dash, e.g. `-x`, and is taken literally). Works for any existing issue or discovered loop, including done, EPIC, ambiguous, invalid and unresolved-input ones. Cannot be combined with `--top` or `--type`. |
@@ -3792,12 +3795,21 @@ Within one action type, candidates are ranked by a weighted geometric score over
 
 **Diagnostics** (listed after the recommendations, and always in `--json`): `empty_source`, `gate_failed` and `gate_missing` explain an empty action type (for `run-loop`, `gate_failed` includes the `cold_start_scope` gate); `ambiguous_issue_id` and `unsupported_issue_filename` flag sources that cannot back an action (duplicate IDs, shared issue numbers, unnormalized or numberless filenames); `refine_cap_exhausted` reports an issue whose refinement cap is used up; `conflicting_completed_at` flags a reopened issue that still carries a completion marker; `loop_definition_excluded`, `loops_dir_out_of_root`, `loop_history_unavailable` and `loop_history_record_excluded` report loop definitions or run records that could not be used; `target_not_found` reports an unknown `--explain` target. A loop's validation warnings are shown only under `--explain` (they never reach stderr or `--json` stdout).
 
+<a id="ll-next-recording"></a>
+**Recording, `accept` and `feedback`:**
+
+- **Recording.** After selecting, a normal run stores one `shown` event per offered recommendation in one atomic batch *before* printing, then prints each saved `rec_id` (JSON: `recommendations[].rec_id`; text: a `rec_id:` line). Each event keeps the offered action and its fingerprint immutably, so a later `accept` or `feedback` reports the action as it was offered, not as today's files would assess it. A `shown` event means an offer was prepared for output, not that anyone read it. Recording only uses an **existing, current local** history store: it never creates or migrates `history.db`. With a missing, outdated or incompatible store the run still succeeds with identical recommendations and no IDs, and reports `recording: unavailable (schema_not_ready)`; run `ll-session migrate` once to prepare the store. A remote (libsql) store reports `unavailable (remote_unsupported_v1)`; a failed write reports `unavailable (write_failed)`. `recording.reason` is one of `no_record`, `explain`, `config_disabled`, `env_kill_switch`, `analytics_disabled`, `command_not_captured`, `nothing_to_record` (disabled), or `remote_unsupported_v1`, `schema_not_ready`, `write_failed` (unavailable). Recording honors [`next.recording.enabled`](CONFIGURATION.md#next), `analytics.enabled`, the `analytics.capture.cli_commands` allowlist (binary `ll-next`) and the `LL_ANALYTICS_CAPTURE=0|false|off` kill switch. Events accumulate with every run; there is no pruning in this version.
+- **`ll-next accept REC_ID`** explicitly acknowledges a recorded recommendation (idempotent; it can run in another session). It prints one line (`accepted` or `already accepted`, the ID, the offered target and action, and the original acknowledgement time); there is no `--json`. Acceptance records that you took the offer: it does not prove the work started, succeeded, or that the offer caused anything, and it never re-checks today's gates. It works regardless of the automatic-capture settings but needs the prepared local store.
+- **`ll-next feedback [--json] REC_ID`** is a read-only lookup. `state` is `accepted` (an explicit acknowledgement exists, with its time) or `unknown` (*offer found, acceptance unknown*); there is **no** `ignored` state, since repeated displays or missing telemetry never prove a rejection. An ID that does not exist in this project (including one that belongs to another project sharing the same store) reports `found: false`, `state: null` and exits `1`. `--json` always emits exactly one document, including for exits `1` and `2`; its schema ships as `little_loops/next_arena/feedback-schema.json`.
+- **Identity.** `REC_ID` is the hyphenated UUID printed by `ll-next`; uppercase or mixed case is accepted, while braces, `urn:uuid:` prefixes and unhyphenated hex are usage errors. IDs are scoped to the project root they were recorded for: invoking from a subdirectory shares the scope, a different checkout does not, and moving or renaming a project makes its old IDs unknown at the new location. A relative `LL_HISTORY_DB` keeps its meaning relative to the directory you run from, so the project root and a subdirectory can select different stores; set an absolute `LL_HISTORY_DB` to share one store across working directories.
+- `accept` and `feedback` take their flags after the subcommand (`ll-next --json feedback X` is a usage error) and do not evaluate your issues or the `next.verbs` / `next.loop_history` settings, so an offered ID stays usable after its target is done, removed or changed.
+
 **Exit codes:**
 | Code | Meaning |
 |------|---------|
-| `0` | Recommendations were printed, or `--explain` found the target. |
-| `1` | No eligible candidate across the requested action types, or the `--explain` target does not exist. |
-| `2` | Usage error, no little-loops project found (no `.ll/` directory in the current directory or its parents), or invalid configuration (concise message on stderr, empty stdout). |
+| `0` | Recommendations were printed, `--explain` found the target, `accept` acknowledged (or replayed) an ID, or `feedback` found it. |
+| `1` | No eligible candidate across the requested action types, the `--explain` target does not exist, or `accept` / `feedback` found no such `REC_ID` in this project. |
+| `2` | Usage error, no little-loops project found (no `.ll/` directory in the current directory or its parents), invalid configuration, or (for `accept` / `feedback`) an unavailable store: missing, outdated or incompatible schema (`schema_not_ready`), a remote store, or a storage failure. Concise message on stderr, empty stdout (`feedback --json` still prints its single document). |
 
 **Examples:**
 ```bash
@@ -3807,6 +3819,9 @@ ll-next --type refine-issue                  # only refinement recommendations
 ll-next --type resolve-blocker               # the root blockers worth unblocking first
 ll-next --type run-loop                      # loops worth running (no input needed)
 ll-next --json --top 3                       # machine-readable output
+ll-next --no-record                          # recommend without recording the offers
+ll-next accept 3f2b8c1e-9a4d-4e0b-8c6f-1d2e3a4b5c6d    # acknowledge a printed rec_id
+ll-next feedback --json 3f2b8c1e-9a4d-4e0b-8c6f-1d2e3a4b5c6d
 ll-next --explain refine-issue FEAT-0123     # why (or why not) FEAT-0123 is a refinement candidate
 ll-next --explain implement-issue BUG-045    # the implementation gates for BUG-045
 ll-next --explain run-loop fix-types         # why a loop is (or is not) offered

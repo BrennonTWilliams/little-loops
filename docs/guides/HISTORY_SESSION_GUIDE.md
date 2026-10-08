@@ -16,6 +16,7 @@ Long-term observability for the project little-loops is installed in: what ran, 
 - [Quality Metric Definitions](#quality-metric-definitions)
 - [Session Log Tooling (ll-logs)](#session-log-tooling-ll-logs)
 - [Advanced: LCM Compaction](#advanced-lcm-compaction)
+- [Recommendation events](#recommendation-events)
 - [Retention & Pruning](#retention--pruning)
 - [Scrubbing Stored Payloads](#scrubbing-stored-payloads)
 - [Configuration Reference](#configuration-reference)
@@ -55,7 +56,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI). Each `ll-*` command waits at most 250 ms for a busy history.db before skipping its `cli_events` row, so a long-running writer never stalls your commands; skipped rows are counted in `.ll/history.db.cli-event-drops` and `ll-doctor` reports the last-7-day count. To run an `ll-*` CLI without writing its per-invocation analytics row — or authoring the db at all — set `LL_ANALYTICS_CAPTURE=0` (kill switch: no resolution, no file, no `cli_events` row; wins over `LL_HISTORY_DB`; per-invocation use, not a shell-profile export — ENH-3449).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 59, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 63, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
 | Version | Issue | Adds |
 |---------|-------|------|
@@ -121,6 +122,7 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v60 | BUG-3755 | Nullable `to_state` column on `loop_events`: a `route` row keeps the transition source in `state` and the target in `to_state`; earlier rows and non-route events stay NULL |
 | v61 | BUG-3766 | `skill_events.origin` provenance column (`prompt_hook`, `skill_host`, `transcript`, `legacy`) |
 | v62 | ENH-3745 | Five internal usage-derive tables: `usage_source_state` (per-source completion head), `usage_source_pending` (unresolved failure/derive-gap/refresh obligations), `usage_observation_witnesses` / `usage_observation_dependencies` (actual applied-value supplier and consumed qualification frontier) and `usage_completion_dependencies` (what the last positive completion consumed). Created empty: nothing is seeded from legacy cursors or the global checkpoint |
+| v63 | FEAT-3711 | `recommendation_events`: append-only `ll-next` events — a `shown` row per offered recommendation and an `accepted_explicit` acknowledgement copied from it, keyed by `UNIQUE(rec_id, kind)`. Created empty; outside `rebuild()` |
 
 v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; v41 onward are individual feature- or fix-driven migrations, each described in the table above; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
 
@@ -148,6 +150,7 @@ v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observabil
 | `usage_source_cursors` | Source-tail and derive completion proof for `usage_events` (v58, ENH-3651). |
 | `usage_source_state` / `usage_source_pending` | Source-local derive completion and unresolved obligations (v62, ENH-3745): the last *successfully derived* boundary (kept separate from how far the source was ingested), a bounded reason, and durable pending/failure records that survive restart and retention. Content-free: positions and finite reason codes only, never source bytes. |
 | `usage_observation_witnesses` / `usage_observation_dependencies` / `usage_completion_dependencies` | Minimal dependency witnesses (v62, ENH-3745): the source that actually supplied an observation's values, the native context its qualification consumed, and the observations/context the last positive completion depended on. Legacy rows read as explicitly *unavailable*. |
+| `recommendation_events` | `ll-next` recommendation events (v63, FEAT-3711): `shown` (what was offered, with the immutable action payload and fingerprint) and `accepted_explicit` (`ll-next accept`). Project-scoped by a hash of the project root, written only into an existing prepared store, never rebuilt or searched. Looked up with `ll-next feedback REC_ID`. See [Recommendation events](#recommendation-events). |
 | `usage_replay_holds` | Replay hold markers (v59, BUG-3736): sources whose raw rows `prune` removed whole, or legacy populations whose usage cannot be reconstructed. `rebuild`, usage catch-up and `refresh_raw_events` neither delete nor re-derive held usage. Stage 1 never lifts a hold. |
 | `orchestration_runs` | Final per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: invocation-scoped `run_id`, driver, status, duration, failure reason, sprint wave label, optional PR URL, timestamps, git context, dequeue-time `base_sha`/`base_dirty` stamp (v38), and `ll_version` (v48, the little-loops version installed at write time). Retries UPSERT the same `(run_id, issue_id)` and refresh FTS. Queryable via `ll-session recent --kind orchestration_run`, FTS search, export, and `history_reader.recent_orchestration_runs()`/`aggregate_orchestration_runs()` (ENH-2492, v22). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
@@ -677,6 +680,17 @@ ll-session grep "auth" --summary-id 42   # search within a node's scope
 ```
 
 ---
+
+## Recommendation events
+
+`ll-next` can record what it offered and what you explicitly accepted (v63, `recommendation_events`). A normal `ll-next` run appends one `shown` event per recommendation to `.ll/history.db`; `ll-next accept REC_ID` appends an `accepted_explicit` acknowledgement copied from it; `ll-next feedback REC_ID` is a read-only lookup that reports `accepted` or `unknown` (*offer found, acceptance unknown*). There is no `ignored` state: repeated displays and missing telemetry never prove a rejection, and acceptance proves neither causation nor that the work started or succeeded.
+
+- **Existing store only.** Recording, `accept` and `feedback` never create or migrate `history.db`. After upgrading little-loops, a store still at an older schema reports `schema_not_ready` (recommendations are unaffected; only the IDs are missing) until your next session start or an explicit `ll-session migrate` brings it to v63. A remote (libsql/Hrana) store is not supported in this version (`remote_unsupported_v1`).
+- **Project scope.** Each event carries a SHA-256 hash of the resolved project root. Running from a subdirectory shares the scope; a different checkout does not, even when both use one SQLite file (an absolute `LL_HISTORY_DB`). Moving or renaming a project makes its old `rec_id` values unknown at the new location. A relative `LL_HISTORY_DB` is relative to the directory you run from, so use an absolute path to share a store across working directories.
+- **Immutable offers.** The offered action (target, command and fingerprint) is stored as offered. A later `accept` or `feedback` reports that historical action, labeled as such, even if the issue is now done or the loop definition has changed. A fingerprint is a limited identity (for loops, the top-level definition bytes only), and each display gets its own `rec_id` even when fingerprints are equal.
+- **Controls.** Set `next.recording.enabled: false`, `analytics.enabled: false`, exclude `ll-next` from `analytics.capture.cli_commands`, or export `LL_ANALYTICS_CAPTURE=0` to stop automatic recording; `--no-record` and `--explain` write nothing. `ll-next accept` is a deliberate action and ignores those switches.
+- **Growth.** Events are append-only and never pruned or rebuilt: a run that records adds one row per recommendation (typically one to a few). `ll-session prune` does not touch them.
+- **Concurrency.** Writers take the store's write lock with a 250 ms busy timeout; under contention a run reports `recording: unavailable (write_failed)` and still prints its recommendations. Reads (`feedback`) are bounded point lookups; like other read-only history access they may create SQLite's `-wal`/`-shm` coordination files for a WAL-mode database but never touch the main file.
 
 ## Retention & Pruning
 

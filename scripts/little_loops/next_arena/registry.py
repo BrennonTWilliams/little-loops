@@ -19,7 +19,9 @@ from types import MappingProxyType
 #: Output contract version (positive integer, independent of the history DB schema).
 #: 2 (FEAT-3769): ``resolve-blocker``/``run-loop`` verbs, the ``loop`` ``action_spec``
 #: variant, the ``run-loop`` action key, loop axes and the alternate ``blocker`` summary.
-SCHEMA_VERSION = 2
+#: 3 (FEAT-3711): required envelope ``recording`` ``{status, reason}``, required-nullable
+#: per-recommendation ``rec_id`` and microsecond (``.ffffffZ``) envelope ``as_of``.
+SCHEMA_VERSION = 3
 
 #: Fixed canonical verb order; only landed verbs are registered (see ``REGISTRY``).
 CANONICAL_VERB_ORDER: tuple[str, ...] = (
