@@ -25,6 +25,38 @@ relates_to:
 - ENH-3751
 - ENH-3747
 testable: true
+confidence_score: 70
+outcome_confidence: 58
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
+risk_factors:
+- id: blocked-by-enh-3747-open
+  domain: readiness
+  criterion: dependencies
+  description: blocked_by ENH-3747 (search survival) is still open; whole-issue prerequisite
+    not yet done
+- id: broad-change-sites
+  domain: outcome
+  criterion: complexity_breadth
+  description: Touches seven source modules plus CLI, docs and nine test files
+- id: deep-reconciliation-rewiring
+  domain: outcome
+  criterion: complexity_depth
+  description: Replaces destructive delete/reinsert with guarded reconciliation across
+    writers, reset, catch-up, rebuild and parser refresh with shared state and CAS
+    contracts
+- id: open-signature-and-version-bump-latitude
+  domain: outcome
+  criterion: ambiguity
+  description: Recovery reader signature is illustrative and the _USAGE_DERIVE_VERSION
+    bump is left to be re-justified during implementation
+- id: wide-writer-seam-blast-radius
+  domain: outcome
+  criterion: change_surface
+  description: Shared writer, invalidation and disposition seams have many callers
+    (prune, rebuild, refresh, CLI)
 ---
 
 # ENH-3770: Guarded usage reconciliation, held-source derivation and hold release (ENH-3744/3745 MP3)
@@ -184,8 +216,31 @@ No competing candidate proof/recognition algorithm or prune veto (ENH-3744), sou
 
 **Open** | Created: 2026-10-07 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-08_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 58/100 → LOW
+
+### Concerns
+- Spec is exhaustive and format/design gates are clean; the only readiness blocker is the unfinished prerequisite.
+
+### Gaps to Address
+- `blocked_by` ENH-3747 is `Open` (ENH-3744 and ENH-3745 are done). The issue itself requires all three `done` before implementation starts, and its search-survival controls depend on ENH-3747's delivered scope.
+
+### Outcome Risk Factors
+- deep per-site complexity: guarded reconciliation replaces destructive delete/reinsert across writers, reset, catch-up, rebuild and parser refresh, with shared witness/CAS contracts
+- broad enumeration across ~7 source modules plus CLI, docs and 9 test files
+- wide blast radius on shared writer, invalidation and disposition seams
+- minor open latitude: recovery-reader signature is illustrative; `_USAGE_DERIVE_VERSION` bump to be re-justified at implementation
+
+### Risk Factor Delta
+- Baseline: none recorded
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-08T19:59:54 - `68f86f32-26f3-4a59-825f-0a51741d037e.jsonl`
 - Pre-implementation landed-handoff review - 2026-10-07 - Corrected the actual disposition owner and non-destructive invalid-checkpoint baseline; ENH-3747 remains the only open prerequisite. Added shared target factoring, preservation/component-aware invalidation, typed acquisition-authority/revision reads, transaction-local CAS revision chaining, retained post-write completion publication and inverse whole-held-population inventory. Required rawless/unmatched/mixed-channel and stale acquisition controls. Opus confidence 0.78 supported reader independence and production witness interoperability; automatic witness certification from singleton keys/equal values was not adopted, so unwitnessed unchanged historical rows explicitly remain unknown. Format/design/dependency checks and relevant existing suites/prose gate: 330 passed. No implementation or readiness score.
 - `/ll:ready-issue` - 2026-10-07T23:18:26 - `d4950fb6-e6e8-449c-ae1d-00ebb49011d8.jsonl`
 - Pre-implementation review #2 - 2026-10-07 - Identified CLI `--rebuild` counts incorrectly suppressing outstanding work and parser refresh's non-usage cache obligation. Required component-specific acknowledgement in ENH-3745's shared pending state and authoritative API/text/JSON retry results. `/ll:advise` with Opus (confidence 0.70) supported the shared `raw_cache`/`usage` split and excluding bounded rebuilds from cache acknowledgement; final flags derive from unresolved committed state after all phases, not an earlier refreshed result or returned counts. Added narrowly proved original-source qualification recovery for matching linked audit rows, preserving values and historical cost; made the synthetic contradictory stripped-usage fixture's old destructive expectation an explicit fail-closed behavior change. Verified the ENH-3747 prerequisite's surviving-observation scope. Existing producer/hold/incremental/refresh baseline: 121 passed. No implementation or new readiness score claimed.
