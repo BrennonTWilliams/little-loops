@@ -30,8 +30,8 @@ risk_factors:
 - id: output-contract-bump
   domain: outcome
   criterion: change_surface
-  description: Next-free output schema_version bump touches render, cli/next,
-    package_data and drift fixtures.
+  description: Next-free output schema_version bump touches render, cli/next, package_data
+    and drift fixtures.
 - id: reader-type-widening
   domain: outcome
   criterion: complexity
@@ -224,5 +224,6 @@ A user sees recorded recommendation IDs and explicitly accepts one from another 
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-08T05:35:11 - `3ca530de-dd95-4a97-b64a-90be8cf6dba5.jsonl`
 - `/ll:ready-issue` - 2026-10-08T05:31:41 - `aaeb73d9-a786-48b9-be1e-964af1982633.jsonl`
 - `/ll:confidence-check` - 2026-10-08T05:24:23 - `ec9a9402-6796-4072-8370-3f622c1f9b32.jsonl`
