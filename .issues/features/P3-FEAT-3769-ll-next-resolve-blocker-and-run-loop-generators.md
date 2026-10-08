@@ -17,6 +17,43 @@ relates_to:
 - FEAT-3681
 - FEAT-3714
 - FEAT-3722
+confidence_score: 90
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
+risk_factors:
+- id: action-union-contract-change
+  domain: outcome
+  criterion: complexity
+  description: Generalizing ActionSpec union, serializers, fingerprint projection
+    and output Schema is a contract change across shared consumers.
+- id: helper-extraction-judgment
+  domain: outcome
+  criterion: ambiguity
+  description: Preflight helper extraction is conditional ('if needed') and new module
+    boundaries are left to implementation judgment.
+- id: legacy-next-loop-overlap
+  domain: readiness
+  criterion: no_duplicate_implementations
+  description: Legacy cmd_next_loop/_scan_history already scores loop runs; arena
+    must reuse FEAT-3681 primitives, not become a second scorer.
+- id: loader-seam-fanout
+  domain: outcome
+  criterion: change_surface
+  description: load_and_validate is referenced by 14 modules; the captured-content
+    seam must leave the legacy path behavior-identical.
+- id: resolver-parity-drift
+  domain: readiness
+  criterion: architecture_compliance
+  description: Pure inventory resolver and preflight helpers mirror resolve_loop_path
+    and runner checks as a parallel pathway that can drift.
+- id: wide-multi-module-sweep
+  domain: outcome
+  criterion: complexity
+  description: About 15 change sites across next_arena, cli, loader, config, schema
+    and docs.
 ---
 
 # FEAT-3769: ll-next resolve-blocker and run-loop generators
@@ -194,6 +231,26 @@ ENH-3771's usefulness review is optional and non-gating.
 
 - 2026-10-07 (dispatch/domain review): Reuse the core flag-backed `decision_unresolved` veto for the root-blocker implementation branch, preserving genuinely needed refinement actions and explained exclusions. A temporary `_scan_history` probe retained a post-`as_of` completed status for a pre-`as_of` run start while dropping its observation timestamp; clarified current captured-status success rather than historical knowledge reconstruction. Opus recommended "CONVERGE" (0.86); these are source-backed corrections/limitations within the frozen scope, not a new history framework or implementation evidence.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-07_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across ~15 sites (next_arena, cli, loader, config, schema, docs) with moderate-to-deep per-site complexity.
+- Generalizing the `ActionSpec` union, serializers, fingerprint projection and output Schema is a shared-contract change; keep implement/refine fixtures as the regression guard.
+- `load_and_validate` is referenced by 14 modules; the captured-content seam must leave the legacy path behavior-identical.
+- Preflight-helper extraction is conditional ("if needed") and module boundaries are left to judgment; resolver/preflight parity tests are the drift guard.
+
+### Risk Factor Delta
+- Baseline: none recorded
+
 ## Status
 
 **Open** | Created: 2026-10-07 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-10-08T01:38:36 - `343c9913-3cee-46b9-ac51-07d359eb143a.jsonl`
