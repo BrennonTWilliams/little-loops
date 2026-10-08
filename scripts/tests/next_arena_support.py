@@ -146,3 +146,101 @@ def memory_state(
         thresholds=Thresholds(85, 65, False),
         counter=counter,
     )
+
+
+# --------------------------------------------------------------------- schema validation
+
+
+def schema_errors(instance: Any, schema: Mapping[str, Any], root: Mapping[str, Any]) -> list[str]:
+    """Validate *instance* against the JSON Schema subset the ``ll-next`` schema uses.
+
+    ``jsonschema`` is not a repo dependency, so this small walker covers exactly the keywords
+    ``render.build_output_schema`` emits: ``$ref`` (``#/$defs/...``), ``type`` (string or
+    list), ``enum``, ``const``, ``required``, ``properties``, ``additionalProperties``
+    (bool or schema), ``propertyNames`` (enum), ``items``, ``oneOf``, ``anyOf``, ``minimum``,
+    ``maximum``, ``minLength`` and ``pattern``. Returns a list of ``path: message`` strings
+    (empty when valid). An unknown keyword fails loudly so the walker cannot silently go stale.
+    """
+    return _walk(instance, schema, root, "$")
+
+
+_KNOWN_KEYWORDS = {
+    "$ref", "$schema", "$id", "$defs", "title", "description", "type", "enum", "const",
+    "required", "properties", "additionalProperties", "propertyNames", "items", "oneOf",
+    "anyOf", "minimum", "maximum", "minLength", "pattern",
+}  # fmt: skip
+
+
+def _type_ok(value: Any, name: str) -> bool:
+    if name == "null":
+        return value is None
+    if name == "boolean":
+        return isinstance(value, bool)
+    if name == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if name == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if name == "string":
+        return isinstance(value, str)
+    if name == "array":
+        return isinstance(value, list)
+    if name == "object":
+        return isinstance(value, dict)
+    raise AssertionError(f"walker does not know type {name!r}")
+
+
+def _walk(value: Any, schema: Mapping[str, Any], root: Mapping[str, Any], path: str) -> list[str]:
+    import re
+
+    unknown = set(schema) - _KNOWN_KEYWORDS
+    assert not unknown, f"schema walker does not support keywords {sorted(unknown)} at {path}"
+    if "$ref" in schema:
+        target: Any = root
+        for part in schema["$ref"].removeprefix("#/").split("/"):
+            target = target[part]
+        return _walk(value, target, root, path)
+    errors: list[str] = []
+    if "const" in schema and (
+        value != schema["const"] or isinstance(value, bool) != isinstance(schema["const"], bool)
+    ):
+        errors.append(f"{path}: expected const {schema['const']!r}, got {value!r}")
+    if "enum" in schema and value not in schema["enum"]:
+        errors.append(f"{path}: {value!r} not in enum")
+    if "type" in schema:
+        names = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
+        if not any(_type_ok(value, n) for n in names):
+            return [*errors, f"{path}: expected type {names}, got {type(value).__name__}"]
+    if "oneOf" in schema:
+        matches = [b for b in schema["oneOf"] if not _walk(value, b, root, path)]
+        if len(matches) != 1:
+            errors.append(f"{path}: matched {len(matches)} oneOf branches (need exactly 1)")
+    if "anyOf" in schema and not any(not _walk(value, b, root, path) for b in schema["anyOf"]):
+        errors.append(f"{path}: matched no anyOf branch")
+    if isinstance(value, str):
+        if "minLength" in schema and len(value) < schema["minLength"]:
+            errors.append(f"{path}: shorter than {schema['minLength']}")
+        if "pattern" in schema and not re.search(schema["pattern"], value):
+            errors.append(f"{path}: {value!r} does not match {schema['pattern']!r}")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            errors.append(f"{path}: {value} < minimum {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            errors.append(f"{path}: {value} > maximum {schema['maximum']}")
+    if isinstance(value, list) and "items" in schema:
+        for index, item in enumerate(value):
+            errors.extend(_walk(item, schema["items"], root, f"{path}[{index}]"))
+    if isinstance(value, dict):
+        for key in schema.get("required", ()):
+            if key not in value:
+                errors.append(f"{path}: missing required {key!r}")
+        properties = schema.get("properties", {})
+        for key, item in value.items():
+            if "propertyNames" in schema and key not in schema["propertyNames"].get("enum", [key]):
+                errors.append(f"{path}: property name {key!r} not allowed")
+            if key in properties:
+                errors.extend(_walk(item, properties[key], root, f"{path}.{key}"))
+            elif schema.get("additionalProperties") is False:
+                errors.append(f"{path}: unexpected property {key!r}")
+            elif isinstance(schema.get("additionalProperties"), dict):
+                errors.extend(_walk(item, schema["additionalProperties"], root, f"{path}.{key}"))
+    return errors

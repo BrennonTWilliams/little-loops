@@ -3762,6 +3762,53 @@ queries instead of the `ll:codebase-*` agents — is
 
 ---
 
+### ll-next
+
+Recommend what to do next across action types. `ll-next` reads your issue files once, scores `implement-issue` and `refine-issue` candidates deterministically, and prints the best of each type with the evidence behind it. It is **advisory and read-only**: it never runs the actions it prints, and it writes nothing (no history database, no git, no files).
+
+Each recommendation carries a copyable `/ll:*` command. Run it from the **project root** that `ll-next` prints; slash commands and the `ll-*` tools do not all resolve a project from a subdirectory.
+
+**Usage:**
+```bash
+ll-next [--json] [--top N] [--type VERB ...] [--explain VERB TARGET]
+```
+
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `--json` | Emit one JSON envelope (`schema_version`, `project_root`, `as_of`, `selection_policy`, `recommendations`, `explanation`, `diagnostics`). The JSON Schema ships with the package as `little_loops/next_arena/output-schema.json`. |
+| `--top N` | Select up to `N` recommendations, filling round-robin across the action types in a fixed order (`implement-issue`, then `refine-issue`) with a per-type cap (default 2, `next.verbs.<verb>.cap`). Without `--top`, `ll-next` makes exactly one pass: the best candidate of each action type. `N` must be a positive integer. |
+| `--type VERB` | Restrict to an action type. Repeatable; choices are `implement-issue` and `refine-issue`. |
+| `--explain VERB TARGET` | Show the full assessment of `TARGET` for `VERB`: gates, per-axis evidence, why it was or was not eligible, and the other action type's assessment of the same issue. `TARGET` is the full issue ID exactly as spelled in its filename (for example `FEAT-0123`; bare numbers and paths are not accepted). Works for any existing issue, including done, EPIC and ambiguous ones. Cannot be combined with `--top` or `--type`. |
+
+**What gets recommended:**
+
+- `implement-issue` -- an `open` leaf issue whose prerequisites are done, whose readiness and outcome scores meet `commands.confidence_gate` (a valid `outcome_gate_waived: true` waives only the outcome check), that is not `blocked` and has no unresolved `decision_needed`. The command is `/ll:manage-issue bug fix ID`, `feature implement ID` or `enhancement improve ID`.
+- `refine-issue` -- an `open` or `blocked` leaf issue that still needs the next refinement step, in the same order as `ll-issues next-action`: `/ll:format-issue`, `/ll:verify-issues`, `/ll:confidence-check`, then `/ll:refine-issue` (stopping once `next.verbs.refine-issue.refine_cap` runs are logged). A missing readiness score always leads to `/ll:confidence-check`, never to implementation.
+
+Within one action type, candidates are ranked by a weighted geometric score over bounded axes (priority, outcome or readiness gap, downstream fan-out, effort, staleness, recent activity); weights are tunable under [`next.verbs`](CONFIGURATION.md#next). Scores are never compared across action types. A candidate with too little evidence for a numeric score is still listed, after the scored ones, ordered by priority.
+
+**Diagnostics** (listed after the recommendations, and always in `--json`): `empty_source`, `gate_failed` and `gate_missing` explain an empty action type; `ambiguous_issue_id` and `unsupported_issue_filename` flag sources that cannot back an action (duplicate IDs, shared issue numbers, unnormalized or numberless filenames); `refine_cap_exhausted` reports an issue whose refinement cap is used up; `conflicting_completed_at` flags a reopened issue that still carries a completion marker; `target_not_found` reports an unknown `--explain` target.
+
+**Exit codes:**
+| Code | Meaning |
+|------|---------|
+| `0` | Recommendations were printed, or `--explain` found the target. |
+| `1` | No eligible candidate across the requested action types, or the `--explain` target does not exist. |
+| `2` | Usage error, no little-loops project found (no `.ll/` directory in the current directory or its parents), or invalid configuration (concise message on stderr, empty stdout). |
+
+**Examples:**
+```bash
+ll-next                                      # best candidate of each action type
+ll-next --top 4                              # up to 4, filled round-robin
+ll-next --type refine-issue                  # only refinement recommendations
+ll-next --json --top 3                       # machine-readable output
+ll-next --explain refine-issue FEAT-0123     # why (or why not) FEAT-0123 is a refinement candidate
+ll-next --explain implement-issue BUG-045    # the implementation gates for BUG-045
+```
+
+---
+
 ## History & Analysis
 
 ### ll-history

@@ -89,6 +89,9 @@ PACKAGE_DATA_ASSETS: Final[tuple[tuple[str, ...], ...]] = (
     ("assets", "vendor", "htmx", "htmax.js"),
     ("assets", "vendor", "htmx", "PROVENANCE.md"),
     ("templates", "dashboard.llat", "partials.html.j2"),
+    # FEAT-3561: generated JSON Schema for `ll-next --json` output, read at runtime
+    # via importlib.resources (drift-tested against render.build_output_schema()).
+    ("next_arena", "output-schema.json"),
 )
 
 # BUG-3177/BUG-3490: skills/ and commands/ are force-included into the wheel by

@@ -55,6 +55,7 @@ pip install little-loops
 | `little_loops.text_utils` | Text extraction utilities for issue content |
 | `little_loops.pii` | PII detection and redaction utilities (`detect_pii`, `redact_pii`, `apply_pii_action`) and the session-history payload policy (`redact_history_text`, `sanitize_history_payload`) |
 | `little_loops.cli` | CLI entry points (package) |
+| `little_loops.next_arena` | The `ll-next` action arena (FEAT-3561): verb registry, typed action specs, project-state capture, bounded axes, candidate assessment, round-robin selection and output rendering. See [below](#little_loopsnext_arena). |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
 | `little_loops.autodev_summary` | `autodev` run finalization: staged-issue promotion, the `=== Autodev Summary ===` report, and `summary.json` (`python3 -m little_loops.autodev_summary`) |
@@ -740,6 +741,40 @@ NextConfig.resolve_arena_settings() -> ArenaSettings
 ```
 
 `BRConfig.next` is a raw-preserving envelope of the merged `next` setting: constructing `BRConfig` (and `to_dict()`) never validates it. `resolve_loop_history_weights()` returns a fresh `{"frequency", "recency", "success"}` mapping in that order with defaults applied, or raises `NextConfigError` (a `ValueError`) naming the offending setting. `resolve_arena_settings()` returns a frozen `ArenaSettings(weights, caps, refine_cap)`: per-action-type axis weights (read-only mappings in each type's fixed axis order), per-type selection caps and the refinement cap, with defaults applied. It validates only `next.verbs` and raises `NextConfigError` for unknown keys, boolean/negative/non-finite weights, non-positive or boolean caps, or an all-zero weight set. See [`next`](CONFIGURATION.md#next).
+
+## little_loops.next_arena
+
+The pure domain package behind [`ll-next`](CLI.md#ll-next). Everything except `state.collect_project_state` operates on an injected, immutable `ProjectState`: no clock, cwd, environment, git, network or history-database access.
+
+| Module | Role |
+|--------|------|
+| `registry` | Verb registry in canonical order (`implement-issue`, `refine-issue` registered), `SCHEMA_VERSION`, action-variant names, `ArenaSettings`. CLI choices, config keys and schema enums derive from it. |
+| `actions` | Typed `action_spec` tagged union (`SlashActionSpec`, `variant: "slash"`), the seven-row `action_key` table, `action_fingerprint()` (`sha256:` of canonical `{variant, command, args}`), `render_slash()` / `parse_slash()` and option-safe `render_shell()` / `parse_shell()`. |
+| `state` | `collect_project_state(project_root, *, as_of=None, config=None) -> ProjectState`: one read of every issue file across all statuses, the identity inventory (duplicate full IDs, shared issue numbers, unnormalized filenames), lifecycle resolution and the dependency graph. |
+| `inputs` | `Diagnostic`, the captured `FormattingPolicy` and confidence `Thresholds`. |
+| `graph`, `axes` | Dependency-graph analysis, bounded axis curves and the weighted geometric aggregate. |
+| `candidates` | `assess_candidates(state, *, settings=None) -> list[CandidateAssessment]` (every target and verb, with gates and exclusion reasons), `generate_candidates(state)` (eligible, runnable `Candidate` projections) and `assessments_for_target()`. |
+| `selection` | `select_candidates(candidates, *, top, bucket_order, caps)`: one pass when `top` is `None`, otherwise round-robin with per-type caps and one slot per target. |
+| `render` | `build_envelope()`, `render_json()`, `render_text()`, `render_explain_text()`, `collect_diagnostics()` and `build_output_schema()` / `load_output_schema()` for the packaged `output-schema.json`. |
+
+```python
+from pathlib import Path
+
+from little_loops.next_arena.candidates import generate_candidates
+from little_loops.next_arena.selection import bucket_order_for, select_candidates
+from little_loops.next_arena.state import collect_project_state
+
+state = collect_project_state(Path.cwd())
+settings = state.config.next.resolve_arena_settings()
+picks = select_candidates(
+    generate_candidates(state, settings=settings),
+    top=None,
+    bucket_order=bucket_order_for(None),
+    caps=settings.caps,
+)
+```
+
+`ll-next --json` output is validated by the JSON Schema shipped at `little_loops/next_arena/output-schema.json`. Each recommendation has a complete action identity (`action_key`, `action_fingerprint`, `action_spec`, `display_command`, `bucket_rank`); the `--explain` assessment definition allows those fields to be `null` for an excluded target.
 
 ## little_loops.issue_parser
 
