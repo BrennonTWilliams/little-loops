@@ -17,11 +17,15 @@ and ``pressure`` stays ``None``.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from types import MappingProxyType
 from typing import Any
 
+from little_loops.next_arena.actions import SprintActionSpec
 from little_loops.next_arena.candidates import Alternate, Candidate, alternates_for
+from little_loops.next_arena.graph import TERMINAL_STATUSES
 from little_loops.next_arena.registry import (
     CANONICAL_VERB_ORDER,
     DEFAULT_VERB_CAP,
@@ -87,6 +91,57 @@ def _annotated(chosen: Candidate, by_target: Mapping[str, Sequence[Candidate]]) 
         merged[v] for v in sorted(merged) if v not in CANONICAL_VERB_ORDER
     )
     return replace(chosen, alternates=ordered)
+
+
+def _overlap_entry(counterpart: Candidate) -> dict[str, str]:
+    return {
+        "target_key": counterpart.target_key,
+        "action_type": counterpart.action_type,
+        "display_command": counterpart.display_command,
+    }
+
+
+def _with_selected_overlap(picked: list[Candidate]) -> list[Candidate]:
+    """Annotate selected sprint/issue-target pairs as **alternative choices**, not a bundle.
+
+    A selected ``run-sprint`` candidate and a selected issue-target action (``issue:ID`` for any
+    issue verb) overlap when the issue is a *remaining* (nonterminal) member of the sprint's
+    offered snapshot. Both sides get ``evidence.selected_overlap`` -- a list of
+    ``{target_key, action_type, display_command}`` of the selected counterparts, sorted by target
+    key -- rendered as one text line. ``Alternate`` is not used (it links same-target candidates,
+    is merged by ``action_type`` and has no target field); ``evidence`` is an open object, so no
+    schema changes and nothing is persisted from it. The set depends on the selected set
+    (``--top``/``--type``) and is deterministic for it. There is no suppression or scheduling.
+    """
+    remaining: dict[str, set[str]] = {}
+    for cand in picked:
+        spec = cand.action_spec
+        if isinstance(spec, SprintActionSpec):
+            remaining[cand.target_key] = {
+                m.issue_id for m in spec.members if m.status not in TERMINAL_STATUSES
+            }
+    if not remaining:
+        return picked
+    issue_picks = {c.target: c for c in picked if c.target_key.startswith("issue:")}
+    found: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for cand in picked:
+        for issue_id in sorted(remaining.get(cand.target_key, set()) & set(issue_picks)):
+            other = issue_picks[issue_id]
+            found[cand.target_key].append(_overlap_entry(other))
+            found[other.target_key].append(_overlap_entry(cand))
+    if not found:
+        return picked
+    out: list[Candidate] = []
+    for cand in picked:
+        entries = found.get(cand.target_key)
+        if entries:
+            merged = {
+                **cand.evidence,
+                "selected_overlap": sorted(entries, key=lambda e: e["target_key"]),
+            }
+            cand = replace(cand, evidence=MappingProxyType(merged))
+        out.append(cand)
+    return out
 
 
 def select_candidates(
@@ -158,4 +213,4 @@ def select_candidates(
                 progressed = True
             if not progressed:
                 break
-    return [_annotated(c, by_target) for c in picked]
+    return _with_selected_overlap([_annotated(c, by_target) for c in picked])

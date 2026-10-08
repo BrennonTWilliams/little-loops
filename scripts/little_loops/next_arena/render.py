@@ -482,6 +482,15 @@ def render_text(
         if cand.alternates:
             alt = "; ".join(_alternate_text(a) for a in cand.alternates)
             lines.append(f"   also: {alt}")
+        evidence_line = _evidence_line(cand)
+        if evidence_line:
+            lines.append(f"   {evidence_line}")
+        overlap = cand.evidence.get("selected_overlap")
+        if overlap:
+            names = "; ".join(f"{o['action_type']} {o['display_command']}" for o in overlap)
+            lines.append(
+                f"   overlaps (alternative choices, not a bundle to run together): {names}"
+            )
     lines.extend(_diagnostic_lines(diagnostics))
     return "\n".join(lines)
 
@@ -532,6 +541,8 @@ def _assessment_block(item: Mapping[str, Any], *, heading: str) -> list[str]:
         lines.append(f"  leverage evidence: downstream {shown} ({leverage.get('status')})")
     lines.extend(_blocker_lines(item["evidence"].get("blocker")))
     lines.extend(_loop_lines(item["evidence"].get("loop")))
+    lines.extend(_sprint_lines(item["evidence"].get("sprint")))
+    lines.extend(_scan_lines(item["evidence"].get("scan")))
     return lines
 
 
@@ -581,6 +592,109 @@ _ABSENT_TARGET_NOUN = {
     DOMAIN_SPRINT: "sprint target",
     DOMAIN_SCAN: "scan target",
 }
+
+
+def _history_summary(history: Mapping[str, Any]) -> str:
+    """One compact clause describing sprint-history evidence (always disclosing its limits)."""
+    labels = ", ".join(history.get("labels") or ())
+    witness = history.get("witness")
+    if witness is not None:
+        scope = (
+            "complete walk" if history.get("complete") else "bounded walk, latest run may be newer"
+        )
+        return (
+            f"newest ended `run NAME` {witness['ended_at']} ({witness['witness_age_days']:.2f} "
+            f"day(s) ago, outcome unknown; {scope}) [{labels}]"
+        )
+    reason = history.get("missing_reason") or "none"
+    extra = ""
+    if history.get("unfinished_invocations"):
+        extra = f"; {history['unfinished_invocations']} unfinished"
+    return f"no qualified invocation observed ({reason}{extra}) [{labels}]"
+
+
+def _sprint_lines(sprint: Mapping[str, Any] | None) -> list[str]:
+    if not sprint:
+        return []
+    lines = [
+        f"  sprint: {sprint['definition_source'] or '(no project-relative source)'}; "
+        f"{sprint['digest_label']} {sprint['definition_digest'] or 'n/a'}; "
+        f"{len(sprint['declared_members'])} distinct declared member(s)"
+    ]
+    if sprint.get("remaining") or sprint.get("terminal_removed"):
+        lines.append(
+            f"  members: remaining {', '.join(sprint['remaining']) or '-'}; "
+            f"done/cancelled (removed) {', '.join(sprint['terminal_removed']) or '-'}"
+        )
+    waves = sprint.get("waves") or []
+    if waves:
+        lines.append("  waves: " + " -> ".join(", ".join(w) for w in waves))
+    problems = [m for m in sprint.get("members", ()) if m.get("problem")]
+    for member in problems:
+        lines.append(f"  member {member['issue_id']}: {member['problem']} - {member['detail']}")
+    lines.append(f"  history: {_history_summary(sprint['history'])}")
+    if sprint.get("normalized_repeats"):
+        lines.append(f"  repeated members counted once: {', '.join(sprint['normalized_repeats'])}")
+    lines.append(f"  note: {sprint['command_note']}")
+    lines.append(f"  note: {sprint['unmodeled_preflights']}")
+    return lines
+
+
+def _scan_lines(scan: Mapping[str, Any] | None) -> list[str]:
+    if not scan:
+        return []
+    dirs = ", ".join(scan["focus_dirs"]) or "-"
+    excludes = ", ".join(scan["exclude_patterns"]) or "-"
+    lines = [f"  scan scope: {dirs} (exclude {excludes}); {scan['freshness']}"]
+    declared = [d for d in scan["configured_directories"] if d["status"] != "ok"]
+    for entry in declared:
+        lines.append(f"  directory {entry['configured']!r}: {entry['status']} - {entry['detail']}")
+    activity = scan.get("activity")
+    if activity is not None:
+        if not activity["available"]:
+            state = f"UNKNOWN ({activity['unavailable_reason']}: {activity['detail']})"
+        elif activity["saturated"]:
+            state = f"at least {activity['scoped_commit_count_lower_bound']} (threshold met; exact total unknown)"
+        elif activity["complete"]:
+            state = f"exactly {activity['scoped_commit_count']}"
+        else:
+            state = (
+                f"at least {activity['scoped_commit_count_lower_bound']} observed, then "
+                f"{activity['truncation_reason']} (partial, not a count)"
+            )
+        shallow = "; shallow clone" if activity.get("shallow") else ""
+        lines.append(
+            f"  activity: {state} scoped commit(s) in {activity['lookback_days']} day(s) to "
+            f"{activity['window_end']} (threshold {activity['threshold']}); "
+            f"{activity['records_visited']} record(s), {activity['git_calls']} git call(s){shallow}"
+        )
+    lines.append(f"  note: {scan['freshness_note']}")
+    lines.append(f"  note: {scan['command_note']}")
+    return lines
+
+
+def _evidence_line(cand: Candidate) -> str | None:
+    """A compact per-recommendation evidence line for sprint and scan offers."""
+    sprint = cand.evidence.get("sprint")
+    if sprint:
+        ready = len(sprint.get("ready_now") or ())
+        total = len(sprint.get("remaining") or ())
+        return (
+            f"sprint: {ready} of {total} remaining member(s) ready now; "
+            f"last run: {_history_summary(sprint['history'])}"
+        )
+    scan = cand.evidence.get("scan")
+    if scan:
+        activity = scan.get("activity") or {}
+        count = activity.get("scoped_commit_count_lower_bound") or activity.get(
+            "scoped_commit_count"
+        )
+        shown = f">={count}" if activity.get("saturated") else str(count)
+        return (
+            f"scan scope: {', '.join(scan['focus_dirs'])}; {shown} scoped commit(s) in "
+            f"{scan['activity_lookback_days']} day(s); {scan['freshness']}"
+        )
+    return None
 
 
 def render_explain_text(

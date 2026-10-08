@@ -882,3 +882,39 @@ def test_assessment_is_deterministic_and_json_clean(tmp_path: Path) -> None:
     second = [a.to_dict() for a in assess_sprints(state)]
     assert first == second
     assert json.dumps(first, allow_nan=False)
+
+
+def test_ambiguous_outside_prerequisite_vetoes_the_dependent_sprint_only(tmp_path: Path) -> None:
+    root = build(
+        tmp_path / "p",
+        {
+            feat(1): ready({"blocked_by": ["FEAT-009"]}),
+            "features/P2-FEAT-009-a.md": ready({"status": "done"}),
+            "features/P3-FEAT-009-b.md": ready({"status": "done"}),
+            feat(2): ready(),
+        },
+        {"dependent": ["FEAT-001"], "independent": ["FEAT-002"]},
+    )
+    state = sprint_state(root)
+    dependent = sprint_of(state, "dependent")
+    assert {"outside_prerequisite_unresolved", "ambiguous_issue_id"} <= codes(dependent)
+    assert "ambiguous_issue" in dependent.gates["prerequisites"].reason
+    assert sprint_of(state, "independent").eligible  # unrelated sprints remain eligible
+
+
+def test_sprint_issue_and_loop_names_never_share_identity_or_diagnostics(tmp_path: Path) -> None:
+    from little_loops.next_arena.candidates import assessments_for_target
+
+    root = build(tmp_path / "p", {feat(1): ready(), bug(2): ready()}, {"FEAT-001": ["BUG-002"]})
+    state = sprint_state(root)
+    assessments = assess_candidates(state, settings=SETTINGS)
+    keys = {(a.action_type, a.target_key) for a in assessments if a.target == "FEAT-001"}
+    assert ("run-sprint", "sprint:FEAT-001") in keys
+    assert ("implement-issue", "issue:FEAT-001") in keys
+    sprint, alternates = assessments_for_target(assessments, "sprint:FEAT-001", "run-sprint")
+    assert sprint is not None and alternates == ()  # no phantom issue assessment on a sprint
+    issue_side, issue_alternates = assessments_for_target(
+        assessments, "issue:FEAT-001", "implement-issue"
+    )
+    assert issue_side is not None
+    assert all(a.action_type != "run-sprint" for a in issue_alternates)

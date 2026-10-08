@@ -361,3 +361,15 @@ def test_original_cwd_relative_history_target_is_frozen_before_cwd_changes(
     (read,) = spy.reads
     assert read["target"].path == sub / "rel" / "history.db"
     assert read["target"].path.is_absolute()
+
+
+def test_configured_relative_history_path_is_project_root_relative_from_a_subdirectory(
+    proj: Path, run: Run, spy: Spy, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (proj / ".ll" / "ll-config.json").write_text(json.dumps({"history": {"db_path": "data/h.db"}}))
+    sub = proj / "deep" / "er"
+    sub.mkdir(parents=True)
+    monkeypatch.chdir(sub)
+    run("--no-record", "--type", "run-sprint")
+    (read,) = spy.reads
+    assert read["target"].path == proj / "data" / "h.db"

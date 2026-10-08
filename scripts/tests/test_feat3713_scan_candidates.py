@@ -502,3 +502,22 @@ def test_default_pass_includes_capture_issues_after_the_others(
     code, out, _ = run("--json", "--no-record")
     kinds = [r["action_type"] for r in json.loads(out)["recommendations"]]
     assert code == 0 and kinds == ["implement-issue", "capture-issues"]
+
+
+def test_unsupported_git_excludes_only_capture_issues_and_names_the_minimum(
+    proj: Path, run: Run, spy: Callable[..., GitSpy]
+) -> None:
+    spy(lambda: [FakeProc(b"", b"error: unknown option `no-lazy-fetch'\n", 129)])
+    code, data = _json(run, "--type", "implement-issue", "--type", "capture-issues")
+    assert code == 0
+    assert [r["action_type"] for r in data["recommendations"]] == ["implement-issue"]
+    code, out, _ = run("--explain", "capture-issues", "project")
+    assert code == 0 and "git_unsupported" in out
+    assert "--no-lazy-fetch" in out and "2.45.0" in out
+    assert "missing - git_unsupported" in out  # unknown evidence, not a failed or zero gate
+
+
+def _json(run: Run, *argv: str) -> tuple[int, dict[str, Any]]:
+    code, out, err = run("--json", "--no-record", *argv)
+    assert err == ""
+    return code, json.loads(out)
