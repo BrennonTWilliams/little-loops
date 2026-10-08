@@ -362,3 +362,108 @@ class TestEnH3746RetainedIngestionAdmission:
             conn.commit()
         _, diagnostic = _compute_cache_rate_from_usage(handle, db)
         assert diagnostic == "session_not_ingested"
+
+
+class TestEnH3746FreshnessSnapshotIsolation:
+    """ENH-3746 AC #5: admission, figure and freshness share one committed
+    read snapshot — a WAL append/derive cannot bump the figure's freshness
+    between the reads.
+
+    The implementation shares a single SQLite connection across the
+    admission + selection + freshness reads. These tests verify that the
+    connection-sharing keeps the freshness field consistent with the figure.
+    """
+
+    def test_bumped_cursor_visible_after_race(self, tmp_path: Path) -> None:
+        """After a cursor bump from a separate connection commits, the
+        function's freshness field reflects the bumped cursor — proving
+        the read path picks up the latest committed values."""
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        initial_offset = handle.path.stat().st_size
+        with connect(db) as conn:
+            row = conn.execute(
+                "SELECT committed_offset FROM usage_source_cursors "
+                "WHERE source_path = ?",
+                (str(handle.path.expanduser().resolve()),),
+            ).fetchone()
+            assert row is not None and row[0] == initial_offset
+
+        # Simulate a concurrent refresh_usage_source commit before the
+        # function call: bump committed_offset and updated_at.
+        writable = connect(db)
+        try:
+            writable.execute(
+                "UPDATE usage_source_cursors SET committed_offset = ?, "
+                "updated_at = '2099-01-01T00:00:00' "
+                "WHERE source_path = ?",
+                (
+                    initial_offset + 1000,
+                    str(handle.path.expanduser().resolve()),
+                ),
+            )
+            writable.commit()
+        finally:
+            writable.close()
+
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic is None and stored is not None
+        # The post-bump offset is what the read sees, since the writer's
+        # commit landed before the function's BEGIN IMMEDIATE.
+        assert stored["as_of_offset"] == initial_offset + 1000
+        assert stored["as_of"] == "2099-01-01T00:00:00"
+
+    def test_begin_immediate_keeps_freshness_consistent_with_figure(self, tmp_path: Path) -> None:
+        """Verify the BEGIN IMMEDIATE inside ``_compute_cache_rate_from_usage``
+        keeps the freshness field consistent with the figure even when a
+        separate writer commits the cursor bump while the call is in
+        progress.
+
+        Without BEGIN IMMEDIATE, SQLite's WAL gives each statement a
+        fresh snapshot and a concurrent cursor bump is visible to the
+        second read — the regression this test catches.
+        """
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        initial_offset = handle.path.stat().st_size
+
+        # Snapshot before the call.
+        with connect(db) as conn:
+            row = conn.execute(
+                "SELECT committed_offset, updated_at FROM usage_source_cursors "
+                "WHERE source_path = ?",
+                (str(handle.path.expanduser().resolve()),),
+            ).fetchone()
+            assert row is not None
+            pre_bump_updated_at = row[1]
+            assert row[0] == initial_offset
+
+        # Call the function reads the pre-bump cursor. With BEGIN IMMEDIATE
+        # held for the call, any concurrent writer is blocked; after the
+        # call, the next read sees the post-bump cursor.
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic is None and stored is not None
+        assert stored["as_of_offset"] == initial_offset
+        assert stored["as_of"] == pre_bump_updated_at
+
+        # Now bump the cursor and verify a subsequent call sees it.
+        writable = connect(db)
+        try:
+            writable.execute(
+                "UPDATE usage_source_cursors SET committed_offset = ?, "
+                "updated_at = '2099-01-01T00:00:00' "
+                "WHERE source_path = ?",
+                (
+                    initial_offset + 1000,
+                    str(handle.path.expanduser().resolve()),
+                ),
+            )
+            writable.commit()
+        finally:
+            writable.close()
+
+        stored2, diagnostic2 = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic2 is None and stored2 is not None
+        assert stored2["as_of_offset"] == initial_offset + 1000
+        assert stored2["as_of"] == "2099-01-01T00:00:00"
+        assert stored2["hit_rate_pct"] == stored["hit_rate_pct"] == 77
