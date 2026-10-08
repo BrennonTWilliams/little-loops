@@ -7,9 +7,17 @@ status: open
 discovered_by: capture-issue
 discovered_date: '2026-10-08'
 captured_at: '2026-10-08T15:14:55Z'
+verify_verdict: VALID
 relates_to:
 - FEAT-3713
 - FEAT-3561
+confidence_score: 95
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
+risk_factors: []
 ---
 
 # BUG-3772: ll-next ignores mapping-valued issue dependencies
@@ -47,13 +55,22 @@ Observed on 2026-10-08: the core graph reported no cyclic IDs and both implement
 
 A nonempty mapping-valued `blocked_by`, `depends_on` or `blocks` is unsupported dependency input and must not establish readiness for affected implementation/root-blocker offers, including targets named by one-sided `blocks` mappings on outside sources. Retain the raw field and a useful diagnostic in explain; unrelated valid sources still produce candidates. Do not silently normalize it into an empty relationship. Empty mappings preserve the current falsy/body-fallback behavior, and valid string/list relationships retain their existing policy.
 
+Scope decisions (pre-implementation review, 2026-10-08):
+
+- **Who is affected.** A nonempty `blocked_by`/`depends_on` mapping excludes its own source. A nonempty `blocks` mapping excludes only the targets named by its exact keys (a source is not made unready by what it blocks). Mapping keys are never fed to the graph as resolvable prerequisites — a terminal key would manufacture false readiness and the shape stays unsupported.
+- **Terminal sources.** A `blocks` mapping on a `done`/`cancelled` source does not exclude its targets (the graph and runtime both treat terminal prerequisites as satisfied). Unsupported-shape evidence and diagnostics are captured only for non-terminal sources, matching the graph's existing anonymous-source rule, so completed history adds no noise to every `--json` run. Ambiguity is judged per record, not per node.
+- **Body fallback.** A nonempty mapping suppresses the body-section fallback for that field (parser parity: frontmatter wins when truthy), so a mapping plus a `## Blocked By` section cannot leave a stale body edge that double-counts in leverage/direct dependents. Only an *empty* mapping falls back to the body.
+- **Refinement.** Refine offers stay ungated (unchanged). `_assess_root` already withholds root-blocker status for any unresolved prerequisite, so mapping-affected roots lose root-blocker offers consistently.
+
 ## Motivation
 
 A copied implementation recommendation can begin work whose actual prerequisites are unresolved. Unsupported dependency metadata needs an explicit exclusion so the advisory arena does not turn missing edges into persuasive readiness evidence.
 
 ## Proposed Solution
 
-Validate nonempty mapping relationship shapes while capturing issue sources, keep typed diagnostic/provenance evidence, and make runnable issue assessments honor that evidence. Fail closed for the affected runnable target rather than guessing mappings are absent. Reuse the captured source and shared assessment/explain path; no per-candidate file reads or runtime resolver simulation.
+Validate nonempty mapping relationship shapes while capturing issue sources and keep typed provenance on `SourceRecord`. **Feed that evidence into `build_issue_graph` as a new unresolved-prerequisite reason** (`unsupported_relationship_shape`, `prerequisite_id=None`, `source_paths=(declaring source,)`) on the affected node — the same anonymous-prerequisite mechanism the graph already uses for numberless sources. `_prerequisites_gate` (both consumers) then fails closed with no gate-logic change beyond naming the source in its reason text, and `build_blocker_index` already treats a `None` prerequisite id as non-exclusive (`multi_blocked`, never `immediate`), so no `blockers.py` change is needed. The graph builds the target-keyed one-sided `blocks` index in its existing single pass, which satisfies order independence and linear-op tests without a new `ProjectState` field. Reuse the captured source and shared assessment/explain path; no per-candidate file reads or runtime resolver simulation.
+
+Rejected alternatives (Opus second opinion, 2026-10-08): a separate `blockers._independent_vetoes` veto (redundant once the graph carries the evidence — the dependent is non-exclusive), a derived `ProjectState` target index (duplicates the graph's pass), and a new gate FAIL code (the gate keeps `prerequisites_unresolved`; the reason text and `reason` field distinguish it).
 
 FEAT-3713 specifies an independent rejection of these shapes on remaining sprint members as `executor_dependency_mismatch`. That guard does not require this broader issue-generator repair and this bug adds no epic child or blocking edge. Do not change shared IssueParser/executor semantics in this fix.
 
@@ -61,13 +78,15 @@ FEAT-3713 specifies an independent rejection of these shapes on remaining sprint
 
 ### Files to Modify
 
-- `scripts/little_loops/next_arena/state.py` — captured relationship validation/provenance.
-- `scripts/little_loops/next_arena/candidates.py` and `scripts/little_loops/next_arena/blockers.py` — runnable issue-gate consumption and explain diagnostics.
+- `scripts/little_loops/next_arena/state.py` — captured relationship validation/provenance (`SourceRecord.unsupported_relationships`, body-fallback suppression, source-subject diagnostic for non-terminal sources).
+- `scripts/little_loops/next_arena/graph.py` — `GraphRecord` protocol gains `unsupported_relationships`; `build_issue_graph` emits `Prerequisite(kind, None, REASON_UNSUPPORTED_SHAPE, status, (path,))` for own-field mappings and, via the existing target-keyed anonymous pass, for one-sided `blocks` mappings from non-terminal records.
+- `scripts/little_loops/next_arena/candidates.py` — `_prerequisites_gate` reason text prints the declaring source path (unanchored entries currently print only `unanchored source`); additive `evidence["dependencies"]["unsupported"]`.
+- `scripts/little_loops/next_arena/blockers.py` — **no change** (a `None` prerequisite id already makes the dependent non-exclusive).
 - Existing `scripts/tests/test_feat3561_phase_b_state.py` and candidate assessment fixtures; add focused regression cases using the shared arena helpers.
 
 ### Dependent Files
 
-- `scripts/little_loops/next_arena/graph.py` consumes captured relationships; preserve valid graph identity/cycle policy.
+- `scripts/little_loops/next_arena/render.py` — unchanged expected; the gate reason carries the target-side evidence.
 - `scripts/little_loops/issue_parser.py` provides the reproduced runtime parsing reference; no modification is required.
 
 ### Codebase Research Findings
@@ -86,18 +105,18 @@ _Added by `/ll:refine-issue` — 2026-10-08 — based on codebase analysis:_
   - Absent input maps to `MISSING`, present-but-invalid maps to `FAIL` (`_score_gate`). The two precedents disagree on whether invalid input also gets a diagnostic (lifecycle: yes; scores: gate only).
   - Aggregated diagnostics go through `sort_diagnostics`; state output must be independent of file enumeration order and each file is read/parsed exactly once (`test_enumeration_order_does_not_change_state`, `test_one_read_and_one_parse_per_file` monkeypatch `state_mod._read_text`/`_parse_frontmatter`).
 - **Tests**: function-style module-level tests (no classes) in `scripts/tests/test_feat3561_phase_b_state.py` (capture; `test_frontmatter_edges_win_over_conflicting_body_like_parser` already pins parity with `IssueParser.parse_file` for list values), `test_feat3561_phase_d_assess.py` (prerequisites gate: `test_one_sided_blocks_declaration_blocks_the_named_target`, `test_dependency_cycle_fails_with_diagnostic_and_no_invented_root`, `test_unknown_and_external_dependency_ids_fail_closed`), `test_feat3769_blockers.py` (root-blocker path), `test_feat3561_phase_e_cli.py` (`--explain` exit-0/reason assertions). No existing test passes a mapping-valued relationship field. Fixture constraint: `next_arena_support.issue_text` serializes a `dict` as its Python repr, so mapping fixtures must use `write_issue(..., text=...)` with literal block YAML; `memory_state` builds state from raw text without disk.
-- **Non-obvious adjacent shape**: a `list` whose items are mappings is stringified by `_split_ids` into a fake ID (`str(item)`), which already fails closed as an unknown prerequisite — a distinct case from the nonempty-mapping bug, left unchanged.
+- **Non-obvious adjacent shape**: a `list` whose items are mappings is stringified by `_split_ids` into a fake ID (`str(item)`), which already fails closed as an unknown prerequisite for `blocked_by`/`depends_on`; in `blocks` the fake ID names no known target and is silently dangling (not a hidden prerequisite). A distinct case from the nonempty-mapping bug, left unchanged and out of scope.
 
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
 
 - `scripts/little_loops/next_arena/state.py` — the only `SourceRecord(` constructor is the `return SourceRecord(...)` in `build_source_record` (`:418`); `SourceRecord` is a frozen dataclass without defaults, so a new field is added there and in field order. `build_project_state` (`:643`) merges every `rec.diagnostics` into `ProjectState.diagnostics` and calls `build_issue_graph` (`:662`), so a per-source diagnostic also reaches `--json` for every run, not just `--explain`. [Agent 1/2 finding]
-- `scripts/little_loops/next_arena/blockers.py` — beyond `_assess_root` (`:246`), `build_blocker_index` (`:121`) and `_independent_vetoes` (`:95`) never call `_prerequisites_gate` or read unsupported-shape evidence; a dependent that has a body-fallback edge (`blocked_by`/`blocks` mapping with a `## Blocked By`/`## Blocks` section) can still count as an `immediate` unlock/`implementable_count` for its prerequisite. Decide whether the unsupported-shape exclusion surfaces as an `_independent_vetoes` veto. Mapping-only edges produce no graph edge, so they never inflate leverage. [Agent 2 finding]
+- `scripts/little_loops/next_arena/blockers.py` — beyond `_assess_root` (`:246`), `build_blocker_index` (`:121`) and `_independent_vetoes` (`:95`) never call `_prerequisites_gate` or read unsupported-shape evidence; a dependent that has a body-fallback edge (`blocked_by`/`blocks` mapping with a `## Blocked By`/`## Blocks` section) can still count as an `immediate` unlock/`implementable_count` for its prerequisite. Resolved (review 2026-10-08): no `_independent_vetoes` veto — the unresolved `None`-id prerequisite from the graph makes the dependent non-exclusive (`multi_blocked`) and body-fallback suppression removes the stale edge. [Agent 2 finding]
 - `scripts/little_loops/next_arena/candidates.py` — `_assess_one` (`:672`) copies `record.diagnostics` into the assessment and appends each non-shared, non-pass gate's `.code` to `exclusion_reasons`; `_gates_dict` (`:195`) serializes `GateResult` into explain/JSON. No change needed if the new failure keeps the `prerequisites` gate name. [Agent 1/2 finding]
 - `scripts/little_loops/next_arena/render.py` — `collect_diagnostics` (`:305`, `scope_to` subject filter) and `render_explain_text` (`:535`) are the explain surface; the target-side evidence for a one-sided `blocks` mapping must be a gate reason or a target-subject diagnostic since the source-subject diagnostic is filtered out. [Agent 1/2 finding]
 - `scripts/little_loops/cli/next.py` — drives `collect_project_state` → `collect_diagnostics`/`render_explain_text` (`:430-482`); consumer only. [Agent 1 finding]
-- `scripts/little_loops/next_arena/graph.py` — `GraphRecord` protocol (`:59`) lists only `rel_path`, `lifecycle_status`, `blocked_by`, `blocks`, `depends_on`, `issue_type`; extra `SourceRecord` fields are invisible to it and no test implements the protocol. Confirms the target-side lookup must be built from `ProjectState.records`. [Agent 1 finding]
+- `scripts/little_loops/next_arena/graph.py` — `GraphRecord` protocol (`:59`) lists only `rel_path`, `lifecycle_status`, `blocked_by`, `blocks`, `depends_on`, `issue_type`; extra `SourceRecord` fields are invisible to it and no test implements the protocol. Superseded (review 2026-10-08): the graph itself now takes `unsupported_relationships` through the extended protocol; the protocol is not implemented by test doubles today. [Agent 1 finding]
 - `scripts/little_loops/next_arena/output-schema.json` — `diagnostic` `$defs` requires only `code` (string, `minLength` 1); `exclusion_reasons`/`gates` are free-form. A new diagnostic or gate code needs no schema change, and `SCHEMA_VERSION` is unaffected. It is generated from `render.build_output_schema()` and pinned by `test_feat3561_phase_e_render.py`; do not regenerate unless that builder changes. [Agent 1/2 finding]
 - No consumers outside `scripts/little_loops/next_arena/` and `cli/next.py` parse `ll-next` gates, reasons or diagnostics: `recording.py` (commit 45825d8f8) never reads `exclusion_reasons`/`gates`/`evidence`, and `.loops/`, `loops/`, `hooks/`, `commands/`, `agents/` and `skills/` (apart from `skills/configure/areas.md`, config-only) have none. `_split_ids`/`_merge_edge_ids` have no callers outside `state.py`, and `executor_dependency_mismatch` (FEAT-3713) shares no code. [Agent 2 finding]
 
@@ -118,8 +137,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_feat3561_phase_d_assess.py` — prerequisites section: mutual mapping-key cycle, mapping naming an outside unresolved prerequisite, outside one-sided `blocks` mapping in both write orders (`project(..., order=[...])`); keep `"unknown_issue" in reason` and `evidence["dependencies"]["unresolved"][0]["prerequisite_id"|"kind"]` / `["in_cycle"]` assertions valid (additive keys only); `test_refinement_is_not_blocked_by_unmet_prerequisites` (`"prerequisites" not in item.gates`) must still pass. [Agent 3 finding]
 - `scripts/tests/test_feat3769_blockers.py` — model for the root-blocker path (`assess_candidates(project(...))` → `blocker(items, id)`); closest tests `test_dependency_cycle_yields_diagnostics_not_a_root`, `test_ambiguous_prerequisite_cannot_make_a_blocker_look_root`, `test_chain_only_the_root_qualifies_and_reachability_is_not_immediate_unlock`. Add a mapping-affected root and a root named by an outside `blocks` mapping. [Agent 3 finding]
 - `scripts/tests/test_feat3561_phase_e_cli.py` — add a `--explain implement-issue <target>` case (new parametrize row of `test_explain_excluded_targets_exit_zero_with_reasons`, or its own `make_project` + `write_issue(..., text=...)` fixture as in `test_gate_failures_report_gate_diagnostics_and_exit_one`); assert exit 0, `eligible is False`, and gate-reason text carrying field/source/raw value; `_json` also validates the envelope against `render.load_output_schema()`. [Agent 3 finding]
-- `scripts/tests/test_feat3561_phase_b_state.py::test_enumeration_order_does_not_change_state` — asserts dataclass equality of `records`, `identity`, `graph` and `diagnostics` across reversed enumeration; any new `SourceRecord` field or state-level target index must be order-independent and `==`-comparable (tuples/frozensets, not raw dicts). Same for `test_feat3561_phase_d_determinism.py::test_shuffled_source_order_with_fixed_clock_is_identical` (`_dump` JSON-serializes assessments). [Agent 3 finding]
-- `scripts/tests/test_feat3561_phase_f_perf.py` — `test_exactly_one_read_and_parse_per_issue_file` and `test_no_reads_or_parses_at_assessment_selection_or_render_time` forbid extra I/O; `test_operation_count_grows_linearly_500_to_5000` and `test_ten_thousand_issue_assess_and_select_within_budget` fail if the one-sided `blocks` lookup is done per target by scanning all records (O(N²)) — build the target index once at state-build time. [Agent 3 finding]
+- `scripts/tests/test_feat3561_phase_b_state.py::test_enumeration_order_does_not_change_state` — asserts dataclass equality of `records`, `identity`, `graph` and `diagnostics` across reversed enumeration; any new `SourceRecord` field must be order-independent and `==`-comparable (tuples/frozensets, not raw dicts). Same for `test_feat3561_phase_d_determinism.py::test_shuffled_source_order_with_fixed_clock_is_identical` (`_dump` JSON-serializes assessments). [Agent 3 finding]
+- `scripts/tests/test_feat3561_phase_f_perf.py` — `test_exactly_one_read_and_parse_per_issue_file` and `test_no_reads_or_parses_at_assessment_selection_or_render_time` forbid extra I/O; `test_operation_count_grows_linearly_500_to_5000` and `test_ten_thousand_issue_assess_and_select_within_budget` fail if the one-sided `blocks` lookup is done per target by scanning all records (O(N²)) — emit the one-sided target entries inside `build_issue_graph`'s existing single pass (never per target in the gate). [Agent 3 finding]
 - `scripts/tests/test_feat3561_phase_b_identity.py` — `test_one_sided_blocks_from_every_conflicting_source_are_retained` / `test_one_sided_blocks_resolves_with_the_declaring_source` are the graph-side precedents for the outside-`blocks` case; `rebuilt.diagnostics == state.diagnostics` must keep holding. [Agent 3 finding]
 - `scripts/tests/test_issue_parser.py` (~`:5062`) — regex allowlist keyed on `("next_arena/state.py", "_PRIORITY_PREFIX_DIGITS_RE")` and `("next_arena/state.py", "infer_parser_id")`; avoid adding a new priority-shaped regex or filename pattern to `state.py` or this gate trips. [Agent 3 finding]
 - `scripts/tests/next_arena_candidates_support.py` — `project(tmp_path, {rel: text}, order=[...])` and `body()` supply raw-text fixtures with an Impact/Effort section; `next_arena_support.py::memory_state` is the disk-free variant. Mapping fixtures use literal block YAML (`issue_text` renders a dict as its Python repr). [Agent 3 finding]
@@ -128,21 +147,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-Reuse the immutable `SourceRecord.frontmatter` and captured diagnostics to retain the offending relationship/raw mapping. Represent unsupported dependency evidence explicitly instead of turning it into an empty ID tuple. Reuse `GateResult` and the shared assessment/explain output; no persistence format or live parser instance is needed.
+- `UnsupportedRelationship` — frozen dataclass `(field: str, keys: tuple[str, ...], raw: str)` on `SourceRecord.unsupported_relationships: tuple[UnsupportedRelationship, ...]` (empty for terminal sources and for valid shapes). `raw` is a deterministic rendering of the mapping used for diagnostic/gate text; compare-safe tuples only.
+- `REASON_UNSUPPORTED_SHAPE = "unsupported_relationship_shape"` in `graph.py` beside the other `REASON_*` constants.
 
 ### Signatures
 
-- `_prerequisites_gate(state: ProjectState, issue_id: str) -> tuple[GateResult, dict[str, Any]]` — extend the existing pure gate to consume captured unsupported-dependency evidence for the affected source/one-sided target, retaining its tri-state result and explain evidence shape.
+- `build_issue_graph(records, node_ids, ambiguous, counter=None)` — unchanged signature; reads `rec.unsupported_relationships` through the extended `GraphRecord` protocol.
+- `_prerequisites_gate(state: ProjectState, issue_id: str) -> tuple[GateResult, dict[str, Any]]` — unchanged signature; reason text includes the unsupported entry's source path and field.
 
 ### Call Path
 
-`build_source_record` in `scripts/little_loops/next_arena/state.py` captures relationship-shape evidence → the captured dependency/eligibility index → `_prerequisites_gate` in `scripts/little_loops/next_arena/candidates.py`, reused by `_assess_root` in `scripts/little_loops/next_arena/blockers.py` → existing assessment/explain rendering exposes source/raw field. Preserve valid graph-building and refinement policy; do not infer executable readiness from an unsupported relationship shape.
+`build_source_record` in `scripts/little_loops/next_arena/state.py` detects nonempty mapping values, suppresses their body fallback and records `UnsupportedRelationship` → `build_issue_graph` in `scripts/little_loops/next_arena/graph.py` turns them into unresolved `Prerequisite` entries (own-field `blocked_by`/`depends_on` on the node; `blocks` keys on each known named target, non-terminal records only) → `_prerequisites_gate` in `scripts/little_loops/next_arena/candidates.py`, reused by `_assess_root` in `scripts/little_loops/next_arena/blockers.py` → existing assessment/explain rendering. Preserve valid graph-building and refinement policy; do not infer executable readiness from an unsupported relationship shape.
 
 ## Implementation Steps
 
-1. Reproduce the mapping-key cycle and a mapping naming an unresolved outside prerequisite with otherwise eligible source fixtures.
-2. Capture the unsupported relationship evidence and reject affected runnable assessments without live I/O or parser/executor changes.
-3. Verify explain retains the raw relationship and valid unrelated offers remain eligible; pin string/list and empty-mapping body fallback regressions.
+1. Reproduce the mapping-key cycle and a mapping naming an unresolved outside prerequisite with otherwise eligible source fixtures (write the failing tests first — `commands.tdd_mode` is on).
+2. Capture the unsupported relationship evidence on `SourceRecord`, suppress body fallback for nonempty mappings, and emit unresolved prerequisites from `build_issue_graph`; reject affected runnable assessments without live I/O or parser/executor changes.
+3. Verify explain retains the raw relationship and valid unrelated offers remain eligible; pin string/list, empty-mapping body fallback, terminal-source `blocks` mapping (no exclusion), flow-style `{FEAT-2: x}` and the mapping-plus-body-section (no stale body edge / no leverage double-count) regressions.
 
 ### Codebase Research Findings
 
@@ -157,18 +178,19 @@ _Added by `/ll:refine-issue` — 2026-10-08 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/next_arena/state.py` — add the unsupported-relationship evidence field to `SourceRecord` and to the single `SourceRecord(...)` constructor call in `build_source_record`; build one order-independent target-keyed index of one-sided `blocks`-mapping sources during `build_project_state` (not per target in the gate) so perf/linear-op tests keep passing
-- Update `scripts/little_loops/next_arena/blockers.py` — decide and implement whether `_independent_vetoes` surfaces a dependent's unsupported-shape exclusion (body-fallback edge case), since `build_blocker_index` never reaches `_prerequisites_gate`
-- Update `scripts/little_loops/next_arena/render.py` only if needed — keep the field/source/raw value reachable in `--explain` from the target's gate reason or a target-subject diagnostic (the `collect_diagnostics(scope_to=...)` filter drops source-subject diagnostics)
+- Update `scripts/little_loops/next_arena/state.py` — add `UnsupportedRelationship` and the `unsupported_relationships` field to `SourceRecord` and to the single `SourceRecord(...)` constructor call in `build_source_record`; suppress body fallback for nonempty mappings; emit the source-subject `unsupported_dependency_shape` diagnostic for non-terminal sources. No new `ProjectState` field.
+- Update `scripts/little_loops/next_arena/graph.py` — extend `GraphRecord`; add `REASON_UNSUPPORTED_SHAPE`; emit unresolved prerequisites in the existing passes (keep op-counter ticks proportional to mapping keys so the linear-op tests hold).
+- Update `scripts/little_loops/next_arena/candidates.py` — `_prerequisites_gate` reason text names the declaring source path; additive `evidence["dependencies"]["unsupported"]` list (`field`, `source_path`, `raw`).
+- No change to `blockers.py`/`render.py` expected; verify with a blocker-path test that a mapping-affected dependent lands in `multi_blocked`, not `immediate`.
 - Update `tests/` — add mapping cases to `test_feat3561_phase_b_state.py`, `test_feat3561_phase_d_assess.py`, `test_feat3769_blockers.py`, `test_feat3561_phase_e_cli.py` with literal block-YAML fixtures via `project(...)`/`write_issue(..., text=...)`; keep the order-determinism, single-read/parse and linear-op perf tests green and avoid new regexes in `state.py` (`test_issue_parser.py` allowlist)
 - Update `docs/reference/CLI.md` — add the new diagnostic code to the `ll-next` **Diagnostics** list and note unsupported relationship shapes under "What gets recommended"; touch `docs/reference/API.md` `next_arena` rows if user-visible
-- No change needed — `output-schema.json` (free-form codes), `recording.py`, `graph.py`, and loops/hooks/skills have no consumers of these gates or diagnostics
+- No change needed — `output-schema.json` (free-form codes), `recording.py`, and loops/hooks/skills have no consumers of these gates or diagnostics
 
 ## Impact
 
 - **Priority:** P2 — persuasive runnable recommendations can omit actual prerequisites or cycles.
 - **Effort:** Small — captured shape validation and an existing eligibility gate.
-- **Risk:** Low — malformed dependency metadata receives an explicit exclusion; valid input semantics remain unchanged.
+- **Risk:** Low — malformed dependency metadata receives an explicit exclusion; valid input semantics remain unchanged. Touches the shared graph builder (additive reason + protocol field), so graph/determinism/perf suites must stay green.
 - **Breaking Change:** No.
 
 ## Root Cause
@@ -188,7 +210,8 @@ _Added by `/ll:refine-issue` — 2026-10-08 — based on codebase analysis:_
 
 - [ ] Nonempty mapping-valued `blocked_by`, `depends_on` and `blocks` cannot silently produce implementation/root-blocker readiness; affected explain output retains field/source/raw-value diagnostics.
 - [ ] The reproduced mutual mapping-key cycle, a mapping naming an unresolved outside prerequisite, and an outside source’s one-sided `blocks` mapping yield no affected runnable offer, regardless of source ordering.
-- [ ] Empty mappings preserve body fallback; supported string/list relationships and unrelated valid issues retain their current behavior.
+- [ ] Empty mappings preserve body fallback; a nonempty mapping suppresses it (no stale body edge or leverage double-count); a `blocks` mapping on a terminal source excludes nothing; supported string/list relationships and unrelated valid issues retain their current behavior.
+- [ ] A mapping-affected dependent is `multi_blocked`, never an `immediate` unlock; flow-style mappings behave like block-style.
 - [ ] Validation and assessment use captured state only, without new per-candidate I/O or changed shared parser/executor semantics; relevant tests pass.
 
 ## Related Key Documentation
@@ -204,6 +227,8 @@ _Added by `/ll:refine-issue` — 2026-10-08 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:advise` (opus, 0.80) + manual pre-implementation review - 2026-10-08 - moved evidence into the graph (no blockers/ProjectState change), added terminal-source and body-fallback-suppression rules, resolved all three risk factors
+- `/ll:confidence-check` - 2026-10-08T15:38:23 - `737f28e5-338a-4b21-95a2-f4f2ed172ad3.jsonl`
 - `/ll:wire-issue` - 2026-10-08T15:35:11 - `892180dc-b296-4d11-bab1-4ceacfb93394.jsonl`
 - `/ll:refine-issue` - 2026-10-08T15:29:03 - `391386d4-3db8-4f5a-9e12-97e5935d2d4b.jsonl`
 - `/ll:capture-issue` - 2026-10-08T15:15:05 - `c063533a-bfa9-410e-8a16-0fe48d320a3b.jsonl`
