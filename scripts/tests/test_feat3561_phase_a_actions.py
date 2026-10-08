@@ -313,7 +313,7 @@ class TestTaggedUnion:
         spec = slash_spec_for(key, issue_id, CWD)
         assert spec_from_dict(spec_to_dict(spec)) == spec
 
-    @pytest.mark.parametrize("variant", ["loop", "sprint", "scan"])
+    @pytest.mark.parametrize("variant", ["sprint", "scan"])
     def test_reserved_variants_rejected(self, variant: str) -> None:
         with pytest.raises(UnknownVariantError, match="reserved"):
             spec_from_dict(

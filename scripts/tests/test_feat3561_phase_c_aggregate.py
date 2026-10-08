@@ -17,7 +17,11 @@ from little_loops.next_arena.axes import (
     aggregate_axes,
     axis_missing,
     effort_axis,
+    lerp,
     leverage_axis,
+    loop_frequency_axis,
+    loop_recency_axis,
+    loop_success_axis,
     minimum_evidence_met,
     momentum_axis,
     outcome_axis,
@@ -116,6 +120,14 @@ def _extremes() -> dict[str, tuple[AxisScore, AxisScore]]:
             staleness_axis("2020-01-01", None, AS_OF),
         ),
         "momentum": (momentum_axis("\n" + old_log, AS_OF), momentum_axis(log, AS_OF)),
+        # Loop frequency's worst case is its 0.4 floor (x = 0): a present axis needs at least
+        # one qualified run, so the nominal floor is built from the curve with x = 0.
+        "frequency": (_present(lerp(0.4, 0.0)), loop_frequency_axis(50)),
+        "recency": (
+            loop_recency_axis(AS_OF - timedelta(days=36500), AS_OF),
+            loop_recency_axis(AS_OF, AS_OF),
+        ),
+        "success": (loop_success_axis(0, 5), loop_success_axis(5, 5)),
     }
 
 
@@ -308,7 +320,7 @@ def test_all_zero_weights_fail_at_the_config_consumer() -> None:
 
 def test_unknown_verb_is_rejected() -> None:
     with pytest.raises(KeyError):
-        aggregate_axes("run-loop", {}, {})
+        aggregate_axes("run-sprint", {}, {})
 
 
 def test_aggregate_serialization_has_no_nan() -> None:

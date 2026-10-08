@@ -811,7 +811,7 @@ Enforcement: `scripts/tests/test_docs_audience_gate.py` scans `docs/guides/`, `d
 - Test both success and error paths
 - Aim for meaningful coverage, not just line coverage
 - A new `evaluate_*` grader in `fsm/evaluators.py` must be classified in `scripts/tests/test_grader_coverage.py` (in-scope or exempt) and, if in-scope, carry pass/fail/boundary tests tagged with `@pytest.mark.grader_case` (ENH-3463)
-- Scaled wall-clock gates carry `@pytest.mark.perf` and are **skipped by default**: marking alone does not exclude a test, `scripts/tests/conftest.py` skips every `perf` item unless `--run-perf` is passed. Build such fixtures in memory (never thousands of files) and also mark them `no_parallel` so they run only serially, where worker contention cannot distort the clock: `python -m pytest scripts/tests/test_feat3561_phase_f_perf.py --run-perf -n 0 -m perf` (the `ll-next` 10,000-issue / ~20,000-edge gate, ≤30 s; run it manually before a release). Default-suite performance checks assert operation counts, never timings.
+- Scaled wall-clock gates carry `@pytest.mark.perf` and are **skipped by default**: marking alone does not exclude a test, `scripts/tests/conftest.py` skips every `perf` item unless `--run-perf` is passed. Build such fixtures in memory (never thousands of files) and also mark them `no_parallel` so they run only serially, where worker contention cannot distort the clock: `python -m pytest scripts/tests/test_feat3561_phase_f_perf.py --run-perf -n 0 -m perf` (the `ll-next` 10,000-issue / ~20,000-edge gate and the 200-definition / 10,000-run-record loop gate, each ≤30 s; run them manually before a release). Default-suite performance checks assert operation counts, never timings.
 
 ### Snapshot Testing
 

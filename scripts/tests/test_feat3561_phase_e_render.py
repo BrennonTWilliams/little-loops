@@ -22,7 +22,7 @@ import pytest
 
 import little_loops.next_arena.registry as registry
 from little_loops.next_arena import render
-from little_loops.next_arena.actions import ACTION_KEY_TABLE, parse_slash
+from little_loops.next_arena.actions import ACTION_KEY_TABLE, ACTION_KEYS, parse_slash
 from little_loops.next_arena.candidates import assess_candidates, candidates_from_assessments
 from little_loops.next_arena.inputs import Diagnostic
 from little_loops.next_arena.registry import (
@@ -30,6 +30,7 @@ from little_loops.next_arena.registry import (
     SCHEMA_VERSION,
     VerbSpec,
     registered_verbs,
+    verbs_in_domain,
 )
 from little_loops.next_arena.selection import bucket_order_for, select_candidates, selection_policy
 from little_loops.package_data import PACKAGE_DATA_ASSETS, check_asset_accessible
@@ -121,7 +122,8 @@ def test_schema_enums_derive_from_the_registries() -> None:
     schema = render.build_output_schema()
     recommendation = schema["$defs"]["recommendation"]["properties"]
     assert recommendation["action_type"]["enum"] == list(registered_verbs())
-    assert recommendation["action_key"]["enum"] == list(ACTION_KEY_TABLE)
+    assert recommendation["action_key"]["enum"] == list(ACTION_KEYS)
+    assert set(ACTION_KEYS) - set(ACTION_KEY_TABLE) == {"run-loop"}
     branches = schema["$defs"]["action_spec"]["oneOf"]
     assert [b["properties"]["variant"]["const"] for b in branches] == list(ACTION_VARIANTS)
     assert schema["properties"]["schema_version"]["const"] == SCHEMA_VERSION
@@ -202,7 +204,8 @@ def test_explain_output_validates(tmp_path: Path, verb: str, target: str) -> Non
     assessment = envelope["explanation"]["assessment"]
     assert assessment["target"] == target and assessment["action_type"] == verb
     others = {a["action_type"] for a in envelope["explanation"]["alternates"]}
-    assert others == set(registered_verbs()) - {verb}
+    # Issue verbs alternate each other; loop targets (`loop:NAME`) never share a key with them.
+    assert others == set(verbs_in_domain("issue")) - {verb}
 
 
 def test_excluded_assessment_has_null_action_identity(tmp_path: Path) -> None:
@@ -255,8 +258,8 @@ def test_schema_rejects_malformed_recommendations(tmp_path: Path) -> None:
     assert broken(lambda d: d["recommendations"][0].update(bucket_rank=None))
     assert broken(lambda d: d["recommendations"][0]["action_spec"].update(variant="loop"))
     assert broken(lambda d: d["recommendations"][0]["action_spec"].pop("variant"))
-    assert broken(lambda d: d["recommendations"][0].update(action_type="run-loop"))
-    assert broken(lambda d: d.update(schema_version=2))
+    assert broken(lambda d: d["recommendations"][0].update(action_type="bogus-verb"))
+    assert broken(lambda d: d.update(schema_version=3))
     assert broken(lambda d: d.update(explanation={"assessment": None, "alternates": []}))
     assert broken(lambda d: d.update(extra_key=1))
     assert broken(lambda d: d["recommendations"][0].update(action_fingerprint="sha256:zz"))

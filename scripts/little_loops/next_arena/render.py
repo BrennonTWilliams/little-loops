@@ -34,7 +34,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from little_loops.next_arena.actions import ACTION_KEY_TABLE
+from little_loops.next_arena.actions import (
+    ACTION_KEY_TABLE,
+    ACTION_KEYS,
+    FINGERPRINT_SCOPE_V1,
+)
 from little_loops.next_arena.candidates import (
     FAIL,
     MISSING,
@@ -45,6 +49,7 @@ from little_loops.next_arena.candidates import (
 from little_loops.next_arena.inputs import Diagnostic, sort_diagnostics
 from little_loops.next_arena.registry import (
     ACTION_VARIANTS,
+    DOMAIN_LOOP,
     REGISTRY,
     SCHEMA_VERSION,
     registered_verbs,
@@ -65,6 +70,7 @@ __all__ = [
     "render_explain_text",
     "render_json",
     "render_text",
+    "scope_subject",
     "target_not_found",
     "write_output_schema",
 ]
@@ -139,8 +145,25 @@ def build_envelope(
 # ---------------------------------------------------------------------------- diagnostics
 
 
+def scope_subject(verb: str, target: str) -> str:
+    """The diagnostic subject an ``--explain VERB TARGET`` scopes to (domain-aware).
+
+    Issue diagnostics are subjected to the bare issue ID; loop diagnostics to ``loop:NAME``,
+    so a loop and an issue spelled alike never receive each other's diagnostics.
+    """
+    return f"loop:{target}" if REGISTRY[verb].domain == DOMAIN_LOOP else target
+
+
 def target_not_found(target: str, verb: str) -> Diagnostic:
     """Diagnostic for ``--explain VERB TARGET`` naming a target absent from the inventory."""
+    if REGISTRY[verb].domain == DOMAIN_LOOP:
+        return Diagnostic(
+            "target_not_found",
+            f"{target!r} is not a discovered loop definition; --explain matches the exact "
+            f"command operand as printed (e.g. a name from `ll-loop list`) for {verb}",
+            (),
+            f"loop:{target}",
+        )
     return Diagnostic(
         "target_not_found",
         f"{target!r} is not a known issue ID; --explain matches the full issue ID exactly "
@@ -169,14 +192,17 @@ def bucket_diagnostics(
         items = [a for a in assessments if a.action_type == verb]
         if any(a.fully_resolved for a in items):
             continue
+        is_loop = REGISTRY[verb].domain == DOMAIN_LOOP
+        first_gate = "definition" if is_loop else "lifecycle"
         actionable = [
-            a for a in items if "lifecycle" in a.gates and a.gates["lifecycle"].status == PASS
+            a for a in items if first_gate in a.gates and a.gates[first_gate].status == PASS
         ]
         if not actionable:
+            what = "valid loop definition" if is_loop else "open or blocked leaf issue"
             out.append(
                 Diagnostic(
                     "empty_source",
-                    f"{verb}: no open or blocked leaf issue was found to assess "
+                    f"{verb}: no {what} was found to assess "
                     f"({len(items)} inventory target(s), none actionable)",
                     (),
                     verb,
@@ -190,7 +216,7 @@ def bucket_diagnostics(
                 codes = [
                     g.code
                     for name, g in a.gates.items()
-                    if name != "lifecycle" and g.status == status
+                    if name != first_gate and g.status == status
                 ]
                 if codes:
                     affected += 1
@@ -221,10 +247,18 @@ def collect_diagnostics(
 ) -> list[Diagnostic]:
     """Union of source diagnostics, assessment diagnostics (refine caps ...) and bucket notes.
 
-    With *scope_to* (an issue ID, explain mode) only diagnostics about that subject are kept.
+    With *scope_to* (the explain subject: an issue ID, or ``loop:NAME``) only diagnostics about
+    that subject are kept.
     """
     found: list[Diagnostic] = list(state_diagnostics)
     for item in assessments:
+        if scope_to is None and item.target_key.startswith("loop:"):
+            # A full pass does not list every definition's validation warnings (dozens across
+            # the built-ins); they stay on the assessment and appear under --explain.
+            found.extend(
+                d for d in item.diagnostics if item.eligible and d.code != "loop_validation_warning"
+            )
+            continue
         found.extend(item.diagnostics)
     if scope_to is not None:
         found = [d for d in found if d.subject == scope_to]
@@ -270,6 +304,28 @@ def _diagnostic_lines(diagnostics: Sequence[Diagnostic]) -> list[str]:
     return lines
 
 
+def _blocker_note(blocker: Mapping[str, Any] | None) -> str:
+    if not blocker:
+        return ""
+    reach = blocker["reachable"]
+    unlocked = blocker["immediately_unlocked"]
+    shown = reach.get("display") or reach.get("count")
+    return (
+        f" [blocker: {shown} reachable downstream, "
+        f"{blocker['direct_dependents']['count']} direct, "
+        f"{unlocked['count']} immediately unlocked]"
+    )
+
+
+def _alternate_text(alt: Any) -> str:
+    if alt.eligible and alt.display_command:
+        return f"{alt.action_type}: {alt.display_command}{_blocker_note(alt.blocker)}"
+    return (
+        f"{alt.action_type}: not eligible ({', '.join(alt.exclusion_reasons) or 'n/a'})"
+        f"{_blocker_note(alt.blocker)}"
+    )
+
+
 def render_text(
     *,
     project_root: Path | str,
@@ -293,12 +349,7 @@ def render_text(
         lines.append(f"   {cand.selection_reason}")
         lines.append(f"   axes: {_axes_line(cand)}")
         if cand.alternates:
-            alt = "; ".join(
-                f"{a.action_type}: {a.display_command}"
-                if a.eligible and a.display_command
-                else f"{a.action_type}: not eligible ({', '.join(a.exclusion_reasons) or 'n/a'})"
-                for a in cand.alternates
-            )
+            alt = "; ".join(_alternate_text(a) for a in cand.alternates)
             lines.append(f"   also: {alt}")
     lines.extend(_diagnostic_lines(diagnostics))
     return "\n".join(lines)
@@ -348,6 +399,49 @@ def _assessment_block(item: Mapping[str, Any], *, heading: str) -> list[str]:
     if leverage is not None:
         shown = leverage.get("display") or leverage.get("missing_reason") or "unknown"
         lines.append(f"  leverage evidence: downstream {shown} ({leverage.get('status')})")
+    lines.extend(_blocker_lines(item["evidence"].get("blocker")))
+    lines.extend(_loop_lines(item["evidence"].get("loop")))
+    return lines
+
+
+def _blocker_lines(blocker: Mapping[str, Any] | None) -> list[str]:
+    if not blocker:
+        return []
+    reach = blocker["reachable"]
+    direct = blocker["direct_dependents"]
+    unlocked = blocker["immediately_unlocked"]
+    multi = blocker["multi_blocked"]
+    shown = reach.get("display") or reach.get("count")
+    return [
+        f"  blocker: {shown} reachable downstream; {direct['count']} direct dependent(s), "
+        f"{unlocked['count']} immediately unlocked ({unlocked['implementable_count']} without "
+        f"independent vetoes), {multi['count']} multi-blocked",
+    ]
+
+
+def _loop_lines(loop: Mapping[str, Any] | None) -> list[str]:
+    if not loop:
+        return []
+    hist = loop["history"]
+    lines = [
+        f"  loop: {loop['kind']} {loop['definition_source'] or '(no source identity)'}; "
+        f"{loop['digest_label']} {loop['definition_digest'] or 'n/a'}",
+        f"  history: joined on {loop['history_join_key']!r} ({loop['history_attribution']}); "
+        f"{hist['qualified_runs']} qualifying run(s), {hist['excluded_runs']} excluded"
+        + ("" if hist["available"] else f"; UNAVAILABLE ({hist['unavailable_reason']})"),
+    ]
+    if loop["shadowed"]:
+        lines.append(
+            "  shadowed sources: "
+            + ", ".join(str(s["source"] or s["path"]) for s in loop["shadowed"])
+        )
+    inputs = loop.get("inputs")
+    if inputs and not inputs["ok"]:
+        lines.append(
+            "  inputs: unresolved (missing "
+            f"{inputs['missing_keys'] or '-'}, empty {inputs['unresolved_inputs'] or '-'}, "
+            f"unknown {inputs['unknown_inputs'] or '-'})"
+        )
     return lines
 
 
@@ -363,7 +457,8 @@ def render_explain_text(
     root = str(project_root)
     lines: list[str] = []
     if explanation is None:
-        lines.append(f"ll-next: no issue target {target!r} for {verb}.")
+        noun = "loop target" if REGISTRY[verb].domain == DOMAIN_LOOP else "issue target"
+        lines.append(f"ll-next: no {noun} {target!r} for {verb}.")
         lines.extend(_root_hint(root))
     else:
         lines.append(f"ll-next --explain {verb} {target}")
@@ -411,8 +506,42 @@ def _slash_variant_schema() -> dict[str, Any]:
     }
 
 
+def _loop_variant_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": [
+            "variant",
+            "target",
+            "definition_source",
+            "definition_digest",
+            "fingerprint_scope",
+            "working_directory",
+        ],
+        "additionalProperties": False,
+        "properties": {
+            "variant": {"const": "loop"},
+            "target": {"type": "string", "minLength": 1},
+            "definition_source": {
+                "type": "string",
+                "minLength": 1,
+                "description": (
+                    "Project-relative YAML path or `builtin:<relative-YAML-path>` of the "
+                    "resolved top-level source."
+                ),
+            },
+            "definition_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "description": "SHA-256 of the captured top-level definition bytes.",
+            },
+            "fingerprint_scope": {"const": FINGERPRINT_SCOPE_V1},
+            "working_directory": {"type": "string", "minLength": 1},
+        },
+    }
+
+
 #: Per-variant ``action_spec`` branch builders keyed by registered variant name.
-_VARIANT_SCHEMAS = {"slash": _slash_variant_schema}
+_VARIANT_SCHEMAS = {"slash": _slash_variant_schema, "loop": _loop_variant_schema}
 
 _RECOMMENDATION_ONLY = (
     "action_type",
@@ -496,7 +625,7 @@ def build_output_schema() -> dict[str, Any]:
     action fields, ``bucket_rank`` and utility.
     """
     verbs = list(registered_verbs())
-    action_keys = list(ACTION_KEY_TABLE)
+    action_keys = list(ACTION_KEYS)
     variants = list(ACTION_VARIANTS)
     action_spec_branches = [_VARIANT_SCHEMAS[v]() for v in variants]
 
@@ -640,6 +769,7 @@ def build_output_schema() -> dict[str, Any]:
                     "utility",
                     "exclusion_reasons",
                     "selection_reason",
+                    "blocker",
                 ],
                 "additionalProperties": False,
                 "properties": {
@@ -652,6 +782,7 @@ def build_output_schema() -> dict[str, Any]:
                     "utility": _nullable({"type": "number", "minimum": 0, "maximum": 1}),
                     "exclusion_reasons": {"type": "array", "items": {"type": "string"}},
                     "selection_reason": {"type": "string"},
+                    "blocker": _nullable({"type": "object"}),
                 },
             },
             "recommendation": {

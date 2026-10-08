@@ -8,12 +8,14 @@ confidence-gate thresholds and input hash without a core -> cli import.
 from __future__ import annotations
 
 import hashlib
+import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
-    from little_loops.fsm.schema import ParameterSpec
+    from little_loops.fsm.schema import ParameterSpec, StateConfig
 
 
 def seed_parameter_defaults(context: dict[str, Any], parameters: dict[str, ParameterSpec]) -> None:
@@ -185,3 +187,121 @@ def _coerce_override(current: Any, value: str) -> Any:
         except ValueError:
             return value
     return value
+
+
+# --- program.md steering ---------------------------------------------------------------
+
+
+def parse_program_md_text(content: str) -> dict[str, str]:
+    """Parse ``.ll/program.md`` text into context key-value pairs.
+
+    Sections mapped:
+      ## Directive  -> directive (prose)
+      ## Targets    -> targets (space-joined list items)
+      ## Benchmark  -> each key: value pair injected directly
+      ## Budget     -> budget (prose)
+      ## Constraints -> constraints (prose)
+
+    Pure text -> mapping; :func:`parse_program_md` adds the file read and
+    ``ll-loop run`` (``cli/loop/run.py``) assigns the result over the loop context.
+    """
+
+    def _extract(heading: str) -> str:
+        m = re.search(rf"^##\s+{re.escape(heading)}\s*$", content, re.MULTILINE | re.IGNORECASE)
+        if not m:
+            return ""
+        start = m.end()
+        nxt = re.search(r"^##\s", content[start:], re.MULTILINE)
+        return content[start : start + nxt.start()].strip() if nxt else content[start:].strip()
+
+    result: dict[str, str] = {}
+
+    directive = _extract("Directive")
+    if directive:
+        result["directive"] = directive
+
+    targets_text = _extract("Targets")
+    if targets_text:
+        items = [
+            line.lstrip("-* \t").strip()
+            for line in targets_text.splitlines()
+            if line.strip().startswith(("-", "*"))
+        ]
+        result["targets"] = " ".join(items) if items else targets_text
+
+    benchmark_text = _extract("Benchmark")
+    if benchmark_text:
+        for line in benchmark_text.splitlines():
+            if ":" in line:
+                k, _, v = line.partition(":")
+                k, v = k.strip(), v.strip()
+                if k and v:
+                    result[k] = v
+
+    budget = _extract("Budget")
+    if budget:
+        result["budget"] = budget
+
+    constraints = _extract("Constraints")
+    if constraints:
+        result["constraints"] = constraints
+
+    return result
+
+
+def parse_program_md(path: Path) -> dict[str, str]:
+    """Read and parse a ``program.md`` file; absent or unreadable files give ``{}``."""
+    if not path.exists():
+        return {}
+    try:
+        content = path.read_text()
+    except OSError:
+        return {}
+    return parse_program_md_text(content)
+
+
+# --- pre-run preflight checks ------------------------------------------------------------
+
+_CTX_VAR_RE = re.compile(r"\$\{context\.([^}.]+)")
+
+
+def required_context_keys(states: Iterable[StateConfig]) -> set[str]:
+    """Context keys the state templates need bound before a run can start.
+
+    Scans every state's ``action`` and ``evaluate.prompt`` for ``${context.<key>}``.
+    Guarded/transformed refs are safe even when the underlying key is missing or
+    carries a suffix -- the FSM interpolation engine
+    (``fsm/interpolation.py``'s ``parse_interpolation_suffixes()``) parses these
+    suffixes off before resolving the real var name, so this pre-flight calls the
+    same shared helper to stay aligned with the engine:
+
+    * ``:default=value`` / trailing ``?`` supply a fallback at render time, so a
+      missing key is not an error (BUG-2553).
+    * ``:shell`` is a transform (``shlex.quote``) on the resolved value; the real var
+      name is what must exist in context, not ``input:shell``, in any suffix ordering
+      (ENH-3337).
+
+    Shared by ``cmd_run`` and the ``ll-next`` zero-argument loop eligibility check so the
+    two cannot drift.
+    """
+    from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
+
+    keys: set[str] = set()
+    for state in states:
+        templates = [state.action] if state.action else []
+        if state.evaluate and state.evaluate.prompt:
+            templates.append(state.evaluate.prompt)
+        for template in templates:
+            for m in _CTX_VAR_RE.finditer(template):
+                try:
+                    var_path, default_value, nullable, _shell = parse_interpolation_suffixes(
+                        m.group(1)
+                    )
+                except InterpolationError:
+                    # Malformed suffix chain; interpolate() raises its own clear error at
+                    # render time -- not this pre-flight's job.
+                    continue
+                if default_value is not None or nullable:
+                    continue
+                keys.add(var_path)
+    return keys

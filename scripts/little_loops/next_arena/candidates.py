@@ -5,7 +5,11 @@ target (all statuses, EPICs, ambiguous and unsupported sources included) for eve
 verb, evaluates tri-state gates, computes bounded axes, the weighted geometric utility,
 coverage and the within-verb rank once, and retains exclusion reasons for ineligible targets.
 ``generate_candidates`` merely projects the eligible, fully resolved assessments;
-``--explain`` renders the same assessments. Nothing here reads the clock, cwd, environment,
+``--explain`` renders the same assessments. Each registered verb routes to its own candidate
+domain: ``implement-issue``/``refine-issue`` assess issue targets here, ``resolve-blocker``
+(:mod:`~little_loops.next_arena.blockers`) assesses issue roots and ``run-loop``
+(:mod:`~little_loops.next_arena.loop_candidates`) assesses captured loop definitions, so no
+verb acquires phantom cross-domain assessments. Nothing here reads the clock, cwd, environment,
 files, git or the history DB: all evidence comes from the injected :class:`ProjectState`.
 
 Ordering contract: assessments are returned in canonical verb order, then ``target_key``
@@ -22,8 +26,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from little_loops.next_arena.actions import (
+    ActionSpec,
     ActionSpecError,
-    SlashActionSpec,
     action_fingerprint,
     render_slash,
     slash_spec_for,
@@ -44,6 +48,7 @@ from little_loops.next_arena.inputs import Diagnostic, is_formatted_from_state, 
 from little_loops.next_arena.registry import (
     CANONICAL_VERB_ORDER,
     ArenaSettings,
+    get_verb,
     registered_verbs,
 )
 from little_loops.next_arena.state import (
@@ -72,6 +77,7 @@ __all__ = [
     "assessments_for_target",
     "candidates_from_assessments",
     "generate_candidates",
+    "loop_target_key",
     "next_refine_step",
     "target_key_for",
 ]
@@ -102,6 +108,11 @@ _LEGACY_STEP = {
 def target_key_for(issue_id: str) -> str:
     """Namespaced identity of an issue target (``issue:FEAT-123``)."""
     return f"issue:{issue_id}"
+
+
+def loop_target_key(target: str) -> str:
+    """Namespaced identity of a loop target (``loop:NAME``; *target* is the exact operand)."""
+    return f"loop:{target}"
 
 
 # ----------------------------------------------------------------------------- records
@@ -142,6 +153,8 @@ class Alternate:
     utility: float | None
     exclusion_reasons: tuple[str, ...]
     selection_reason: str
+    #: Bounded blocker significance (``resolve-blocker`` alternates only; else ``None``).
+    blocker: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-ready mapping."""
@@ -155,6 +168,7 @@ class Alternate:
             "utility": self.utility,
             "exclusion_reasons": list(self.exclusion_reasons),
             "selection_reason": self.selection_reason,
+            "blocker": dict(self.blocker) if self.blocker is not None else None,
         }
 
 
@@ -170,6 +184,7 @@ def _alternate_from(item: CandidateAssessment | Candidate) -> Alternate:
         utility=item.utility,
         exclusion_reasons=() if isinstance(item, Candidate) else item.exclusion_reasons,
         selection_reason=item.selection_reason,
+        blocker=item.evidence.get("blocker") if item.action_type == "resolve-blocker" else None,
     )
 
 
@@ -181,7 +196,7 @@ def _gates_dict(gates: Mapping[str, GateResult]) -> dict[str, Any]:
     return {name: item.to_dict() for name, item in gates.items()}
 
 
-def _spec_dict(spec: SlashActionSpec | None) -> dict[str, Any] | None:
+def _spec_dict(spec: ActionSpec | None) -> dict[str, Any] | None:
     return None if spec is None else spec_to_dict(spec)
 
 
@@ -201,7 +216,7 @@ class CandidateAssessment:
     action_type: str
     action_key: str | None
     action_fingerprint: str | None
-    action_spec: SlashActionSpec | None
+    action_spec: ActionSpec | None
     display_command: str | None
     eligible: bool
     exclusion_reasons: tuple[str, ...]
@@ -279,7 +294,7 @@ class Candidate:
     action_type: str
     action_key: str
     action_fingerprint: str
-    action_spec: SlashActionSpec
+    action_spec: ActionSpec
     target: str
     target_key: str
     display_command: str
@@ -766,7 +781,7 @@ def _assess_one(
     reasons_unique = tuple(dict.fromkeys(reasons))
     eligible = record is not None and not reasons_unique and action_key is not None
 
-    spec: SlashActionSpec | None = None
+    spec: ActionSpec | None = None
     fingerprint: str | None = None
     display: str | None = None
     if eligible and action_key is not None:
@@ -843,7 +858,7 @@ def _rank_verb(items: list[CandidateAssessment], verb: str) -> list[CandidateAss
         else:
             why = (
                 f"cold start (insufficient scoring evidence, coverage {item.coverage}); "
-                "ordered by priority then target"
+                f"ordered by {get_verb(verb).cold_start_order}"
             )
         ranks[item.target_key] = replace(
             item,
@@ -851,6 +866,26 @@ def _rank_verb(items: list[CandidateAssessment], verb: str) -> list[CandidateAss
             selection_reason=f"Rank {position} of {total} eligible {verb} candidates: {why}",
         )
     return [ranks.get(i.target_key, i) for i in items]
+
+
+def _assess_verb(
+    state: ProjectState,
+    settings: ArenaSettings,
+    verb: str,
+    contexts: Sequence[_TargetContext],
+) -> list[CandidateAssessment]:
+    """Route *verb* to its own candidate source (issue targets, issue roots or loop definitions)."""
+    if verb in ("implement-issue", "refine-issue"):
+        return [_assess_one(state, settings, verb, ctx) for ctx in contexts]
+    if verb == "resolve-blocker":
+        from little_loops.next_arena.blockers import assess_resolve_blockers
+
+        return assess_resolve_blockers(state, settings=settings, contexts=contexts)
+    if verb == "run-loop":
+        from little_loops.next_arena.loop_candidates import assess_run_loops
+
+        return assess_run_loops(state, settings=settings)
+    raise KeyError(f"no generator is wired for registered verb {verb!r}")
 
 
 # ---------------------------------------------------------------------------- public API
@@ -879,7 +914,7 @@ def assess_candidates(
     contexts = [_build_context(state, issue_id) for issue_id in targets]
     by_verb: dict[str, list[CandidateAssessment]] = {}
     for verb in registered_verbs():
-        assessed = [_assess_one(state, resolved, verb, ctx) for ctx in contexts]
+        assessed = _assess_verb(state, resolved, verb, contexts)
         by_verb[verb] = _rank_verb(assessed, verb)
 
     grouped: dict[str, list[CandidateAssessment]] = {}

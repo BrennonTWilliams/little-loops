@@ -24,7 +24,7 @@ from little_loops.next_arena.candidates import (
     candidates_from_assessments,
     generate_candidates,
 )
-from little_loops.next_arena.registry import registered_verbs
+from little_loops.next_arena.registry import registered_verbs, verbs_in_domain
 from tests.next_arena_candidates_support import (
     FORMAT_ENTRY,
     READY,
@@ -38,6 +38,10 @@ from tests.next_arena_support import assert_resolver_parity
 
 IMPL = "implement-issue"
 REFINE = "refine-issue"
+BLOCKER = "resolve-blocker"
+#: Verbs whose candidates are issue targets; ``run-loop`` assesses loop definitions, which the
+#: issue-only fixtures below never collect (``loop_definitions is None``).
+ISSUE_VERBS = verbs_in_domain("issue")
 GATE = {"commands": {"confidence_gate": {"readiness_threshold": 70, "outcome_threshold": 50}}}
 
 
@@ -57,11 +61,11 @@ def test_every_target_gets_an_assessment_per_registered_verb(tmp_path: Path) -> 
         "enhancements/P3-ENH-005-y.md": issue({"status": "in_progress"}),
     }
     assessments = assess_candidates(project(tmp_path, files))
-    assert len(assessments) == 5 * len(registered_verbs())
+    assert len(assessments) == 5 * len(ISSUE_VERBS)
     # canonical verb order, then target_key
     verbs = [a.action_type for a in assessments]
-    assert verbs == [v for v in registered_verbs() for _ in range(5)]
-    for verb in registered_verbs():
+    assert verbs == [v for v in ISSUE_VERBS for _ in range(5)]
+    for verb in ISSUE_VERBS:
         keys = [a.target_key for a in assessments if a.action_type == verb]
         assert keys == sorted(keys)
 
@@ -81,7 +85,7 @@ def test_non_actionable_status_has_assessment_but_no_action(
     tmp_path: Path, fm: dict[str, Any], codes: set[str]
 ) -> None:
     assessments = _one(tmp_path, "bugs/P2-BUG-001-a.md", ready_issue(fm))
-    for verb in registered_verbs():
+    for verb in ISSUE_VERBS:
         item = get(assessments, verb, "BUG-001")
         assert item.eligible is False
         assert codes <= set(item.exclusion_reasons)
@@ -92,9 +96,9 @@ def test_non_actionable_status_has_assessment_but_no_action(
         assert item.fully_resolved is False
 
 
-def test_epic_container_is_excluded_from_both_verbs(tmp_path: Path) -> None:
+def test_epic_container_is_excluded_from_every_issue_verb(tmp_path: Path) -> None:
     assessments = _one(tmp_path, "epics/P1-EPIC-010-e.md", ready_issue())
-    for verb in registered_verbs():
+    for verb in ISSUE_VERBS:
         item = get(assessments, verb, "EPIC-010")
         assert "epic_container" in item.exclusion_reasons
         assert item.action_spec is None and item.bucket_rank is None
@@ -467,7 +471,7 @@ def test_duplicate_full_id_is_explainable_without_an_action(tmp_path: Path) -> N
         "bugs/P2-BUG-002-ok.md": ready_issue(),
     }
     assessments = assess_candidates(project(tmp_path, files))
-    for verb in registered_verbs():
+    for verb in ISSUE_VERBS:
         dup = get(assessments, verb, "BUG-001")
         assert dup.eligible is False
         assert "ambiguous_issue_id" in dup.exclusion_reasons
@@ -764,13 +768,14 @@ def test_alternates_link_every_other_verb_for_the_same_target(tmp_path: Path) ->
     state = project(tmp_path, {"bugs/P2-BUG-001-a.md": ready_issue()})
     assessments = assess_candidates(state)
     impl, refine = get(assessments, IMPL, "BUG-001"), get(assessments, REFINE, "BUG-001")
-    assert [a.action_type for a in impl.alternates] == [REFINE]
-    assert [a.action_type for a in refine.alternates] == [IMPL]
+    blocker = get(assessments, BLOCKER, "BUG-001")
+    assert [a.action_type for a in impl.alternates] == [REFINE, BLOCKER]
+    assert [a.action_type for a in refine.alternates] == [IMPL, BLOCKER]
     assert impl.alternates[0].action_key == refine.action_key == "format-issue"
     assert refine.alternates[0].action_key == impl.action_key
     named, others = assessments_for_target(assessments, "issue:BUG-001", REFINE)
     assert named is refine
-    assert others == (impl,)
+    assert others == (impl, blocker)
     assert assessments_for_target(assessments, "issue:BUG-404", IMPL) == (None, ())
 
 
@@ -778,7 +783,7 @@ def test_each_target_is_assessed_once_even_for_mixed_status_inventory(tmp_path: 
     files = {f"bugs/P2-BUG-{n:03d}-a.md": ready_issue() for n in range(1, 8)}
     assessments = assess_candidates(project(tmp_path, files))
     pairs = [(a.action_type, a.target_key) for a in assessments]
-    assert len(pairs) == len(set(pairs)) == 14
+    assert len(pairs) == len(set(pairs)) == 7 * len(ISSUE_VERBS)
 
 
 # ------------------------------------------------------------------------ serialization
@@ -874,7 +879,9 @@ def test_assessment_performs_no_file_io(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_missing_registered_verb_reaches_nothing_beyond_the_registry(tmp_path: Path) -> None:
     state = project(tmp_path, {"bugs/P2-BUG-001-a.md": ready_issue()})
-    assert {a.action_type for a in assess_candidates(state)} == set(registered_verbs())
+    # run-loop assesses loop definitions, which this issue-only fixture does not collect.
+    assert {a.action_type for a in assess_candidates(state)} == set(ISSUE_VERBS)
+    assert set(registered_verbs()) == set(ISSUE_VERBS) | {"run-loop"}
     assert (
         render_slash(slash_spec_for("refine-issue", "BUG-001", "/r")) == "/ll:refine-issue BUG-001"
     )

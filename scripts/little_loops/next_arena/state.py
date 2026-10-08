@@ -62,6 +62,13 @@ from little_loops.session_log import command_counts_in_body, commands_in_body, s
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.next_arena.loop_state import (
+        LoopContextInputs,
+        LoopDefinitionRecord,
+        LoopDomain,
+        LoopHistory,
+        LoopSourceInventory,
+    )
 
 __all__ = [
     "DEFAULT_LEVERAGE_CAP",
@@ -615,6 +622,13 @@ class ProjectState:
     thresholds: Thresholds
     config_errors: tuple[str, ...]
     diagnostics: tuple[Diagnostic, ...]
+    #: Loop domain (FEAT-3769). ``None`` means "not collected" (no loop verb in scope), which
+    #: is distinct from an empty tuple ("collected, none found").
+    loop_definitions: tuple[LoopDefinitionRecord, ...] | None = None
+    loop_history: LoopHistory | None = None
+    loop_inventory: LoopSourceInventory | None = None
+    loop_inputs: LoopContextInputs | None = None
+    loop_diagnostics: tuple[Diagnostic, ...] = ()
     _by_path: Mapping[str, SourceRecord] = field(repr=False, compare=False, default_factory=dict)
 
     def record_for_path(self, rel_path: str) -> SourceRecord | None:
@@ -636,6 +650,7 @@ def build_project_state(
     thresholds: Thresholds,
     config_errors: Iterable[str] = (),
     counter: OpCounter | None = None,
+    loop_domain: LoopDomain | None = None,
 ) -> ProjectState:
     """Assemble a :class:`ProjectState` from captured records and evidence (pure).
 
@@ -661,6 +676,11 @@ def build_project_state(
         thresholds=thresholds,
         config_errors=tuple(config_errors),
         diagnostics=diagnostics,
+        loop_definitions=loop_domain.definitions if loop_domain is not None else None,
+        loop_history=loop_domain.history if loop_domain is not None else None,
+        loop_inventory=loop_domain.inventory if loop_domain is not None else None,
+        loop_inputs=loop_domain.inputs if loop_domain is not None else None,
+        loop_diagnostics=loop_domain.diagnostics if loop_domain is not None else (),
         _by_path=MappingProxyType({r.rel_path: r for r in ordered}),
     )
 
@@ -678,6 +698,7 @@ def collect_project_state(
     *,
     as_of: datetime | None = None,
     config: BRConfig | None = None,
+    include_loops: bool = False,
 ) -> ProjectState:
     """Capture a :class:`ProjectState` for an already-resolved *project_root*.
 
@@ -685,6 +706,10 @@ def collect_project_state(
     ``config.legacy_issue_dirs()``, all statuses, in deterministic path order. ``as_of`` is
     captured once as timezone-aware UTC (naive input raises ``ValueError``). No git,
     subprocess, database, writes or number allocation.
+
+    With *include_loops* the loop domain is collected as well (definitions, inventory,
+    steering/config inputs, ``.history``); callers pass it only when a loop verb is in scope,
+    so issue-only scopes perform zero loop source reads, validations or history reads.
     """
     as_of_utc = _normalize_as_of(as_of)
     root = project_root.resolve()
@@ -730,6 +755,11 @@ def collect_project_state(
             )
 
     thresholds, config_errors = capture_thresholds(config)
+    loop_domain: LoopDomain | None = None
+    if include_loops:
+        from little_loops.next_arena.loop_state import collect_loop_domain
+
+        loop_domain = collect_loop_domain(root, config=config, as_of=as_of_utc)
     return build_project_state(
         records,
         project_root=root,
@@ -738,6 +768,7 @@ def collect_project_state(
         formatting_policy=capture_formatting_policy(root),
         thresholds=thresholds,
         config_errors=config_errors,
+        loop_domain=loop_domain,
     )
 
 

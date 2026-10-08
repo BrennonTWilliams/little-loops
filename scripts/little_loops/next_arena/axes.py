@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 from little_loops.next_arena.graph import DEFAULT_LEVERAGE_CAP, Leverage
 from little_loops.next_arena.registry import get_verb
 from little_loops.session_log import _TIMESTAMPED_ENTRY_RE, session_log_body
-from little_loops.utility import weighted_geometric
+from little_loops.utility import frequency_score, recency_score, weighted_geometric
 
 if TYPE_CHECKING:
     from little_loops.next_arena.state import SourceRecord
@@ -44,10 +44,15 @@ __all__ = [
     "aggregate_axes",
     "axis_missing",
     "compute_issue_axes",
+    "compute_loop_axes",
     "effort_axis",
     "latest_session_timestamp",
     "latest_session_timestamp_from_content",
     "leverage_axis",
+    "loop_frequency_axis",
+    "loop_minimum_evidence_met",
+    "loop_recency_axis",
+    "loop_success_axis",
     "leverage_evidence",
     "lerp",
     "minimum_evidence_met",
@@ -71,6 +76,9 @@ READINESS_GAP_LO = 0.2
 LEVERAGE_LO = 0.5
 STALENESS_LO = 0.3
 MOMENTUM_LO = 0.3
+FREQUENCY_LO = 0.4
+RECENCY_LO = 0.2
+SUCCESS_LO = 0.2
 
 STALENESS_FULL_DAYS = 30.0
 MOMENTUM_HALF_LIFE_DAYS = 7.0
@@ -87,6 +95,9 @@ AXIS_BOUNDS: Mapping[str, tuple[float, float]] = MappingProxyType(
         "effort": (1.0 / 3.0, 1.0),
         "staleness": (STALENESS_LO, 1.0),
         "momentum": (MOMENTUM_LO, 1.0),
+        "frequency": (FREQUENCY_LO, 1.0),
+        "recency": (RECENCY_LO, 1.0),
+        "success": (SUCCESS_LO, 1.0),
     }
 )
 #: The recorded ``lo`` values (worst score) alone.
@@ -610,6 +621,92 @@ def compute_issue_axes(
     }
 
 
+# ------------------------------------------------------------------------- loop history
+
+#: Statuses whose runs count toward the success fraction (all others are non-terminal or
+#: unknown and are never failures).
+TERMINAL_RUN_STATUSES: frozenset[str] = frozenset({"completed", "failed", "timed_out"})
+
+
+def loop_frequency_axis(run_count: int) -> AxisScore:
+    """``x = min(1, log1p(count) / log1p(50))`` -> ``lerp(0.4, 1, x)`` over qualified runs.
+
+    A thin adapter over the FEAT-3681 curve primitive (:func:`frequency_score`), bounded as
+    the arena requires. No qualifying run is *missing* (cold start), never a present zero.
+    """
+    curve = "lerp(0.4, 1, min(1, log1p(run_count) / log1p(50)))"
+    source = "filesystem_history"
+    if run_count <= 0:
+        return axis_missing(curve, "no_qualifying_runs", raw=0, source=source)
+    x = min(1.0, frequency_score(run_count))
+    return _present(curve, lerp(FREQUENCY_LO, x), raw=run_count, source=source)
+
+
+def loop_recency_axis(latest_start: datetime | None, as_of: datetime) -> AxisScore:
+    """``x = exp(-ln2 * age_days / 7)`` of the latest qualified start -> ``lerp(0.2, 1, x)``."""
+    curve = "lerp(0.2, 1, exp(-ln(2) * age_days / 7))"
+    source = "filesystem_history"
+    if latest_start is None:
+        return axis_missing(curve, "no_qualifying_runs", source=source)
+    now = _require_aware(as_of)
+    stamp = latest_start.astimezone(UTC).isoformat()
+    x = min(1.0, recency_score(stamp, as_of=now))
+    evidence = {"timestamp": stamp, "age_days": _age_days(latest_start, now)}
+    return _present(curve, lerp(RECENCY_LO, x), raw=evidence, source=source)
+
+
+def loop_success_axis(completed: int, terminal: int) -> AxisScore:
+    """``x = completed / terminal`` over recognized terminal runs -> ``lerp(0.2, 1, x)``.
+
+    ``terminal`` counts ``completed``/``failed``/``timed_out`` runs only; interrupted,
+    in-flight and unknown statuses do not count as failures. No terminal run is missing.
+    """
+    curve = "lerp(0.2, 1, completed / terminal_runs)"
+    source = "filesystem_history"
+    if terminal <= 0:
+        return axis_missing(curve, "no_terminal_runs", source=source)
+    x = completed / terminal
+    raw = {"completed": completed, "terminal_runs": terminal, "success_fraction": x}
+    return _present(curve, lerp(SUCCESS_LO, x), raw=raw, source=source)
+
+
+def compute_loop_axes(
+    *,
+    run_count: int,
+    latest_start: datetime | None,
+    completed: int,
+    terminal: int,
+    as_of: datetime,
+    history_available: bool = True,
+) -> dict[str, AxisScore]:
+    """The three loop axes from a loop's qualified-run summary (unweighted).
+
+    All three are missing when *run_count* is zero or the history was unavailable (the
+    latter reason is reported so unavailable evidence never reads as "never ran").
+    """
+    if not history_available:
+        reason = "history_unavailable"
+        return {
+            axis: axis_missing(curve, reason, source="filesystem_history")
+            for axis, curve in (("frequency", ""), ("recency", ""), ("success", ""))
+        }
+    if run_count <= 0:  # cold start: no qualifying run at all, so all three are missing
+        return {
+            "frequency": loop_frequency_axis(0),
+            "recency": loop_recency_axis(None, as_of),
+            "success": axis_missing(
+                "lerp(0.2, 1, completed / terminal_runs)",
+                "no_qualifying_runs",
+                source="filesystem_history",
+            ),
+        }
+    return {
+        "frequency": loop_frequency_axis(run_count),
+        "recency": loop_recency_axis(latest_start, as_of),
+        "success": loop_success_axis(completed, terminal),
+    }
+
+
 # -------------------------------------------------------------------------- aggregation
 
 
@@ -686,3 +783,8 @@ def minimum_evidence_met(axes: Mapping[str, AxisScore]) -> bool:
         axis != "priority" and item.score is not None and item.configured_weight > 0
         for axis, item in axes.items()
     )
+
+
+def loop_minimum_evidence_met(axes: Mapping[str, AxisScore]) -> bool:
+    """Numeric loop utility needs at least one resolved positive-weight history axis."""
+    return any(item.score is not None and item.configured_weight > 0 for item in axes.values())

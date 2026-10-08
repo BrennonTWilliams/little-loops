@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.next_arena.candidates import assess_candidates, generate_candidates
+from little_loops.next_arena.registry import REGISTRY
 from little_loops.next_arena.selection import select_candidates
 from tests.next_arena_candidates_support import (
     FORMAT_ENTRY,
@@ -151,11 +152,7 @@ def test_reordered_config_objects_produce_identical_output(tmp_path: Path) -> No
     )
     assert scrub(left) == scrub(right)
     for item in left:
-        assert list(item["axes"]) == list(
-            ("priority", "outcome", "leverage", "effort", "momentum")
-            if item["action_type"] == IMPL
-            else ("priority", "readiness_gap", "leverage", "staleness", "momentum")
-        )
+        assert list(item["axes"]) == list(REGISTRY[item["action_type"]].axes)
 
 
 def test_assessment_depends_only_on_the_captured_state(tmp_path: Path) -> None:

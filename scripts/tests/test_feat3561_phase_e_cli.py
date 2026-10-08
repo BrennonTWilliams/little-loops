@@ -151,7 +151,12 @@ def test_empty_backlog_exits_one_with_distinct_diagnostics(
     monkeypatch.chdir(root)
     code, envelope = _json(run)
     assert code == 1 and envelope["recommendations"] == []
-    assert {d["code"] for d in envelope["diagnostics"]} == {"empty_source"}
+    # Issue buckets are empty sources; run-loop sees only built-in definitions, which a
+    # history-free project does not offer (cold_start_scope gate), so its bucket is gate-failed.
+    by_code = {d["code"]: d for d in envelope["diagnostics"]}
+    assert set(by_code) == {"empty_source", "gate_failed"}
+    assert by_code["gate_failed"]["subject"] == "run-loop"
+    assert "cold_start_scope" in by_code["gate_failed"]["message"]
     code, out, _ = run()
     assert code == 1 and "no eligible candidate" in out and "[empty_source]" in out
 
@@ -215,7 +220,10 @@ def test_explain_recommended_target(proj: Path, run: Run) -> None:
     assessment = envelope["explanation"]["assessment"]
     assert assessment["eligible"] is True
     assert assessment["display_command"] == "/ll:manage-issue feature implement FEAT-001"
-    assert [a["action_type"] for a in envelope["explanation"]["alternates"]] == ["refine-issue"]
+    assert [a["action_type"] for a in envelope["explanation"]["alternates"]] == [
+        "refine-issue",
+        "resolve-blocker",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -269,10 +277,10 @@ def test_explain_absent_target_text_mode(proj: Path, run: Run) -> None:
         ("--top", "0"),
         ("--top", "-3"),
         ("--top", "many"),
-        ("--type", "run-loop"),
+        ("--type", "run-sprint"),
         ("--type", "nope"),
         ("--explain", "refine-issue"),
-        ("--explain", "run-loop", "FEAT-001"),
+        ("--explain", "run-sprint", "FEAT-001"),
         ("--explain", "refine-issue", "FEAT-001", "--top", "2"),
         ("--explain", "refine-issue", "FEAT-001", "--type", "refine-issue"),
         ("--execute",),

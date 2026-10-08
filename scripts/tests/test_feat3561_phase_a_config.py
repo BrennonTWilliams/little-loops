@@ -19,6 +19,9 @@ REFINE = {
     "staleness": 0.15,
     "momentum": 0.10,
 }
+BLOCKER = {"priority": 0.25, "leverage": 0.50, "effort": 0.15, "staleness": 0.05, "momentum": 0.05}
+RUN_LOOP = {"frequency": 0.50, "recency": 0.30, "success": 0.20}
+ALL_CAPS = {"implement-issue": 2, "refine-issue": 2, "resolve-blocker": 2, "run-loop": 2}
 
 
 def _project(root: Path, base: dict[str, Any] | None = None, local: str | None = None) -> Path:
@@ -40,7 +43,9 @@ class TestDefaults:
         settings = BRConfig(_project(tmp_path)).next.resolve_arena_settings()
         assert dict(settings.weights["implement-issue"]) == IMPLEMENT
         assert dict(settings.weights["refine-issue"]) == REFINE
-        assert dict(settings.caps) == {"implement-issue": 2, "refine-issue": 2}
+        assert dict(settings.weights["resolve-blocker"]) == BLOCKER
+        assert dict(settings.weights["run-loop"]) == RUN_LOOP
+        assert dict(settings.caps) == ALL_CAPS
         assert settings.refine_cap == 5
 
     def test_settings_are_frozen_and_immutable(self) -> None:
@@ -95,7 +100,7 @@ class TestOverrides:
         }
         first, second = _arena(a), _arena(b)
         assert first == second
-        assert list(first.weights) == ["implement-issue", "refine-issue"]
+        assert list(first.weights) == list(REGISTRY)
         for verb in first.weights:
             assert list(first.weights[verb]) == list(second.weights[verb])
             assert list(first.weights[verb]) == list(REGISTRY[verb].axes)
@@ -104,8 +109,22 @@ class TestOverrides:
         settings = _arena(
             {"verbs": {"implement-issue": {"cap": 7}, "refine-issue": {"cap": 1, "refine_cap": 9}}}
         )
-        assert dict(settings.caps) == {"implement-issue": 7, "refine-issue": 1}
+        assert dict(settings.caps) == {**ALL_CAPS, "implement-issue": 7, "refine-issue": 1}
         assert settings.refine_cap == 9
+
+    def test_new_verbs_are_tunable_through_next_verbs(self) -> None:
+        settings = _arena(
+            {
+                "verbs": {
+                    "run-loop": {"cap": 3, "weights": {"success": 1, "frequency": 0}},
+                    "resolve-blocker": {"weights": {"leverage": 1}},
+                }
+            }
+        )
+        assert settings.caps["run-loop"] == 3
+        assert dict(settings.weights["run-loop"]) == {**RUN_LOOP, "frequency": 0.0, "success": 1.0}
+        assert list(settings.weights["run-loop"]) == ["frequency", "recency", "success"]
+        assert settings.weights["resolve-blocker"]["leverage"] == 1.0
 
     def test_zero_weight_disables_axis_but_is_valid(self) -> None:
         settings = _arena({"verbs": {"implement-issue": {"weights": {"priority": 0}}}})
@@ -146,7 +165,19 @@ class TestInvalid:
             ({"bogus": 1}, "next has unknown keys: 'bogus'"),
             ({"verbs": None}, "next.verbs must be a mapping, got null"),
             ({"verbs": []}, "next.verbs must be a mapping, got list"),
-            ({"verbs": {"resolve-blocker": {}}}, "next.verbs has unknown keys: 'resolve-blocker'"),
+            ({"verbs": {"run-sprint": {}}}, "next.verbs has unknown keys: 'run-sprint'"),
+            (
+                {"verbs": {"run-loop": {"weights": {"priority": 1}}}},
+                "next.verbs.run-loop.weights has unknown keys: 'priority'",
+            ),
+            (
+                {"verbs": {"resolve-blocker": {"refine_cap": 3}}},
+                "next.verbs.resolve-blocker has unknown keys: 'refine_cap'",
+            ),
+            (
+                {"verbs": {"run-loop": {"weights": dict.fromkeys(RUN_LOOP, 0)}}},
+                "next.verbs.run-loop.weights: at least one weight must be nonzero",
+            ),
             ({"verbs": {"nope": {}}}, "next.verbs has unknown keys: 'nope'"),
             ({"verbs": {"implement-issue": None}}, "next.verbs.implement-issue must be a mapping"),
             (
@@ -234,6 +265,19 @@ class TestConsumerIsolation:
         }
         settings = NextConfig(present=True, raw=raw).resolve_arena_settings()
         assert settings.caps["implement-issue"] == 5
+
+    def test_legacy_loop_history_and_run_loop_weights_are_independent(self) -> None:
+        raw = {
+            "loop_history": {"weights": {"recency": 0.9}},
+            "verbs": {"run-loop": {"weights": {"recency": 0.1}}},
+        }
+        cfg = NextConfig(present=True, raw=raw)
+        assert cfg.resolve_loop_history_weights()["recency"] == 0.9
+        assert cfg.resolve_arena_settings().weights["run-loop"]["recency"] == 0.1
+
+    def test_legacy_resolver_tolerates_invalid_run_loop_weights(self) -> None:
+        raw = {"verbs": {"run-loop": {"weights": {"recency": -1}}}}
+        assert NextConfig(present=True, raw=raw).resolve_loop_history_weights()["recency"] == 0.3
 
     def test_arena_resolver_does_not_validate_non_mapping_loop_history(self) -> None:
         assert _arena({"loop_history": 5}).refine_cap == 5

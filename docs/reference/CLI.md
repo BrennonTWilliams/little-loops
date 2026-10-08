@@ -3764,9 +3764,9 @@ queries instead of the `ll:codebase-*` agents — is
 
 ### ll-next
 
-Recommend what to do next across action types. `ll-next` reads your issue files once, scores `implement-issue` and `refine-issue` candidates deterministically, and prints the best of each type with the evidence behind it. It is **advisory and read-only**: it never runs the actions it prints, and it writes nothing (no history database, no git, no files).
+Recommend what to do next across action types. `ll-next` reads your issue files once (and, when a loop action type is in scope, your loop definitions and archived loop runs), scores `implement-issue`, `refine-issue`, `resolve-blocker` and `run-loop` candidates deterministically, and prints the best of each type with the evidence behind it. It is **advisory and read-only**: it never runs the actions it prints, and it writes nothing (no history database, no git, no files).
 
-Each recommendation carries a copyable `/ll:*` command. Run it from the **project root** that `ll-next` prints; slash commands and the `ll-*` tools do not all resolve a project from a subdirectory.
+Each recommendation carries a copyable command: a `/ll:*` slash command for issue actions, or `ll-loop run -- NAME` for a loop. Run it from the **project root** that `ll-next` prints; slash commands and the `ll-*` tools do not all resolve a project from a subdirectory.
 
 **Usage:**
 ```bash
@@ -3777,18 +3777,20 @@ ll-next [--json] [--top N] [--type VERB ...] [--explain VERB TARGET]
 | Flag | Description |
 |------|-------------|
 | `--json` | Emit one JSON envelope (`schema_version`, `project_root`, `as_of`, `selection_policy`, `recommendations`, `explanation`, `diagnostics`). The JSON Schema ships with the package as `little_loops/next_arena/output-schema.json`. |
-| `--top N` | Select up to `N` recommendations, filling round-robin across the action types in a fixed order (`implement-issue`, then `refine-issue`) with a per-type cap (default 2, `next.verbs.<verb>.cap`). Without `--top`, `ll-next` makes exactly one pass: the best candidate of each action type. `N` must be a positive integer. |
-| `--type VERB` | Restrict to an action type. Repeatable; choices are `implement-issue` and `refine-issue`. |
-| `--explain VERB TARGET` | Show the full assessment of `TARGET` for `VERB`: gates, per-axis evidence, why it was or was not eligible, and the other action type's assessment of the same issue. `TARGET` is the full issue ID exactly as spelled in its filename (for example `FEAT-0123`; bare numbers and paths are not accepted). Works for any existing issue, including done, EPIC and ambiguous ones. Cannot be combined with `--top` or `--type`. |
+| `--top N` | Select up to `N` recommendations, filling round-robin across the action types in a fixed order (`implement-issue`, `refine-issue`, `resolve-blocker`, then `run-loop`) with a per-type cap (default 2, `next.verbs.<verb>.cap`). Without `--top`, `ll-next` makes exactly one pass: the best candidate of each action type. `N` must be a positive integer. |
+| `--type VERB` | Restrict to an action type. Repeatable; choices are `implement-issue`, `refine-issue`, `resolve-blocker` and `run-loop`. Loop definitions and run history are read only when `run-loop` is in scope. |
+| `--explain VERB TARGET` | Show the full assessment of `TARGET` for `VERB`: gates, per-axis evidence, why it was or was not eligible, and the other action type's assessment of the same issue. `TARGET` is the full issue ID exactly as spelled in its filename (for example `FEAT-0123`; bare numbers and paths are not accepted), or, for `run-loop`, the exact loop command operand as printed (a name from `ll-loop list`; it may start with a dash, e.g. `-x`, and is taken literally). Works for any existing issue or discovered loop, including done, EPIC, ambiguous, invalid and unresolved-input ones. Cannot be combined with `--top` or `--type`. |
 
 **What gets recommended:**
 
 - `implement-issue` -- an `open` leaf issue whose prerequisites are done, whose readiness and outcome scores meet `commands.confidence_gate` (a valid `outcome_gate_waived: true` waives only the outcome check), that is not `blocked` and has no unresolved `decision_needed`. The command is `/ll:manage-issue bug fix ID`, `feature implement ID` or `enhancement improve ID`.
 - `refine-issue` -- an `open` or `blocked` leaf issue that still needs the next refinement step, in the same order as `ll-issues next-action`: `/ll:format-issue`, `/ll:verify-issues`, `/ll:confidence-check`, then `/ll:refine-issue` (stopping once `next.verbs.refine-issue.refine_cap` runs are logged). A missing readiness score always leads to `/ll:confidence-check`, never to implementation.
+- `resolve-blocker` -- an open or blocked non-EPIC *root* issue (its own prerequisites are done) that has at least one proven reachable open or blocked non-EPIC dependent. The action is the issue's next refinement step when one applies (the same order as `refine-issue`; an exhausted refinement cap never falls through to implementation), otherwise the `implement-issue` command once the same readiness, `blocked` and `decision_needed` checks pass. Fan-out is *affected downstream work*, not proof that finishing the root unblocks every descendant: each recommendation reports which direct dependents the root would immediately unlock (those waiting on nothing else) separately from multi-blocked and transitive ones. When `implement-issue` or `refine-issue` already recommends the same issue, the root appears as an *alternate* of that recommendation carrying the blocker summary instead of a duplicate entry.
+- `run-loop` -- an existing valid loop definition that `ll-loop run -- NAME` can start **without any input or `--context` arguments**: every `${context.*}` reference and `required_inputs` entry must be satisfied by the loop's own `context:`, parameter defaults, `.ll/program.md` steering sections or the runner's seeded values; otherwise it is reported as `unresolved_input`. Loops rank by their archived run history (frequency, recency, success), joined on the loop's own `name:` (not the file name). A loop with no qualifying run is offered after scored loops only when it is a project-local, public definition under your loops directory; never-run built-in, draft (`runs/*/workflow.yaml`) and `internal`/`example` loops are explainable but not offered until a run exists. `ll-next` does not check whether the loop is already running: the runner may refuse or queue a loop that is already running, so a running loop can still be recommended.
 
-Within one action type, candidates are ranked by a weighted geometric score over bounded axes (priority, outcome or readiness gap, downstream fan-out, effort, staleness, recent activity); weights are tunable under [`next.verbs`](CONFIGURATION.md#next). Scores are never compared across action types. A candidate with too little evidence for a numeric score is still listed, after the scored ones, ordered by priority.
+Within one action type, candidates are ranked by a weighted geometric score over bounded axes (priority, outcome or readiness gap, downstream fan-out, effort, staleness, recent activity; for loops, run frequency, recency and success); weights are tunable under [`next.verbs`](CONFIGURATION.md#next). Scores are never compared across action types. A candidate with too little evidence for a numeric score is still listed, after the scored ones, ordered by priority (loops: by name). Loop run history is read from the archived run records under your loops directory's `.history` folder, never from the history database; unreadable or unavailable history is reported as a diagnostic and is never treated as proof that a loop never ran.
 
-**Diagnostics** (listed after the recommendations, and always in `--json`): `empty_source`, `gate_failed` and `gate_missing` explain an empty action type; `ambiguous_issue_id` and `unsupported_issue_filename` flag sources that cannot back an action (duplicate IDs, shared issue numbers, unnormalized or numberless filenames); `refine_cap_exhausted` reports an issue whose refinement cap is used up; `conflicting_completed_at` flags a reopened issue that still carries a completion marker; `target_not_found` reports an unknown `--explain` target.
+**Diagnostics** (listed after the recommendations, and always in `--json`): `empty_source`, `gate_failed` and `gate_missing` explain an empty action type (for `run-loop`, `gate_failed` includes the `cold_start_scope` gate); `ambiguous_issue_id` and `unsupported_issue_filename` flag sources that cannot back an action (duplicate IDs, shared issue numbers, unnormalized or numberless filenames); `refine_cap_exhausted` reports an issue whose refinement cap is used up; `conflicting_completed_at` flags a reopened issue that still carries a completion marker; `loop_definition_excluded`, `loops_dir_out_of_root`, `loop_history_unavailable` and `loop_history_record_excluded` report loop definitions or run records that could not be used; `target_not_found` reports an unknown `--explain` target. A loop's validation warnings are shown only under `--explain` (they never reach stderr or `--json` stdout).
 
 **Exit codes:**
 | Code | Meaning |
@@ -3802,9 +3804,12 @@ Within one action type, candidates are ranked by a weighted geometric score over
 ll-next                                      # best candidate of each action type
 ll-next --top 4                              # up to 4, filled round-robin
 ll-next --type refine-issue                  # only refinement recommendations
+ll-next --type resolve-blocker               # the root blockers worth unblocking first
+ll-next --type run-loop                      # loops worth running (no input needed)
 ll-next --json --top 3                       # machine-readable output
 ll-next --explain refine-issue FEAT-0123     # why (or why not) FEAT-0123 is a refinement candidate
 ll-next --explain implement-issue BUG-045    # the implementation gates for BUG-045
+ll-next --explain run-loop fix-types         # why a loop is (or is not) offered
 ```
 
 ---

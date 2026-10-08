@@ -17,7 +17,9 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 #: Output contract version (positive integer, independent of the history DB schema).
-SCHEMA_VERSION = 1
+#: 2 (FEAT-3769): ``resolve-blocker``/``run-loop`` verbs, the ``loop`` ``action_spec``
+#: variant, the ``run-loop`` action key, loop axes and the alternate ``blocker`` summary.
+SCHEMA_VERSION = 2
 
 #: Fixed canonical verb order; only landed verbs are registered (see ``REGISTRY``).
 CANONICAL_VERB_ORDER: tuple[str, ...] = (
@@ -30,9 +32,13 @@ CANONICAL_VERB_ORDER: tuple[str, ...] = (
 )
 
 #: Registered ``action_spec`` ``variant`` discriminators.
-ACTION_VARIANTS: tuple[str, ...] = ("slash",)
+ACTION_VARIANTS: tuple[str, ...] = ("slash", "loop")
 #: Discriminator names reserved for follow-on slices; not accepted by this slice.
-RESERVED_VARIANTS: tuple[str, ...] = ("loop", "sprint", "scan")
+RESERVED_VARIANTS: tuple[str, ...] = ("sprint", "scan")
+
+#: Candidate domains: ``issue`` verbs target ``issue:ID`` keys, ``loop`` verbs ``loop:NAME``.
+DOMAIN_ISSUE = "issue"
+DOMAIN_LOOP = "loop"
 
 #: Default per-type cap applied by round-robin selection.
 DEFAULT_VERB_CAP = 2
@@ -50,6 +56,9 @@ class VerbSpec:
     default_cap: int
     minimum_evidence: str
     default_refine_cap: int | None = None
+    domain: str = DOMAIN_ISSUE
+    #: Wording for the fallback order of cold-start candidates in ``selection_reason``.
+    cold_start_order: str = "priority then target"
 
 
 @dataclass(frozen=True)
@@ -66,6 +75,7 @@ class ArenaSettings:
 
 
 _MIN_EVIDENCE = "valid priority plus at least one resolved positive-weight non-priority axis"
+_LOOP_MIN_EVIDENCE = "at least one resolved positive-weight history axis"
 
 _SPECS: tuple[VerbSpec, ...] = (
     VerbSpec(
@@ -93,6 +103,30 @@ _SPECS: tuple[VerbSpec, ...] = (
         minimum_evidence=_MIN_EVIDENCE,
         default_refine_cap=DEFAULT_REFINE_CAP,
     ),
+    VerbSpec(
+        name="resolve-blocker",
+        axes=("priority", "leverage", "effort", "staleness", "momentum"),
+        default_weights=MappingProxyType(
+            {
+                "priority": 0.25,
+                "leverage": 0.50,
+                "effort": 0.15,
+                "staleness": 0.05,
+                "momentum": 0.05,
+            }
+        ),
+        default_cap=DEFAULT_VERB_CAP,
+        minimum_evidence=_MIN_EVIDENCE,
+    ),
+    VerbSpec(
+        name="run-loop",
+        axes=("frequency", "recency", "success"),
+        default_weights=MappingProxyType({"frequency": 0.50, "recency": 0.30, "success": 0.20}),
+        default_cap=DEFAULT_VERB_CAP,
+        minimum_evidence=_LOOP_MIN_EVIDENCE,
+        domain=DOMAIN_LOOP,
+        cold_start_order="target",
+    ),
 )
 
 #: Landed verbs in canonical order. A later slice appends here in canonical position.
@@ -104,6 +138,16 @@ REGISTRY: Mapping[str, VerbSpec] = MappingProxyType(
 def registered_verbs() -> tuple[str, ...]:
     """Return registered verb names in canonical order."""
     return tuple(REGISTRY)
+
+
+def verbs_in_domain(domain: str) -> tuple[str, ...]:
+    """Registered verb names of one candidate *domain*, in canonical order."""
+    return tuple(name for name, spec in REGISTRY.items() if spec.domain == domain)
+
+
+def loop_verbs() -> tuple[str, ...]:
+    """Registered verbs whose candidates are loop definitions (``loop:NAME`` targets)."""
+    return verbs_in_domain(DOMAIN_LOOP)
 
 
 def get_verb(name: str) -> VerbSpec:

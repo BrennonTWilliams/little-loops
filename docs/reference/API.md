@@ -748,9 +748,11 @@ The pure domain package behind [`ll-next`](CLI.md#ll-next). Everything except `s
 
 | Module | Role |
 |--------|------|
-| `registry` | Verb registry in canonical order (`implement-issue`, `refine-issue` registered), `SCHEMA_VERSION`, action-variant names, `ArenaSettings`. CLI choices, config keys and schema enums derive from it. |
-| `actions` | Typed `action_spec` tagged union (`SlashActionSpec`, `variant: "slash"`), the seven-row `action_key` table, `action_fingerprint()` (`sha256:` of canonical `{variant, command, args}`), `render_slash()` / `parse_slash()` and option-safe `render_shell()` / `parse_shell()`. |
-| `state` | `collect_project_state(project_root, *, as_of=None, config=None) -> ProjectState`: one read of every issue file across all statuses, the identity inventory (duplicate full IDs, shared issue numbers, unnormalized filenames), lifecycle resolution and the dependency graph. |
+| `registry` | Verb registry in canonical order (`implement-issue`, `refine-issue`, `resolve-blocker`, `run-loop` registered), each verb's candidate domain (`issue` or `loop`), `SCHEMA_VERSION` (2), action-variant names, `ArenaSettings`. CLI choices, config keys and schema enums derive from it. |
+| `actions` | Typed `action_spec` tagged union (`SlashActionSpec`, `variant: "slash"`; `LoopActionSpec`, `variant: "loop"` with `target`, `definition_source`, `definition_digest`, `fingerprint_scope` and `working_directory`), the seven-row slash `action_key` table plus `run-loop`, `action_fingerprint()` (`sha256:` of the canonical variant projection; the loop digest covers the **top-level definition bytes** only, scope `v1/top-level-bytes`), `render_slash()` / `render_loop()` / `render_action()` and option-safe `render_shell()` / `parse_shell()`. |
+| `state` | `collect_project_state(project_root, *, as_of=None, config=None, include_loops=False) -> ProjectState`: one read of every issue file across all statuses, the identity inventory (duplicate full IDs, shared issue numbers, unnormalized filenames), lifecycle resolution and the dependency graph. With `include_loops=True` it also captures the loop domain (`loop_definitions`, `loop_history`, `loop_inventory`, `loop_inputs`); these are `None` (not collected) otherwise. |
+| `loop_state` | Collection-phase loop capture for `run-loop`: `collect_loop_definitions()` reads each top-level loop source once, hashes and validates that same buffer (runner-equivalent validation resolved from the project root, warnings kept as diagnostics), `resolve_target()` mirrors `resolve_loop_path` precedence over the captured inventory, `zero_argument_context()` models the runner's no-input preflight symbolically, and `collect_loop_history()` makes one batched pass over `<loops_dir>/.history`. |
+| `blockers`, `loop_candidates` | The `resolve-blocker` (`assess_resolve_blockers()`, one-pass direct-dependent index) and `run-loop` (`assess_run_loops()`) generators; `assess_candidates()` routes each verb to its own candidate domain. |
 | `inputs` | `Diagnostic`, the captured `FormattingPolicy` and confidence `Thresholds`. |
 | `history` | Opt-in, injected `read_history_snapshot()` for `ll-next` consumers; never imported by `state` or the CLI core. See [below](#little_loopsnext_arenahistory). |
 | `graph`, `axes` | Dependency-graph analysis, bounded axis curves and the weighted geometric aggregate. |
@@ -775,7 +777,7 @@ picks = select_candidates(
 )
 ```
 
-`ll-next --json` output is validated by the JSON Schema shipped at `little_loops/next_arena/output-schema.json`. Each recommendation has a complete action identity (`action_key`, `action_fingerprint`, `action_spec`, `display_command`, `bucket_rank`); the `--explain` assessment definition allows those fields to be `null` for an excluded target.
+`ll-next --json` output is validated by the JSON Schema shipped at `little_loops/next_arena/output-schema.json` (`schema_version` 2: the `loop` action variant, the `run-loop` action key and a nullable `blocker` summary on alternates). Each recommendation has a complete action identity (`action_key`, `action_fingerprint`, `action_spec`, `display_command`, `bucket_rank`); the `--explain` assessment definition allows those fields to be `null` for an excluded target.
 
 ### little_loops.next_arena.history
 

@@ -2438,7 +2438,7 @@
         },
         "verbs": {
           "type": "object",
-          "description": "`ll-next` per-action-type scoring and selection settings. Validated lazily by `ll-next` (not at config load). Independent of `next.loop_history`.",
+          "description": "`ll-next` per-action-type scoring and selection settings. Validated lazily by `ll-next` (not at config load). Independent of `next.loop_history`: `next.verbs.run-loop.weights` tunes the `run-loop` verb, while `next.loop_history.weights` only affects `ll-loop next-loop`.",
           "properties": {
             "implement-issue": {
               "type": "object",
@@ -2542,6 +2542,94 @@
                   "minimum": 1,
                   "default": 5,
                   "description": "Maximum `/ll:refine-issue` runs recorded in an issue's Session Log before further refinement is reported as a diagnostic instead of recommended."
+                }
+              },
+              "additionalProperties": false
+            },
+            "resolve-blocker": {
+              "type": "object",
+              "description": "`ll-next` settings for the `resolve-blocker` action type.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "priority": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.25,
+                      "description": "Weight of the filename-first priority (P0 best, P5 worst)."
+                    },
+                    "leverage": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.5,
+                      "description": "Weight of the downstream fan-out (distinct nonterminal dependents, saturating at 10)."
+                    },
+                    "effort": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.15,
+                      "description": "Weight of the inverse Impact-section Effort field."
+                    },
+                    "staleness": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.05,
+                      "description": "Weight of the age of the captured_at / discovered_date, saturating at 30 days."
+                    },
+                    "momentum": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.05,
+                      "description": "Weight of the recency of the latest Session Log timestamp (seven-day half-life)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                }
+              },
+              "additionalProperties": false
+            },
+            "run-loop": {
+              "type": "object",
+              "description": "`ll-next` settings for the `run-loop` action type. Independent of `next.loop_history.weights` (legacy `ll-loop next-loop`), whose defaults are the same 0.50/0.30/0.20.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights over the filesystem run history of the loop. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "frequency": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.5,
+                      "description": "Weight of the log-scale qualified-run-count curve (lower-bounded at 0.4, reference count 50)."
+                    },
+                    "recency": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the seven-day half-life recency decay of the latest qualified run start (lower-bounded at 0.2)."
+                    },
+                    "success": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.2,
+                      "description": "Weight of the share of recognized terminal runs with status `completed` (lower-bounded at 0.2)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
                 }
               },
               "additionalProperties": false

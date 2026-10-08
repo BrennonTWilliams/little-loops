@@ -234,8 +234,9 @@ def test_bucket_order_for_follows_registry_order() -> None:
     assert bucket_order_for() == registered_verbs()
     assert bucket_order_for([REFINE, IMPL]) == (IMPL, REFINE)
     assert bucket_order_for([REFINE]) == (REFINE,)
-    with pytest.raises(ValueError, match="run-loop"):
-        bucket_order_for(["run-loop"])
+    assert bucket_order_for(["run-loop", REFINE]) == (REFINE, "run-loop")
+    with pytest.raises(ValueError, match="run-sprint"):
+        bucket_order_for(["run-sprint"])
 
 
 # ----------------------------------------------------------------------- end to end

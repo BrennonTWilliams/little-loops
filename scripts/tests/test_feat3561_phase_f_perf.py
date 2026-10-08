@@ -41,6 +41,7 @@ from little_loops.next_arena.candidates import (
 )
 from little_loops.next_arena.graph import DEFAULT_LEVERAGE_CAP, LeverageIndex, OpCounter
 from little_loops.next_arena.inputs import FormattingPolicy, Thresholds
+from little_loops.next_arena.registry import verbs_in_domain
 from little_loops.next_arena.render import (
     bucket_diagnostics,
     build_envelope,
@@ -301,7 +302,9 @@ def test_smoke_full_collect_assess_select_path(smoke_project: Path) -> None:
 
     assert len(state.records) >= 195
     targets = len(state.identity.node_paths)
-    assert len(assessments) == targets * len(order)
+    # run-loop assesses loop definitions, which an issue-only collection leaves uncollected.
+    assert state.loop_definitions is None
+    assert len(assessments) == targets * len(verbs_in_domain("issue"))
     assert candidates and selected
     assert len({c.target_key for c in selected}) == len(selected)
     assert any(d.code == "ambiguous_issue_id" for d in state.diagnostics)
@@ -606,6 +609,144 @@ def test_ten_thousand_issue_assess_and_select_within_budget(tmp_path: Path) -> N
         f"select+render {finished - assessed:.2f}s, total {total:.2f}s "
         f"({PERF_ISSUES} issues, {edges} edges)"
     )
-    assert len(assessments) == len(state.identity.node_paths) * len(order)
+    issue_verbs = verbs_in_domain("issue")
+    assert len(assessments) == len(state.identity.node_paths) * len(issue_verbs)
     assert selected
     assert total <= PERF_BUDGET_SECONDS, f"10k-issue gate took {total:.1f}s"
+
+
+# ------------------------------------------------- FEAT-3769 loop-domain structural + perf
+
+
+def _loop_domain(root: Path, definitions: int, runs: int) -> Any:
+    """An in-memory loop domain: *definitions* loops, *runs* archived records, no files."""
+    from datetime import timedelta
+    from types import MappingProxyType
+
+    from little_loops.next_arena.loop_state import (
+        LoopContextInputs,
+        LoopDomain,
+        LoopHistory,
+        LoopRunRecord,
+        LoopSourceInventory,
+        _blank_record,
+    )
+
+    loops_dir = root / ".loops"
+    records = []
+    for i in range(definitions):
+        target = f"loop-{i:04d}"
+        records.append(
+            _blank_record(
+                target,
+                "project",
+                loops_dir / f"{target}.yaml",
+                f".loops/{target}.yaml",
+                valid=True,
+                digest="sha256:" + f"{i:064x}",
+                logical_name=target,
+            )
+        )
+    history = []
+    for n in range(runs):
+        name = f"loop-{n % definitions:04d}"
+        started = AS_OF - timedelta(hours=n % 2000 + 1)
+        history.append(
+            LoopRunRecord(
+                folder=f"{n:06d}-{name}",
+                rel_path=f".loops/.history/{n:06d}-{name}",
+                run_id=f"{n:06d}",
+                logical_name=name,
+                state_read="ok",
+                started_at_raw=started.isoformat(),
+                started_at=started,
+                status_raw="completed" if n % 3 else "failed",
+                status="completed" if n % 3 else "failed",
+                qualified=True,
+                exclusion=None,
+            )
+        )
+    inventory = LoopSourceInventory(
+        project_root=root,
+        loops_dir=loops_dir,
+        builtin_dir=root / "builtin",
+        project_files=frozenset(f"{r.target}.yaml" for r in records),
+        builtin_files=frozenset(),
+        drafts=MappingProxyType({}),
+        direct=MappingProxyType({}),
+    )
+    inputs = LoopContextInputs(".ll/program.md", False, MappingProxyType({}), None, None, 85, 65)
+    return LoopDomain(tuple(records), inventory, LoopHistory(True, None, tuple(history)), inputs)
+
+
+def test_loop_assessment_performs_no_file_reads_or_history_rescans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import little_loops.next_arena.loop_state as loop_state_module
+
+    domain = _loop_domain(tmp_path, definitions=20, runs=400)
+    config = BRConfig(tmp_path)
+    state = build_project_state(
+        [],
+        project_root=tmp_path,
+        as_of=AS_OF,
+        config=config,
+        formatting_policy=FormattingPolicy({}, {}, None),
+        thresholds=Thresholds(85, 65, False),
+        loop_domain=domain,
+    )
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("live I/O during loop assessment")
+
+    for name in ("_read_bytes", "_scandir", "_read_state_bytes", "_read_text"):
+        monkeypatch.setattr(loop_state_module, name, boom)
+    for name in ("read_text", "read_bytes", "open", "stat", "exists"):
+        monkeypatch.setattr(Path, name, boom)
+    assessments = [a for a in assess_candidates(state) if a.action_type == "run-loop"]
+    assert len(assessments) == 20 and all(a.fully_resolved for a in assessments)
+    assert [a.bucket_rank for a in assessments] and sorted(
+        a.bucket_rank for a in assessments
+    ) == list(range(1, 21))
+
+
+@pytest.mark.perf
+@pytest.mark.no_parallel
+def test_two_hundred_definitions_and_ten_thousand_runs_within_budget(tmp_path: Path) -> None:
+    config = BRConfig(tmp_path)
+    records, edges = _perf_records(tmp_path, config)  # untimed: fixture construction
+    domain = _loop_domain(tmp_path, definitions=200, runs=10_000)
+    settings = config.next.resolve_arena_settings()
+    order = bucket_order_for(None)
+
+    started = time.perf_counter()
+    state = build_project_state(
+        records,
+        project_root=tmp_path,
+        as_of=AS_OF,
+        config=config,
+        formatting_policy=FormattingPolicy({}, {}, None),
+        thresholds=Thresholds(85, 65, False),
+        loop_domain=domain,
+    )
+    assessments = assess_candidates(state, settings=settings)
+    selected = select_candidates(
+        candidates_from_assessments(assessments), top=10, bucket_order=order, caps=settings.caps
+    )
+    render_json(
+        build_envelope(
+            project_root=tmp_path,
+            as_of=state.as_of,
+            selection_policy=selection_policy(top=10, bucket_order=order, caps=settings.caps),
+            recommendations=selected,
+            diagnostics=collect_diagnostics(state.diagnostics, assessments, order),
+        )
+    )
+    total = time.perf_counter() - started
+    print(
+        f"loop gate: total {total:.2f}s ({PERF_ISSUES} issues, {edges} edges, 200 loops, 10000 runs)"
+    )
+    loops = [a for a in assessments if a.action_type == "run-loop"]
+    assert len(loops) == 200 and any(a.fully_resolved for a in loops)
+    assert selected
+    assert total < PERF_BUDGET_SECONDS

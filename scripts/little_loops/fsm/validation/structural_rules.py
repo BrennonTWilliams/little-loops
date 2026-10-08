@@ -8,6 +8,7 @@ and the `load_and_validate`/`is_runnable_loop` entry points.
 
 from __future__ import annotations
 
+import copy
 import difflib
 import logging
 import re
@@ -2114,11 +2115,14 @@ def load_and_validate(
     *,
     host_cli: str | None = None,
     model_hints: dict[str, dict[str, str | Literal[False]]] | None = None,
+    source_data: dict[str, Any] | None = None,
 ) -> tuple[FSMLoop, list[ValidationError]]:
     """Load YAML file and validate FSM structure.
 
     Args:
-        path: Path to the YAML file to load
+        path: Path to the YAML file to load. With *source_data* it is only the
+            original source reference: its parent directory stays the inheritance,
+            import and reference fallback base.
         raise_on_error: When True (default), raise ValueError on ERROR violations.
             When False, return all violations (errors + warnings) without raising.
         orchestration_request_path: Optional project-level ``orchestration.request_path``
@@ -2127,6 +2131,11 @@ def load_and_validate(
         host_cli: Active host CLI name, forwarded to ``validate_fsm`` for the
             ``model_hint`` resolution warnings (ENH-3548). ``None`` skips them.
         model_hints: Parsed ``orchestration.model_hints`` overrides, forwarded likewise.
+        source_data: Already-parsed top-level YAML mapping of *path* (FEAT-3769). When
+            given, *path* is neither opened nor required to exist, so a caller that
+            captured the source bytes once can hash and validate that same buffer.
+            The mapping is deep-copied, never mutated. The default ``None`` keeps the
+            legacy read-the-file behavior.
 
     Returns:
         When raise_on_error=True: (FSMLoop, list of WARNING-severity ValidationErrors)
@@ -2137,11 +2146,15 @@ def load_and_validate(
         yaml.YAMLError: If the file is not valid YAML
         ValueError: If raise_on_error=True and validation fails (contains error details)
     """
-    if not path.exists():
-        raise FileNotFoundError(f"FSM file not found: {path}")
+    data: dict[str, Any]
+    if source_data is not None:
+        data = copy.deepcopy(source_data)
+    else:
+        if not path.exists():
+            raise FileNotFoundError(f"FSM file not found: {path}")
 
-    with open(path) as f:
-        data: dict[str, Any] = yaml.safe_load(f)
+        with open(path) as f:
+            data = yaml.safe_load(f)
 
     if not isinstance(data, dict):
         raise ValueError(f"FSM file must contain a YAML mapping, got {type(data)}")

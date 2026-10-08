@@ -10,6 +10,9 @@ without a cli -> fsm -> cli import cycle.
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +21,32 @@ import yaml
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
     from little_loops.logger import Logger
+
+
+#: Directory that stands in for the process working directory when set (FEAT-3769).
+#: ``resolve_loop_path``'s direct-path probe is the only cwd-sensitive lookup in loop
+#: loading (``from:`` parents and static ``loop:`` references all route through it).
+_RESOLUTION_ROOT: ContextVar[Path | None] = ContextVar("ll_loop_resolution_root", default=None)
+#: When set, duplicate-draft ``Note:`` messages are appended here instead of printed.
+_NOTE_SINK: ContextVar[list[str] | None] = ContextVar("ll_loop_note_sink", default=None)
+
+
+@contextmanager
+def resolution_context(root: Path, notes: list[str] | None = None) -> Iterator[None]:
+    """Resolve loop operands as if the process ran from *root* (no ``chdir``).
+
+    Inside the block ``resolve_loop_path`` probes the direct-path operand at
+    ``root / operand`` rather than relative to the real working directory, and, when
+    *notes* is given, collects the duplicate-draft ``Note:`` text there instead of
+    writing it to stderr. Context-local, so concurrent threads/tasks are unaffected.
+    """
+    root_token = _RESOLUTION_ROOT.set(root)
+    note_token = _NOTE_SINK.set(notes)
+    try:
+        yield
+    finally:
+        _RESOLUTION_ROOT.reset(root_token)
+        _NOTE_SINK.reset(note_token)
 
 
 def get_builtin_loops_dir() -> Path:
@@ -40,6 +69,9 @@ def draft_internal_name(workflow_yaml: Path) -> str | None:
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
     """Resolve loop name to file path."""
     path = Path(name_or_path)
+    root = _RESOLUTION_ROOT.get()
+    if root is not None and not path.is_absolute():
+        path = root / path
     if path.exists():
         return path
 
@@ -74,10 +106,12 @@ def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
             matches.sort(key=lambda p: p.stat().st_mtime)
             if len(matches) > 1:
                 skipped = ", ".join(str(p) for p in matches[:-1])
-                print(
-                    f"Note: skipped older draft(s) named {name_or_path!r}: {skipped}",
-                    file=sys.stderr,
-                )
+                note = f"Note: skipped older draft(s) named {name_or_path!r}: {skipped}"
+                sink = _NOTE_SINK.get()
+                if sink is not None:
+                    sink.append(note)
+                else:
+                    print(note, file=sys.stderr)
             return matches[-1]
 
     raise FileNotFoundError(

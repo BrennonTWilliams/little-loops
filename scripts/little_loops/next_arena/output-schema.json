@@ -16,7 +16,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "project_root": {
       "type": "string",
@@ -88,7 +88,9 @@
           "items": {
             "enum": [
               "implement-issue",
-              "refine-issue"
+              "refine-issue",
+              "resolve-blocker",
+              "run-loop"
             ]
           }
         },
@@ -97,7 +99,9 @@
           "propertyNames": {
             "enum": [
               "implement-issue",
-              "refine-issue"
+              "refine-issue",
+              "resolve-blocker",
+              "run-loop"
             ]
           },
           "additionalProperties": {
@@ -147,6 +151,44 @@
                 "type": "string",
                 "minLength": 1
               }
+            },
+            "working_directory": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "variant",
+            "target",
+            "definition_source",
+            "definition_digest",
+            "fingerprint_scope",
+            "working_directory"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "variant": {
+              "const": "loop"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1
+            },
+            "definition_source": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Project-relative YAML path or `builtin:<relative-YAML-path>` of the resolved top-level source."
+            },
+            "definition_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "description": "SHA-256 of the captured top-level definition bytes."
+            },
+            "fingerprint_scope": {
+              "const": "v1/top-level-bytes"
             },
             "working_directory": {
               "type": "string",
@@ -306,14 +348,17 @@
         "bucket_rank",
         "utility",
         "exclusion_reasons",
-        "selection_reason"
+        "selection_reason",
+        "blocker"
       ],
       "additionalProperties": false,
       "properties": {
         "action_type": {
           "enum": [
             "implement-issue",
-            "refine-issue"
+            "refine-issue",
+            "resolve-blocker",
+            "run-loop"
           ]
         },
         "eligible": {
@@ -329,7 +374,8 @@
                 "refine-issue",
                 "manage-issue:fix",
                 "manage-issue:implement",
-                "manage-issue:improve"
+                "manage-issue:improve",
+                "run-loop"
               ]
             },
             {
@@ -388,6 +434,16 @@
         },
         "selection_reason": {
           "type": "string"
+        },
+        "blocker": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -422,7 +478,9 @@
           "type": "string",
           "enum": [
             "implement-issue",
-            "refine-issue"
+            "refine-issue",
+            "resolve-blocker",
+            "run-loop"
           ]
         },
         "action_key": {
@@ -434,7 +492,8 @@
             "refine-issue",
             "manage-issue:fix",
             "manage-issue:implement",
-            "manage-issue:improve"
+            "manage-issue:improve",
+            "run-loop"
           ]
         },
         "action_fingerprint": {
@@ -466,7 +525,10 @@
               "effort",
               "momentum",
               "readiness_gap",
-              "staleness"
+              "staleness",
+              "frequency",
+              "recency",
+              "success"
             ]
           },
           "additionalProperties": {
@@ -583,7 +645,9 @@
           "type": "string",
           "enum": [
             "implement-issue",
-            "refine-issue"
+            "refine-issue",
+            "resolve-blocker",
+            "run-loop"
           ]
         },
         "action_key": {
@@ -597,7 +661,8 @@
                 "refine-issue",
                 "manage-issue:fix",
                 "manage-issue:implement",
-                "manage-issue:improve"
+                "manage-issue:improve",
+                "run-loop"
               ]
             },
             {
@@ -656,7 +721,10 @@
               "effort",
               "momentum",
               "readiness_gap",
-              "staleness"
+              "staleness",
+              "frequency",
+              "recency",
+              "success"
             ]
           },
           "additionalProperties": {
