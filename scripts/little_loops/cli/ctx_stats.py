@@ -456,8 +456,19 @@ def _compute_cache_rate_from_usage(
     observation. The rate and operands publish only when every selected audit
     observation is eligible and measured (see ``qualify_usage``). Source freshness is read from ENH-3651's committed cursor;
     it is never inferred from a usage row's timestamp.
+
+    Admission (ENH-3746) is verified-source-attributed replay: any
+    ``usage_events`` row whose :func:`_verified_usage_identity` holds
+    for this host/session admits — regardless of whether the original
+    source spelling or resolved handle path is still tracked in
+    ``raw_events``. This restores the rate that the pre-ENH-3746 raw-only
+    check silently dropped after BUG-3736 retention.
     """
-    from little_loops.history_reader.usage import select_usage_coverage
+    from little_loops.history_reader.usage import (
+        _has_ingested_raw,
+        _has_verified_retained_ingestion,
+        select_usage_coverage,
+    )
     from little_loops.session_store.lifecycle import usage_source_freshness
 
     if not db_path.exists():
@@ -466,25 +477,24 @@ def _compute_cache_rate_from_usage(
         conn = connect_readonly(db_path)
     except HistoryError:
         return None, "unreadable_store"
+    if conn is None:
+        return None, "unreadable_store"
     try:
         with translate_sqlite_errors():
-            ingested = conn.execute(
-                "SELECT 1 FROM raw_events WHERE source_path IN (?, ?) AND host = ? "
-                "AND session_id = ? AND host_basis = 'handle' LIMIT 1",
-                (
-                    str(handle.path),
-                    str(handle.path.expanduser().resolve()),
-                    handle.host,
-                    handle.session_id,
-                ),
-            ).fetchone()
-            if ingested is None:
+            admitted = _has_verified_retained_ingestion(
+                conn, host=handle.host, session_id=handle.session_id
+            ) or _has_ingested_raw(
+                conn,
+                str(handle.path),
+                str(handle.path.expanduser().resolve()),
+                handle.host,
+                handle.session_id,
+            )
+            if not admitted:
                 return None, "session_not_ingested"
             selection = select_usage_coverage(conn, host=handle.host, session_id=handle.session_id)
     except (HistoryError, sqlite3.Error):
         return None, "unreadable_store"
-    finally:
-        conn.close()
     if not selection.audit_rows:
         return None, "ingested_without_usage"
 
@@ -528,7 +538,11 @@ def _compute_cache_rate_from_usage(
         "known": qualification.contributors - qualification.rejected_contributors,
         "missing": qualification.rejected_contributors,
     }
-    freshness = usage_source_freshness(db_path, handle.path)
+    # ENH-3746: share the selection read connection so the freshness read sees
+    # the same commit snapshot — a WAL append between the two reads must not
+    # stamp an older figure fresh/as-of a newer offset.
+    freshness = usage_source_freshness(db_path, handle.path, conn=conn)
+    conn.close()
     result: dict[str, Any] = {
         **values,
         "hit_rate_pct": rate,

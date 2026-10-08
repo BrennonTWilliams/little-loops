@@ -326,6 +326,77 @@ def _verified_usage_identity(row: Mapping[str, Any]) -> bool:
     return channel == "transcript"
 
 
+def _has_verified_retained_ingestion(
+    conn: sqlite3.Connection, *, host: str, session_id: str
+) -> bool:
+    """Whether *session_id* has any verified source-attributed committed replay.
+
+    Admission is identity-only: a single ``usage_events`` row whose
+    :func:`_verified_usage_identity` returns ``True`` proves historical
+    ingestion for this host/session, independent of whether the
+    original source spelling or resolved handle path is still tracked
+    in ``raw_events`` (ENH-3746). Live-only, unverified legacy and
+    cursor/hold-only evidence do not admit; logical-NULL
+    ``row_channel`` reads as ``transcript`` and admits when its
+    session_id matches and ``row_host_verified`` holds.
+
+    Used by ``_compute_cache_rate_from_usage`` to admit retained
+    Claude transcript and Codex rollout observations after raw
+    pruning (BUG-3736 retention), restoring the rate that the
+    raw-only check silently drops.
+    """
+    if not host or not session_id:
+        return False
+    present = {column[1] for column in conn.execute("PRAGMA table_info(usage_events)")}
+    required = {"host", "session_id"}
+    if not required.issubset(present):
+        return False
+    cursor = conn.execute(
+        "SELECT host, session_id, channel, host_basis, identity_basis FROM usage_events "
+        "WHERE host = ? AND session_id = ? LIMIT 1",
+        (host, session_id),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    columns = [column[0] for column in cursor.description]
+    return _verified_usage_identity(dict(zip(columns, row, strict=True)))
+
+
+def _has_ingested_raw(
+    conn: sqlite3.Connection,
+    source_path: str,
+    resolved_source_path: str,
+    host: str,
+    session_id: str,
+) -> bool:
+    """Whether a current verified handle-path raw row exists for *session_id*.
+
+    Returns True when ``raw_events`` carries a row whose ``host_basis`` is
+    'handle' for either the bare or resolved source path. This is the
+    legacy raw-only admission path retained alongside ENH-3746's
+    verified-replay admission: a session with a fresh ``refresh_usage_source``
+    ingest (raw path) but no qualified observations still admits here, then
+    falls through to ``ingested_without_usage``. A session with only
+    retained replay observations (raw pruned) admits via
+    :func:`_has_verified_retained_ingestion` instead.
+    """
+    if not host or not session_id:
+        return False
+    present = {column[1] for column in conn.execute("PRAGMA table_info(raw_events)")}
+    required = {"host", "session_id", "host_basis"}
+    if not required.issubset(present):
+        return False
+    return (
+        conn.execute(
+            "SELECT 1 FROM raw_events WHERE source_path IN (?, ?) AND host = ? "
+            "AND session_id = ? AND host_basis = 'handle' LIMIT 1",
+            (source_path, resolved_source_path, host, session_id),
+        ).fetchone()
+        is not None
+    )
+
+
 def _coverage_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
     """Keep verified host/thread pairs separate without exporting the key."""
     if _verified_usage_identity(row):

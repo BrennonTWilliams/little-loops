@@ -239,3 +239,126 @@ def test_json_stderr_distinguishes_four_store_absences(tmp_path: Path, monkeypat
         captured = capsys.readouterr()
         json.loads(captured.out)
         assert "ingested without qualified usage observations" in captured.err
+
+
+class TestEnH3746RetainedIngestionAdmission:
+    """ENH-3746: ``_compute_cache_rate_from_usage`` admits a stored session
+    when a verified source-attributed ``usage_events`` row exists, even
+    after the original ``raw_events`` rows have been pruned (BUG-3736
+    retention). The legacy raw-only check still admits a fresh
+    ``refresh_usage_source`` ingest that lacks qualified observations.
+
+    Six scenarios covered:
+      1. Raw pruned, replay admit → rate stays visible
+      2. Raw preserved, replay absent (legacy path) → admitted
+      3. Raw preserved, replay absent, no qualified observation → ingested_without_usage
+      4. Neither raw nor replay → session_not_ingested
+      5. Other-host usage row does not admit (identity probe must match)
+      6. Unverified usage row does not admit (``_verified_usage_identity`` is False)
+    """
+
+    def test_retained_replay_admits_after_raw_prune(self, tmp_path: Path) -> None:
+        """After raw_events rows are deleted, a verified usage_events row
+        still admits the session."""
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        before_raw = _compute_cache_rate_from_usage(handle, db)[0]
+        assert before_raw is not None  # sanity: live raw path admits
+        with connect(db) as conn:
+            # Prune all raw_events rows whose path matches the handle.
+            conn.execute(
+                "DELETE FROM raw_events WHERE source_path IN (?, ?) AND host = ? AND session_id = ?",
+                (
+                    str(handle.path),
+                    str(handle.path.expanduser().resolve()),
+                    handle.host,
+                    handle.session_id,
+                ),
+            )
+            conn.commit()
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        # The replay path picks up — the verified usage_events row proves
+        # historical ingestion even with no raw.
+        assert diagnostic is None and stored is not None
+        assert stored["hit_rate_pct"] == before_raw["hit_rate_pct"] == 77
+
+    def test_raw_only_admits_fresh_ingest_with_no_observations(self, tmp_path: Path) -> None:
+        """A fresh refresh_usage_source ingest on a no_usage record admits
+        the session via the legacy raw path (no usage_events row yet)."""
+        db, handle = _captured_session(tmp_path)
+        no_usage = {
+            "type": "assistant",
+            "sessionId": handle.session_id,
+            "timestamp": "2026-09-29T01:00:00Z",
+            "message": {"id": "msg-no-usage", "role": "assistant", "content": []},
+        }
+        handle.path.write_text(json.dumps(no_usage) + "\n", encoding="utf-8")
+        refresh_usage_source(db, handle.path)
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        # Legacy raw check admits the handle-path raw row, but no
+        # qualified observation → ``ingested_without_usage``.
+        assert diagnostic == "ingested_without_usage"
+        assert stored is None
+
+    def test_raw_preserved_replay_admits(self, tmp_path: Path) -> None:
+        """A normal refresh + compute rate cycle admits via the legacy
+        raw-only path (this is the existing happy path, regression-only)."""
+        db, handle = _captured_session(tmp_path)
+        refresh_usage_source(db, handle.path)
+        stored, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic is None and stored is not None
+        assert stored["hit_rate_pct"] == 77
+
+    def test_session_with_neither_raw_nor_replay_is_not_ingested(self, tmp_path: Path) -> None:
+        """Empty store + no usage_events row → session_not_ingested."""
+        db, handle = _captured_session(tmp_path)
+        # Neither refresh_usage_source nor any other writer has run.
+        _, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic == "session_not_ingested"
+
+    def test_other_host_usage_does_not_admit(self, tmp_path: Path) -> None:
+        """A usage_events row with the right session_id but a different host
+        does not satisfy _verified_usage_identity, so admission fails."""
+        db, handle = _captured_session(tmp_path)
+        with connect(db) as conn:
+            conn.execute(
+                "INSERT INTO usage_events(ts, host, host_basis, session_id, model, "
+                "input_tokens, output_tokens, cache_read_input_tokens, "
+                "cache_creation_input_tokens, cost_usd, channel, identity_basis, "
+                "provenance) "
+                "VALUES(?, ?, 'handle', ?, 'claude-haiku-4-5-20251001', "
+                "10, 5, 1, 0, 0.001, 'transcript', 'host_observed', 'measured')",
+                (
+                    "2026-09-29T07:00:00Z",
+                    "codex",  # different host from the handle's "claude-code"
+                    handle.session_id,
+                ),
+            )
+            conn.commit()
+        _, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic == "session_not_ingested"
+
+    def test_unverified_usage_does_not_admit(self, tmp_path: Path) -> None:
+        """A usage_events row with host_basis != 'handle' fails the
+        _verified_usage_identity check (live/rollout channels) and does
+        not admit even though host+session_id match."""
+        db, handle = _captured_session(tmp_path)
+        with connect(db) as conn:
+            conn.execute(
+                "INSERT INTO usage_events(ts, host, host_basis, session_id, model, "
+                "input_tokens, output_tokens, cache_read_input_tokens, "
+                "cache_creation_input_tokens, cost_usd, channel, identity_basis, "
+                "provenance) "
+                "VALUES(?, ?, ?, ?, 'claude-haiku-4-5-20251001', "
+                "10, 5, 1, 0, 0.001, ?, NULL, 'measured')",
+                (
+                    "2026-09-29T07:00:00Z",
+                    handle.host,
+                    "ingest",  # not 'handle' → unverified
+                    handle.session_id,
+                    "live",
+                ),
+            )
+            conn.commit()
+        _, diagnostic = _compute_cache_rate_from_usage(handle, db)
+        assert diagnostic == "session_not_ingested"
