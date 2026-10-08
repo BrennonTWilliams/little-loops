@@ -23,6 +23,33 @@ relates_to:
 - ENH-3744
 - ENH-3770
 testable: true
+confidence_score: 95
+outcome_confidence: 78
+score_complexity: 17
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
+risk_factors:
+- id: reconciliation-batch-bound-unspecified
+  domain: outcome
+  criterion: ambiguity
+  description: Bounded-batch size and old-anchor capture mechanics for same-ID updates
+    are left to implementation
+- id: survivor-reindex-sibling-exists
+  domain: readiness
+  criterion: duplicate_implementations
+  description: Tool/correction/skill survivor reindex already exists in rebuild; usage
+    reconciler must stay independent, not duplicate it
+- id: transaction-final-reconciler-depth
+  domain: outcome
+  criterion: complexity
+  description: Shared old/new-anchor reconciler across rebuild, catch-up and same-ID
+    updates carries cross-function transactional state
+- id: usage-write-seam-fanout
+  domain: outcome
+  criterion: change_surface
+  description: Shared usage write/replay seam has several callers (writer, backfill,
+    rebuild, incremental derive) plus future ENH-3770 reuse
 ---
 
 # ENH-3747: Preserve usage search evidence across rebuild for held and retained usage
@@ -126,6 +153,7 @@ Out of scope: permission to mutate/preserve usage observations, hold release, pa
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-08T20:32:28 - `432fb4c5-e9d6-4d88-8204-e76c48d15678.jsonl`
 - Pre-implementation review - 2026-10-08 - Proved SQLite model coercion makes exact pre-storage audit search recovery impossible; chose one committed-row renderer with explicit touched-scope legacy normalization and no migration. Added source-only old/new-anchor updates, mixed Codex/transcript collateral deletion, batched reconciliation, final-state global rebuild and exact NULL/empty logical channel controls. Kept no-work/unusable-checkpoint paths untouched while successful touched-source/held-append skips repair search. Required ID-inclusive helper snapshots, no-source-access/no-pricing checks, zero-count repair and rollback after reconciliation. Synchronized ENH-3770's per-phase refresh/raw-link cross-anchor handoff and EPIC-3562's indexed-transcript scope. `/ll:advise` with Opus (confidence 0.80) supported committed rendering, anchor regeneration and the existing fingerprint-excluded rebuild call; a rendered-search migration/tuple-targeted alternative and its suggestion to leave successful held-source append scopes unrepaired were not adopted. Existing relevant regression baseline: 176 passed. No implementation, status change or numeric rescoring.
 - Pre-implementation unblocked-child review - 2026-10-07 - Corrected the landed ENH-3745 checkpoint/catch-up baseline and ENH-3770 ownership. Verified only the transcript host writer indexes usage; live and Codex rollout writers do not. Required reconstruction when earlier rebuilds already removed search rows, same-ID model/timestamp reconciliation, stable equal-tuple multiplicity, historical anchors without source access and non-usage fingerprint preservation. No implementation or readiness score claimed.
 - Pre-implementation epic review - 2026-10-07 - Widened restoration scope and fixed ordering: ENH-3744's reconciliation will preserve unchanged unheld observations without re-deriving them, which would widen today's search loss (held + live) to every preserved observation unless this lands first. Verified against the reset and rebuild paths. Opus consult (confidence 0.72) independently flagged the same coupling. No implementation claim.
