@@ -69,6 +69,9 @@ if TYPE_CHECKING:
         LoopHistory,
         LoopSourceInventory,
     )
+    from little_loops.next_arena.registry import ArenaSettings
+    from little_loops.next_arena.scan_activity import ScanActivity
+    from little_loops.next_arena.scan_state import ScanDomain, ScanScope
 
 __all__ = [
     "DEFAULT_LEVERAGE_CAP",
@@ -629,6 +632,11 @@ class ProjectState:
     loop_inventory: LoopSourceInventory | None = None
     loop_inputs: LoopContextInputs | None = None
     loop_diagnostics: tuple[Diagnostic, ...] = ()
+    #: Scan domain (FEAT-3713). ``None`` means "not collected" (no scan verb in scope); the
+    #: activity is ``None`` too when the scope is unusable (no git is run then).
+    scan_scope: ScanScope | None = None
+    scan_activity: ScanActivity | None = None
+    scan_diagnostics: tuple[Diagnostic, ...] = ()
     _by_path: Mapping[str, SourceRecord] = field(repr=False, compare=False, default_factory=dict)
 
     def record_for_path(self, rel_path: str) -> SourceRecord | None:
@@ -651,6 +659,7 @@ def build_project_state(
     config_errors: Iterable[str] = (),
     counter: OpCounter | None = None,
     loop_domain: LoopDomain | None = None,
+    scan_domain: ScanDomain | None = None,
 ) -> ProjectState:
     """Assemble a :class:`ProjectState` from captured records and evidence (pure).
 
@@ -681,6 +690,9 @@ def build_project_state(
         loop_inventory=loop_domain.inventory if loop_domain is not None else None,
         loop_inputs=loop_domain.inputs if loop_domain is not None else None,
         loop_diagnostics=loop_domain.diagnostics if loop_domain is not None else (),
+        scan_scope=scan_domain.scope if scan_domain is not None else None,
+        scan_activity=scan_domain.activity if scan_domain is not None else None,
+        scan_diagnostics=scan_domain.diagnostics if scan_domain is not None else (),
         _by_path=MappingProxyType({r.rel_path: r for r in ordered}),
     )
 
@@ -699,6 +711,8 @@ def collect_project_state(
     as_of: datetime | None = None,
     config: BRConfig | None = None,
     include_loops: bool = False,
+    include_scan: bool = False,
+    settings: ArenaSettings | None = None,
 ) -> ProjectState:
     """Capture a :class:`ProjectState` for an already-resolved *project_root*.
 
@@ -710,6 +724,11 @@ def collect_project_state(
     With *include_loops* the loop domain is collected as well (definitions, inventory,
     steering/config inputs, ``.history``); callers pass it only when a loop verb is in scope,
     so issue-only scopes perform zero loop source reads, validations or history reads.
+
+    With *include_scan* the ``capture-issues`` scan domain is collected too (configured scope
+    plus, when the scope is usable, at most two git subprocesses); callers pass it only when
+    that verb is in scope, so every other mode performs zero git calls. *settings* supplies the
+    activity threshold/lookback and defaults to the config's resolved arena settings.
     """
     as_of_utc = _normalize_as_of(as_of)
     root = project_root.resolve()
@@ -760,6 +779,16 @@ def collect_project_state(
         from little_loops.next_arena.loop_state import collect_loop_domain
 
         loop_domain = collect_loop_domain(root, config=config, as_of=as_of_utc)
+    scan_domain: ScanDomain | None = None
+    if include_scan:
+        from little_loops.next_arena.scan_state import collect_scan_domain
+
+        scan_domain = collect_scan_domain(
+            root,
+            config=config,
+            as_of=as_of_utc,
+            settings=settings if settings is not None else config.next.resolve_arena_settings(),
+        )
     return build_project_state(
         records,
         project_root=root,
@@ -769,6 +798,7 @@ def collect_project_state(
         thresholds=thresholds,
         config_errors=config_errors,
         loop_domain=loop_domain,
+        scan_domain=scan_domain,
     )
 
 

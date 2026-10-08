@@ -149,6 +149,16 @@ def _loops_in_scope(args: argparse.Namespace) -> bool:
     return not args.types or any(t in loop for t in args.types)
 
 
+def _scan_in_scope(args: argparse.Namespace) -> bool:
+    """True when the scan verb is in scope (scope and git activity are collected only then)."""
+    from little_loops.next_arena.registry import scan_verbs
+
+    scan = set(scan_verbs())
+    if args.explain is not None:
+        return args.explain[0] in scan
+    return not args.types or any(t in scan for t in args.types)
+
+
 def _fail(message: str) -> int:
     print(f"ll-next: {message}", file=sys.stderr)
     return _EXIT_USAGE
@@ -439,7 +449,13 @@ def main_next() -> int:
     except Exception as exc:  # unreadable/invalid project config
         return _fail(f"could not load project configuration: {exc}")
 
-    state = collect_project_state(root, config=config, include_loops=_loops_in_scope(args))
+    state = collect_project_state(
+        root,
+        config=config,
+        include_loops=_loops_in_scope(args),
+        include_scan=_scan_in_scope(args),
+        settings=settings,
+    )
     if state.config_errors:
         return _fail("invalid configuration: " + "; ".join(state.config_errors))
 

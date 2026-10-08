@@ -293,7 +293,7 @@ def _read_existing_gitignore(repo_root: Path) -> list[str]:
     return patterns
 
 
-def file_matches_pattern(file_path: str, pattern: str) -> bool:
+def file_matches_pattern(file_path: str, pattern: str, *, literal_path: bool = False) -> bool:
     """Check if a file path matches a gitignore pattern.
 
     Implements gitignore-style matching semantics:
@@ -306,13 +306,19 @@ def file_matches_pattern(file_path: str, pattern: str) -> bool:
     Args:
         file_path: File path relative to repo root
         pattern: Gitignore pattern (may start with ! for negation)
+        literal_path: Treat *file_path* as literal Git-emitted bytes. By default a backslash in
+            *file_path* is converted to a separator; on POSIX a NUL-delimited Git filename may
+            contain a literal backslash, so ``literal_path=True`` leaves *file_path* untouched
+            (only ``/`` separates components). The pattern is normalized either way.
 
     Returns:
         True if file matches the base pattern (regardless of negation)
     """
     # Normalize paths
-    file_path = file_path.replace("\\", "/")
+    if not literal_path:
+        file_path = file_path.replace("\\", "/")
     pattern = pattern.replace("\\", "/")
+    match = fnmatch.fnmatchcase if literal_path else fnmatch.fnmatch
 
     # Strip negation prefix for matching logic
     # The negation is handled by _is_already_ignored()
@@ -327,26 +333,26 @@ def file_matches_pattern(file_path: str, pattern: str) -> bool:
 
     # Handle patterns without path separator (match basename anywhere)
     if "/" not in pattern:
-        basename = Path(file_path).name
+        basename = file_path.rsplit("/", 1)[-1] if literal_path else Path(file_path).name
         # Also check if pattern has wildcards
         if "*" in pattern or "?" in pattern:
-            return fnmatch.fnmatch(basename, pattern)
+            return match(basename, pattern)
         return basename == pattern
 
     # Handle patterns with path separator (match from root or subdirectory)
     if pattern.startswith("/"):
         # Anchored to root: must match from start
-        return fnmatch.fnmatch(file_path, pattern[1:])
+        return match(file_path, pattern[1:])
     else:
         # Not anchored: can match at any level
         # Check if it matches the full path
-        if fnmatch.fnmatch(file_path, pattern):
+        if match(file_path, pattern):
             return True
         # Check if it matches any parent path
         parts = file_path.split("/")
         for i in range(len(parts)):
             subpath = "/".join(parts[i:])
-            if fnmatch.fnmatch(subpath, pattern):
+            if match(subpath, pattern):
                 return True
         return False
 

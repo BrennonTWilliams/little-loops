@@ -868,6 +868,11 @@ def _rank_verb(items: list[CandidateAssessment], verb: str) -> list[CandidateAss
     for position, item in enumerate(ranked_pool, start=1):
         if item.selection_score is not None:
             why = f"utility {item.selection_score:.3f}, coverage {item.coverage}"
+        elif get_verb(verb).evidence_only and "activity" in item.gates:
+            why = (
+                f"evidence-only (no scored axes, coverage {item.coverage}); "
+                f"activity gate passed: {item.gates['activity'].reason}"
+            )
         else:
             why = (
                 f"cold start (insufficient scoring evidence, coverage {item.coverage}); "
@@ -901,7 +906,10 @@ def _assess_verb(
     if verb == "run-sprint":
         return []  # FEAT-3713 step 3 wires assess_run_sprints; None sprint domain = uncollected
     if verb == "capture-issues":
-        return []  # FEAT-3713 step 2 wires assess_capture_scope; None scan domain = uncollected
+        from little_loops.next_arena.scan_candidates import assess_capture_scope
+
+        scan = assess_capture_scope(state, settings=settings)
+        return [] if scan is None else [scan]
     raise KeyError(f"no generator is wired for registered verb {verb!r}")
 
 

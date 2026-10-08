@@ -344,9 +344,10 @@ def test_absent_sprint_target_explains_with_sprint_wording(proj: Path, run: Run)
 
 
 def test_absent_scan_target_explains_with_scan_wording(proj: Path, run: Run) -> None:
-    code, out, err = run("--explain", "capture-issues", "project")
+    # the configured scope exists (even though unusable here), so only other targets are absent
+    code, out, err = run("--explain", "capture-issues", "elsewhere")
     assert (code, err) == (1, "")
-    assert "no scan target 'project' for capture-issues" in out
+    assert "no scan target 'elsewhere' for capture-issues" in out
     assert "issue target" not in out and "known issue ID" not in out
 
 
