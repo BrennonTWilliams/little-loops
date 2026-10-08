@@ -16,6 +16,38 @@ relates_to:
 - FEAT-3722
 - FEAT-3711
 - BUG-3772
+confidence_score: 95
+outcome_confidence: 58
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
+risk_factors:
+- id: arena-parallel-policy-adapters
+  domain: readiness
+  criterion: architecture_compliance
+  description: Arena-only literal Git path matcher, pure sprint parser and Git read
+    policy run parallel to existing helpers (justified, but a second pathway).
+- id: cross-module-contract-depth
+  domain: outcome
+  criterion: complexity
+  description: Versioned output/feedback schema bumps and shared registry, ProjectState
+    and action-variant rewiring change contracts across modules.
+- id: overlap-annotation-pending-decision
+  domain: outcome
+  criterion: ambiguity
+  description: selected_overlap pass is flagged for cutting by review but kept pending
+    a maintainer decision.
+- id: registry-schema-blast-radius
+  domain: outcome
+  criterion: change_surface
+  description: Registry, actions, render and schema dependents are many; new variants
+    are a breaking change to versioned JSON unions.
+- id: wide-multi-module-breadth
+  domain: outcome
+  criterion: complexity
+  description: Change spans 20+ sites across arena modules, config, two schemas, CLI
+    and three docs files.
 ---
 
 # FEAT-3713: ll-next capture-issues and run-sprint generators
@@ -293,6 +325,28 @@ A user whose remaining sprint members all meet the metadata/status gates and who
 
 - 2026-10-08 (final pre-implementation review): Source-verified landed contracts (output 3, feedback 1, history 63, `RESERVED_VARIANTS=(sprint, scan)`, `_assess_verb` raising for unwired verbs, `git --no-lazy-fetch log … --since-as-filter --relative` accepted on Git 2.52, `ll-sprint run -- NAME` parsing the operand literally). `/ll:advise --signal user_requested --host claude-code --model opus` returned GO (0.82), no contract change. Applied under the freeze, as corrections only: replaced Implementation Steps whose dispatch ordering contradicted itself and cited a stale FEAT-3711 boundary with four commit boundaries (seams → capture-issues → run-sprint → overlap/docs/usability); one shared skip gate for all real-Git fixtures so Git < 2.45 contributors are not hard-blocked; the plain command spelled `ll-sprint run -- NAME` consistently; named the usability-check artifact (Resolution section, manual); clarified that blocked members never reach the ready-share denominator. Opus rated the version-wording item noise (kept as a one-line clarification), kept the Git 2.45.0 fail-closed trade-off, and noted the overlap pass touches neither recording nor schema (`record_shown` persists `action_spec`, not evidence). No new child, scope or readiness rescore claimed.
 
+- 2026-10-08 (maintainer decision — overlap annotation): **Keep** the `evidence.selected_overlap` pass. Opus's cut suggestion is declined: the annotation is an EPIC-3710 closure-criterion item ("overlapping sprint/issue actions are labeled as alternatives"), it is cheap (one post-selection pass, text-only, no schema change, no recording impact since `record_shown` persists `action_spec`, not evidence), and `Alternate` cannot carry per-target counterparts. It stays the last commit boundary (step 4), so it can be dropped without touching earlier work if it proves troublesome; cutting it would require removing the clause from the EPIC-3710 closure criterion in the same change. Scope unchanged: remaining (nonterminal) members only, alternatives not a bundle, no automatic suppression or scheduling.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-08_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+### Outcome Risk Factors
+- Broad enumeration across 20+ sites (arena modules, config, two generated schemas, CLI, three docs files) — land in the four pinned commit boundaries, seams first.
+- Deep cross-module contract changes: output/feedback version bumps with regenerated schemas and shared registry/`ProjectState`/action-variant rewiring; a version bump without round-trip coverage breaks recording.
+- Wide blast radius on registry/actions/render/schema dependents; new variants are a breaking change to versioned JSON unions.
+- The `evidence.selected_overlap` pass was review-flagged for cutting; the maintainer decided to keep it (see Review Notes 2026-10-08), so it ships as the last commit boundary.
+
+### Risk Factor Delta
+- Baseline: none recorded
+
 ## Status
 
 **Open** | Created: 2026-10-03 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-10-08T15:42:43 - `144725ec-315d-4f73-bc1a-6a0ad030fd87.jsonl`
