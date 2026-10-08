@@ -70,6 +70,9 @@ def _defaults(verb: str) -> dict[str, float]:
 @pytest.mark.parametrize("verb", registered_verbs())
 def test_default_weights_sum_to_one_and_follow_canonical_order(verb: str) -> None:
     spec = REGISTRY[verb]
+    if spec.evidence_only:
+        assert spec.axes == () and dict(spec.default_weights) == {}
+        return
     assert math.isclose(sum(spec.default_weights.values()), 1.0, abs_tol=1e-12)
     assert tuple(spec.default_weights) == spec.axes
 
@@ -128,6 +131,10 @@ def _extremes() -> dict[str, tuple[AxisScore, AxisScore]]:
             loop_recency_axis(AS_OF, AS_OF),
         ),
         "success": (loop_success_axis(0, 5), loop_success_axis(5, 5)),
+        # run-sprint (FEAT-3713): ready share 0 -> 0.4 floor, 1 -> 1.0; sprint recency age 0 ->
+        # 0.2 floor, >= 30 days -> 1.0 (curves built from the documented lerp bounds).
+        "ready_share": (_present(lerp(0.4, 0.0)), _present(lerp(0.4, 1.0))),
+        "since_last_run": (_present(lerp(0.2, 0.0)), _present(lerp(0.2, 1.0))),
     }
 
 
@@ -154,6 +161,8 @@ def test_whole_aggregate_never_collapses_for_worst_case_axes(verb: str) -> None:
     """Every axis at its worst still leaves a non-trivial utility (no near-veto)."""
     extremes = _extremes()
     spec = REGISTRY[verb]
+    if spec.evidence_only:
+        pytest.skip("evidence-only verbs have no scored axes")
     worst = {a: extremes[a][0] for a in spec.axes}
     best = {a: extremes[a][1] for a in spec.axes}
     worst_utility = aggregate_axes(verb, spec.default_weights, worst).utility
@@ -320,7 +329,14 @@ def test_all_zero_weights_fail_at_the_config_consumer() -> None:
 
 def test_unknown_verb_is_rejected() -> None:
     with pytest.raises(KeyError):
-        aggregate_axes("run-sprint", {}, {})
+        aggregate_axes("nope", {}, {})
+
+
+def test_evidence_only_verb_aggregates_to_null_utility_and_zero_coverage() -> None:
+    agg = aggregate_axes("capture-issues", {}, {})
+    assert agg.utility is None
+    assert (agg.resolved_axes, agg.applicable_axes) == (0, 0)
+    assert dict(agg.axes) == {}
 
 
 def test_aggregate_serialization_has_no_nan() -> None:

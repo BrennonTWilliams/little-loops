@@ -376,7 +376,9 @@ class NextConfig:
         """Return validated effective ``next.verbs`` settings for ``ll-next`` (FEAT-3561).
 
         Consumed keys derive from the verb registry: ``next.verbs.<verb>.weights.<axis>``,
-        ``next.verbs.<verb>.cap`` and (``refine-issue`` only) ``refine_cap``. Omitted
+        ``next.verbs.<verb>.cap``, (``refine-issue`` only) ``refine_cap`` and (``capture-issues``
+        only) ``activity_threshold`` / ``activity_lookback_days``; the evidence-only
+        ``capture-issues`` verb admits no ``weights`` key (not even ``{}``). Omitted
         sections and leaves take registry defaults; weights come back in canonical
         axis order regardless of config key order. Only the ``verbs`` subtree (plus the
         shared root-key allowlist) is validated: ``next.loop_history`` values are the
@@ -400,9 +402,15 @@ class NextConfig:
         weights: dict[str, dict[str, float]] = {}
         caps: dict[str, int] = {}
         refine_cap = 0
+        extras: dict[str, int] = {}
         for name, spec in REGISTRY.items():
             base = f"next.verbs.{name}"
-            allowed = ("weights", "cap") + (("refine_cap",) if spec.default_refine_cap else ())
+            allowed = (
+                (("weights",) if spec.axes else ())
+                + ("cap",)
+                + (("refine_cap",) if spec.default_refine_cap else ())
+                + tuple(spec.extra_settings)
+            )
             entry = (
                 self._mapping(base, supplied_verbs[name], allowed) if name in supplied_verbs else {}
             )
@@ -417,7 +425,7 @@ class NextConfig:
                     )
                 else:
                     resolved[axis] = spec.default_weights[axis]
-            if not any(resolved.values()):
+            if spec.axes and not any(resolved.values()):
                 raise NextConfigError(f"{base}.weights: at least one weight must be nonzero")
             weights[name] = resolved
             caps[name] = (
@@ -429,10 +437,17 @@ class NextConfig:
                     if "refine_cap" in entry
                     else spec.default_refine_cap
                 )
+            for setting, default in spec.extra_settings.items():
+                extras[setting] = (
+                    _positive_int(f"{base}.{setting}", entry[setting])
+                    if setting in entry
+                    else default
+                )
         return ArenaSettings(
             weights=MappingProxyType({n: MappingProxyType(w) for n, w in weights.items()}),
             caps=MappingProxyType(caps),
             refine_cap=refine_cap,
+            **extras,
         )
 
 

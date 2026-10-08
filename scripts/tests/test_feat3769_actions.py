@@ -67,7 +67,7 @@ def test_action_key_is_run_loop_and_slash_table_is_unchanged() -> None:
     assert action_key(make_spec()) == "run-loop"
     assert "run-loop" in ACTION_KEYS and "run-loop" not in ACTION_KEY_TABLE
     assert len(ACTION_KEY_TABLE) == 7
-    assert ACTION_KEYS == (*ACTION_KEY_TABLE, "run-loop")
+    assert ACTION_KEYS == (*ACTION_KEY_TABLE, "run-loop", "run-sprint", "scan-codebase")
     assert action_key(slash_spec_for("refine-issue", "FEAT-001", CWD)) == "refine-issue"
 
 
@@ -263,10 +263,8 @@ def test_unrepresentable_target_is_rejected() -> None:
         make_spec(target="a\x00b")
 
 
-def test_reserved_variants_still_rejected_and_unknown_variants_too() -> None:
-    for variant in ("sprint", "scan"):
-        with pytest.raises(UnknownVariantError, match="reserved"):
-            spec_from_dict({"variant": variant})
+def test_unknown_variants_rejected() -> None:
+    # FEAT-3713 registered the last reserved names (sprint, scan); none remain reserved.
     with pytest.raises(UnknownVariantError, match="unregistered"):
         spec_from_dict({"variant": "shell"})
 
@@ -283,4 +281,9 @@ def test_schema_branch_accepts_and_rejects_loop_payloads() -> None:
     slash = spec_to_dict(slash_spec_for("refine-issue", "FEAT-001", CWD))
     assert schema_errors(slash, action_spec, root) == []
     branches = action_spec["oneOf"]
-    assert [b["properties"]["variant"]["const"] for b in branches] == ["slash", "loop"]
+    assert [b["properties"]["variant"]["const"] for b in branches] == [
+        "slash",
+        "loop",
+        "sprint",
+        "scan",
+    ]

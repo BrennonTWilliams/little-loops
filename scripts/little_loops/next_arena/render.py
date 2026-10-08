@@ -42,6 +42,7 @@ from little_loops.next_arena.actions import (
     ACTION_KEY_TABLE,
     ACTION_KEYS,
     FINGERPRINT_SCOPE_V1,
+    SCAN_TARGET,
     render_action,
     spec_from_dict,
 )
@@ -56,6 +57,8 @@ from little_loops.next_arena.inputs import Diagnostic, sort_diagnostics
 from little_loops.next_arena.registry import (
     ACTION_VARIANTS,
     DOMAIN_LOOP,
+    DOMAIN_SCAN,
+    DOMAIN_SPRINT,
     REGISTRY,
     SCHEMA_VERSION,
     registered_verbs,
@@ -102,7 +105,8 @@ SCHEMA_ASSET = ("next_arena", SCHEMA_FILENAME)
 FEEDBACK_SCHEMA_FILENAME = "feedback-schema.json"
 FEEDBACK_SCHEMA_ASSET = ("next_arena", FEEDBACK_SCHEMA_FILENAME)
 #: Version of the ``ll-next feedback --json`` document (independent of the envelope's).
-FEEDBACK_SCHEMA_VERSION = 1
+#: 2 (FEAT-3713): the closed ``offer.action_spec`` union grows the ``sprint`` and ``scan`` variants.
+FEEDBACK_SCHEMA_VERSION = 2
 #: Closed ``recording.reason`` vocabularies (FEAT-3711); status ``recorded`` carries no reason.
 RECORDING_DISABLED_REASONS: tuple[str, ...] = (
     "no_record",
@@ -214,20 +218,46 @@ def scope_subject(verb: str, target: str) -> str:
     """The diagnostic subject an ``--explain VERB TARGET`` scopes to (domain-aware).
 
     Issue diagnostics are subjected to the bare issue ID; loop diagnostics to ``loop:NAME``,
-    so a loop and an issue spelled alike never receive each other's diagnostics.
+    sprint diagnostics to ``sprint:NAME`` and the single scan to ``scan:project``, so a loop,
+    sprint and issue spelled alike never receive each other's diagnostics.
     """
-    return f"loop:{target}" if REGISTRY[verb].domain == DOMAIN_LOOP else target
+    domain = REGISTRY[verb].domain
+    if domain == DOMAIN_LOOP:
+        return f"loop:{target}"
+    if domain == DOMAIN_SPRINT:
+        return f"sprint:{target}"
+    if domain == DOMAIN_SCAN:
+        return f"scan:{target}"
+    return target
 
 
 def target_not_found(target: str, verb: str) -> Diagnostic:
     """Diagnostic for ``--explain VERB TARGET`` naming a target absent from the inventory."""
-    if REGISTRY[verb].domain == DOMAIN_LOOP:
+    domain = REGISTRY[verb].domain
+    if domain == DOMAIN_LOOP:
         return Diagnostic(
             "target_not_found",
             f"{target!r} is not a discovered loop definition; --explain matches the exact "
             f"command operand as printed (e.g. a name from `ll-loop list`) for {verb}",
             (),
             f"loop:{target}",
+        )
+    if domain == DOMAIN_SPRINT:
+        return Diagnostic(
+            "target_not_found",
+            f"{target!r} is not a discovered sprint definition; --explain matches the exact "
+            f"sprint name (the file stem of NAME.yaml in the configured sprints directory) "
+            f"for {verb}",
+            (),
+            f"sprint:{target}",
+        )
+    if domain == DOMAIN_SCAN:
+        return Diagnostic(
+            "target_not_found",
+            f"{target!r} is not the scan target; the {verb} candidate is the whole configured "
+            f"scan scope, so use `--explain {verb} {SCAN_TARGET}`",
+            (),
+            f"scan:{target}",
         )
     return Diagnostic(
         "target_not_found",
@@ -236,6 +266,18 @@ def target_not_found(target: str, verb: str) -> Diagnostic:
         (),
         target,
     )
+
+
+#: Per-domain first (source-validity) gate and the "nothing to assess" noun used in
+#: ``empty_source`` diagnostics; the issue domain's defaults are ``lifecycle`` / leaf issue.
+_FIRST_GATE = {DOMAIN_LOOP: "definition", DOMAIN_SPRINT: "definition", DOMAIN_SCAN: "scope"}
+_EMPTY_SOURCE_NOUN = {
+    DOMAIN_LOOP: "valid loop definition",
+    DOMAIN_SPRINT: "valid sprint definition",
+    DOMAIN_SCAN: "configured scan scope",
+}
+#: ``target_key`` namespaces whose per-definition validation noise stays out of a full pass.
+_QUIET_TARGET_PREFIXES = ("loop:", "sprint:", "scan:")
 
 
 def bucket_diagnostics(
@@ -257,13 +299,13 @@ def bucket_diagnostics(
         items = [a for a in assessments if a.action_type == verb]
         if any(a.fully_resolved for a in items):
             continue
-        is_loop = REGISTRY[verb].domain == DOMAIN_LOOP
-        first_gate = "definition" if is_loop else "lifecycle"
+        domain = REGISTRY[verb].domain
+        first_gate = _FIRST_GATE.get(domain, "lifecycle")
         actionable = [
             a for a in items if first_gate in a.gates and a.gates[first_gate].status == PASS
         ]
         if not actionable:
-            what = "valid loop definition" if is_loop else "open or blocked leaf issue"
+            what = _EMPTY_SOURCE_NOUN.get(domain, "open or blocked leaf issue")
             out.append(
                 Diagnostic(
                     "empty_source",
@@ -312,16 +354,18 @@ def collect_diagnostics(
 ) -> list[Diagnostic]:
     """Union of source diagnostics, assessment diagnostics (refine caps ...) and bucket notes.
 
-    With *scope_to* (the explain subject: an issue ID, or ``loop:NAME``) only diagnostics about
-    that subject are kept.
+    With *scope_to* (the explain subject: an issue ID, ``loop:NAME``, ``sprint:NAME`` or
+    ``scan:project``) only diagnostics about that subject are kept.
     """
     found: list[Diagnostic] = list(state_diagnostics)
     for item in assessments:
-        if scope_to is None and item.target_key.startswith("loop:"):
+        if scope_to is None and item.target_key.startswith(_QUIET_TARGET_PREFIXES):
             # A full pass does not list every definition's validation warnings (dozens across
             # the built-ins); they stay on the assessment and appear under --explain.
             found.extend(
-                d for d in item.diagnostics if item.eligible and d.code != "loop_validation_warning"
+                d
+                for d in item.diagnostics
+                if item.eligible and not d.code.endswith("_validation_warning")
             )
             continue
         found.extend(item.diagnostics)
@@ -532,6 +576,13 @@ def _loop_lines(loop: Mapping[str, Any] | None) -> list[str]:
     return lines
 
 
+_ABSENT_TARGET_NOUN = {
+    DOMAIN_LOOP: "loop target",
+    DOMAIN_SPRINT: "sprint target",
+    DOMAIN_SCAN: "scan target",
+}
+
+
 def render_explain_text(
     *,
     project_root: Path | str,
@@ -544,7 +595,7 @@ def render_explain_text(
     root = str(project_root)
     lines: list[str] = []
     if explanation is None:
-        noun = "loop target" if REGISTRY[verb].domain == DOMAIN_LOOP else "issue target"
+        noun = _ABSENT_TARGET_NOUN.get(REGISTRY[verb].domain, "issue target")
         lines.append(f"ll-next: no {noun} {target!r} for {verb}.")
         lines.extend(_root_hint(root))
     else:
@@ -627,8 +678,89 @@ def _loop_variant_schema() -> dict[str, Any]:
     }
 
 
+def _sprint_variant_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": [
+            "variant",
+            "target",
+            "definition_source",
+            "definition_digest",
+            "fingerprint_scope",
+            "working_directory",
+            "members",
+        ],
+        "additionalProperties": False,
+        "properties": {
+            "variant": {"const": "sprint"},
+            "target": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Exact sprint name (the NAME.yaml file stem).",
+            },
+            "definition_source": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Normalized project-relative POSIX path of the sprint YAML.",
+            },
+            "definition_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "description": "SHA-256 of the sprint definition bytes that were parsed.",
+            },
+            "fingerprint_scope": {"const": FINGERPRINT_SCOPE_V1},
+            "working_directory": {"type": "string", "minLength": 1},
+            "members": {
+                "type": "array",
+                "description": (
+                    "Every distinct declared member in first-occurrence file order with its "
+                    "lifecycle status as assessed (terminal members included). Offer snapshot; "
+                    "not fingerprint material."
+                ),
+                "items": {
+                    "type": "object",
+                    "required": ["issue_id", "status"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "issue_id": {"type": "string", "minLength": 1},
+                        "status": {"type": "string", "minLength": 1},
+                    },
+                },
+            },
+        },
+    }
+
+
+def _scan_variant_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": ["variant", "target", "focus_dirs", "exclude_patterns", "working_directory"],
+        "additionalProperties": False,
+        "properties": {
+            "variant": {"const": "scan"},
+            "target": {"const": SCAN_TARGET},
+            "focus_dirs": {
+                "type": "array",
+                "description": "Normalized, deduplicated, sorted project-relative scan directories.",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "exclude_patterns": {
+                "type": "array",
+                "description": "Normalized, deduplicated, sorted scan exclusion patterns.",
+                "items": {"type": "string", "minLength": 1},
+            },
+            "working_directory": {"type": "string", "minLength": 1},
+        },
+    }
+
+
 #: Per-variant ``action_spec`` branch builders keyed by registered variant name.
-_VARIANT_SCHEMAS = {"slash": _slash_variant_schema, "loop": _loop_variant_schema}
+_VARIANT_SCHEMAS = {
+    "slash": _slash_variant_schema,
+    "loop": _loop_variant_schema,
+    "sprint": _sprint_variant_schema,
+    "scan": _scan_variant_schema,
+}
 
 _RECOMMENDATION_ONLY = (
     "rec_id",

@@ -1,8 +1,9 @@
 """ll-next: advisory cross-verb next-action recommendations (FEAT-3561, FEAT-3711).
 
-Reads the project's issue files (and, when a loop action type is in scope, its loop
-definitions and filesystem run history) once, scores ``implement-issue``, ``refine-issue``,
-``resolve-blocker`` and ``run-loop`` candidates deterministically, and prints up to N
+Reads the project's issue files (and, when a loop, sprint or scan action type is in scope, the
+corresponding definitions, history and git activity) once, scores ``implement-issue``,
+``refine-issue``, ``resolve-blocker``, ``run-loop``, ``run-sprint`` and ``capture-issues``
+candidates deterministically, and prints up to N
 recommendations (or explains one target). It is advisory and never runs the copied actions;
 selection reads only the project's files (no git, no incidental telemetry).
 
@@ -63,9 +64,13 @@ Examples:
   %(prog)s --type refine-issue               Only refinement recommendations
   %(prog)s --type resolve-blocker            Only root blockers that gate other open work
   %(prog)s --type run-loop                   Only runnable loops (zero-argument, from history)
+  %(prog)s --type run-sprint                 Only existing sprint definitions with ready work
+  %(prog)s --type capture-issues             A codebase scan when the configured scope is active
   %(prog)s --json                            Machine-readable envelope (see output-schema.json)
   %(prog)s --explain refine-issue FEAT-0123  Why this verb does or does not apply to the issue
   %(prog)s --explain run-loop NAME           Why a loop (exact command operand) is or is not offered
+  %(prog)s --explain run-sprint NAME         Why a sprint (exact file stem) is or is not offered
+  %(prog)s --explain capture-issues project  Why the configured scan scope is or is not offered
   %(prog)s --no-record                       Recommend without recording the offers
   %(prog)s accept REC_ID                     Explicitly acknowledge a recorded recommendation
   %(prog)s feedback REC_ID [--json]          Look up a recorded recommendation (accepted/unknown)
@@ -103,7 +108,8 @@ Exit codes:
         metavar=("VERB", "TARGET"),
         help=(
             "Show the full assessment of TARGET for VERB: a full issue ID (e.g. FEAT-0123), "
-            "or for run-loop the exact loop command operand (may start with a dash)"
+            "for run-loop the exact loop command operand (may start with a dash), for "
+            "run-sprint the exact sprint name, or for capture-issues the target `project`"
         ),
     )
     return parser
@@ -388,9 +394,15 @@ def main_next() -> int:
         assessments_for_target,
         candidates_from_assessments,
         loop_target_key,
+        sprint_target_key,
         target_key_for,
     )
-    from little_loops.next_arena.registry import DOMAIN_LOOP, get_verb
+    from little_loops.next_arena.registry import (
+        DOMAIN_LOOP,
+        DOMAIN_SCAN,
+        DOMAIN_SPRINT,
+        get_verb,
+    )
     from little_loops.next_arena.render import (
         build_envelope,
         build_explanation,
@@ -436,11 +448,19 @@ def main_next() -> int:
 
     if args.explain is not None:
         verb, target = args.explain
-        key = (
-            loop_target_key(target)
-            if get_verb(verb).domain == DOMAIN_LOOP
-            else target_key_for(target)
-        )
+        domain = get_verb(verb).domain
+        if domain == DOMAIN_LOOP:
+            key = loop_target_key(target)
+        elif domain == DOMAIN_SPRINT:
+            key = sprint_target_key(target)
+        elif domain == DOMAIN_SCAN:
+            # ``scan:SCOPE_HASH`` embeds the *current* scope; the readable target is ``project``.
+            key = next(
+                (a.target_key for a in assessments if a.action_type == verb and a.target == target),
+                f"scan:{target}",
+            )
+        else:
+            key = target_key_for(target)
         named, alternates = assessments_for_target(assessments, key, verb)
         explanation = build_explanation(named, alternates)
         if named is None:

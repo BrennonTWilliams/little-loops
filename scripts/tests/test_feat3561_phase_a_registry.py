@@ -18,6 +18,8 @@ from little_loops.next_arena.registry import (
     get_verb,
     loop_verbs,
     registered_verbs,
+    scan_verbs,
+    sprint_verbs,
     verbs_in_domain,
 )
 
@@ -33,17 +35,15 @@ def test_canonical_order_is_fixed() -> None:
     )
 
 
-def test_only_landed_verbs_registered_in_canonical_order() -> None:
-    assert registered_verbs() == ("implement-issue", "refine-issue", "resolve-blocker", "run-loop")
+def test_all_canonical_verbs_registered_in_canonical_order() -> None:
+    assert registered_verbs() == CANONICAL_VERB_ORDER
     assert list(REGISTRY) == [v for v in CANONICAL_VERB_ORDER if v in REGISTRY]
 
 
-@pytest.mark.parametrize("name", ["run-sprint", "capture-issues"])
-def test_unlanded_verbs_are_absent(name: str) -> None:
-    assert name in CANONICAL_VERB_ORDER
-    assert name not in REGISTRY
+def test_unknown_verbs_are_absent() -> None:
+    assert "nope" not in REGISTRY
     with pytest.raises(KeyError):
-        get_verb(name)
+        get_verb("nope")
 
 
 def test_axis_keys_and_order_are_exact() -> None:
@@ -69,12 +69,17 @@ def test_axis_keys_and_order_are_exact() -> None:
         "momentum",
     )
     assert get_verb("run-loop").axes == ("frequency", "recency", "success")
+    assert get_verb("run-sprint").axes == ("ready_share", "priority", "since_last_run")
+    assert get_verb("capture-issues").axes == ()  # evidence-only singleton: no scored axes
 
 
 @pytest.mark.parametrize("name", list(REGISTRY))
 def test_default_weights_cover_axes_in_order_and_sum_to_one(name: str) -> None:
     spec = get_verb(name)
     assert list(spec.default_weights) == list(spec.axes)
+    if spec.evidence_only:
+        assert dict(spec.default_weights) == {}
+        return
     assert math.isclose(sum(spec.default_weights.values()), 1.0, abs_tol=1e-12)
     assert all(w > 0 for w in spec.default_weights.values())
 
@@ -106,6 +111,11 @@ def test_default_weights_values() -> None:
         "recency": 0.30,
         "success": 0.20,
     }
+    assert dict(get_verb("run-sprint").default_weights) == {
+        "ready_share": 0.50,
+        "priority": 0.30,
+        "since_last_run": 0.20,
+    }
 
 
 def test_caps_and_minimum_evidence() -> None:
@@ -115,19 +125,34 @@ def test_caps_and_minimum_evidence() -> None:
     assert get_verb("refine-issue").default_refine_cap == 5
     assert get_verb("resolve-blocker").default_cap == 2
     assert get_verb("run-loop").default_cap == 2
+    assert get_verb("run-sprint").default_cap == 2
+    assert get_verb("capture-issues").default_cap == 2
+    assert dict(get_verb("capture-issues").extra_settings) == {
+        "activity_threshold": 20,
+        "activity_lookback_days": 30,
+    }
     assert all(spec.minimum_evidence for spec in REGISTRY.values())
 
 
 def test_candidate_domains() -> None:
-    assert [REGISTRY[v].domain for v in REGISTRY] == ["issue", "issue", "issue", "loop"]
+    assert [REGISTRY[v].domain for v in REGISTRY] == [
+        "issue",
+        "issue",
+        "issue",
+        "loop",
+        "sprint",
+        "scan",
+    ]
     assert verbs_in_domain("loop") == loop_verbs() == ("run-loop",)
+    assert verbs_in_domain("sprint") == sprint_verbs() == ("run-sprint",)
+    assert verbs_in_domain("scan") == scan_verbs() == ("capture-issues",)
 
 
 def test_variants_and_schema_version() -> None:
-    assert ACTION_VARIANTS == ("slash", "loop")
-    assert RESERVED_VARIANTS == ("sprint", "scan")
+    assert ACTION_VARIANTS == ("slash", "loop", "sprint", "scan")
+    assert RESERVED_VARIANTS == ()  # FEAT-3713 registered the last reserved variants
     assert not set(ACTION_VARIANTS) & set(RESERVED_VARIANTS)
-    assert SCHEMA_VERSION == 3  # FEAT-3711: recording/rec_id envelope contract
+    assert SCHEMA_VERSION == 4  # FEAT-3713: sprint/scan variants, run-sprint/capture-issues verbs
 
 
 def test_registry_is_read_only() -> None:
@@ -156,12 +181,19 @@ def test_config_schema_matches_registry() -> None:
     for name, spec in REGISTRY.items():
         node = verbs["properties"][name]
         assert node["additionalProperties"] is False
-        weights = node["properties"]["weights"]
-        assert weights["additionalProperties"] is False
-        assert list(weights["properties"]) == list(spec.axes)
-        for axis, leaf in weights["properties"].items():
-            assert leaf["default"] == spec.default_weights[axis]
-            assert leaf["minimum"] == 0
+        if spec.evidence_only:
+            assert "weights" not in node["properties"]  # no weights key, not even `{}`
+        else:
+            weights = node["properties"]["weights"]
+            assert weights["additionalProperties"] is False
+            assert list(weights["properties"]) == list(spec.axes)
+            for axis, leaf in weights["properties"].items():
+                assert leaf["default"] == spec.default_weights[axis]
+                assert leaf["minimum"] == 0
+        for setting, default in spec.extra_settings.items():
+            assert node["properties"][setting]["default"] == default
+            assert node["properties"][setting]["minimum"] == 1
+            assert node["properties"][setting]["type"] == "integer"
         assert node["properties"]["cap"]["default"] == spec.default_cap
         assert node["properties"]["cap"]["minimum"] == 1
         has_refine_cap = "refine_cap" in node["properties"]

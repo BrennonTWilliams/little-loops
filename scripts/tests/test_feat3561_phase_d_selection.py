@@ -235,8 +235,13 @@ def test_bucket_order_for_follows_registry_order() -> None:
     assert bucket_order_for([REFINE, IMPL]) == (IMPL, REFINE)
     assert bucket_order_for([REFINE]) == (REFINE,)
     assert bucket_order_for(["run-loop", REFINE]) == (REFINE, "run-loop")
-    with pytest.raises(ValueError, match="run-sprint"):
-        bucket_order_for(["run-sprint"])
+    assert bucket_order_for(["capture-issues", "run-sprint", IMPL]) == (
+        IMPL,
+        "run-sprint",
+        "capture-issues",
+    )
+    with pytest.raises(ValueError, match="nope"):
+        bucket_order_for(["nope"])
 
 
 # ----------------------------------------------------------------------- end to end

@@ -79,6 +79,11 @@ MOMENTUM_LO = 0.3
 FREQUENCY_LO = 0.4
 RECENCY_LO = 0.2
 SUCCESS_LO = 0.2
+#: ``run-sprint`` axes (FEAT-3713): dependency-ready share and time since the latest observed
+#: ended named invocation (a ``since_last_run`` floor of 0.2 is the run-loop recency polarity's
+#: opposite: *older* is higher).
+READY_SHARE_LO = 0.4
+SINCE_LAST_RUN_LO = 0.2
 
 STALENESS_FULL_DAYS = 30.0
 MOMENTUM_HALF_LIFE_DAYS = 7.0
@@ -98,6 +103,8 @@ AXIS_BOUNDS: Mapping[str, tuple[float, float]] = MappingProxyType(
         "frequency": (FREQUENCY_LO, 1.0),
         "recency": (RECENCY_LO, 1.0),
         "success": (SUCCESS_LO, 1.0),
+        "ready_share": (READY_SHARE_LO, 1.0),
+        "since_last_run": (SINCE_LAST_RUN_LO, 1.0),
     }
 )
 #: The recorded ``lo`` values (worst score) alone.

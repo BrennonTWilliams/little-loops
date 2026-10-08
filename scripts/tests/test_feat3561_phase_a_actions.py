@@ -314,8 +314,10 @@ class TestTaggedUnion:
         assert spec_from_dict(spec_to_dict(spec)) == spec
 
     @pytest.mark.parametrize("variant", ["sprint", "scan"])
-    def test_reserved_variants_rejected(self, variant: str) -> None:
-        with pytest.raises(UnknownVariantError, match="reserved"):
+    def test_sprint_scan_variants_registered_with_their_own_shapes(self, variant: str) -> None:
+        # FEAT-3713 registered the former reserved names: a slash-shaped payload is a shape
+        # error for the named variant, not an unknown/reserved variant.
+        with pytest.raises(ActionSpecError, match=f"{variant} action_spec keys invalid"):
             spec_from_dict(
                 {"variant": variant, "command": "x", "args": [], "working_directory": "/"}
             )

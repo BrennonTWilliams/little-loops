@@ -30,6 +30,7 @@ from little_loops.next_arena.actions import (
     ActionSpecError,
     action_fingerprint,
     render_slash,
+    scan_scope_hash,
     slash_spec_for,
     spec_to_dict,
 )
@@ -79,6 +80,8 @@ __all__ = [
     "generate_candidates",
     "loop_target_key",
     "next_refine_step",
+    "scan_target_key",
+    "sprint_target_key",
     "target_key_for",
 ]
 
@@ -113,6 +116,16 @@ def target_key_for(issue_id: str) -> str:
 def loop_target_key(target: str) -> str:
     """Namespaced identity of a loop target (``loop:NAME``; *target* is the exact operand)."""
     return f"loop:{target}"
+
+
+def sprint_target_key(name: str) -> str:
+    """Namespaced identity of a sprint target (``sprint:NAME``; *name* is the file stem)."""
+    return f"sprint:{name}"
+
+
+def scan_target_key(focus_dirs: Sequence[str], exclude_patterns: Sequence[str]) -> str:
+    """Namespaced identity of the scan target (``scan:SCOPE_HASH`` of the configured scope)."""
+    return f"scan:{scan_scope_hash(focus_dirs, exclude_patterns)}"
 
 
 # ----------------------------------------------------------------------------- records
@@ -874,7 +887,7 @@ def _assess_verb(
     verb: str,
     contexts: Sequence[_TargetContext],
 ) -> list[CandidateAssessment]:
-    """Route *verb* to its own candidate source (issue targets, issue roots or loop definitions)."""
+    """Route *verb* to its own candidate source (issue targets, issue roots, loops, sprints, scan)."""
     if verb in ("implement-issue", "refine-issue"):
         return [_assess_one(state, settings, verb, ctx) for ctx in contexts]
     if verb == "resolve-blocker":
@@ -885,6 +898,10 @@ def _assess_verb(
         from little_loops.next_arena.loop_candidates import assess_run_loops
 
         return assess_run_loops(state, settings=settings)
+    if verb == "run-sprint":
+        return []  # FEAT-3713 step 3 wires assess_run_sprints; None sprint domain = uncollected
+    if verb == "capture-issues":
+        return []  # FEAT-3713 step 2 wires assess_capture_scope; None scan domain = uncollected
     raise KeyError(f"no generator is wired for registered verb {verb!r}")
 
 

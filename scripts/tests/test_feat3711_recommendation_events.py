@@ -55,7 +55,9 @@ from tests.recommendation_support import (
     loop_offer,
     make_real_store,
     replace_table,
+    scan_offer,
     slash_offer,
+    sprint_offer,
 )
 
 Run = Callable[..., tuple[int, str, str]]
@@ -246,13 +248,37 @@ class TestRecordShown:
         assert {r["project_key"] for r in rows} == {project_key_for(proj)}
 
     def test_registered_variants_round_trip_losslessly(self, db: Path, proj: Path) -> None:
-        offers = [slash_offer(), loop_offer()]
+        offers = [slash_offer(), loop_offer(), sprint_offer(), scan_offer()]
         assert {o.action_spec.variant for o in offers} == set(ACTION_VARIANTS)
         shown(db, proj, offers)
         for offer, row in zip(offers, fetch_rows(db), strict=True):
             assert json.loads(row["action_spec"]) == recording.spec_to_dict(offer.action_spec)
             assert row["action_fingerprint"] == offer.action_fingerprint
             assert row["action_key"] == offer.action_key
+
+    def test_sprint_and_scan_offers_survive_shown_accept_feedback_unchanged(
+        self, db: Path, proj: Path
+    ) -> None:
+        # FEAT-3713: the stored offer, not today's definition/config, backs accept and feedback;
+        # sprint members (terminal included) and the scan scope arrays round-trip losslessly.
+        offers = [sprint_offer("alpha"), scan_offer()]
+        result = shown(db, proj, offers)
+        for offer, rec_id in zip(offers, result.rec_ids, strict=True):
+            assert accept(db, proj, rec_id).status == "accepted"
+            found = feedback(db, proj, rec_id)
+            assert found.state == "accepted"
+            stored = json.loads(found.offer.action_spec)
+            assert stored == recording.spec_to_dict(offer.action_spec)
+            document = render.build_feedback_document(rec_id, found)["offer"]
+            assert document["display_command"] == render.render_action(offer.action_spec)
+        sprint_doc = json.loads(feedback(db, proj, result.rec_ids[0]).offer.action_spec)
+        assert sprint_doc["members"] == [
+            {"issue_id": "FEAT-001", "status": "open"},
+            {"issue_id": "BUG-002", "status": "done"},
+        ]
+        scan_doc = json.loads(feedback(db, proj, result.rec_ids[1]).offer.action_spec)
+        assert scan_doc["focus_dirs"] == ["scripts", "src"]
+        assert scan_doc["exclude_patterns"] == ["**/vendor/**"]
 
     def test_equal_fingerprints_get_distinct_ids(self, db: Path, proj: Path) -> None:
         first = shown(db, proj, [loop_offer("daily")])
@@ -1086,9 +1112,9 @@ def test_generated_schemas_match_checked_in_files_and_package_data() -> None:
     assert render.FEEDBACK_SCHEMA_ASSET in PACKAGE_DATA_ASSETS
 
 
-def test_v3_envelope_requires_recording_and_nullable_rec_id() -> None:
+def test_v4_envelope_requires_recording_and_nullable_rec_id() -> None:
     schema = render.load_output_schema()
-    assert schema["properties"]["schema_version"] == {"const": 3}
+    assert schema["properties"]["schema_version"] == {"const": 4}
     assert "recording" in schema["required"]
     recommendation = schema["$defs"]["recommendation"]
     assert "rec_id" in recommendation["required"]

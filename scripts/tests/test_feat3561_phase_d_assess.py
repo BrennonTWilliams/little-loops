@@ -881,7 +881,12 @@ def test_missing_registered_verb_reaches_nothing_beyond_the_registry(tmp_path: P
     state = project(tmp_path, {"bugs/P2-BUG-001-a.md": ready_issue()})
     # run-loop assesses loop definitions, which this issue-only fixture does not collect.
     assert {a.action_type for a in assess_candidates(state)} == set(ISSUE_VERBS)
-    assert set(registered_verbs()) == set(ISSUE_VERBS) | {"run-loop"}
+    # run-sprint/capture-issues likewise assess uncollected (None) sprint/scan domains.
+    assert set(registered_verbs()) == set(ISSUE_VERBS) | {
+        "run-loop",
+        "run-sprint",
+        "capture-issues",
+    }
     assert (
         render_slash(slash_spec_for("refine-issue", "BUG-001", "/r")) == "/ll:refine-issue BUG-001"
     )

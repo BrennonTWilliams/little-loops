@@ -21,7 +21,15 @@ REFINE = {
 }
 BLOCKER = {"priority": 0.25, "leverage": 0.50, "effort": 0.15, "staleness": 0.05, "momentum": 0.05}
 RUN_LOOP = {"frequency": 0.50, "recency": 0.30, "success": 0.20}
-ALL_CAPS = {"implement-issue": 2, "refine-issue": 2, "resolve-blocker": 2, "run-loop": 2}
+RUN_SPRINT = {"ready_share": 0.50, "priority": 0.30, "since_last_run": 0.20}
+ALL_CAPS = {
+    "implement-issue": 2,
+    "refine-issue": 2,
+    "resolve-blocker": 2,
+    "run-loop": 2,
+    "run-sprint": 2,
+    "capture-issues": 2,
+}
 
 
 def _project(root: Path, base: dict[str, Any] | None = None, local: str | None = None) -> Path:
@@ -45,8 +53,12 @@ class TestDefaults:
         assert dict(settings.weights["refine-issue"]) == REFINE
         assert dict(settings.weights["resolve-blocker"]) == BLOCKER
         assert dict(settings.weights["run-loop"]) == RUN_LOOP
+        assert dict(settings.weights["run-sprint"]) == RUN_SPRINT
+        assert dict(settings.weights["capture-issues"]) == {}  # evidence-only: no weights
         assert dict(settings.caps) == ALL_CAPS
         assert settings.refine_cap == 5
+        assert settings.activity_threshold == 20
+        assert settings.activity_lookback_days == 30
 
     def test_settings_are_frozen_and_immutable(self) -> None:
         settings = NextConfig().resolve_arena_settings()
@@ -126,6 +138,38 @@ class TestOverrides:
         assert list(settings.weights["run-loop"]) == ["frequency", "recency", "success"]
         assert settings.weights["resolve-blocker"]["leverage"] == 1.0
 
+    def test_sprint_and_scan_settings_are_tunable(self) -> None:
+        settings = _arena(
+            {
+                "verbs": {
+                    "run-sprint": {"cap": 4, "weights": {"since_last_run": 0, "ready_share": 2}},
+                    "capture-issues": {
+                        "cap": 1,
+                        "activity_threshold": 5,
+                        "activity_lookback_days": 7,
+                    },
+                }
+            }
+        )
+        assert settings.caps["run-sprint"] == 4 and settings.caps["capture-issues"] == 1
+        assert dict(settings.weights["run-sprint"]) == {
+            "ready_share": 2.0,
+            "priority": 0.30,
+            "since_last_run": 0.0,
+        }
+        assert list(settings.weights["run-sprint"]) == ["ready_share", "priority", "since_last_run"]
+        assert settings.activity_threshold == 5
+        assert settings.activity_lookback_days == 7
+
+    def test_local_null_resets_scan_setting_to_default(self, tmp_path: Path) -> None:
+        root = _project(
+            tmp_path,
+            {"next": {"verbs": {"capture-issues": {"activity_threshold": 9}}}},
+            local="next:\n  verbs:\n    capture-issues:\n      activity_threshold: null",
+        )
+        # an explicit local null removes the leaf, so the default applies
+        assert BRConfig(root).next.resolve_arena_settings().activity_threshold == 20
+
     def test_zero_weight_disables_axis_but_is_valid(self) -> None:
         settings = _arena({"verbs": {"implement-issue": {"weights": {"priority": 0}}}})
         assert settings.weights["implement-issue"]["priority"] == 0.0
@@ -165,7 +209,47 @@ class TestInvalid:
             ({"bogus": 1}, "next has unknown keys: 'bogus'"),
             ({"verbs": None}, "next.verbs must be a mapping, got null"),
             ({"verbs": []}, "next.verbs must be a mapping, got list"),
-            ({"verbs": {"run-sprint": {}}}, "next.verbs has unknown keys: 'run-sprint'"),
+            ({"verbs": {"run-sprints": {}}}, "next.verbs has unknown keys: 'run-sprints'"),
+            (
+                {"verbs": {"capture-issues": {"weights": {}}}},
+                "next.verbs.capture-issues has unknown keys: 'weights'",
+            ),
+            (
+                {"verbs": {"capture-issues": {"weights": {"activity": 1}}}},
+                "next.verbs.capture-issues has unknown keys: 'weights'",
+            ),
+            (
+                {"verbs": {"capture-issues": {"stale_days": 3}}},
+                "next.verbs.capture-issues has unknown keys: 'stale_days'",
+            ),
+            (
+                {"verbs": {"run-sprint": {"activity_threshold": 3}}},
+                "next.verbs.run-sprint has unknown keys: 'activity_threshold'",
+            ),
+            (
+                {"verbs": {"run-sprint": {"weights": {"recency": 1}}}},
+                "next.verbs.run-sprint.weights has unknown keys: 'recency'",
+            ),
+            (
+                {"verbs": {"run-sprint": {"weights": dict.fromkeys(RUN_SPRINT, 0)}}},
+                "next.verbs.run-sprint.weights: at least one weight must be nonzero",
+            ),
+            (
+                {"verbs": {"capture-issues": {"activity_threshold": 0}}},
+                "next.verbs.capture-issues.activity_threshold must be a positive integer",
+            ),
+            (
+                {"verbs": {"capture-issues": {"activity_threshold": True}}},
+                "activity_threshold must be a positive integer",
+            ),
+            (
+                {"verbs": {"capture-issues": {"activity_lookback_days": 1.5}}},
+                "activity_lookback_days must be a positive integer",
+            ),
+            (
+                {"verbs": {"capture-issues": {"activity_lookback_days": "30"}}},
+                "activity_lookback_days must be a positive integer",
+            ),
             (
                 {"verbs": {"run-loop": {"weights": {"priority": 1}}}},
                 "next.verbs.run-loop.weights has unknown keys: 'priority'",

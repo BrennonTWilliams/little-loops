@@ -125,7 +125,7 @@ def test_schema_enums_derive_from_the_registries() -> None:
     recommendation = schema["$defs"]["recommendation"]["properties"]
     assert recommendation["action_type"]["enum"] == list(registered_verbs())
     assert recommendation["action_key"]["enum"] == list(ACTION_KEYS)
-    assert set(ACTION_KEYS) - set(ACTION_KEY_TABLE) == {"run-loop"}
+    assert set(ACTION_KEYS) - set(ACTION_KEY_TABLE) == {"run-loop", "run-sprint", "scan-codebase"}
     branches = schema["$defs"]["action_spec"]["oneOf"]
     assert [b["properties"]["variant"]["const"] for b in branches] == list(ACTION_VARIANTS)
     assert schema["properties"]["schema_version"]["const"] == SCHEMA_VERSION

@@ -17,7 +17,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": 3
+      "const": 4
     },
     "project_root": {
       "type": "string",
@@ -159,7 +159,9 @@
               "implement-issue",
               "refine-issue",
               "resolve-blocker",
-              "run-loop"
+              "run-loop",
+              "run-sprint",
+              "capture-issues"
             ]
           }
         },
@@ -170,7 +172,9 @@
               "implement-issue",
               "refine-issue",
               "resolve-blocker",
-              "run-loop"
+              "run-loop",
+              "run-sprint",
+              "capture-issues"
             ]
           },
           "additionalProperties": {
@@ -258,6 +262,107 @@
             },
             "fingerprint_scope": {
               "const": "v1/top-level-bytes"
+            },
+            "working_directory": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "variant",
+            "target",
+            "definition_source",
+            "definition_digest",
+            "fingerprint_scope",
+            "working_directory",
+            "members"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "variant": {
+              "const": "sprint"
+            },
+            "target": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact sprint name (the NAME.yaml file stem)."
+            },
+            "definition_source": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Normalized project-relative POSIX path of the sprint YAML."
+            },
+            "definition_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "description": "SHA-256 of the sprint definition bytes that were parsed."
+            },
+            "fingerprint_scope": {
+              "const": "v1/top-level-bytes"
+            },
+            "working_directory": {
+              "type": "string",
+              "minLength": 1
+            },
+            "members": {
+              "type": "array",
+              "description": "Every distinct declared member in first-occurrence file order with its lifecycle status as assessed (terminal members included). Offer snapshot; not fingerprint material.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "issue_id",
+                  "status"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "issue_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "variant",
+            "target",
+            "focus_dirs",
+            "exclude_patterns",
+            "working_directory"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "variant": {
+              "const": "scan"
+            },
+            "target": {
+              "const": "project"
+            },
+            "focus_dirs": {
+              "type": "array",
+              "description": "Normalized, deduplicated, sorted project-relative scan directories.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "exclude_patterns": {
+              "type": "array",
+              "description": "Normalized, deduplicated, sorted scan exclusion patterns.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             },
             "working_directory": {
               "type": "string",
@@ -427,7 +532,9 @@
             "implement-issue",
             "refine-issue",
             "resolve-blocker",
-            "run-loop"
+            "run-loop",
+            "run-sprint",
+            "capture-issues"
           ]
         },
         "eligible": {
@@ -444,7 +551,9 @@
                 "manage-issue:fix",
                 "manage-issue:implement",
                 "manage-issue:improve",
-                "run-loop"
+                "run-loop",
+                "run-sprint",
+                "scan-codebase"
               ]
             },
             {
@@ -561,7 +670,9 @@
             "implement-issue",
             "refine-issue",
             "resolve-blocker",
-            "run-loop"
+            "run-loop",
+            "run-sprint",
+            "capture-issues"
           ]
         },
         "action_key": {
@@ -574,7 +685,9 @@
             "manage-issue:fix",
             "manage-issue:implement",
             "manage-issue:improve",
-            "run-loop"
+            "run-loop",
+            "run-sprint",
+            "scan-codebase"
           ]
         },
         "action_fingerprint": {
@@ -609,7 +722,9 @@
               "staleness",
               "frequency",
               "recency",
-              "success"
+              "success",
+              "ready_share",
+              "since_last_run"
             ]
           },
           "additionalProperties": {
@@ -728,7 +843,9 @@
             "implement-issue",
             "refine-issue",
             "resolve-blocker",
-            "run-loop"
+            "run-loop",
+            "run-sprint",
+            "capture-issues"
           ]
         },
         "action_key": {
@@ -743,7 +860,9 @@
                 "manage-issue:fix",
                 "manage-issue:implement",
                 "manage-issue:improve",
-                "run-loop"
+                "run-loop",
+                "run-sprint",
+                "scan-codebase"
               ]
             },
             {
@@ -805,7 +924,9 @@
               "staleness",
               "frequency",
               "recency",
-              "success"
+              "success",
+              "ready_share",
+              "since_last_run"
             ]
           },
           "additionalProperties": {

@@ -17,8 +17,12 @@ from typing import Any
 from little_loops.next_arena.actions import (
     FINGERPRINT_SCOPE_V1,
     LoopActionSpec,
+    ScanActionSpec,
+    SprintActionSpec,
+    SprintMember,
     action_fingerprint,
     action_key,
+    scan_scope_hash,
     slash_spec_for,
     spec_to_dict,
 )
@@ -98,6 +102,42 @@ def loop_offer(name: str = "daily", *, root: str = "/proj") -> SimpleNamespace:
         action_fingerprint=action_fingerprint(spec),
         target=name,
         target_key=f"loop:{name}",
+        action_spec=spec,
+    )
+
+
+def sprint_offer(name: str = "alpha", *, root: str = "/proj") -> SimpleNamespace:
+    """A candidate-shaped offer for the ``run-sprint`` action (definition identity + members)."""
+    spec = SprintActionSpec(
+        target=name,
+        definition_source=f".sprints/{name}.yaml",
+        definition_digest="sha256:" + "cd" * 32,
+        fingerprint_scope=FINGERPRINT_SCOPE_V1,
+        working_directory=root,
+        members=(SprintMember("FEAT-001", "open"), SprintMember("BUG-002", "done")),
+    )
+    return SimpleNamespace(
+        action_type="run-sprint",
+        action_key=action_key(spec),
+        action_fingerprint=action_fingerprint(spec),
+        target=name,
+        target_key=f"sprint:{name}",
+        action_spec=spec,
+    )
+
+
+def scan_offer(*, root: str = "/proj") -> SimpleNamespace:
+    """A candidate-shaped offer for the ``capture-issues`` scan action."""
+    focus, exclude = ("scripts", "src"), ("**/vendor/**",)
+    spec = ScanActionSpec(
+        target="project", focus_dirs=focus, exclude_patterns=exclude, working_directory=root
+    )
+    return SimpleNamespace(
+        action_type="capture-issues",
+        action_key=action_key(spec),
+        action_fingerprint=action_fingerprint(spec),
+        target="project",
+        target_key=f"scan:{scan_scope_hash(focus, exclude)}",
         action_spec=spec,
     )
 
