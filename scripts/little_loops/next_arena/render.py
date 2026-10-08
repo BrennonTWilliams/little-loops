@@ -194,7 +194,7 @@ def bucket_diagnostics(
                 ]
                 if codes:
                     affected += 1
-                    reasons.update(dict.fromkeys(codes))
+                    reasons.update(set(codes))
             if not affected:
                 continue
             top = ", ".join(f"{name} x{count}" for name, count in sorted(reasons.items()))

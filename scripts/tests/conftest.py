@@ -118,8 +118,29 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         os.environ["PATH"] = os.pathsep.join([scripts_dir, *path_entries])
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register ``--run-perf``, the explicit opt-in for ``perf``-marked tests (FEAT-3561).
+
+    Marking a test ``perf`` alone does not exclude it; ``pytest_collection_modifyitems``
+    skips every ``perf`` item unless this flag is passed.
+    """
+    parser.addoption(
+        "--run-perf",
+        action="store_true",
+        default=False,
+        help="Run @pytest.mark.perf scaled wall-clock gates (off by default; use with -n 0).",
+    )
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip ``no_parallel``-marked tests on xdist workers (BUG-2523).
+    """Skip ``perf`` items unless ``--run-perf``; skip ``no_parallel`` ones on xdist workers.
+
+    ``perf`` (FEAT-3561): the scaled wall-clock gates are opt-in. ``--run-perf`` lifts only
+    that skip; a ``perf`` test that is also ``no_parallel`` is still skipped on xdist workers
+    (see below), so it runs only in a serial ``-n 0`` invocation where the clock is
+    undistorted by worker contention.
+
+    ``no_parallel`` (BUG-2523): skip ``no_parallel``-marked tests on xdist workers.
 
     Some tests are timing-sensitive (e.g. ``subprocess.Popen`` + ``os.kill(SIGINT)``
     + hard ``proc.wait(timeout=...)`` in
@@ -140,6 +161,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     (``hasattr(config, 'workerinput') and config.workerinput``) — the same
     pattern proven correct by ``scripts/tests/test_pytest_history_plugin.py:62-71``.
     """
+    perf_items = [item for item in items if "perf" in item.keywords]
+    if perf_items and not config.getoption("--run-perf", default=False):
+        perf_skip = pytest.mark.skip(reason="perf: opt-in gate; pass --run-perf (with -n 0) to run")
+        for item in perf_items:
+            item.add_marker(perf_skip)
     if not (hasattr(config, "workerinput") and config.workerinput):
         # Controller (or single-process run) — let marked tests run.
         return

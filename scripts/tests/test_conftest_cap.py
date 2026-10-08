@@ -220,6 +220,78 @@ class TestNoParallelMarkerRouting:
         item.add_marker.assert_not_called()
 
 
+class TestPerfMarkerGate:
+    """``--run-perf`` opt-in gate for ``perf``-marked tests (FEAT-3561 phase F).
+
+    Behavior under test (see ``scripts/tests/conftest.py``):
+
+    - ``pytest_addoption`` registers ``--run-perf`` as an off-by-default flag.
+    - Without the flag every ``perf`` item receives a skip marker; with it none does.
+    - The gate composes with ``no_parallel``: a ``perf`` + ``no_parallel`` item is still
+      skipped on an xdist worker even when ``--run-perf`` is set, so it only runs serially.
+    """
+
+    @staticmethod
+    def _make_item(*keywords: str) -> MagicMock:
+        item = MagicMock()
+        item.keywords = set(keywords)
+        return item
+
+    @staticmethod
+    def _config(*, run_perf: bool, worker: bool = False) -> MagicMock:
+        config = MagicMock()
+        config.getoption.side_effect = lambda name, default=None: (
+            run_perf if name == "--run-perf" else default
+        )
+        config.workerinput = {"workerid": "gw0"} if worker else None
+        return config
+
+    @staticmethod
+    def _skip_reasons(item: MagicMock) -> list[str]:
+        return [
+            call.args[0].mark.kwargs.get("reason", "")
+            for call in item.add_marker.call_args_list
+            if call.args
+            and isinstance(call.args[0], pytest.MarkDecorator)
+            and call.args[0].mark.name == "skip"
+        ]
+
+    def test_addoption_registers_off_by_default_flag(self) -> None:
+        parser = MagicMock()
+        conftest.pytest_addoption(parser)
+        parser.addoption.assert_called_once()
+        args, kwargs = parser.addoption.call_args
+        assert args == ("--run-perf",)
+        assert kwargs["action"] == "store_true"
+        assert kwargs["default"] is False
+
+    def test_perf_item_skipped_without_flag(self) -> None:
+        item = self._make_item("perf")
+        conftest.pytest_collection_modifyitems(self._config(run_perf=False), [item])
+        assert any("perf" in reason for reason in self._skip_reasons(item))
+
+    def test_perf_item_runs_with_flag_on_controller(self) -> None:
+        item = self._make_item("perf")
+        conftest.pytest_collection_modifyitems(self._config(run_perf=True), [item])
+        item.add_marker.assert_not_called()
+
+    def test_unmarked_item_never_skipped_for_perf(self) -> None:
+        item = self._make_item("slow")
+        conftest.pytest_collection_modifyitems(self._config(run_perf=False), [item])
+        item.add_marker.assert_not_called()
+
+    def test_perf_no_parallel_item_still_skipped_on_worker_with_flag(self) -> None:
+        item = self._make_item("perf", "no_parallel")
+        conftest.pytest_collection_modifyitems(self._config(run_perf=True, worker=True), [item])
+        reasons = self._skip_reasons(item)
+        assert reasons and all("no_parallel" in reason for reason in reasons)
+
+    def test_perf_no_parallel_item_runs_serially_with_flag(self) -> None:
+        item = self._make_item("perf", "no_parallel")
+        conftest.pytest_collection_modifyitems(self._config(run_perf=True), [item])
+        item.add_marker.assert_not_called()
+
+
 class TestNoLiveHostCLIGuard:
     """Live host-CLI spawn guard (FEAT-3329).
 

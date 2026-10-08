@@ -58,7 +58,7 @@ from little_loops.next_arena.inputs import (
     is_formatted_from_state,
     sort_diagnostics,
 )
-from little_loops.session_log import count_session_commands, parse_session_log, session_log_body
+from little_loops.session_log import command_counts_in_body, commands_in_body, session_log_body
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -406,6 +406,7 @@ def build_source_record(
 
     waived_raw = frontmatter.get("outcome_gate_waived")
     decision_raw = frontmatter.get("decision_needed")
+    log_body = session_log_body(text)  # one fence scan; the command views derive from it
 
     return SourceRecord(
         path=path,
@@ -441,9 +442,9 @@ def build_source_record(
         priority_conflict=priority_conflict,
         captured_at_raw=frontmatter.get("captured_at"),
         discovered_date_raw=frontmatter.get("discovered_date"),
-        session_log=session_log_body(text),
-        session_commands=tuple(parse_session_log(text)),
-        session_command_counts=MappingProxyType(count_session_commands(text)),
+        session_log=log_body,
+        session_commands=tuple(commands_in_body(log_body)),
+        session_command_counts=MappingProxyType(command_counts_in_body(log_body)),
         parent=frontmatter.get("parent"),
         diagnostics=tuple(diagnostics),
     )
