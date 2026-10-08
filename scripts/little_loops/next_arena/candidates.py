@@ -44,7 +44,13 @@ from little_loops.next_arena.axes import (
     validate_score,
     waiver_true,
 )
-from little_loops.next_arena.graph import TERMINAL_STATUSES
+from little_loops.next_arena.graph import (
+    REASON_UNSUPPORTED_SHAPE,
+    TERMINAL_STATUSES,
+    TRUNCATION_MARKER,
+    Prerequisite,
+    raw_excerpt,
+)
 from little_loops.next_arena.inputs import Diagnostic, is_formatted_from_state, sort_diagnostics
 from little_loops.next_arena.registry import (
     CANONICAL_VERB_ORDER,
@@ -535,33 +541,57 @@ def _lifecycle_gate(record: SourceRecord, verb: str) -> tuple[GateResult, tuple[
     return _gate(PASS, "actionable_leaf", f"status {record.lifecycle_status}", source), ()
 
 
+def _unsupported_excerpt(state: ProjectState, p: Prerequisite) -> tuple[str, bool]:
+    """Bounded raw excerpt of the captured field behind an unsupported-shape prerequisite."""
+    rec = state.record_for_path(p.source_paths[0]) if p.source_paths else None
+    for fact in rec.unsupported_relationships if rec is not None else ():
+        if fact.field == p.kind:
+            return raw_excerpt(fact.raw)
+    return "", False
+
+
 def _prerequisites_gate(state: ProjectState, issue_id: str) -> tuple[GateResult, dict[str, Any]]:
     graph = state.graph
     unresolved = graph.unresolved_for(issue_id)
     cyclic = issue_id in graph.cyclic_ids
     satisfied = graph.prerequisites_satisfied(issue_id) and not cyclic
-    evidence = {
-        "satisfied": satisfied,
-        "in_cycle": cyclic,
-        "unresolved": [
-            {
-                "kind": p.kind,
-                "prerequisite_id": p.prerequisite_id,
-                "reason": p.reason,
-                "status": p.status,
-                "source_paths": list(p.source_paths),
-            }
-            for p in unresolved
-        ],
+    excerpts = {
+        id(p): _unsupported_excerpt(state, p)
+        for p in unresolved
+        if p.reason == REASON_UNSUPPORTED_SHAPE
     }
+    entries: list[dict[str, Any]] = []
+    for p in unresolved:
+        entry: dict[str, Any] = {
+            "kind": p.kind,
+            "prerequisite_id": p.prerequisite_id,
+            "reason": p.reason,
+            "status": p.status,
+            "source_paths": list(p.source_paths),
+        }
+        if id(p) in excerpts:
+            entry["raw_excerpt"], entry["raw_truncated"] = excerpts[id(p)]
+        entries.append(entry)
+    evidence = {"satisfied": satisfied, "in_cycle": cyclic, "unresolved": entries}
     if satisfied:
         return _gate(PASS, "prerequisites_satisfied", source="dependency_graph"), evidence
-    parts = [
-        f"{p.kind} {p.prerequisite_id or 'unanchored source'} ({p.reason}"
-        + (f", status {p.status}" if p.status else "")
-        + ")"
-        for p in unresolved
-    ]
+    parts = []
+    for p in unresolved:
+        if p.reason == REASON_UNSUPPORTED_SHAPE:
+            excerpt, truncated = excerpts[id(p)]
+            where = p.source_paths[0] if p.source_paths else "unknown source"
+            parts.append(
+                f"{p.kind} mapping in {where} is unsupported input ({p.reason}"
+                + (f", status {p.status}" if p.status else "")
+                + f"): {excerpt}"
+                + (TRUNCATION_MARKER if truncated else "")
+            )
+        else:
+            parts.append(
+                f"{p.kind} {p.prerequisite_id or 'unanchored source'} ({p.reason}"
+                + (f", status {p.status}" if p.status else "")
+                + ")"
+            )
     if cyclic:
         parts.append("dependency cycle")
     if not parts:

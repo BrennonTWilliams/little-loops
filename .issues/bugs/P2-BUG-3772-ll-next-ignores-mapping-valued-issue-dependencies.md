@@ -3,10 +3,11 @@ id: BUG-3772
 type: BUG
 title: ll-next ignores mapping-valued issue dependencies
 priority: P2
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-10-08'
 captured_at: '2026-10-08T15:14:55Z'
+completed_at: '2026-10-08T19:28:38Z'
 verify_verdict: VALID
 relates_to:
 - FEAT-3713
@@ -199,6 +200,12 @@ Pre-implementation review on `main` at `0d111015e` (2026-10-08): disposable prob
 
 `/ll:advise --signal user_requested --host claude-code --model opus` supported the corrections (confidence **0.82**). Adopted the identity-aware live predicate, graph-side diagnostics, indexed provenance, bounded target output and extending existing unresolved evidence instead of a duplicate list. Declined stripped-key matching because runtime and FEAT-3713 use exact keys, and retained a frozen full raw rendering because frontmatter protection is shallow. Opus's dissent proposed omitting diagnostics or attaching own-field evidence to all terminal nodes; live-only diagnostics keep the fixable source finding without completed-history noise. Original pre-review scores are retained, not claimed as a new confidence assessment.
 
+## Resolution
+
+**Fixed** - 2026-10-08. Nonempty mapping-valued `blocked_by` / `depends_on` / `blocks` are captured as frozen `UnsupportedRelationship` facts on `SourceRecord` (body fallback suppressed on every source), then `build_issue_graph` emits `unsupported_relationship_shape` unresolved prerequisites (own field, or each exact-key existing target for `blocks`) under an identity-aware live predicate and one `unsupported_dependency_shape` diagnostic per live `(path, field)`. `_prerequisites_gate` adds bounded (512-char, explicitly truncated) `raw_excerpt`/`raw_truncated` evidence via `record_for_path`. Docs: `docs/reference/CLI.md`, `docs/reference/API.md`. Tests: `scripts/tests/test_bug3772_mapping_dependencies.py` plus two explain cases in `test_feat3561_phase_e_cli.py`.
+
+Deviation: regression cases live in one new module rather than spread across the seven listed modules; the dedicated perf/determinism-heavy fixtures (10k wide fan-out) were not added.
+
 ## Status
 
 **Open** | Created: 2026-10-08 | Priority: P2
@@ -217,6 +224,8 @@ _Added by `/ll:confidence-check` on 2026-10-08_
 - Changed fields: none
 
 ## Session Log
+- `/ll:manage-issue` - 2026-10-08T19:28:38 - `bdddb781-14c0-4d9c-8295-0b3b3aeca509.jsonl`
+- `/ll:ready-issue` - 2026-10-08T19:16:38 - `80b7c077-870b-4774-b841-a3c7e4ac1cdc.jsonl`
 - `/ll:confidence-check` - 2026-10-08T17:40:49 - `cb0aee70-6b64-42fa-afd0-739f77347cf5.jsonl`
 - `/ll:confidence-check` - 2026-10-08T16:05:17 - `658f5ae0-b69c-4a05-9e63-5ba97e164dc7.jsonl`
 - `/ll:advise` - 2026-10-08T15:59:38 - `27057456-16a6-48c8-bc88-5010ad985f61.jsonl`

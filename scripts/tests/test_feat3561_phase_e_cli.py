@@ -262,6 +262,45 @@ def test_explain_matches_full_id_exactly_as_spelled(proj: Path, run: Run) -> Non
         assert [d["code"] for d in envelope["diagnostics"]] == ["target_not_found"]
 
 
+def _mapping_blocks_project(root: Path, value: str) -> Path:
+    make_project(root)
+    write_issue(root, "features/P3-FEAT-001-target.md", text=ready_issue())
+    fm = "".join(f'  "FEAT-001": {value}\n')
+    write_issue(
+        root,
+        "features/P3-FEAT-002-src.md",
+        text=f"---\nstatus: open\nblocks:\n{fm}---\n\n# Source\n",
+    )
+    return root
+
+
+def test_explain_shows_outside_mapping_blocks_evidence_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run: Run
+) -> None:
+    """BUG-3772: a target excluded by another file's ``blocks`` mapping explains why."""
+    root = _mapping_blocks_project(tmp_path / "proj", "z" * 900)
+    monkeypatch.chdir(root)
+    code, envelope = _json(run, "--explain", "implement-issue", "FEAT-001")
+    assert code == 0
+    assessment = envelope["explanation"]["assessment"]
+    assert assessment["eligible"] is False
+    (entry,) = assessment["evidence"]["dependencies"]["unresolved"]
+    assert entry["reason"] == "unsupported_relationship_shape"
+    assert entry["kind"] == "blocks"
+    assert entry["source_paths"] == [".issues/features/P3-FEAT-002-src.md"]
+    assert entry["raw_truncated"] is True and len(entry["raw_excerpt"]) <= 512
+
+
+def test_explain_shows_outside_mapping_blocks_evidence_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run: Run
+) -> None:
+    root = _mapping_blocks_project(tmp_path / "proj", "z" * 900)
+    monkeypatch.chdir(root)
+    code, out, err = run("--explain", "implement-issue", "FEAT-001")
+    assert (code, err) == (0, "")
+    assert "P3-FEAT-002-src.md" in out and "blocks" in out and "truncated" in out
+
+
 def test_explain_absent_target_text_mode(proj: Path, run: Run) -> None:
     code, out, err = run("--explain", "refine-issue", "FEAT-9999")
     assert code == 1 and err == ""

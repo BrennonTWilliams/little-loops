@@ -21,6 +21,7 @@ Identity rules (see the issue's "Snapshot and axis adapters"):
 
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -95,6 +96,7 @@ __all__ = [
     "ProjectState",
     "SourceRecord",
     "Thresholds",
+    "UnsupportedRelationship",
     "UnsupportedSource",
     "ambiguous_targets",
     "ambiguous_diagnostic",
@@ -205,6 +207,34 @@ def resolve_lifecycle(frontmatter: Mapping[str, Any]) -> Lifecycle:
 
 # --------------------------------------------------------------------------- records
 
+#: Relationship frontmatter fields, in the fixed order unsupported facts are captured.
+RELATIONSHIP_FIELDS: tuple[str, ...] = ("blocked_by", "blocks", "depends_on")
+
+
+@dataclass(frozen=True)
+class UnsupportedRelationship:
+    """A nonempty mapping-valued relationship field, captured immutably (BUG-3772).
+
+    ``keys`` are the exact parsed mapping keys (never stripped, expanded or aliased) and
+    ``raw`` is a deterministic escaped single-line rendering of the whole parsed value; the
+    original YAML bytes stay in ``SourceRecord.content``. Keys may name *affected* targets but
+    never become resolvable prerequisite edges.
+    """
+
+    field: str
+    keys: tuple[str, ...]
+    raw: str
+
+
+def _capture_unsupported(frontmatter: Mapping[str, Any]) -> tuple[UnsupportedRelationship, ...]:
+    found: list[UnsupportedRelationship] = []
+    for name in RELATIONSHIP_FIELDS:
+        value = frontmatter.get(name)
+        if isinstance(value, Mapping) and value:
+            raw = json.dumps(value, ensure_ascii=True, default=str)
+            found.append(UnsupportedRelationship(name, tuple(str(k) for k in value), raw))
+    return tuple(found)
+
 
 @dataclass(frozen=True)
 class SourceRecord:
@@ -248,6 +278,7 @@ class SourceRecord:
     session_command_counts: Mapping[str, int]
     parent: Any
     diagnostics: tuple[Diagnostic, ...]
+    unsupported_relationships: tuple[UnsupportedRelationship, ...] = ()
 
     @property
     def is_epic(self) -> bool:
@@ -296,6 +327,8 @@ def _split_ids(value: Any) -> list[str]:
 
 def _merge_edge_ids(frontmatter_value: Any, body_ids: Sequence[str]) -> tuple[str, ...]:
     """Frontmatter wins over the body section (the parser's merge rule), deduplicated."""
+    if isinstance(frontmatter_value, Mapping) and frontmatter_value:
+        return ()  # unsupported shape (captured separately); never fall back to the body
     ids = _split_ids(frontmatter_value) or list(body_ids)
     return tuple(dict.fromkeys(ids))
 
@@ -463,6 +496,7 @@ def build_source_record(
         session_command_counts=MappingProxyType(command_counts_in_body(log_body)),
         parent=frontmatter.get("parent"),
         diagnostics=tuple(diagnostics),
+        unsupported_relationships=_capture_unsupported(frontmatter),
     )
 
 

@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from little_loops.next_arena.inputs import Diagnostic
 
 if TYPE_CHECKING:
-    from little_loops.next_arena.state import ProjectState
+    from little_loops.next_arena.state import ProjectState, UnsupportedRelationship
 
 #: Statuses that resolve a prerequisite edge.
 TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "cancelled"})
@@ -43,6 +43,21 @@ REASON_AMBIGUOUS = "ambiguous_issue_id"
 REASON_NOT_TERMINAL = "not_terminal"
 REASON_INVALID_STATUS = "invalid_status"
 REASON_UNANCHORED = "unanchored_source"
+REASON_UNSUPPORTED_SHAPE = "unsupported_relationship_shape"
+
+#: Diagnostic code for a live source declaring a mapping-valued relationship field.
+UNSUPPORTED_SHAPE_CODE = "unsupported_dependency_shape"
+#: At most this many characters of a captured raw mapping appear in any output.
+UNSUPPORTED_RAW_EXCERPT_LIMIT = 512
+#: Appended to human text when a raw excerpt was cut.
+TRUNCATION_MARKER = "... [truncated]"
+
+
+def raw_excerpt(raw: str) -> tuple[str, bool]:
+    """The bounded excerpt of a captured raw mapping and whether it was truncated."""
+    if len(raw) <= UNSUPPORTED_RAW_EXCERPT_LIMIT:
+        return raw, False
+    return raw[:UNSUPPORTED_RAW_EXCERPT_LIMIT], True
 
 
 @dataclass
@@ -77,6 +92,9 @@ class GraphRecord(Protocol):
     @property
     def issue_type(self) -> str | None: ...
 
+    @property
+    def unsupported_relationships(self) -> tuple[UnsupportedRelationship, ...]: ...
+
 
 @dataclass(frozen=True)
 class Prerequisite:
@@ -84,7 +102,9 @@ class Prerequisite:
 
     ``kind`` is ``blocked_by``, ``blocks`` (declared one-sided by the prerequisite) or
     ``depends_on``. ``prerequisite_id`` is ``None`` for an unanchored (numberless or
-    colliding-inference) source that declared ``blocks`` on the target.
+    colliding-inference) source that declared ``blocks`` on the target, and for unsupported
+    input (``reason == REASON_UNSUPPORTED_SHAPE``: a mapping-valued field whose ``kind`` and
+    declaring ``source_paths`` name where it came from).
     """
 
     kind: str
@@ -245,10 +265,19 @@ def build_issue_graph(
     declared_depends: dict[str, set[str]] = {}
     anonymous: dict[str, list[str]] = {}
     anonymous_status: dict[str, str] = {}
+    # Live unsupported-shape facts: (source node or None, record, fact).
+    shape_facts: list[tuple[str | None, GraphRecord, UnsupportedRelationship]] = []
 
     for rec in records:
         tick()
         node = node_ids.get(rec.rel_path)
+        # Identity-aware live predicate: an ambiguous named record is live whatever its
+        # lifecycle; any other record is live only when non-terminal.
+        live = node in ambiguous_set or rec.lifecycle_status not in TERMINAL_STATUSES
+        if live:
+            for fact in rec.unsupported_relationships:
+                tick(len(fact.keys) or 1)
+                shape_facts.append((node, rec, fact))
         if node is None:
             # Numberless / colliding source: prerequisite evidence on named targets only.
             if rec.lifecycle_status not in TERMINAL_STATUSES:
@@ -312,6 +341,32 @@ def build_issue_graph(
         reason = REASON_INVALID_STATUS if status == "invalid" else REASON_NOT_TERMINAL
         return Prerequisite(kind, prereq, reason, status, _sorted_tuple(paths_by_node[prereq]))
 
+    # Unsupported mapping input never becomes an edge: own-field facts fail the declaring
+    # node closed; a ``blocks`` mapping fails every existing target named by an exact key.
+    unsupported_for: dict[str, dict[tuple[str, str], Prerequisite]] = {}
+    shape_diagnostics: list[Diagnostic] = []
+    for src_node, rec, fact in shape_facts:
+        entry = Prerequisite(
+            fact.field, None, REASON_UNSUPPORTED_SHAPE, rec.lifecycle_status, (rec.rel_path,)
+        )
+        if fact.field == "blocks":
+            for key in fact.keys:
+                if key in known and key != src_node:
+                    unsupported_for.setdefault(key, {})[(rec.rel_path, fact.field)] = entry
+        elif src_node is not None:
+            unsupported_for.setdefault(src_node, {})[(rec.rel_path, fact.field)] = entry
+        excerpt, truncated = raw_excerpt(fact.raw)
+        shown = excerpt + (TRUNCATION_MARKER if truncated else "")
+        shape_diagnostics.append(
+            Diagnostic(
+                UNSUPPORTED_SHAPE_CODE,
+                f"{rec.rel_path}: {fact.field} is a mapping, not a list of IDs "
+                f"(unsupported input, offers it affects are excluded): {shown}",
+                (rec.rel_path,),
+                src_node,
+            )
+        )
+
     unresolved: dict[str, list[Prerequisite]] = {}
     for node in sorted(known):
         found: list[Prerequisite] = []
@@ -329,6 +384,9 @@ def build_issue_graph(
             found.append(
                 Prerequisite("blocks", None, REASON_UNANCHORED, anonymous_status[path], (path,))
             )
+        found.extend(
+            unsupported_for.get(node, {})[k] for k in sorted(unsupported_for.get(node, {}))
+        )
         if found:
             unresolved[node] = found
 
@@ -353,7 +411,7 @@ def build_issue_graph(
             subject=comp[0],
         )
         for comp in cycles
-    )
+    ) + tuple(shape_diagnostics)
 
     return IssueGraph(
         node_status=MappingProxyType(dict(sorted(status_by_node.items()))),
