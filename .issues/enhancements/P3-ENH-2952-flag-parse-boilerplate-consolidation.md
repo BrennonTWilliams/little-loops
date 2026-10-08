@@ -4,7 +4,7 @@ title: Consolidate the duplicated 15-line flag-parse block across 17 skill/comma
   files
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_by: skill-audit
 discovered_date: 2026-07-31
 completed_at: '2026-08-01T11:24:59Z'
@@ -138,13 +138,13 @@ Phase 1 block); no pre-existing `parse-flags`-style CLI entry point found in
 
 ## Status
 
-**Open** | Created: 2026-07-31 | Priority: P3
+**Done** | Created: 2026-07-31 | Priority: P3
 
 ## Acceptance Criteria
 
 - [x] A token-cost measurement for at least Options A and B is recorded in the issue
 - [x] The chosen option is stamped via `/ll:decide-issue` with rationale
-- [ ] If A or B: the block appears at most once and `ll-verify-skills` stays green
+- [x] If A or B: N/A — Option C selected, no consolidation applied
 - [x] If C: a decision fragment records why, and EPIC-2938's scope note is updated
 
 ## Notes
