@@ -33,11 +33,11 @@ risk_factors:
   criterion: complexity
   description: Versioned output/feedback schema bumps and shared registry, ProjectState
     and action-variant rewiring change contracts across modules.
-- id: overlap-annotation-pending-decision
+- id: merge-time-contract-version-claim
   domain: outcome
   criterion: ambiguity
-  description: selected_overlap pass is flagged for cutting by review but kept pending
-    a maintainer decision.
+  description: Next free output/feedback versions (4/2) and initial activity thresholds
+    must be re-read or confirmed at merge time.
 - id: registry-schema-blast-radius
   domain: outcome
   criterion: change_surface
@@ -347,6 +347,25 @@ _Added by `/ll:confidence-check` on 2026-10-08_
 
 **Open** | Created: 2026-10-03 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-08_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+### Outcome Risk Factors
+- Broad enumeration across 20+ sites (arena modules, config, two generated schemas, CLI, three docs files) — land in the four pinned commit boundaries, seams first.
+- Deep cross-module contract changes: output/feedback version bumps with regenerated schemas and shared registry/`ProjectState`/action-variant rewiring; a version bump without round-trip coverage breaks recording.
+- Wide blast radius on registry/actions/render/schema dependents; new variants are a breaking change to versioned JSON unions.
+- Minor open item: next free output/feedback versions (4/2) must be re-read from `SCHEMA_VERSION`/`FEEDBACK_SCHEMA_VERSION` at merge time. The overlap-annotation decision is settled (maintainer kept it, Review Notes 2026-10-08).
+
+### Risk Factor Delta
+- Added: `merge-time-contract-version-claim`
+- No longer reported: `overlap-annotation-pending-decision`
+- Retained: `arena-parallel-policy-adapters`, `cross-module-contract-depth`, `registry-schema-blast-radius`, `wide-multi-module-breadth`
+- Changed fields: none
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-08T15:50:23 - `932cdd54-9947-4dd1-a79c-f8ab297b2a9c.jsonl`
 - `/ll:confidence-check` - 2026-10-08T15:42:43 - `144725ec-315d-4f73-bc1a-6a0ad030fd87.jsonl`
