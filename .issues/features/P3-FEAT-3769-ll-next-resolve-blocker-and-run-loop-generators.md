@@ -268,6 +268,7 @@ _Added by `/ll:confidence-check` on 2026-10-07_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-08T03:41:48 - `093e63bf-756e-4410-88e8-a06b0543ee58.jsonl`
 - `/ll:advise` - 2026-10-08T03:18:40 - `ff81089f-a893-4a61-a9f8-54ef605c3a0e.jsonl`
 - `/ll:refine-issue` - 2026-10-08T03:18:40 - `ff81089f-a893-4a61-a9f8-54ef605c3a0e.jsonl`
 - `/ll:confidence-check` - 2026-10-08T01:38:36 - `343c9913-3cee-46b9-ac51-07d359eb143a.jsonl`
