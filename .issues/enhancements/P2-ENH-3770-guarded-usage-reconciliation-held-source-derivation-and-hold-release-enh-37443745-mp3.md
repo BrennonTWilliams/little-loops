@@ -29,18 +29,35 @@ risk_factors:
 - id: broad-change-sites
   domain: outcome
   criterion: complexity_breadth
-  description: Touches seven source modules plus CLI, docs and eleven named regression test files
+  description: Touches seven source modules plus CLI, docs and eleven named regression
+    test files
 - id: deep-reconciliation-rewiring
   domain: outcome
   criterion: complexity_depth
   description: Replaces destructive delete/reinsert with guarded reconciliation across
     writers, reset, catch-up, rebuild and parser refresh with shared state and CAS
     contracts
+- id: open-implementation-latitude
+  domain: outcome
+  criterion: ambiguity
+  description: Recovery-reader signature is illustrative and the _USAGE_DERIVE_VERSION
+    bump is left to be re-justified at implementation
+- id: seam-overlap-duplication-risk
+  domain: readiness
+  criterion: no_duplicate_implementations
+  description: Landed proof, witness and disposition seams already cover part of the
+    behavior; extension must not fork a second recognition or conflict algorithm
 - id: wide-writer-seam-blast-radius
   domain: outcome
   criterion: change_surface
   description: Shared writer, invalidation and disposition seams have many callers
     (prune, rebuild, refresh, CLI)
+confidence_score: 90
+outcome_confidence: 58
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3770: Guarded usage reconciliation, held-source derivation and hold release (ENH-3744/3745 MP3)
@@ -271,8 +288,31 @@ _Added by `/ll:confidence-check` on 2026-10-08; superseded by the review above a
 - Retained: `blocked-by-enh-3747-open`, `broad-change-sites`, `deep-reconciliation-rewiring`, `wide-writer-seam-blast-radius`
 - Changed fields: none
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-08_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+### Concerns
+- Landed proof/witness/disposition seams already cover part of this behavior; the planner must extend them rather than fork a second recognition or conflict algorithm.
+- The recovery-reader signature is illustrative and the `_USAGE_DERIVE_VERSION` bump is still to be re-justified at implementation.
+
+### Outcome Risk Factors
+- deep per-site complexity: guarded reconciliation replaces destructive delete/reinsert across writers, reset, catch-up, rebuild and parser refresh with shared witness/CAS contracts
+- broad enumeration across ~7 source modules plus CLI, docs and 11 test files
+- wide blast radius on shared writer, invalidation and disposition seams
+
+### Risk Factor Delta
+- Added: `open-implementation-latitude`, `seam-overlap-duplication-risk`
+- No longer reported: none
+- Retained: `broad-change-sites`, `deep-reconciliation-rewiring`, `wide-writer-seam-blast-radius`
+- Changed fields: none
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-08T21:12:46 - `2c725775-7b05-45de-a580-86e7bbadbd24.jsonl`
 - `/ll:ready-issue` - 2026-10-08T21:00:39 - `1b23f83c-e3c4-4065-85aa-16474461f7b6.jsonl`
 - Pre-implementation current-handoff review - 2026-10-08 - Three subagent audits plus `/ll:advise` with Opus (confidence 0.72) identified concrete forward-closure/peer-context omissions, acquisition recorded after planning, unheld pending capture gaps, headless stored-raw audit availability and invalidated-frontier helper constraints. Added focused contracts/tests and one shared action table; preserved conservative conflict protection and rejected automatic lineage certification. Corrected ENH-3747 done/search seams, synchronized epic delivery status, superseded cached confidence metadata and retained one MP3 with tested internal stages. Format/design/epic consistency and whitespace checks pass; focused existing proof/state/replay/search/CLI/non-usage-gate baseline: 270 passed. No implementation or new numeric readiness score claimed.
 - ENH-3747 pre-implementation handoff review - 2026-10-08 - Required reuse of its canonical committed-row renderer and batched old/new-anchor reconciliation within each guarded mutation/refresh transaction, including raw-link-selected copy observations at anchors outside refreshed source keys. Added source-only moves, zero-insert preservation and post-acquisition/pre-derive crash/rollback search controls; live/rollout scope and the ENH-3747 prerequisite remain unchanged. No implementation or numeric rescoring.
