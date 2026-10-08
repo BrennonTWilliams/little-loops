@@ -4754,11 +4754,17 @@ compatibility, it does not scrub legacy plaintext rows. A stored payload that
 cannot be decoded, or a source the redaction policy rejects, is skipped with a
 reason-only line (for example `invalid_payload`); other sources still complete.
 A stored `NULL` usage qualification may be promoted from the original file by
-replacement, which requires a rebuild. `--json` includes each source's status/reason and
-keeps stdout parseable. A successful raw replacement invalidates its source
-cursor and linked usage rows and requires derivation before readers can call
-the source fresh. `--rebuild` performs a full re-derivation in the same command;
-without it, run `ll-session rebuild` afterwards. Repeating `--rebuild` is safe
+a verified refresh, which then requires a rebuild. `--json` includes each source's status/reason and
+keeps stdout parseable. A verified refresh updates matching stored lines in place and appends
+new lines: raw IDs, linked usage rows and their stored costs are kept, and the source owes
+parser-derived cache work and usage work until a rebuild resolves them. `needs_rebuild`
+(JSON and the closing text line) reports that committed state for every requested source
+-- including unchanged or skipped ones -- rather than whether this call replaced rows, so
+an interrupted run or an unchanged retry still reports unfinished work.
+`--rebuild` performs a full re-derivation in the same command, then re-reads that
+state: usage whose evidence cannot yet be proved stays pending, `needs_rebuild` stays
+true and the closing line says the work remains pending instead of reporting success.
+Without `--rebuild`, run `ll-session rebuild` afterwards. Repeating `--rebuild` is safe
 if an earlier rebuild failed, including when the raw source is now unchanged.
 Unavailable originals cannot restore fields stripped by an older normalizer;
 the missing coverage remains unknown rather than becoming zero.
@@ -4781,6 +4787,10 @@ the missing coverage remains unknown rather than becoming zero.
 Wipes and re-derives `tool_events`, `message_events`, `assistant_messages`,
 `skill_events`, `sessions`, `user_corrections`, `summary_nodes`/
 `summary_spans`, and their `search_index` rows from `raw_events`. Idempotent.
+Usage observations are never wiped: the rebuild compares every retained request with
+the committed observations and only adds, qualifies or demotes what it can prove, so
+row IDs, stored costs and timestamps survive and a repeated rebuild changes nothing.
+Usage search rows are restored from the committed observations.
 Live hook telemetry that `raw_events` cannot regenerate is kept: tool rows with a
 populated `bytes_in` or `bytes_out` (written by the PostToolUse hook) and corrections
 whose `source` is not `backfill`. Those rows keep every field and ID, are re-indexed

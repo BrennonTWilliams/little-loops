@@ -46,6 +46,34 @@ def _checkpoint(db: Path) -> dict[str, str]:
     return dict(_sql(db, "SELECT key, value FROM meta WHERE key LIKE 'usage_derive_%'"))
 
 
+_UNUSABLE = [
+    "DELETE FROM meta WHERE key LIKE 'usage_derive_%'",
+    "DELETE FROM meta WHERE key = 'usage_derive_raw_id'",
+    "UPDATE meta SET value = 'old' WHERE key = 'usage_derive_version'",
+    "UPDATE meta SET value = 'garbage' WHERE key = 'usage_derive_raw_id'",
+    "UPDATE meta SET value = '-1' WHERE key = 'usage_derive_raw_id'",
+    "UPDATE meta SET value = '999999' WHERE key = 'usage_derive_raw_id'",
+]
+
+
+def _block_repair(db: Path) -> None:
+    """An unrelated unresolved usage obligation: the whole-population repair must not pass."""
+    _sql(
+        db,
+        "INSERT INTO usage_source_state(source_path, generation_id, derive_version, revision, "
+        "status, reason) VALUES('/blocker.jsonl', 'g', ?, 1, 'pending', 'derive_pending')",
+        (lifecycle._USAGE_DERIVE_VERSION,),
+    )
+    _sql(
+        db,
+        "INSERT INTO usage_source_pending(obligation_id, source_path, generation_id, "
+        "derive_version, kind, reason, range_kind, revision, raw_cache_pending, usage_pending) "
+        "VALUES('blocker', '/blocker.jsonl', 'g', ?, 'acquisition_failure', 'json_failure', "
+        "'whole_source', 1, 0, 1)",
+        (lifecycle._USAGE_DERIVE_VERSION,),
+    )
+
+
 @pytest.fixture
 def store(tmp_path: Path) -> tuple[Path, Path]:
     source = tmp_path / "session.jsonl"
@@ -146,22 +174,12 @@ class TestCheckpointReading:
 
 
 class TestDeriveGuard:
-    @pytest.mark.parametrize(
-        "mutation",
-        [
-            "DELETE FROM meta WHERE key LIKE 'usage_derive_%'",
-            "DELETE FROM meta WHERE key = 'usage_derive_raw_id'",
-            "UPDATE meta SET value = 'old' WHERE key = 'usage_derive_version'",
-            "UPDATE meta SET value = 'garbage' WHERE key = 'usage_derive_raw_id'",
-            "UPDATE meta SET value = '-1' WHERE key = 'usage_derive_raw_id'",
-            "UPDATE meta SET value = '999999' WHERE key = 'usage_derive_raw_id'",
-            "DELETE FROM sqlite_sequence WHERE name = 'raw_events'",
-        ],
-    )
-    def test_established_store_with_unusable_proof_skips_untouched(
+    @pytest.mark.parametrize("mutation", _UNUSABLE)
+    def test_unusable_proof_with_unresolved_work_skips_untouched(
         self, store: tuple[Path, Path], mutation: str
     ) -> None:
         db, _ = store
+        _block_repair(db)
         _sql(db, mutation)
         usage_before, meta_before = _usage(db), _checkpoint(db)
         conn = connect(db)
@@ -173,10 +191,130 @@ class TestDeriveGuard:
             conn.close()
         assert disposition.status == "skipped"
         assert disposition.reason and disposition.reason.startswith("checkpoint_")
-        assert disposition.count == 0
+        assert disposition.scanned_bound is None  # a skip never certifies global progress
         assert _usage(db) == usage_before
         assert _checkpoint(db) == meta_before
         assert backfill_usage_incremental(db) == 0
+
+    @pytest.mark.parametrize("mutation", _UNUSABLE)
+    def test_unusable_proof_repairs_only_to_the_freshly_scanned_bound(
+        self, store: tuple[Path, Path], mutation: str
+    ) -> None:
+        db, _ = store
+        _sql(db, mutation)
+        usage_before = _usage(db)
+        bound = _sql(db, "SELECT MAX(id) FROM raw_events")[0][0]
+        conn = connect(db)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            disposition = lifecycle._derive_usage_incremental_disposition(conn)
+            conn.commit()
+        finally:
+            conn.close()
+        assert (disposition.status, disposition.scanned_bound) == ("derived", bound)
+        assert _usage(db) == usage_before  # reconciled, never reset
+        assert _checkpoint(db) == {
+            "usage_derive_version": lifecycle._USAGE_DERIVE_VERSION,
+            "usage_derive_raw_id": str(bound),  # not max(untrusted prior, bound)
+        }
+        assert backfill_usage_incremental(db) == 0
+
+    def test_missing_allocation_sequence_cannot_repair_a_discarded_floor(
+        self, store: tuple[Path, Path]
+    ) -> None:
+        db, _ = store
+        _sql(db, "DELETE FROM sqlite_sequence WHERE name = 'raw_events'")
+        meta_before = _checkpoint(db)
+        assert backfill_usage_incremental(db) == 0
+        assert _checkpoint(db) == meta_before
+
+    def test_empty_retained_history_cannot_repair_a_discarded_floor(
+        self, store: tuple[Path, Path]
+    ) -> None:
+        db, _ = store
+        _sql(db, "DELETE FROM raw_events")
+        _sql(db, "DELETE FROM meta WHERE key = 'usage_derive_version'")
+        assert backfill_usage_incremental(db) == 0
+        assert "usage_derive_version" not in _checkpoint(db)
+
+    def test_proof_limit_blocks_repair_without_a_partial_publication(
+        self, store: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import usage_proof_scope as scope_mod
+
+        db, _ = store
+        _sql(db, "UPDATE meta SET value = 'old' WHERE key = 'usage_derive_version'")
+        meta_before, usage_before = _checkpoint(db), _usage(db)
+        monkeypatch.setattr(scope_mod, "PROOF_LIMITS", scope_mod.ProofLimits(max_items=1))
+        backfill_usage_incremental(db)
+        assert _checkpoint(db) == meta_before and _usage(db) == usage_before
+
+    def test_older_version_obligations_are_not_relabelled_and_block_repair(
+        self, store: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db, source = store
+        _sql(
+            db,
+            "INSERT INTO usage_source_pending(obligation_id, source_path, generation_id, "
+            "derive_version, kind, reason, range_kind, revision, raw_cache_pending, "
+            "usage_pending) VALUES('o1', ?, 'g-old', 'ancient-v0', 'derive_gap', "
+            "'usage_derive_gap', 'whole_source', 1, 0, 1)",
+            (str(source),),
+        )
+        _sql(db, "UPDATE meta SET value = 'old' WHERE key = 'usage_derive_version'")
+        meta_before = _checkpoint(db)
+        backfill_usage_incremental(db)
+        assert _checkpoint(db) == meta_before
+        assert _sql(db, "SELECT derive_version, usage_pending FROM usage_source_pending") == [
+            ("ancient-v0", 1)
+        ]
+
+    def test_failed_repair_rolls_back_rows_pending_and_metadata(
+        self, store: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db, _ = store
+        _sql(db, "DELETE FROM usage_events WHERE id = (SELECT MIN(id) FROM usage_events)")
+        _sql(db, "UPDATE meta SET value = 'old' WHERE key = 'usage_derive_version'")
+        usage_before, meta_before = _usage(db), _checkpoint(db)
+        pending_before = _sql(db, "SELECT COUNT(*) FROM usage_source_pending")
+
+        def boom(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("repair publication failed")
+
+        monkeypatch.setattr(lifecycle, "_publish_usage_derive_checkpoint", boom)
+        with pytest.raises(RuntimeError, match="repair publication failed"):
+            backfill_usage_incremental(db)
+        assert _usage(db) == usage_before
+        assert _checkpoint(db) == meta_before
+        assert _sql(db, "SELECT COUNT(*) FROM usage_source_pending") == pending_before
+
+    def test_source_recovery_leaves_unusable_metadata_unchanged(
+        self, store: tuple[Path, Path]
+    ) -> None:
+        """A source with a resolvable obligation recovers; the blocked global scan stays put."""
+        db, source = store
+        _block_repair(db)
+        conn = connect(db)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            from little_loops.session_store import usage_source_state as uss
+
+            head = uss.read_source_head(conn, str(source))
+            assert head is not None
+            uss.record_source_pending(
+                conn,
+                uss.SourcePending(head.scope, "derive_gap", "usage_proof_unprovable"),
+                expected_head_revision=head.revision,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        _sql(db, "UPDATE meta SET value = 'old' WHERE key = 'usage_derive_version'")
+        meta_before = _checkpoint(db)
+        backfill_usage_incremental(db)
+        kinds = {row[0] for row in _sql(db, "SELECT reason FROM usage_source_pending")}
+        assert "usage_proof_unprovable" not in kinds  # recovered under source-scoped proof
+        assert _checkpoint(db) == meta_before  # but the global floor was not restamped
 
     def test_smaller_surviving_max_is_not_a_reset(self, store: tuple[Path, Path]) -> None:
         db, _ = store
@@ -229,11 +367,15 @@ class TestDeriveGuard:
 
         backfill_raw_events(db, jsonl_files=[source], host="claude-code")
         before = _usage(db)
+        # An unlinked, unheld legacy population could be double counted by a whole-population
+        # replay, so neither bootstrap nor repair derives beside it.
         assert backfill_usage_incremental(db) == 0
         assert _usage(db) == before
         assert _checkpoint(db) == {}
 
-    def test_replay_holds_block_bootstrap(self, tmp_path: Path) -> None:
+    def test_replay_holds_block_bootstrap_but_unrelated_sources_still_derive(
+        self, tmp_path: Path
+    ) -> None:
         db = tmp_path / "h.db"
         ensure_db(db)
         _sql(
@@ -246,10 +388,16 @@ class TestDeriveGuard:
         from little_loops.session_store import backfill_raw_events
 
         backfill_raw_events(db, jsonl_files=[source], host="claude-code")
-        assert backfill_usage_incremental(db) == 0
-        assert _usage(db) == []
+        # The hold forbids the pristine bootstrap path, yet the guarded repair path derives
+        # the unrelated retained source and leaves the hold (and pruned history) alone.
+        assert backfill_usage_incremental(db) == 2
+        assert len(_usage(db)) == 2
+        assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(1,)]
+        assert int(_checkpoint(db)["usage_derive_raw_id"]) > 0
 
-    def test_held_append_is_planned_not_skipped(self, store: tuple[Path, Path]) -> None:
+    def test_held_append_derives_additively_and_a_reconstructible_hold_is_released(
+        self, store: tuple[Path, Path]
+    ) -> None:
         db, source = store
         _sql(
             db,
@@ -277,7 +425,9 @@ class TestDeriveGuard:
         assert disposition.count == 1 and disposition.held_skipped == ()
         after = _usage(db)
         assert after[:2] == before and len(after) == 3
-        assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(1,)]
+        # Every observation the hold covered is reconstructible from the fully retained raw
+        # rows, so the proof lifts exactly this source's hold (and nothing else).
+        assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(0,)]
         assert int(_checkpoint(db)["usage_derive_raw_id"]) > floor
 
 
@@ -296,14 +446,35 @@ class TestRebuildStamping:
             "DELETE FROM meta WHERE key = 'usage_derive_raw_id'",
         ],
     )
-    def test_rebuild_leaves_invalid_proof_untouched(
+    def test_rebuild_leaves_invalid_proof_untouched_when_repair_is_blocked(
         self, store: tuple[Path, Path], mutation: str
     ) -> None:
         db, _ = store
+        _block_repair(db)
         _sql(db, mutation)
         before = _checkpoint(db)
         rebuild(db)
         assert _checkpoint(db) == before
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "UPDATE meta SET value = 'old' WHERE key = 'usage_derive_version'",
+            "UPDATE meta SET value = 'garbage' WHERE key = 'usage_derive_raw_id'",
+            "DELETE FROM meta WHERE key = 'usage_derive_raw_id'",
+        ],
+    )
+    def test_rebuild_repairs_invalid_proof_only_to_the_scanned_bound(
+        self, store: tuple[Path, Path], mutation: str
+    ) -> None:
+        db, _ = store
+        _sql(db, mutation)
+        bound = _sql(db, "SELECT MAX(id) FROM raw_events")[0][0]
+        rebuild(db)
+        assert _checkpoint(db) == {
+            "usage_derive_version": lifecycle._USAGE_DERIVE_VERSION,
+            "usage_derive_raw_id": str(bound),
+        }
 
     def test_rebuild_does_not_lower_a_floor_after_retention(self, store: tuple[Path, Path]) -> None:
         db, _ = store

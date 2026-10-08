@@ -497,8 +497,45 @@ RETRYABLE_USAGE_REASONS = frozenset(
         "rebuild",
         "parser_refresh",
         "reconcile",
+        "derive_pending",
     }
 )
+
+
+def stage_raw_only_source(
+    conn: sqlite3.Connection,
+    attempt: Attempt | None,
+    *,
+    accounting: PhysicalAccounting,
+    witness: AcquisitionWitness,
+    coverage_proved: bool,
+) -> bool:
+    """Stage a verified raw-only acquisition and its usage-pending handoff (ENH-3770).
+
+    Raw ingestion committed on its own proved canonical coverage, native identity and source
+    stability, so it records the acquisition head and one durable whole-source usage-pending
+    obligation. Acquisition alone never publishes completion: a later retained-only derive
+    resolves the obligation from committed rows (no original-file stat or reparse) and
+    publishes from post-write proof. Returns whether a head was staged.
+    """
+    staged = stage_source_acquisition(
+        conn, attempt, accounting=accounting, witness=witness, coverage_proved=coverage_proved
+    )
+    if staged is None:
+        return False
+    pending = SourcePending(staged.scope, "derive_gap", "derive_pending", "whole_source")
+    if not _pending_covered(conn, pending):
+        record_source_pending(conn, pending, expected_head_revision=staged.head_revision)
+    return True
+
+
+def retained_proof_is_clean(conn: sqlite3.Connection, source_path: str) -> bool:
+    """Whether the post-write retained proof leaves *source_path* with nothing missing.
+
+    ENH-3744 correspondence read back from the connection's committed rows; a proof limit
+    or an unprovable candidate is not clean.
+    """
+    return _proof_outcome(conn, source_path)[0] is None
 
 
 def publish_retained_completion(conn: sqlite3.Connection, source_path: str) -> bool:

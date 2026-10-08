@@ -41,15 +41,22 @@ from little_loops.session_store.usage_reconcile import (
     Overlap,
     PlanFacts,
     PlannedAction,
+    Recovery,
     Relation,
     Retention,
+    Witness,
     decide,
 )
 from little_loops.session_store.usage_source_state import (
+    HeadState,
+    ObservationWitness,
+    QualificationDependency,
     invalidate_usage_dependencies,
     read_observation_witness,
+    read_pending_recovery,
     read_source_head,
     storage_available,
+    write_observation_witness,
 )
 
 if TYPE_CHECKING:
@@ -322,6 +329,7 @@ class CodexTarget:
     verified_host: bool
     verified_thread: bool
     measured: bool
+    closure_ctx: tuple[int | None, int | None, int | None] | None = None
 
     @property
     def raw_id(self) -> int | None:
@@ -382,6 +390,8 @@ class _Ctx:
         self._overlap: dict[tuple[str, str | None, str, bool], Overlap] = {}
         self._supplier: dict[int, bool] = {}
         self._scheduled: set[int] = set()
+        self._recovery: dict[str, int | None] = {}
+        self._heads: dict[str, HeadState | None] = {}
 
     # -- committed state -----------------------------------------------------
 
@@ -444,6 +454,57 @@ class _Ctx:
             result = Overlap.AMBIGUOUS if row is not None else Overlap.NONE
         self._overlap[cache_key] = result
         return result
+
+    def head(self, source: str) -> HeadState | None:
+        if source not in self._heads:
+            self._heads[source] = read_source_head(self.conn, source)
+        return self._heads[source]
+
+    def acquired(self, source: str, line_no: int | None) -> bool:
+        """Whether a verified acquisition covers *line_no* of *source* (witness authority)."""
+        from little_loops.session_store.usage_source_tracking import USAGE_ACQUISITION_VERSION
+
+        head = self.head(source)
+        return bool(
+            head is not None
+            and head.acquisition_version == USAGE_ACQUISITION_VERSION
+            and head.acquired_line_no is not None
+            and line_no is not None
+            and line_no <= head.acquired_line_no
+        )
+
+    def recovery(self, source: str, line_no: int | None) -> Recovery:
+        """Scoped original-source acquisition authority covering *line_no* of *source*.
+
+        Only a verified ``OriginalAcquisition`` persisted by an explicit parser refresh counts,
+        and only for the head's current generation/derive version and acquisition version,
+        with the request inside the certified range. A marker, matching values or ordinary
+        replay never create it.
+        """
+        if line_no is None or not storage_available(self.conn):
+            return Recovery.NONE
+        certified = self._recovery.get(source)
+        if source not in self._recovery:
+            certified = None
+            head = read_source_head(self.conn, source)
+            if head is not None:
+                for item in read_pending_recovery(self.conn, source):
+                    authority = item.original_acquisition
+                    pending = item.pending
+                    if (
+                        authority is not None
+                        and pending.kind == "refresh"
+                        and pending.reason == "parser_refresh"
+                        and pending.usage_pending
+                        and pending.scope.generation_id == head.scope.generation_id
+                        and pending.scope.derive_version == head.scope.derive_version
+                        and authority.acquisition_version == head.acquisition_version
+                    ):
+                        certified = max(certified or 0, authority.line_no)
+            self._recovery[source] = certified
+        return (
+            Recovery.AUTHORIZED if certified is not None and line_no <= certified else Recovery.NONE
+        )
 
     def supplier_order_provable(self, row: Committed) -> bool:
         """Whether the committed supplier's native position can still be compared.
@@ -564,6 +625,8 @@ def _claude_facts(
         conflict=conflict,
         overlap=ctx.overlap(target.source, replay.host, "transcript", keyed),
         retention=ctx.retention(target.source, replay.host, "transcript"),
+        recovery=ctx.recovery(target.source, replay.line_no),
+        acquired=ctx.acquired(target.source, replay.line_no),
         same_supplier=same_supplier,
     )
 
@@ -615,9 +678,34 @@ def _plan_claude_target(
     else:
         if key_row is not None and link is not None and link.id != key_row.id:
             return ctx.preserve(target, "link_key_mismatch")
+        if committed is link and (
+            committed.host != target.replay.host
+            or committed.session_id != target.observation.session_id
+            or committed.channel not in (None, "transcript")
+        ):
+            # An exact raw link with a disagreeing identity proves nothing about this request.
+            return ctx.preserve(target, "identity_contradiction")
         relation, same_supplier, cross_conflict = _claude_relation(ctx, target, committed)
         if cross_conflict:
             return _claude_conflict(ctx, target, committed, link)
+        if ctx.is_demoted(committed):
+            # An already demoted row stays demoted: neither a newer snapshot nor an
+            # original-source recovery nor an unchanged replay may re-promote or reprice it.
+            # Different values are new evidence, kept as unpriced audit beside it.
+            if committed.values5 != target.values:
+                return _claude_conflict(ctx, target, committed, link)
+            ctx.report.note(target.source, target.raw_id, _CONFLICT_REASON, kind="native_conflict")
+            plan = decide(
+                _claude_facts(
+                    ctx,
+                    target,
+                    committed=committed,
+                    relation=Relation.SAME,
+                    same_supplier=same_supplier,
+                    conflict=Conflict.UNRESOLVED,
+                )
+            )
+            return Planned(target.index, "claude", target, plan, committed=committed)
     plan = decide(
         _claude_facts(
             ctx, target, committed=committed, relation=relation, same_supplier=same_supplier
@@ -758,6 +846,7 @@ def _codex_facts(
         conflict=conflict,
         overlap=ctx.overlap(target.source, host, "rollout", target.keyed),
         retention=ctx.retention(target.source, host, "rollout"),
+        acquired=ctx.acquired(target.source, cand.record.line_no),
         same_supplier=same_supplier,
     )
 
@@ -779,6 +868,15 @@ def _codex_conflict(
     plan = decide(
         _codex_facts(ctx, target, committed=None, relation=Relation.NONE, conflict=Conflict.PROVED)
     )
+    cand = target.cand
+    # Only the contradicted fact leaves the consumed frontier: when every other identity and
+    # count agrees, the models alone disagree and the recorded closure stays valid.
+    model_only = bool(group) and all(
+        row.components == target.components
+        and row.turn_id == cand.turn_id
+        and row.session_id == cand.thread_id
+        for row in group
+    )
     return Planned(
         target.index,
         "codex",
@@ -786,6 +884,7 @@ def _codex_conflict(
         plan,
         demote=demote,
         copy_needed=not represented,
+        roles=frozenset({"model"}) if model_only else frozenset({"model", "closure"}),
     )
 
 
@@ -896,6 +995,7 @@ def plan_codex(
                 verified_host=verified_host,
                 verified_thread=verified_thread,
                 measured=measured,
+                closure_ctx=state.closure_ctx.get(cand.turn_id or ""),
             )
         )
         ctx.report.scanned_sources.add(replay.source_label)
@@ -924,7 +1024,7 @@ def _price(ts: str, model: Any, components: tuple[Any, Any, Any, Any]) -> float 
     )
 
 
-def _insert_claude(ctx: _Ctx, t: ClaudeTarget, *, priced: bool, audit_copy: bool) -> None:
+def _insert_claude(ctx: _Ctx, t: ClaudeTarget, *, priced: bool, audit_copy: bool) -> int:
     from little_loops.observability.tracing import vendor_for_runner
 
     replay, observation = t.replay, t.observation
@@ -938,7 +1038,7 @@ def _insert_claude(ctx: _Ctx, t: ClaudeTarget, *, priced: bool, audit_copy: bool
     cost = _price(replay.ts, observation.model, components) if priced else None
     qualified = observation.qualified and not audit_copy
     key = None if audit_copy else observation.observation_key
-    ctx.conn.execute(
+    cursor = ctx.conn.execute(
         "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
         "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
         "run_id, channel, provenance, host, provider_vendor, scope_kind, observed_at, "
@@ -972,6 +1072,7 @@ def _insert_claude(ctx: _Ctx, t: ClaudeTarget, *, priced: bool, audit_copy: bool
     )
     ctx.scope.mark(replay.source_label)
     ctx.report.inserted += 1
+    return int(cursor.lastrowid or 0)
 
 
 def _invalidate_dependents(ctx: _Ctx, row: Committed) -> None:
@@ -1019,6 +1120,163 @@ def _replace_claude(ctx: _Ctx, t: ClaudeTarget, row: Committed) -> None:
         ),
     )
     ctx.report.replaced += 1
+
+
+def _supplier(
+    ctx: _Ctx,
+    source: str,
+    host: str | None,
+    session: str | None,
+    line_no: int | None,
+    ordinal: int | None,
+    raw_id: int | None,
+) -> dict[str, Any] | None:
+    """Supplier fields of a witness, or ``None`` without a tracked head (no authority)."""
+    head = ctx.head(source)
+    if head is None or not storage_available(ctx.conn):
+        return None
+    return {
+        "supplier_source_path": source,
+        "supplier_host": host,
+        "supplier_session_id": session,
+        "supplier_generation_id": head.scope.generation_id,
+        "supplier_derive_version": head.scope.derive_version,
+        "supplier_line_no": line_no,
+        "supplier_ordinal": ordinal,
+        "supplier_raw_id": raw_id,
+    }
+
+
+def _witness_claude(ctx: _Ctx, usage_id: int, t: ClaudeTarget) -> None:
+    """Record the actual supplier of a Claude observation (its qualification is self-contained)."""
+    replay = t.replay
+    supplier = _supplier(
+        ctx,
+        t.source,
+        replay.host,
+        t.observation.session_id,
+        replay.line_no,
+        replay.ordinal,
+        replay.raw_event_id,
+    )
+    if supplier is None:
+        return
+    write_observation_witness(
+        ctx.conn,
+        ObservationWitness(
+            usage_id,
+            "known",
+            "not_consumed" if t.observation.qualified else "unavailable",
+            **supplier,
+        ),
+    )
+
+
+def _codex_frontier(ctx: _Ctx, t: CodexTarget) -> tuple[QualificationDependency, ...] | None:
+    """The model and closure rows a measured request actually consumed (None = incomplete)."""
+    head = ctx.head(t.source)
+    cand = t.cand
+    if head is None:
+        return None
+    deps = []
+    for role, position in (("model", cand.model_ctx), ("closure", t.closure_ctx)):
+        if position is None or position[0] is None or position[0] < 1:
+            return None
+        deps.append(
+            QualificationDependency(
+                role=role,
+                source_path=t.source,
+                generation_id=head.scope.generation_id,
+                derive_version=head.scope.derive_version,
+                line_no=position[0],
+                host=cand.record.host,
+                session_id=cand.thread_id,
+                ordinal=position[1],
+                raw_event_id=position[2],
+            )
+        )
+    return tuple(deps)
+
+
+def _witness_codex(ctx: _Ctx, usage_id: int, t: CodexTarget) -> None:
+    replay = t.cand.record
+    supplier = _supplier(
+        ctx,
+        t.source,
+        replay.host,
+        t.cand.thread_id,
+        replay.line_no,
+        replay.ordinal,
+        replay.raw_event_id,
+    )
+    if supplier is None:
+        return
+    frontier = _codex_frontier(ctx, t) if t.measured else None
+    write_observation_witness(
+        ctx.conn,
+        ObservationWitness(
+            usage_id,
+            "known",
+            "known" if frontier is not None else "unavailable",
+            qualification_dependencies=frontier or (),
+            **supplier,
+        ),
+    )
+
+
+def _requalify_witness(ctx: _Ctx, row: Committed, t: CodexTarget) -> None:
+    """Context-only qualification: change the consumed frontier, never the value supplier."""
+    if not storage_available(ctx.conn):
+        return
+    current = read_observation_witness(ctx.conn, row.id)
+    frontier = _codex_frontier(ctx, t)
+    if current.value_status != "known" or frontier is None:
+        return
+    write_observation_witness(
+        ctx.conn,
+        ObservationWitness(
+            row.id,
+            "known",
+            "known",
+            current.supplier_source_path,
+            current.supplier_host,
+            current.supplier_session_id,
+            current.supplier_generation_id,
+            current.supplier_derive_version,
+            current.supplier_line_no,
+            current.supplier_ordinal,
+            current.supplier_raw_id,
+            frontier,
+        ),
+    )
+
+
+def _clear_witness(ctx: _Ctx, usage_id: int) -> None:
+    """A changed value without acquired authority leaves no witness rather than a stale one."""
+    if not storage_available(ctx.conn):
+        return
+    for table in ("usage_observation_dependencies", "usage_observation_witnesses"):
+        ctx.conn.execute(f"DELETE FROM {table} WHERE usage_event_id = ?", (usage_id,))
+
+
+def _qualify_claude(ctx: _Ctx, t: ClaudeTarget, row: Committed, *, priced: bool) -> None:
+    """Original-source recovery: certify a linked audit row's qualification and key only."""
+    replay, observation = t.replay, t.observation
+    usage = observation.usage
+    components = (
+        usage.get("input_tokens"),
+        usage.get("output_tokens"),
+        usage.get("cache_read_input_tokens"),
+        usage.get("cache_creation_input_tokens"),
+    )
+    _invalidate_dependents(ctx, row)
+    cost = _price(replay.ts, observation.model, components) if priced else None
+    ctx.conn.execute(
+        "UPDATE usage_events SET provenance = 'measured', usage_contract = ?, "
+        "observation_key = ?, cost_usd = COALESCE(cost_usd, ?) WHERE id = ?",
+        (replay.usage_contract, observation.observation_key, cost, row.id),
+    )
+    ctx.report.qualified += 1
 
 
 def _demote(ctx: _Ctx, rows: tuple[Committed, ...], roles: frozenset[str]) -> None:
@@ -1080,6 +1338,7 @@ _CODEX_INSERT = (
 
 
 def _insert_codex(ctx: _Ctx, t: CodexTarget, *, priced: bool, measured: bool) -> int:
+    """Insert one Codex request row; return its new row id."""
     from little_loops.observability.tracing import vendor_for_runner
 
     cand = t.cand
@@ -1087,7 +1346,7 @@ def _insert_codex(ctx: _Ctx, t: CodexTarget, *, priced: bool, measured: bool) ->
     cost = (
         _price(replay.ts, cand.model, t.components) if priced and measured and cand.model else None
     )
-    ctx.conn.execute(
+    cursor = ctx.conn.execute(
         _CODEX_INSERT,
         (
             replay.ts,
@@ -1120,7 +1379,7 @@ def _insert_codex(ctx: _Ctx, t: CodexTarget, *, priced: bool, measured: bool) ->
         ),
     )
     ctx.report.inserted += 1
-    return 1
+    return int(cursor.lastrowid or 0)
 
 
 def _qualify_codex(ctx: _Ctx, t: CodexTarget, row: Committed, *, priced: bool) -> None:
@@ -1138,22 +1397,40 @@ def _qualify_codex(ctx: _Ctx, t: CodexTarget, row: Committed, *, priced: bool) -
 
 
 def execute(ctx: _Ctx, planned: list[Planned]) -> int:
-    """Execute the permitted actions in replay order; return newly inserted rows."""
+    """Execute the permitted actions in replay order; return newly inserted rows.
+
+    Each write action carries the witness effect the policy table names, applied in the same
+    transaction: a witness is recorded only where a verified acquisition covers the request,
+    an unchanged row keeps its witnesses untouched, and a changed value without acquired
+    authority drops the stale witness instead of leaving a false one.
+    """
     count = 0
     for p in sorted(planned, key=lambda item: item.index):
         action = p.plan.action
-        if action is Action.NOOP:
+        if action in {Action.NOOP, Action.PRESERVE_PENDING, Action.REFUSE}:
             continue
-        if action in {Action.PRESERVE_PENDING, Action.REFUSE}:
-            continue
+        witness = p.plan.witness
         if p.kind == "claude":
             t: ClaudeTarget = p.target
             if action in {Action.INSERT, Action.INSERT_AUDIT}:
-                _insert_claude(ctx, t, priced=p.plan.prices, audit_copy=False)
+                usage_id = _insert_claude(ctx, t, priced=p.plan.prices, audit_copy=False)
+                if witness is Witness.SUPPLIER_CONTEXT:
+                    _witness_claude(ctx, usage_id, t)
                 count += 1
             elif action is Action.REPLACE:
                 assert p.committed is not None
                 _replace_claude(ctx, t, p.committed)
+                if witness is Witness.REPLACE:
+                    _witness_claude(ctx, p.committed.id, t)
+                elif witness is Witness.CLEAR:
+                    _clear_witness(ctx, p.committed.id)
+            elif action is Action.QUALIFY:
+                assert p.committed is not None
+                _qualify_claude(ctx, t, p.committed, priced=p.plan.prices)
+                if witness is Witness.CONTEXT and ctx.acquired(t.source, t.replay.line_no):
+                    # Same supplier (exact raw link): record the qualification it now
+                    # consumed -- self-contained, so an empty frontier -- under acquired authority.
+                    _witness_claude(ctx, p.committed.id, t)
             elif action is Action.INVALIDATE_CONFLICT:
                 _demote(ctx, p.demote, p.roles)
                 if p.copy_needed:
@@ -1163,14 +1440,20 @@ def execute(ctx: _Ctx, planned: list[Planned]) -> int:
             continue
         ct: CodexTarget = p.target
         if action in {Action.INSERT, Action.INSERT_AUDIT}:
-            count += _insert_codex(ctx, ct, priced=p.plan.prices, measured=ct.measured)
+            usage_id = _insert_codex(ctx, ct, priced=p.plan.prices, measured=ct.measured)
+            if witness is Witness.SUPPLIER_CONTEXT:
+                _witness_codex(ctx, usage_id, ct)
+            count += 1
         elif action is Action.QUALIFY:
             assert p.committed is not None
             _qualify_codex(ctx, ct, p.committed, priced=p.plan.prices)
+            if witness is Witness.CONTEXT:
+                _requalify_witness(ctx, p.committed, ct)
         elif action is Action.INVALIDATE_CONFLICT:
             _demote(ctx, p.demote, p.roles)
             if p.copy_needed:
-                count += _insert_codex(ctx, ct, priced=False, measured=False)
+                _insert_codex(ctx, ct, priced=False, measured=False)
+                count += 1
                 ctx.report.note(ct.source, ct.raw_id, _CONFLICT_REASON, kind="native_conflict")
     return count
 
@@ -1185,10 +1468,105 @@ def apply_replay(
     scope: UsageSearchScope,
     run_id_for: Callable[[str], str | None],
     report: ReplayReport | None = None,
+    plan_out: list[Planned] | None = None,
 ) -> int:
-    """Plan every collected request against committed observations, then execute the plan."""
+    """Plan every collected request against committed observations, then execute the plan.
+
+    With *plan_out* the planned actions are returned there and nothing is executed.
+    """
     report = report if report is not None else ReplayReport()
     ctx = _Ctx(conn, holds, scope, report, run_id_for)
     planned = plan_claude(ctx, claude_targets)
     planned.extend(plan_codex(ctx, codex_candidates, codex_states, len(claude_targets)))
+    if plan_out is not None:
+        plan_out.extend(planned)
+        return 0
     return execute(ctx, planned)
+
+
+# -- Hold release -------------------------------------------------------------
+
+_UNCHANGED_REASONS = frozenset({"unchanged", "superseded_snapshot", "identical_copy"})
+
+
+def _target_qualified(planned: Planned) -> bool:
+    target = planned.target
+    return bool(target.observation.qualified if planned.kind == "claude" else target.measured)
+
+
+def _hold_releasable(conn: sqlite3.Connection, source: str) -> bool:
+    """Whether every observation the exact-source hold covers is reconstructible.
+
+    The inventory is the committed population selected by the hold's own predicate
+    (``source_path``; host and channel labels are ignored, so mixed rows are included), not
+    the retained-candidate query: an observation whose raw evidence is gone is unmatched
+    and keeps the hold. Release also needs a clean post-write retained proof, a plan in
+    which every retained request is an unchanged, equally qualified representation of its
+    committed row, and no unresolved obligation or conflict of any generation.
+    """
+    from little_loops.session_store.usage_proof import retention_reasons
+    from little_loops.session_store.usage_proof_scope import (
+        UsageProofLimit,
+        UsageProofUnavailable,
+        inspect_retained_source,
+    )
+    from little_loops.session_store.usage_source_state import pending_obligations
+    from little_loops.session_store.writers import _backfill_usage_events
+
+    if not storage_available(conn) or pending_obligations(conn, source):
+        return False
+    inventory = {
+        row[0]: row[1:]
+        for row in conn.execute(
+            "SELECT id, observation_key, provenance FROM usage_events "
+            "WHERE source_path = ? AND channel IS NOT 'live'",
+            (source,),
+        )
+    }
+    if any(key is not None and prov != "measured" for key, prov in inventory.values()):
+        return False  # a demoted (conflict) row blocks release
+    try:
+        proofs = inspect_retained_source(conn, source)
+    except (UsageProofLimit, UsageProofUnavailable):
+        return False
+    if retention_reasons(proofs):
+        return False
+    plans: list[Planned] = []
+    cursor = conn.execute(
+        "SELECT raw_line, source_path, host, host_basis, event_type, ts, session_id, line_no, "
+        "ordinal, usage_contract, id FROM raw_events WHERE source_path = ? "
+        "ORDER BY source_path, COALESCE(ordinal, line_no), line_no, id",
+        (source,),
+    )
+    _backfill_usage_events(conn, cursor, plan_out=plans)
+    matched: set[int] = set()
+    for planned in plans:
+        action = planned.plan
+        if action.action is not Action.NOOP or action.reason not in _UNCHANGED_REASONS:
+            return False
+        committed = planned.committed
+        if committed is None:
+            continue
+        if committed.qualified != _target_qualified(planned):
+            return False
+        if committed.source_path == source:
+            matched.add(committed.id)
+    return set(inventory) <= matched
+
+
+def release_safe_holds(conn: sqlite3.Connection, sources: Iterable[str]) -> list[str]:
+    """Delete the exact-source holds proved safe to lift; return the released sources.
+
+    Runs in the caller's transaction. A NULL-source wildcard/population hold and every other
+    source's protection are never touched.
+    """
+    released: list[str] = []
+    for source in sorted(set(sources)):
+        held = conn.execute(
+            "SELECT 1 FROM usage_replay_holds WHERE source_path = ?", (source,)
+        ).fetchone()
+        if held is None or not _hold_releasable(conn, source):
+            continue
+        conn.execute("DELETE FROM usage_replay_holds WHERE source_path = ?", (source,))
+        released.append(source)
+    return released

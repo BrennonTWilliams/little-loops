@@ -79,7 +79,7 @@ from little_loops.session_store import (
 )
 from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.raw_redaction import RawRedactionError, RawRedactionReport
-from little_loops.session_store.usage_refresh import refresh_raw_events
+from little_loops.session_store.usage_refresh import outstanding_refresh_work, refresh_raw_events
 from little_loops.user_messages import get_project_folder
 
 
@@ -1016,7 +1016,18 @@ def _main_session() -> int:
                 if source["status"] == "skipped":
                     print(f"Skipped {source['path']}: {source['reason']}", file=sys.stderr)
             rebuild_counts = rebuild(args.db) if args.rebuild and handles else None
-            needs_rebuild = refreshed.needs_rebuild and rebuild_counts is None
+            # Counts and a normal return never prove resolution: authoritatively re-read the
+            # committed refresh obligations of every requested source (and its lookup alias),
+            # including skipped and unchanged ones, after any rebuild.
+            outstanding = outstanding_refresh_work(
+                args.db,
+                [handle.path for handle in handles] + [Path(item["path"]) for item in skipped],
+            )
+            needs_rebuild = (
+                outstanding
+                if outstanding is not None
+                else refreshed.needs_rebuild and rebuild_counts is None
+            )
             if args.json:
                 print_json(
                     {
@@ -1035,8 +1046,13 @@ def _main_session() -> int:
                 changed = sum(source["status"] == "refreshed" for source in source_results)
                 unchanged = sum(source["status"] == "unchanged" for source in source_results)
                 print(f"Refreshed {changed} source(s); {unchanged} unchanged.")
-                if needs_rebuild:
+                if needs_rebuild and rebuild_counts is None:
                     print("Run ll-session rebuild to re-derive usage and cache tables.")
+                elif needs_rebuild:
+                    print(
+                        "Refresh work remains pending after rebuild: some usage evidence "
+                        "is not provable yet."
+                    )
                 elif rebuild_counts is not None:
                     print("Rebuilt usage and cache tables from refreshed raw events.")
             return 1 if any(source["status"] == "skipped" for source in source_results) else 0

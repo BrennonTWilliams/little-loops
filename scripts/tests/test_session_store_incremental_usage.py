@@ -147,10 +147,10 @@ def test_truncation_refuses_reused_line_numbers(tmp_path: Path) -> None:
         conn.close()
 
 
-def test_established_version_mismatch_skips_and_preserves_usage(
+def test_established_version_mismatch_preserves_usage_and_repairs_to_the_scanned_bound(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ENH-3745: version-changed proof in an established store never replays destructively."""
+    """ENH-3745/3770: a version change never replays destructively; clean repair restamps."""
     source = tmp_path / "session.jsonl"
     source.write_bytes((_CLAUDE / "transcript-v2.1.284.jsonl").read_bytes())
     db = tmp_path / "history.db"
@@ -160,8 +160,14 @@ def test_established_version_mismatch_skips_and_preserves_usage(
     meta_before = _meta(db)
     monkeypatch.setattr(lifecycle, "_USAGE_DERIVE_VERSION", "new-normalizer")
     assert backfill_usage_incremental(db) == 0
-    assert _usage_rows(db) == before
-    assert _meta(db) == meta_before
+    assert _usage_rows(db) == before  # row IDs, costs and provenance untouched
+    meta_after = _meta(db)
+    # The retained population reconciled cleanly, so only the freshly scanned bound and the
+    # current version are published -- never max(untrusted prior, bound).
+    assert meta_after == {
+        "usage_derive_version": "new-normalizer",
+        "usage_derive_raw_id": meta_before["usage_derive_raw_id"],
+    }
 
 
 def _meta(db: Path) -> dict[str, str]:

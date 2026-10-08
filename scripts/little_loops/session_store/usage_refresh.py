@@ -14,7 +14,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import zlib
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NoReturn, cast
 
@@ -23,11 +24,15 @@ from little_loops.session_store.backend import refuse_on_remote
 from little_loops.session_store.db import DEFAULT_DB_PATH
 from little_loops.session_store.sessions import SessionEvent, SessionHandle, iter_events
 from little_loops.session_store.usage_source_state import (
+    AcquisitionBoundary,
+    AcquisitionWitness,
     OriginalAcquisition,
     SourcePending,
     SourceScope,
     invalidate_usage_dependencies,
+    pending_obligations,
     read_source_head,
+    record_source_acquisition,
     record_source_pending,
     storage_available,
 )
@@ -40,6 +45,7 @@ from little_loops.session_store.usage_source_tracking import (
     record_rejections,
 )
 from little_loops.session_store.writers import (
+    _pack_payload,
     _unpack_payload,
     load_usage_replay_holds,
     usage_channel_for_host,
@@ -58,14 +64,51 @@ class SourceRefresh:
 
 @dataclass(frozen=True)
 class RefreshResult:
-    """Refresh outcomes for this call; no durable rebuild-pending state is stored."""
+    """Refresh outcomes for this call.
+
+    ``needs_rebuild`` reflects the *committed* refresh obligations of the requested sources
+    (ENH-3770), so an unchanged retry still reports work an earlier call left unresolved
+    and a crash between the raw refresh and the derive cannot lose it. When the obligation
+    storage is unavailable it falls back to "this call replaced rows".
+    """
 
     sources: tuple[SourceRefresh, ...]
+    _outstanding: bool | None = field(default=None, repr=False, compare=False)
 
     @property
     def needs_rebuild(self) -> bool:
-        """Whether this call changed raw rows and needs derived-row rebuild."""
+        """Whether committed refresh work (cache or usage component) remains."""
+        if self._outstanding is not None:
+            return self._outstanding
         return any(source.status == "refreshed" for source in self.sources)
+
+
+def _source_keys(path: Path) -> tuple[str, ...]:
+    """Every stored spelling of *path* (its handle spelling and its resolved spelling)."""
+    return tuple(dict.fromkeys((str(path), str(path.expanduser().resolve()))))
+
+
+def outstanding_refresh_work(db: Path | str, paths: Iterable[Path | str]) -> bool | None:
+    """Whether any requested source still owes parser-refresh cache or usage work.
+
+    Authoritatively re-reads the committed shared pending state for every path and its
+    lookup alias, including sources whose refresh was skipped or unchanged. ``None`` when
+    the obligation storage is unavailable (callers then fall back to their own result).
+    """
+    import little_loops.session_store as store
+
+    conn = store.connect(db)
+    try:
+        if not storage_available(conn):
+            return None
+        for path in paths:
+            for key in _source_keys(Path(path)):
+                for ob in pending_obligations(conn, key):
+                    if ob.kind == "refresh" and (ob.raw_cache_pending or ob.usage_pending):
+                        return True
+        return False
+    finally:
+        conn.close()
 
 
 def _source_version(path: Path) -> tuple[int, int] | None:
@@ -285,16 +328,38 @@ def _invalidate_tracked_completion(
     scopes = tuple(
         head.scope for head in (read_source_head(conn, key) for key in source_keys) if head
     )
-    invalidate_usage_dependencies(conn, ids, scopes, reason="parser_refresh")
+    # The observations stay (their raw rows are updated in place), so their supplier and
+    # frontier witnesses are preserved; only completion that consumed them is invalidated.
+    invalidate_usage_dependencies(
+        conn, ids, scopes, reason="parser_refresh", preserve_witness_ids=ids
+    )
+
+
+def _acquisition_witness(path: Path, offset: int) -> AcquisitionWitness | None:
+    """Cheap change-detection witness of *path* at *offset* (never prefix continuity)."""
+    import hashlib
+
+    try:
+        stat = path.stat()
+        with path.open("rb") as handle:
+            handle.seek(max(0, offset - 64))
+            digest = hashlib.sha256(handle.read(min(offset, 64))).hexdigest()
+    except OSError:
+        return None
+    return AcquisitionWitness(stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, digest)
 
 
 def _record_replacement_acquisition(conn: sqlite3.Connection, attempt: Any, path: Path) -> None:
-    """After a verified replacement, retain explicit original-source acquisition evidence.
+    """Commit the verified original-source acquisition and both refresh obligations.
 
-    Written only when the full claimed physical range was acquired without rejection
-    (content-free: scope, range, versions, revision). It is recovery evidence for ENH-3770,
-    never ordinary replay authority. Rejections are recorded as failure evidence instead and
-    withhold the evidence.
+    Runs in the refresh transaction after raw rows were updated in place and appended. When
+    the full physical range was acquired without rejection it creates the acquisition head
+    -- even for a previously untracked raw-only or legacy source -- or advances it to cover
+    verified appends, and records the content-free ``OriginalAcquisition`` authority with
+    the ``raw_cache`` and ``usage`` components under the same generation and chained head
+    revisions. This proves acquisition only: never usage completion or historical lineage,
+    and ordinary replay cannot use it. Rejections are recorded as failure evidence instead
+    and withhold the authority.
     """
     if attempt is None or not storage_available(conn):
         return
@@ -302,30 +367,41 @@ def _record_replacement_acquisition(conn: sqlite3.Connection, attempt: Any, path
         accounting = account_physical_lines(path)
     except OSError:
         return
-    head = read_source_head(conn, str(path))
     if not accounting.clean:
         record_rejections(conn, attempt, accounting)
         return
-    if head is None:
+    witness = _acquisition_witness(path, accounting.offset)
+    if witness is None:
         return
+    head = read_source_head(conn, str(path))
+    scope = SourceScope(
+        str(path),
+        head.scope.generation_id if head is not None else attempt.scope.generation_id,
+        attempt.scope.derive_version,
+        attempt.scope.host,
+        attempt.scope.session_id,
+    )
+    revision = record_source_acquisition(
+        conn,
+        scope,
+        AcquisitionBoundary(USAGE_ACQUISITION_VERSION, accounting.offset, accounting.line_count),
+        witness,
+        expected_head_revision=head.revision if head is not None else None,
+    )
     record_source_pending(
         conn,
         SourcePending(
-            scope=SourceScope(str(path), head.scope.generation_id, head.scope.derive_version),
+            scope=scope,
             kind="refresh",
             reason="parser_refresh",
             range_kind="whole_source",
             raw_cache_pending=True,
             usage_pending=True,
             original_acquisition=OriginalAcquisition(
-                SourceScope(str(path), head.scope.generation_id, head.scope.derive_version),
-                USAGE_ACQUISITION_VERSION,
-                accounting.offset,
-                accounting.line_count,
-                head.revision,
+                scope, USAGE_ACQUISITION_VERSION, accounting.offset, accounting.line_count, revision
             ),
         ),
-        expected_head_revision=head.revision,
+        expected_head_revision=revision,
     )
 
 
@@ -480,36 +556,33 @@ def refresh_raw_events(
                 outcomes.append(SourceRefresh(path, "unchanged", rows=len(rows)))
                 continue
 
-            # v58 source-tail proof and derived observations refer to the old
-            # raw IDs. Invalidate them before replacement, in this transaction.
-            # A cursor for the resolved path can coexist with older raw rows
-            # stored under the handle's spelling.
-            source_keys = tuple(dict.fromkeys((str(path), str(path.expanduser().resolve()))))
-            placeholders = ", ".join("?" for _ in source_keys)
+            # ENH-3770: raw IDs are stable. Verified existing lines are updated in place
+            # (parser payload additions, NULL -> marker contract recovery) and genuinely new
+            # native lines are appended, so observation links, value-supplying provenance
+            # and committed costs survive. Nothing is deleted or reallocated: the legacy
+            # cursor, the observations, their search evidence and the global derive
+            # checkpoint stay, and appended rows sit above the checkpoint for the next derive.
+            source_keys = _source_keys(path)
             # ENH-3745: tracked completion that consumed these observations (this source or
-            # a copy depending on its supplier) becomes pending, with raw-cache and usage
-            # disposition, in this same transaction. Negative tracking only: the existing
-            # delete/needs_rebuild workflow below is unchanged until ENH-3770.
+            # a copy depending on its supplier) becomes pending in this same transaction;
+            # the refreshed scope owes cache and usage work, reverse dependents usage only.
             _invalidate_tracked_completion(conn, source_keys, str(path))
-            conn.execute(
-                f"DELETE FROM usage_source_cursors WHERE source_path IN ({placeholders})",
-                source_keys,
-            )
-            conn.execute(
-                "DELETE FROM usage_events WHERE channel IS NOT 'live' AND ("
-                f"source_path IN ({placeholders}) OR source_raw_event_id IN "
-                "(SELECT id FROM raw_events WHERE source_path = ?))",
-                (*source_keys, str(path)),
-            )
-            conn.execute(
-                f"DELETE FROM search_index WHERE kind = 'usage' AND anchor IN ({placeholders})",
-                source_keys,
-            )
-            conn.execute(
-                "DELETE FROM meta WHERE key IN ('usage_derive_version', 'usage_derive_raw_id')"
-            )
-            conn.execute("DELETE FROM raw_events WHERE source_path = ?", (str(path),))
-            inserted = _backfill_raw_events(conn, [handle])
+            for row, columns in zip(rows, stored_canonical, strict=True):
+                line = cast(int, row[0])
+                event = by_line[line]
+                expected_contract = _expected_contract(event, handle)
+                if row[9] == expected_contract and all(
+                    _payload_equal(column, canonical_source[line]) for column in columns
+                ):
+                    continue
+                packed = _pack_payload(json.dumps(canonical_source[line]))
+                conn.execute(
+                    "UPDATE raw_events SET raw_line = ?, parsed_json = ?, usage_contract = ? "
+                    "WHERE source_path = ? AND line_no = ?",
+                    (packed, packed, expected_contract, str(path), line),
+                )
+            appended = _backfill_raw_events(conn, [handle])
+            inserted = len(rows) + appended
             if inserted != len(events) or _source_version(path) != version:
                 conn.rollback()
                 outcomes.append(SourceRefresh(path, "skipped", "source_changed_during_refresh"))
@@ -545,4 +618,5 @@ def refresh_raw_events(
             raise
         finally:
             conn.close()
-    return RefreshResult(tuple(outcomes))
+    outstanding = outstanding_refresh_work(db, [handle.path for handle in handles])
+    return RefreshResult(tuple(outcomes), _outstanding=outstanding)

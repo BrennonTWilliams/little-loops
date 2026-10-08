@@ -60,7 +60,7 @@ from little_loops.session_store.usage_proof_scope import (
     collect_usage_proof_scope,
     inspect_scope,
 )
-from little_loops.session_store.usage_replay import ReplayReport
+from little_loops.session_store.usage_replay import ReplayReport, release_safe_holds
 from little_loops.session_store.usage_source_state import (
     REFUSAL_CODES,
     AcquisitionWitness,
@@ -82,6 +82,9 @@ from little_loops.session_store.usage_source_tracking import (
     record_replay_outcomes,
     resolve_cache_obligations,
     resolve_usage_obligations,
+    retained_proof_is_clean,
+    stage_raw_only_source,
+    stage_source_acquisition,
     sticky_rejection_lines,
     verify_claude_prefix,
 )
@@ -972,12 +975,114 @@ def _ingest_handle_events(
 _ACCOUNTED_HOSTS = frozenset({"claude-code", "codex"})
 
 
-def _account_ingested_source(conn: sqlite3.Connection, handle: SessionHandle) -> None:
-    """Record a just-ingested source's rejected physical lines in the caller's transaction.
+@dataclass(frozen=True)
+class _IngestSnapshot:
+    """What a raw-only ingestion saw before it wrote: prior row counts and source stats."""
 
-    Source-local failure evidence (ENH-3745) alongside the successful inserts; the caller
-    owns commit/rollback. Only line-oriented hosts have physical-line semantics; a missing
-    or unreadable file simply records nothing.
+    rows: dict[str, int]
+    stats: dict[str, tuple[int, int, int, int] | None]
+
+
+def _ingest_snapshot(conn: sqlite3.Connection, handles: list[SessionHandle]) -> _IngestSnapshot:
+    """Snapshot pre-ingest row counts and file stats of line-oriented handles."""
+    rows: dict[str, int] = {}
+    stats: dict[str, tuple[int, int, int, int] | None] = {}
+    if not hasattr(conn, "create_function"):  # remote stores have no physical-line semantics
+        return _IngestSnapshot(rows, stats)
+    for handle in handles:
+        if handle.host not in _ACCOUNTED_HOSTS:
+            continue
+        key = str(handle.path)
+        rows[key] = conn.execute(
+            "SELECT COUNT(*) FROM raw_events WHERE source_path = ?", (key,)
+        ).fetchone()[0]
+        try:
+            st = handle.path.stat()
+            stats[key] = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+        except OSError:
+            stats[key] = None
+    return _IngestSnapshot(rows, stats)
+
+
+def _stage_raw_only_acquisition(
+    conn: sqlite3.Connection,
+    handle: SessionHandle,
+    accounting: Any,
+    snapshot: _IngestSnapshot,
+) -> None:
+    """Stage the verified acquisition of a just-ingested, cleanly accounted source.
+
+    Needs all of: canonical coverage (a pristine first ingest read the whole file from zero;
+    a previously ingested *tracked* source must re-verify its whole retained prefix),
+    verified native identity (one stored session equal to the handle's) and source
+    stability (the file did not change while it was read). An untracked source with
+    historical rows gains no head: headless raw never acquires fabricated lineage.
+    """
+    key = str(handle.path)
+    before = snapshot.stats.get(key)
+    if before is None:
+        return
+    try:
+        final = handle.path.stat()
+    except OSError:
+        return
+    if (final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns) != before:
+        return
+    if final.st_size != accounting.offset:
+        return
+    sessions = {
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT session_id FROM raw_events WHERE source_path = ?", (key,)
+        )
+    }
+    if sessions != {handle.session_id}:
+        return
+    pristine = snapshot.rows.get(key, 0) == 0
+    tracked = read_source_head(conn, key) is not None
+    if not pristine:
+        if not tracked:
+            return
+        if handle.host == "claude-code":
+            if not verify_claude_prefix(conn, handle.path, accounting.offset):
+                return
+        else:
+            try:
+                existing = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT line_no FROM raw_events WHERE source_path = ?", (key,)
+                    )
+                }
+                _certify_codex_stored_source(conn, handle, handle.path, handle.session_id, existing)
+            except RuntimeError:
+                return
+    try:
+        with handle.path.open("rb") as stream:
+            digest = _source_tail_digest(stream, accounting.offset)
+    except OSError:
+        return
+    attempt = begin_attempt(conn, key, _USAGE_DERIVE_VERSION, host=handle.host)
+    attempt = _with_verified_session(attempt, handle.host, handle.session_id)
+    stage_raw_only_source(
+        conn,
+        attempt,
+        accounting=accounting,
+        witness=AcquisitionWitness(
+            final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns, digest
+        ),
+        coverage_proved=True,
+    )
+
+
+def _account_ingested_source(
+    conn: sqlite3.Connection, handle: SessionHandle, snapshot: _IngestSnapshot | None = None
+) -> None:
+    """Record a just-ingested source's rejected lines and stage its verified acquisition.
+
+    Source-local evidence (ENH-3745/3770) alongside the successful inserts; the caller owns
+    commit/rollback. Only line-oriented hosts have physical-line semantics; a missing or
+    unreadable file simply records nothing.
     """
     if handle.host not in _ACCOUNTED_HOSTS or not storage_available(conn):
         return
@@ -985,19 +1090,25 @@ def _account_ingested_source(conn: sqlite3.Connection, handle: SessionHandle) ->
         accounting = account_physical_lines(handle.path)
     except OSError:
         return
-    if not accounting.rejected:
+    if accounting.rejected:
+        attempt = begin_attempt(conn, str(handle.path), _USAGE_DERIVE_VERSION, host=handle.host)
+        if attempt is not None:
+            record_rejections(conn, attempt, accounting)
         return
-    attempt = begin_attempt(conn, str(handle.path), _USAGE_DERIVE_VERSION, host=handle.host)
-    if attempt is not None:
-        record_rejections(conn, attempt, accounting)
+    if snapshot is not None and accounting.clean:
+        _stage_raw_only_acquisition(conn, handle, accounting, snapshot)
 
 
-def _account_ingested_sources(conn: sqlite3.Connection, handles: list[SessionHandle]) -> None:
+def _account_ingested_sources(
+    conn: sqlite3.Connection,
+    handles: list[SessionHandle],
+    snapshot: _IngestSnapshot | None = None,
+) -> None:
     """Record every ingested source's rejected lines in the caller's open transaction."""
     if not hasattr(conn, "create_function"):  # remote stores have no physical-line semantics
         return
     for handle in handles:
-        _account_ingested_source(conn, handle)
+        _account_ingested_source(conn, handle, snapshot)
 
 
 def _note_ingestion_failure(
@@ -1095,8 +1206,9 @@ def backfill_raw_events(
         filtered = (
             [h for h in handles if h.updated_at >= since_ts] if since_ts is not None else handles
         )
+        snapshot = _ingest_snapshot(conn, filtered)
         count = _backfill_raw_events(conn, filtered)
-        _account_ingested_sources(conn, filtered)
+        _account_ingested_sources(conn, filtered, snapshot)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES(?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1644,8 +1756,11 @@ def _set_usage_derive_checkpoint(
     if report is not None:
         record_replay_outcomes(conn, _USAGE_DERIVE_VERSION, report.outcomes.values())
         incomplete = report.incomplete_sources
-        for source in sorted(report.scanned_sources - incomplete):
+        # A full rebuild replayed every retained row, so any outstanding usage work whose
+        # source ended clean is resolved -- even a source with no usage-bearing record.
+        for source in sorted(set(_retry_sources(conn)) - incomplete):
             resolve_usage_obligations(conn, source)
+        _release_held_sources(conn)
         # A full rebuild just replayed every retained raw row into the deterministic
         # parser-derived caches (``max_sessions`` limits only summary compaction), so the
         # cache component of a parser refresh is consumed -- unless a retained row could not
@@ -1654,10 +1769,19 @@ def _set_usage_derive_checkpoint(
             if _cache_coverage_accounted(conn, source):
                 resolve_cache_obligations(conn, source)
     state = state if state is not None else _read_usage_checkpoint(conn)
-    if state.status == "absent" and not bootstrap:
-        return False
-    if state.status not in {"valid", "absent"}:
-        return False
+    unusable = (state.status == "absent" and not bootstrap) or state.status not in {
+        "valid",
+        "absent",
+    }
+    if unusable:
+        # A full rebuild replayed the whole retained population: it may repair an
+        # established unusable checkpoint, but only under the complete repair contract and
+        # only to the bound it actually scanned.
+        bound = _checkpoint_repairable(conn, report) if report is not None else None
+        if bound is None:
+            return False
+        _publish_usage_derive_checkpoint(conn, prior_floor=None, scanned_bound=bound)
+        return True
     max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
     _publish_usage_derive_checkpoint(conn, prior_floor=state.floor, scanned_bound=max_id)
     return True
@@ -1726,42 +1850,213 @@ def _retry_signature(conn: sqlite3.Connection, sources: list[str]) -> str:
     return digest.hexdigest()
 
 
-def _retry_outstanding_usage(
-    conn: sqlite3.Connection,
-    replayed: set[str],
-    search_scope: UsageSearchScope,
-    report: ReplayReport,
-) -> tuple[int, list[str]]:
-    """Replay sources whose outstanding usage work sits at or below the checkpoint.
+def _retry_candidates(conn: sqlite3.Connection, exclude: set[str]) -> list[str]:
+    """Sources whose outstanding usage work should be replayed now (signature-gated).
 
     Independent of hold presence and of whether raw ``MAX`` moved. A signature of the inputs
-    that could change the outcome (retained raw, committed observations, holds and the
-    obligations themselves) skips a replay that cannot differ from the last one, so an
-    unresolvable scope does not re-scan on every call. Returns ``(inserts, clean_sources)``.
+    that could change the outcome (retained rows of the outstanding sources, committed
+    observations, holds and the obligations themselves) skips a replay that cannot differ
+    from the last one, so an unresolvable scope does not re-scan on every call.
     """
-    sources = [s for s in _retry_sources(conn) if s not in replayed]
+    sources = _retry_sources(conn)
     if not sources:
-        return 0, []
+        return []
     signature = _retry_signature(conn, sources)
     row = conn.execute("SELECT value FROM meta WHERE key = ?", (_RETRY_SIGNATURE_KEY,)).fetchone()
     if row is not None and row[0] == signature:
-        return 0, []
+        return []
+    return [s for s in sources if s not in exclude]
+
+
+_REPAIR_SIGNATURE_KEY = "usage_repair_signature"
+
+
+def _checkpoint_repairable(conn: sqlite3.Connection, report: ReplayReport) -> int | None:
+    """The freshly scanned bound ``B`` when the whole-population repair contract holds.
+
+    Called after one transaction replayed the *entire* retained raw population (so ``B`` is
+    exactly what was scanned, never ``max(untrusted prior, B)``) and persisted its source
+    outcomes. Requires a usable allocation-sequence check, no unresolved usage work of any
+    generation at or below ``B``, no incomplete scanned scope, and a clean post-write proof
+    for every scanned source. An empty retained set or a sequence-unprovable store cannot
+    repair a discarded positive floor. The scan floor certifies retained scheduling only.
+    """
+    ready, sequence = _raw_event_sequence(conn)
+    bound = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
+    if not ready or sequence is None or bound <= 0 or bound > sequence:
+        return None
+    if _unlinked_unheld_usage(conn):
+        return None
+    if report.outcomes:
+        return None
+    if (
+        storage_available(conn)
+        and conn.execute(
+            "SELECT 1 FROM usage_source_pending WHERE usage_pending = 1 LIMIT 1"
+        ).fetchone()
+    ):
+        return None
+    if not all(retained_proof_is_clean(conn, source) for source in sorted(report.scanned_sources)):
+        return None
+    return int(bound)
+
+
+def _unlinked_unheld_usage(conn: sqlite3.Connection) -> bool:
+    """Whether non-live observations exist with no source link and no covering population hold.
+
+    Such a legacy population cannot be matched to retained candidates, so replaying the whole
+    retained population beside it could count the same request twice.
+    """
+    return (
+        conn.execute(
+            "SELECT 1 FROM usage_events WHERE channel IS NOT 'live' AND source_raw_event_id IS NULL "
+            "AND source_path IS NULL AND NOT EXISTS (SELECT 1 FROM usage_replay_holds h WHERE "
+            "h.source_path IS NULL AND (h.host = '*' OR h.host IS usage_events.host) "
+            "AND (h.channel = '*' OR h.channel IS usage_events.channel)) LIMIT 1"
+        ).fetchone()
+        is not None
+    )
+
+
+def _repair_signature(conn: sqlite3.Connection, state: _CheckpointState) -> str:
+    """Fingerprint of what could newly make a failed whole-population repair succeed."""
+    raw = conn.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM raw_events").fetchone()
+    usage = conn.execute(
+        "SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(provenance = 'measured'), 0), "
+        "TOTAL(input_tokens), TOTAL(output_tokens) FROM usage_events"
+    ).fetchone()
+    holds = conn.execute("SELECT COUNT(*) FROM usage_replay_holds").fetchone()[0]
+    pending = (
+        conn.execute(
+            "SELECT obligation_id, revision FROM usage_source_pending ORDER BY obligation_id"
+        ).fetchall()
+        if storage_available(conn)
+        else []
+    )
+    meta = conn.execute(
+        "SELECT key, value FROM meta WHERE key IN ('usage_derive_version', 'usage_derive_raw_id') "
+        "ORDER BY key"
+    ).fetchall()
+    payload = json.dumps(
+        [
+            state.status,
+            list(raw),
+            list(usage),
+            holds,
+            [list(r) for r in pending],
+            [list(m) for m in meta],
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _recover_under_unusable_checkpoint(
+    conn: sqlite3.Connection, state: _CheckpointState, attempt: Attempt | None
+) -> _DeriveDisposition:
+    """Source recovery plus guarded whole-population repair for an established store.
+
+    Established absent, partial, version-changed, invalid, contradictory or
+    sequence-unprovable metadata is never silently restamped. Outstanding source-scoped
+    usage work may still be recovered under independently valid acquisition, generation and
+    action proof, leaving the metadata and its skipped reason exactly as found. Only the
+    complete repair -- one transaction replaying the entire retained population, a usable
+    sequence check, nothing unresolved at or below the scanned bound and every proof clean --
+    publishes, and then only the freshly scanned bound.
+    """
+    reason = f"checkpoint_{'missing' if state.status == 'absent' else state.status}"
+    search_scope = UsageSearchScope()
+    report = ReplayReport()
     count = 0
-    clean: list[str] = []
-    for source in sources:
-        before = set(report.outcomes)
+    retried = _retry_candidates(conn, exclude=set())
+    if retried:
+        search_scope.mark(*retried)
         count += _backfill_usage_events(
             conn,
-            _usage_raw_cursor(conn, "WHERE source_path = ?", (source,)),
+            _usage_raw_cursor(
+                conn,
+                f"WHERE source_path IN ({', '.join('?' for _ in retried)})",
+                tuple(sorted(retried)),
+            ),
             search_scope=search_scope,
             report=report,
         )
-        search_scope.mark(source)
-        if not any(key[0] == source for key in set(report.outcomes) - before) and not any(
-            key[0] == source for key in before
-        ):
-            clean.append(source)
-    return count, clean
+        _reconcile_usage_search(conn, search_scope)
+        record_replay_outcomes(
+            conn, _USAGE_DERIVE_VERSION, report.outcomes.values(), attempt=attempt
+        )
+        for source in retried:
+            if source not in report.incomplete_sources:
+                resolve_usage_obligations(conn, source)
+        _store_retry_signature(conn)
+    signature = _repair_signature(conn, state)
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (_REPAIR_SIGNATURE_KEY,)).fetchone()
+    if (row is not None and row[0] == signature) or _unlinked_unheld_usage(conn):
+        # Unchanged since the last blocked attempt -- or an unlinked, unheld legacy
+        # population that a whole-population replay could double count: no repair scan.
+        return _DeriveDisposition("skipped", count, reason=reason)
+    full = ReplayReport()
+    search_all = UsageSearchScope()
+    count += _backfill_usage_events(
+        conn, _usage_raw_cursor(conn), search_scope=search_all, report=full
+    )
+    _reconcile_usage_search(conn, search_all)
+    record_replay_outcomes(conn, _USAGE_DERIVE_VERSION, full.outcomes.values(), attempt=attempt)
+    for source in sorted(set(_retry_sources(conn)) - full.incomplete_sources):
+        resolve_usage_obligations(conn, source)
+    bound = _checkpoint_repairable(conn, full)
+    if bound is not None:
+        _publish_usage_derive_checkpoint(conn, prior_floor=None, scanned_bound=bound)
+        conn.execute("DELETE FROM meta WHERE key = ?", (_REPAIR_SIGNATURE_KEY,))
+        return _DeriveDisposition(
+            "derived", count, scanned_bound=bound, unresolved_sources=full.incomplete_sources
+        )
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (_REPAIR_SIGNATURE_KEY, _repair_signature(conn, state)),
+    )
+    return _DeriveDisposition(
+        "skipped", count, reason=reason, unresolved_sources=full.incomplete_sources
+    )
+
+
+_RELEASE_SIGNATURE_KEY = "usage_release_signature"
+
+
+def _release_held_sources(conn: sqlite3.Connection) -> list[str]:
+    """Lift exact-source holds whose whole covered population is proved reconstructible.
+
+    Candidates are held sources that still retain raw rows (a source pruned whole has none
+    to reconstruct from). Signature-gated like the outstanding-work retry, so an unchanged
+    store never re-proves; the release itself commits with the transaction that proved it.
+    """
+    candidates = [
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT h.source_path FROM usage_replay_holds h "
+            "WHERE h.source_path IS NOT NULL "
+            "AND EXISTS (SELECT 1 FROM raw_events r WHERE r.source_path = h.source_path) "
+            "ORDER BY h.source_path"
+        )
+    ]
+    if not candidates:
+        conn.execute("DELETE FROM meta WHERE key = ?", (_RELEASE_SIGNATURE_KEY,))
+        return []
+    signature = _retry_signature(conn, candidates)
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (_RELEASE_SIGNATURE_KEY,)).fetchone()
+    if row is not None and row[0] == signature:
+        return []
+    released = release_safe_holds(conn, candidates)
+    remaining = [c for c in candidates if c not in released]
+    if remaining:
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (_RELEASE_SIGNATURE_KEY, _retry_signature(conn, remaining)),
+        )
+    else:
+        conn.execute("DELETE FROM meta WHERE key = ?", (_RELEASE_SIGNATURE_KEY,))
+    return released
 
 
 def _store_retry_signature(conn: sqlite3.Connection) -> None:
@@ -1799,11 +2094,15 @@ def _derive_usage_incremental_disposition(
     report = ReplayReport()
     if state.status == "absent":
         if not _usage_bootstrap_eligible(conn):
-            return _DeriveDisposition("skipped", reason="checkpoint_missing")
+            return _recover_under_unusable_checkpoint(conn, state, attempt)
         count = _backfill_usage_events(conn, _usage_raw_cursor(conn), report=report)
         record_replay_outcomes(
             conn, _USAGE_DERIVE_VERSION, report.outcomes.values(), attempt=attempt
         )
+        # Raw-only acquisition left a derive handoff per verified source: a pristine replay
+        # that ended clean resolves it from the committed rows (no original-file access).
+        for source in sorted(set(_retry_sources(conn)) - report.incomplete_sources):
+            resolve_usage_obligations(conn, source)
         _publish_usage_derive_checkpoint(conn, prior_floor=None, scanned_bound=max_id)
         return _DeriveDisposition(
             "derived",
@@ -1812,56 +2111,56 @@ def _derive_usage_incremental_disposition(
             unresolved_sources=report.incomplete_sources,
         )
     if not state.valid:
-        return _DeriveDisposition("skipped", reason=f"checkpoint_{state.status}")
+        return _recover_under_unusable_checkpoint(conn, state, attempt)
     checkpoint = int(state.floor or 0)
-    count = 0
-    replayed: set[str] = set()
     # ENH-3747: search evidence is reconciled once, from committed rows, for every source
     # this catch-up touched -- including zero-insert sources.
     search_scope = UsageSearchScope()
+    # A Codex source with appended rows is replayed whole (its turn state starts before the
+    # slice); a source with outstanding usage work at or below the checkpoint is replayed
+    # whole too, so a slice replay never hides work it did not cover. Everything runs in ONE
+    # guarded replay so conflicting new requests across sources are all recognized before
+    # the first priced insert, independent of source order.
+    full_sources: set[str] = set()
     if max_id > checkpoint:
-        codex_sources = [
+        full_sources.update(
             row[0]
             for row in conn.execute(
                 "SELECT DISTINCT source_path FROM raw_events WHERE id > ? AND host = 'codex'",
                 (checkpoint,),
             )
-        ]
-        search_scope.mark(*codex_sources)
-        for source in codex_sources:
-            # Codex turn state can start before this slice. Reconstruct it from this
-            # source's stored prefix; do not rescan the JSONL file. Rows already committed
-            # for the source are compared, never deleted.
-            replayed.add(source)
-            count += _backfill_usage_events(
-                conn,
-                _usage_raw_cursor(conn, "WHERE source_path = ?", (source,)),
-                search_scope=search_scope,
-                report=report,
-            )
-        if codex_sources:
-            placeholders = ", ".join("?" for _ in codex_sources)
-            where = f"WHERE id > ? AND source_path NOT IN ({placeholders})"
-            params = (checkpoint, *codex_sources)
-        else:
-            where = "WHERE id > ?"
-            params = (checkpoint,)
-        count += _backfill_usage_events(
-            conn, _usage_raw_cursor(conn, where, params), search_scope=search_scope, report=report
         )
-        replayed.update(report.scanned_sources)
-    retried, clean = _retry_outstanding_usage(conn, replayed, search_scope, report)
-    count += retried
+    retried = _retry_candidates(conn, exclude=full_sources)
+    full_sources.update(retried)
+    count = 0
+    if max_id > checkpoint or full_sources:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if max_id > checkpoint:
+            clauses.append("id > ?")
+            params.append(checkpoint)
+        if full_sources:
+            clauses.append(f"source_path IN ({', '.join('?' for _ in full_sources)})")
+            params.extend(sorted(full_sources))
+        search_scope.mark(*full_sources)
+        count = _backfill_usage_events(
+            conn,
+            _usage_raw_cursor(conn, "WHERE " + " OR ".join(clauses), tuple(params)),
+            search_scope=search_scope,
+            report=report,
+        )
     _reconcile_usage_search(conn, search_scope)
     record_replay_outcomes(conn, _USAGE_DERIVE_VERSION, report.outcomes.values(), attempt=attempt)
-    for source in clean:
-        resolve_usage_obligations(conn, source)
+    for source in retried:
+        if source not in report.incomplete_sources:
+            resolve_usage_obligations(conn, source)
     if (
-        clean
+        retried
         or _retry_sources(conn)
         or conn.execute("SELECT 1 FROM meta WHERE key = ?", (_RETRY_SIGNATURE_KEY,)).fetchone()
     ):
         _store_retry_signature(conn)
+    _release_held_sources(conn)
     if max_id > checkpoint:
         _publish_usage_derive_checkpoint(conn, prior_floor=checkpoint, scanned_bound=max_id)
         return _DeriveDisposition(
@@ -2147,7 +2446,6 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
                 prefix_proved = False
 
         accounting = account_physical_lines(path)
-        disposition = _derive_usage_incremental_disposition(conn, attempt)
         with path.open("rb") as handle:
             final = path.stat()
             if (final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns) != (
@@ -2158,6 +2456,19 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
             ):
                 raise RuntimeError("Codex rollout changed during refresh")
             digest = _source_tail_digest(handle, final.st_size)
+        # ENH-3770: the verified native header is actual acquisition evidence of host and
+        # session; stage the verified acquisition before reconciliation needs it.
+        attempt = _with_verified_session(attempt, "codex", session_id)
+        stage_source_acquisition(
+            conn,
+            attempt,
+            accounting=accounting,
+            witness=AcquisitionWitness(
+                final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns, digest
+            ),
+            coverage_proved=prefix_proved,
+        )
+        disposition = _derive_usage_incremental_disposition(conn, attempt)
         source_max_id = conn.execute(
             "SELECT COALESCE(MAX(id), 0) FROM raw_events WHERE source_path = ?",
             (str(path),),
@@ -2188,8 +2499,6 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
                 _now(),
             ),
         )
-        # The verified native header is actual acquisition evidence of host and session.
-        attempt = _with_verified_session(attempt, "codex", session_id)
         outcome = finalize_source_refresh(
             conn,
             attempt,
@@ -2383,6 +2692,20 @@ def refresh_usage_source(
             prior_line_no=prior_line_no,
             exempt_lines=exempt_lines,
         )
+        # ENH-3770: only a native sessionId seen during acquisition verifies the session, and
+        # the verified acquisition scope/head is staged *before* reconciliation needs
+        # generation authority; finalization below reuses it and publishes from post-write
+        # proof. Staging alone is acquisition evidence, never completion.
+        attempt = _with_verified_session(attempt, host, native_session_seen)
+        stage_source_acquisition(
+            conn,
+            attempt,
+            accounting=accounting,
+            witness=AcquisitionWitness(
+                final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns, digest
+            ),
+            coverage_proved=coverage,
+        )
         disposition = _derive_usage_incremental_disposition(conn, attempt)
         source_max_id = conn.execute(
             "SELECT COALESCE(MAX(id), 0) FROM raw_events WHERE source_path = ?",
@@ -2417,8 +2740,6 @@ def refresh_usage_source(
                 _now(),
             ),
         )
-        # Only a native sessionId seen during acquisition verifies the session.
-        attempt = _with_verified_session(attempt, host, native_session_seen)
         outcome = finalize_source_refresh(
             conn,
             attempt,
@@ -2936,8 +3257,9 @@ def backfill(
                     header_failure = (exc, [(Path(p), effective_host) for p in jsonl_files or []])
                     raise
             raw_candidates = [(h.path, h.host) for h in raw_handles]
+            raw_snapshot = _ingest_snapshot(conn, raw_handles)
             counts["raw_events"] = _backfill_raw_events(conn, raw_handles)
-            _account_ingested_sources(conn, raw_handles)
+            _account_ingested_sources(conn, raw_handles, raw_snapshot)
         if registry_dir.is_dir():
             counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
         if sessions_root is not None and sessions_root.is_dir():

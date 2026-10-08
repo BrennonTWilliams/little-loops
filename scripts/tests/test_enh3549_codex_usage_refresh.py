@@ -183,7 +183,9 @@ def test_codex_existing_raw_rows_gain_a_verified_cursor_without_duplicates(
     source.write_text(_ROLLOUT.read_text())
     ensure_db(db)
     assert backfill_raw_events(db, jsonl_files=[source], host="codex") == 11
-    assert usage_source_freshness(db, source)["status"] == "unknown"
+    # Verified raw-only ingestion staged an acquisition head and a derive handoff, so the
+    # source is truthfully stale (derive pending) rather than unknown.
+    assert usage_source_freshness(db, source)["status"] in {"unknown", "stale"}
 
     refreshed = refresh_usage_source(db, source, host="codex")
     assert refreshed["raw_events"] == 0

@@ -3949,15 +3949,23 @@ def usage_replay_record_from_row(payload: dict[str, Any], row: Sequence[Any]) ->
 
 def _iter_usage_replay_records(
     source: list[Path] | sqlite3.Cursor,
+    failures: list[tuple[str, int | None]] | None = None,
 ) -> Generator[UsageReplayRecord, None, None]:
-    """Adapt direct envelopes and stored inner payloads to the same replay input."""
+    """Adapt direct envelopes and stored inner payloads to the same replay input.
+
+    A stored row that cannot be decoded produces no record, but its ``(source, raw id)`` is
+    appended to *failures* when given: it may have been a usage candidate, so the replay
+    reports the scope as incomplete instead of silently skipping it (ENH-3770).
+    """
     if isinstance(source, sqlite3.Cursor):
         for row in source:
             try:
                 payload = json.loads(_unpack_payload(row[0]))
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
+            except (json.JSONDecodeError, TypeError, ValueError, zlib.error):
+                payload = None
             if not isinstance(payload, dict):
+                if failures is not None:
+                    failures.append((str(row[1]), row[10] if len(row) > 10 else None))
                 continue
             yield usage_replay_record_from_row(payload, row)
         return
@@ -4028,6 +4036,10 @@ class _CodexReplayState:
     last_count: str | None = None
     preceding_record: tuple[dict[str, Any], int | None, int | None] | None = None
     stream_id: str | None = None
+    # ENH-3770: native position (line_no, ordinal, raw id) of the model / closure rows a turn
+    # consumed, so qualification can persist the context it actually used.
+    model_ctx: dict[str, tuple[int | None, int | None, int | None]] = field(default_factory=dict)
+    closure_ctx: dict[str, tuple[int | None, int | None, int | None]] = field(default_factory=dict)
 
 
 @dataclass
@@ -4044,6 +4056,7 @@ class _CodexCandidate:
     stream_id: str | None
     closed: bool = False
     conflict: bool = False
+    model_ctx: tuple[int | None, int | None, int | None] | None = None
 
 
 _codex_count_signature = codex_count_signature
@@ -4152,6 +4165,7 @@ def _backfill_usage_events(
     search_scope: UsageSearchScope | None = None,
     reindex_all: bool = False,
     report: ReplayReport | None = None,
+    plan_out: list[Any] | None = None,
 ) -> int:
     """Seed ``usage_events`` from assistant ``message.usage`` blocks (ENH-2461).
 
@@ -4183,6 +4197,8 @@ def _backfill_usage_events(
     request before it prices or mutates anything. Raw-less input (no durable raw row id) is
     refused there. *report* receives the per-source outcomes (inserted, replaced,
     qualified, demoted, preserved-with-pending) for callers that persist unresolved work.
+    A caller passing *plan_out* gets the planned actions appended and nothing is written,
+    priced or indexed (a side-effect-free proof pass, e.g. for hold-release inventory).
     """
     from little_loops.session_store import usage_replay
 
@@ -4195,7 +4211,8 @@ def _backfill_usage_events(
     codex_candidates: list[_CodexCandidate] = []
     host_states: dict[tuple[str, str | None, str | None], HostUsageState] = {}
     holds = load_usage_replay_holds(conn)
-    for replay in _iter_usage_replay_records(source):
+    decode_failures: list[tuple[str, int | None]] = []
+    for replay in _iter_usage_replay_records(source, decode_failures):
         record = replay.payload
         is_codex_record = is_codex_native_record(replay.event_type, replay.host)
         # BUG-3736 / ENH-3770: a held source's retained usage cannot be reconstructed from
@@ -4216,6 +4233,11 @@ def _backfill_usage_events(
                 model = record.get("model")
                 if isinstance(turn_id, str) and isinstance(model, str) and model:
                     state.model_by_turn[turn_id] = model
+                    state.model_ctx[turn_id] = (
+                        replay.line_no,
+                        replay.ordinal,
+                        replay.raw_event_id,
+                    )
             elif replay.event_type == "event_msg":
                 subtype = record.get("type")
                 if subtype == "task_started":
@@ -4227,6 +4249,11 @@ def _backfill_usage_events(
                     turn_id = record.get("turn_id")
                     if isinstance(turn_id, str):
                         state.closed_turns.add(turn_id)
+                        state.closure_ctx[turn_id] = (
+                            replay.line_no,
+                            replay.ordinal,
+                            replay.raw_event_id,
+                        )
                     if turn_id == state.current_turn:
                         state.current_turn = None
                 elif subtype == "token_count":
@@ -4253,6 +4280,7 @@ def _backfill_usage_events(
                             request_id=None,
                             request_identity_basis="unverified",
                             stream_id=state.stream_id,
+                            model_ctx=state.model_ctx.get(state.current_turn or ""),
                         )
                     )
             elif replay.event_type == "token_usage_record":
@@ -4281,6 +4309,7 @@ def _backfill_usage_events(
                         if valid_identity
                         else "unverified",
                         stream_id=state.stream_id,
+                        model_ctx=state.model_ctx.get(turn_id if isinstance(turn_id, str) else ""),
                     )
                 )
                 state.preceding_record = (
@@ -4309,6 +4338,9 @@ def _backfill_usage_events(
                 usage_replay.claude_target(len(claude_targets), replay, observation)
             )
 
+    if report is not None:
+        for failed_source, failed_raw_id in decode_failures:
+            report.note(failed_source, failed_raw_id, "decode_failure")
     count = usage_replay.apply_replay(
         conn,
         claude_targets,
@@ -4318,7 +4350,10 @@ def _backfill_usage_events(
         scope=scope,
         run_id_for=lambda ts: _derive_run_id_for_ts(ts, windows),
         report=report,
+        plan_out=plan_out,
     )
+    if plan_out is not None:
+        return 0
     if reindex_all:
         scope.full = True
     if reindex_all or not deferred:

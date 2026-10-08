@@ -95,6 +95,24 @@ def _bump_output(lines: list[str], by: int = 1) -> list[str]:
     return out
 
 
+def _bump_codex_output(lines: list[str], by: int = 1) -> list[str]:
+    """Codex rollout copy whose response usage disagrees with the original's."""
+    out = []
+    for line in lines:
+        record = json.loads(line)
+        payload = record.get("payload", record)
+        usage = payload.get("usage")
+        if isinstance(usage, dict) and "output_tokens" in usage:
+            usage["output_tokens"] += by
+        info = payload.get("info")
+        if isinstance(info, dict):
+            for key in ("last_token_usage", "total_token_usage"):
+                if isinstance(info.get(key), dict) and "output_tokens" in info[key]:
+                    info[key]["output_tokens"] += by
+        out.append(json.dumps(record))
+    return out
+
+
 class TestClaudeGuardedReplay:
     def _derived(self, tmp_path: Path, fixture: Path = _CLAUDE, name: str = "a.jsonl") -> tuple:
         db = tmp_path / "history.db"
@@ -660,3 +678,535 @@ class TestRebuildPreservesCommittedUsage:
         with pytest.raises(RuntimeError):
             rebuild(db)
         assert (_rows(db), _pending(db), _sql(db, "SELECT * FROM usage_source_state")) == snapshot
+
+
+def _witnesses(db: Path) -> list[tuple]:
+    return _sql(
+        db,
+        "SELECT usage_event_id, supplier_source_path, supplier_line_no, supplier_raw_id, "
+        "value_status, qualification_status FROM usage_observation_witnesses "
+        "ORDER BY usage_event_id",
+    )
+
+
+def _frontier(db: Path) -> list[tuple]:
+    return _sql(
+        db,
+        "SELECT usage_event_id, role, line_no, raw_event_id FROM usage_observation_dependencies "
+        "ORDER BY usage_event_id, role",
+    )
+
+
+class TestSupplierAndContextWitnesses:
+    def test_acquired_insert_records_the_actual_supplier(self, tmp_path: Path) -> None:
+        from little_loops.session_store import refresh_usage_source
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "s.jsonl", _lines(_CLAUDE))
+        refresh_usage_source(db, source)
+        rows = _rows(db)
+        witnesses = _witnesses(db)
+        assert [w[0] for w in witnesses] == [r[0] for r in rows]
+        for row, witness in zip(rows, witnesses, strict=True):
+            assert witness[1:4] == (str(source.resolve()), row[17], row[15])
+            assert witness[4:] == ("known", "not_consumed")
+
+    def test_unacquired_insert_grants_no_affirmative_witness(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "s.jsonl", _lines(_CLAUDE))
+        _ingest(db, source, "claude-code")
+        backfill_usage_incremental(db)  # raw-only: no verified acquisition head
+        assert len(_rows(db)) == 2 and _witnesses(db) == []
+
+    def test_replacement_moves_the_supplier_atomically(self, tmp_path: Path) -> None:
+        from little_loops.session_store import refresh_usage_source
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "s.jsonl", _lines(_CHANGING)[:2])
+        refresh_usage_source(db, source)
+        ((witness,),) = [(w,) for w in _witnesses(db)]
+        assert witness[2] == 2
+        with source.open("a") as handle:
+            handle.write("\n".join(_lines(_CHANGING)[2:]) + "\n")
+        refresh_usage_source(db, source)
+        (row,) = _rows(db)
+        (after,) = _witnesses(db)
+        assert after[0] == witness[0] == row[0]
+        assert (after[2], after[3]) == (5, row[15])  # the newest native line supplies the value
+
+    def test_codex_measured_request_records_the_consumed_context(self, tmp_path: Path) -> None:
+        from little_loops.session_store import refresh_usage_source
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "r.jsonl", _lines(_CODEX))
+        refresh_usage_source(db, source, host="codex")
+        rows = _rows(db)
+        assert len(rows) == 2 and {r[11] for r in rows} == {"measured"}
+        assert [w[4:] for w in _witnesses(db)] == [("known", "known")] * 2
+        frontier = _frontier(db)
+        first = [f for f in frontier if f[0] == rows[0][0]]
+        assert [(f[1], f[2]) for f in first] == [("closure", 6), ("model", 3)]
+        # value supplier is the response record, not a later context row
+        assert _witnesses(db)[0][2] == 4
+
+    def test_closure_arrival_changes_only_the_context_witness(self, tmp_path: Path) -> None:
+        from little_loops.session_store import refresh_usage_source
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "r.jsonl", _lines(_CODEX)[:4])
+        refresh_usage_source(db, source, host="codex")
+        (before,) = _rows(db)
+        (supplier_before,) = _witnesses(db)
+        assert supplier_before[4:] == ("known", "unavailable") and _frontier(db) == []
+        with source.open("a") as handle:
+            handle.write("\n".join(_lines(_CODEX)[4:6]) + "\n")
+        refresh_usage_source(db, source, host="codex")
+        (after,) = _rows(db)
+        (supplier_after,) = _witnesses(db)
+        assert after[0] == before[0] and after[11] == "measured"
+        assert supplier_after[:4] == supplier_before[:4]  # same value supplier
+        assert supplier_after[4:] == ("known", "known")
+        assert [(f[1], f[2]) for f in _frontier(db)] == [("closure", 6), ("model", 3)]
+
+    def test_noop_replay_preserves_every_witness(self, tmp_path: Path) -> None:
+        from little_loops.session_store import rebuild, refresh_usage_source
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "r.jsonl", _lines(_CODEX))
+        refresh_usage_source(db, source, host="codex")
+        before = (_witnesses(db), _frontier(db), _rows(db))
+        with _priced():
+            rebuild(db)
+            assert _replay_all(db) == 0
+        assert (_witnesses(db), _frontier(db), _rows(db)) == before
+
+    def test_conflict_demotion_keeps_the_supplier_and_marks_qualification_invalidated(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store import refresh_usage_source
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "r.jsonl", _lines(_CODEX))
+        refresh_usage_source(db, source, host="codex")
+        supplier_before = [w[:4] for w in _witnesses(db)]
+        lines = []
+        for line in _lines(_CODEX):
+            record = json.loads(line)
+            payload = record.get("payload", record)
+            usage = payload.get("usage")
+            if isinstance(usage, dict) and "output_tokens" in usage:
+                usage["output_tokens"] += 1
+            info = payload.get("info")
+            if isinstance(info, dict):
+                for key in ("last_token_usage", "total_token_usage"):
+                    if isinstance(info.get(key), dict) and "output_tokens" in info[key]:
+                        info[key]["output_tokens"] += 1
+            lines.append(json.dumps(record))
+        copy = _write(tmp_path / "copy.jsonl", lines)
+        refresh_usage_source(db, copy, host="codex")
+        committed = [w for w in _witnesses(db) if w[0] <= 2]
+        assert [w[:4] for w in committed] == supplier_before
+        assert {w[4:] for w in committed} == {("known", "invalidated")}
+        assert all(f[0] > 2 or f[1] in {"model", "closure"} for f in _frontier(db))
+
+
+class TestReviewRegressions:
+    """Defects an independent adversarial review confirmed, kept as permanent controls."""
+
+    def _demoted_pair(self, tmp_path: Path) -> tuple[Path, Path, Path]:
+        db = tmp_path / "history.db"
+        a = _write(tmp_path / "a.jsonl", _lines(_CHANGING)[:2])
+        _ingest(db, a, "claude-code")
+        backfill_usage_incremental(db)
+        b = _write(tmp_path / "b.jsonl", _bump_output(_lines(_CHANGING)[:2]))
+        _ingest(db, b, "claude-code")
+        backfill_usage_incremental(db)
+        assert _rows(db)[0][11] == "unknown"  # the committed row was demoted by the conflict
+        return db, a, b
+
+    def test_a_newer_snapshot_cannot_re_promote_a_demoted_row(self, tmp_path: Path) -> None:
+        db, a, _ = self._demoted_pair(tmp_path)
+        before = _rows(db)
+        with a.open("a") as handle:
+            handle.write("\n".join(_lines(_CHANGING)[2:]) + "\n")
+        _ingest(db, a, "claude-code")
+        with _priced():
+            # The newer evidence is retained as unpriced audit; the protected row stays put.
+            assert backfill_usage_incremental(db) == 1
+            settled = _rows(db)
+            assert _replay_all(db) == 0
+        assert _rows(db) == settled
+        assert settled[: len(before)] == before
+        assert settled[-1][11] == "unknown" and settled[-1][8] is None and settled[-1][5] == 481
+        assert any(row[1] == "native_conflict" for row in _pending(db))
+
+    def test_original_source_recovery_cannot_re_promote_a_demoted_row(self, tmp_path: Path) -> None:
+        from little_loops.session_store import rebuild
+        from little_loops.session_store.sessions import SessionHandle
+        from little_loops.session_store.usage_refresh import refresh_raw_events
+
+        db, a, _ = self._demoted_pair(tmp_path)
+        before = _rows(db)
+        session = json.loads(_lines(_CHANGING)[0])["sessionId"]
+        _sql(db, "UPDATE raw_events SET usage_contract = NULL WHERE source_path = ?", (str(a),))
+        handle = SessionHandle("claude-code", session, a, tmp_path, a.stat().st_mtime)
+        assert refresh_raw_events(db, handles=[handle]).sources[0].status == "refreshed"
+        with _priced():
+            backfill_usage_incremental(db)
+            rebuild(db)
+        assert _rows(db)[0][11] == "unknown" and _rows(db)[: len(before)] == before
+
+    def test_parser_refresh_obligation_resolves_in_one_catch_up_even_with_an_append(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store.sessions import SessionHandle
+        from little_loops.session_store.usage_refresh import (
+            outstanding_refresh_work,
+            refresh_raw_events,
+        )
+        from little_loops.session_store.writers import _pack_payload, _unpack_payload
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "s.jsonl", _lines(_CLAUDE)[:1])
+        _ingest(db, source, "claude-code")
+        record = json.loads(_unpack_payload(_sql(db, "SELECT raw_line FROM raw_events")[0][0]))
+        usage = record["message"].pop("usage")
+        packed = _pack_payload(json.dumps(record))
+        _sql(
+            db,
+            "UPDATE raw_events SET raw_line = ?, parsed_json = ?, usage_contract = NULL",
+            (packed, packed),
+        )
+        raw_id = _sql(db, "SELECT id FROM raw_events")[0][0]
+        _sql(
+            db,
+            "INSERT INTO usage_events(ts, session_id, model, host, host_basis, channel, "
+            "provenance, input_tokens, output_tokens, cache_read_input_tokens, "
+            "cache_creation_input_tokens, source_raw_event_id, source_path, source_line_no) "
+            "VALUES('2026-09-29T07:10:24.136Z', ?, ?, 'claude-code', 'handle', 'transcript', "
+            "'unknown', ?, ?, ?, ?, ?, ?, 1)",
+            (
+                json.loads(_lines(_CLAUDE)[0])["sessionId"],
+                record["message"]["model"],
+                usage["input_tokens"],
+                usage["output_tokens"],
+                usage["cache_read_input_tokens"],
+                usage["cache_creation_input_tokens"],
+                raw_id,
+                str(source),
+            ),
+        )
+        # An append lands before the refresh, so the refresh both recovers line 1 in place
+        # and appends line 2 (which sits above the derive checkpoint).
+        _sql(
+            db,
+            "INSERT INTO meta(key, value) VALUES('usage_derive_version', 'enh3651-v1'), "
+            "('usage_derive_raw_id', ?)",
+            (str(raw_id),),
+        )  # an established, valid checkpoint covering line 1
+        with source.open("a") as handle:
+            handle.write(_lines(_CLAUDE)[2] + "\n")
+        handle_obj = SessionHandle(
+            "claude-code",
+            json.loads(_lines(_CLAUDE)[0])["sessionId"],
+            source,
+            tmp_path,
+            source.stat().st_mtime,
+        )
+        assert refresh_raw_events(db, handles=[handle_obj]).needs_rebuild
+        backfill_usage_incremental(db)  # one ordinary catch-up replays the whole source
+        assert _rows(db)[0][11] == "measured"
+        assert outstanding_refresh_work(db, [source]) is True  # parser cache work remains
+        assert all(row[7] == 0 for row in _pending(db, source))  # usage component resolved
+
+    def test_conflicting_new_codex_requests_across_sources_are_all_seen_before_pricing(
+        self, tmp_path: Path
+    ) -> None:
+        def build(order: tuple[str, str]) -> list[tuple]:
+            root = tmp_path / "".join(order)
+            root.mkdir()
+            db = root / "history.db"
+            base = _write(root / "base.jsonl", _lines(_CLAUDE))
+            _ingest(db, base, "claude-code")
+            backfill_usage_incremental(db)  # an established checkpoint
+            files = {
+                "c1": _write(root / "c1.jsonl", _lines(_CODEX)),
+                "c2": _write(root / "c2.jsonl", _bump_codex_output(_lines(_CODEX))),
+            }
+            for name in order:
+                _ingest(db, files[name], "codex")
+            with _priced():
+                backfill_usage_incremental(db)
+            return sorted(
+                (Path(row[16]).name, row[11], row[8]) for row in _rows(db) if row[10] == "rollout"
+            )
+
+        forward, backward = build(("c1", "c2")), build(("c2", "c1"))
+        assert forward == backward
+        assert {state for _, state, _ in forward} == {"unknown"}
+        assert {cost for _, _, cost in forward} == {None}
+
+    def test_rebuild_resolves_a_refreshed_source_that_has_no_usage_bearing_record(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store import rebuild
+        from little_loops.session_store.sessions import SessionHandle
+        from little_loops.session_store.usage_refresh import (
+            outstanding_refresh_work,
+            refresh_raw_events,
+        )
+        from little_loops.session_store.writers import _pack_payload
+
+        db = tmp_path / "history.db"
+        source = tmp_path / "s.jsonl"
+        record = {
+            "type": "user",
+            "sessionId": "s1",
+            "timestamp": "2026-09-29T01:00:00Z",
+            "message": {"role": "user", "content": "hi", "extra": 1},
+        }
+        source.write_text(json.dumps(record) + "\n")
+        _ingest(db, source, "claude-code")
+        del record["message"]["extra"]
+        packed = _pack_payload(json.dumps(record))
+        _sql(db, "UPDATE raw_events SET raw_line = ?, parsed_json = ?", (packed, packed))
+        handle = SessionHandle("claude-code", "s1", source, tmp_path, source.stat().st_mtime)
+        assert refresh_raw_events(db, handles=[handle]).needs_rebuild
+        rebuild(db)
+        assert _pending(db, source) == []
+        assert outstanding_refresh_work(db, [source]) is False
+
+
+def _hold(db: Path, source: Path | None, host: str = "*", channel: str = "*") -> None:
+    _sql(
+        db,
+        "INSERT INTO usage_replay_holds(source_path, host, channel, reason, created_at) "
+        "VALUES(?, ?, ?, 'dangling_raw_link', '2026-01-01T00:00:00Z')",
+        (str(source) if source is not None else None, host, channel),
+    )
+
+
+def _holds(db: Path) -> list[tuple]:
+    return _sql(db, "SELECT source_path, host, channel FROM usage_replay_holds ORDER BY rowid")
+
+
+class TestHoldRelease:
+    def _store(self, tmp_path: Path, name: str = "a.jsonl") -> tuple[Path, Path]:
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / name, _lines(_CLAUDE))
+        _ingest(db, source, "claude-code")
+        backfill_usage_incremental(db)
+        return db, source
+
+    def test_fully_reconstructible_population_releases_only_its_exact_hold(
+        self, tmp_path: Path
+    ) -> None:
+        db, source = self._store(tmp_path)
+        other = _write(tmp_path / "other.jsonl", _lines(_CLAUDE))
+        _hold(db, source)
+        _hold(db, other)  # another source's protection
+        _hold(db, None, "opencode", "rollout")  # a wildcard population hold
+        before = _rows(db)
+        with _priced():
+            backfill_usage_incremental(db)
+        assert _holds(db) == [(str(other), "*", "*"), (None, "opencode", "rollout")]
+        assert _rows(db) == before
+
+    def test_an_unmatched_historical_observation_keeps_the_hold(self, tmp_path: Path) -> None:
+        db, source = self._store(tmp_path)
+        _hold(db, source)
+        _sql(
+            db,
+            "INSERT INTO usage_events(ts, session_id, model, host, channel, provenance, "
+            "input_tokens, output_tokens, source_path) VALUES('2026-01-01T00:00:00Z', 'old', "
+            "'claude-x', 'claude-code', 'transcript', 'unknown', 1, 1, ?)",
+            (str(source),),
+        )
+        with _priced():
+            backfill_usage_incremental(db)
+        assert _holds(db) == [(str(source), "*", "*")]
+
+    def test_a_mixed_host_channel_row_under_the_source_predicate_keeps_the_hold(
+        self, tmp_path: Path
+    ) -> None:
+        db, source = self._store(tmp_path)
+        _hold(db, source)
+        _sql(
+            db,
+            "INSERT INTO usage_events(ts, session_id, model, host, channel, provenance, "
+            "input_tokens, output_tokens, source_path) VALUES('2026-01-01T00:00:00Z', 'x', "
+            "'m', 'opencode', 'rollout', 'unknown', 1, 1, ?)",
+            (str(source),),
+        )
+        backfill_usage_incremental(db)
+        assert _holds(db) == [(str(source), "*", "*")]
+
+    def test_pruned_source_with_no_retained_raw_cannot_conceal_its_observations(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store import prune
+
+        db, source = self._store(tmp_path)
+        _sql(db, "UPDATE raw_events SET compacted = 1, ts = ?", (_OLD,))
+        assert prune(db, config=_PRUNE_CFG)["deleted"] == {"raw_events": 4}
+        before = (_rows(db), _holds(db))
+        backfill_usage_incremental(db)
+        assert (_rows(db), _holds(db)) == before
+
+    def test_unresolved_pending_work_keeps_the_hold(self, tmp_path: Path) -> None:
+        db, source = self._store(tmp_path)
+        _hold(db, source)
+        # A new request whose envelope disagrees with its payload stays pending, never a row.
+        _append_new_request(db, source, "msg_bad", 5, envelope_session="other-session")
+        backfill_usage_incremental(db)
+        assert _pending(db, source) != []
+        assert _holds(db) == [(str(source), "*", "*")]
+        # Repairing the evidence resolves the work; only then may the hold be lifted.
+        _sql(
+            db,
+            "UPDATE raw_events SET session_id = "
+            "(SELECT session_id FROM raw_events WHERE line_no = 1) WHERE line_no = 5",
+        )
+        backfill_usage_incremental(db)
+        assert _pending(db, source) == []
+        assert _holds(db) == []
+
+    def test_a_proved_conflict_keeps_the_hold(self, tmp_path: Path) -> None:
+        db, source = self._store(tmp_path)
+        other = _write(tmp_path / "b.jsonl", _bump_output(_lines(_CLAUDE)))
+        _ingest(db, other, "claude-code")
+        backfill_usage_incremental(db)  # demotes a's rows
+        _hold(db, source)
+        backfill_usage_incremental(db)
+        assert (str(source), "*", "*") in _holds(db)
+
+    def test_proof_limit_permits_no_release(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import usage_proof_scope as scope_mod
+
+        db, source = self._store(tmp_path)
+        _hold(db, source)
+        monkeypatch.setattr(scope_mod, "PROOF_LIMITS", scope_mod.ProofLimits(max_items=1))
+        before = _rows(db)
+        backfill_usage_incremental(db)
+        assert _holds(db) == [(str(source), "*", "*")] and _rows(db) == before
+
+    def test_release_commits_atomically_with_the_scan(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db, source = self._store(tmp_path)
+        _hold(db, source)
+        _append_new_request(db, source, "msg_atomic", 5)
+        floor = _sql(db, "SELECT value FROM meta WHERE key = 'usage_derive_raw_id'")
+
+        def boom(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("publication failed")
+
+        monkeypatch.setattr(lifecycle, "_publish_usage_derive_checkpoint", boom)
+        before = _rows(db)
+        with pytest.raises(RuntimeError):
+            backfill_usage_incremental(db)
+        assert _holds(db) == [(str(source), "*", "*")]  # the release rolled back with it
+        assert _rows(db) == before
+        assert _sql(db, "SELECT value FROM meta WHERE key = 'usage_derive_raw_id'") == floor
+
+
+def _append_new_request(
+    db: Path,
+    source: Path,
+    message_id: str,
+    line_no: int,
+    *,
+    envelope_session: str | None = None,
+) -> None:
+    record = json.loads(_lines(_CLAUDE)[0])
+    record["message"]["id"] = message_id
+    sample = _sql(
+        db,
+        "SELECT session_id, usage_contract FROM raw_events WHERE source_path = ? LIMIT 1",
+        (str(source),),
+    )[0]
+    _sql(
+        db,
+        "INSERT INTO raw_events(ts, session_id, host, host_basis, source_path, line_no, "
+        "event_type, raw_line, parsed_json, usage_contract) "
+        "VALUES('2026-09-29T07:30:00Z', ?, 'claude-code', 'handle', ?, ?, 'assistant', ?, ?, ?)",
+        (
+            envelope_session or sample[0],
+            str(source),
+            line_no,
+            json.dumps(record),
+            json.dumps(record),
+            sample[1],
+        ),
+    )
+
+
+class TestDecodeFailuresAndRawOnlyAcquisition:
+    def test_an_undecodable_retained_row_keeps_its_scope_pending_instead_of_vanishing(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "s.jsonl", _lines(_CLAUDE))
+        _ingest(db, source, "claude-code")
+        _sql(db, "UPDATE raw_events SET raw_line = ? WHERE line_no = 3", ("{not json",))
+        bad_id = _sql(db, "SELECT id FROM raw_events WHERE line_no = 3")[0][0]
+        assert backfill_usage_incremental(db) == 2  # every decodable candidate still derives
+        pending = _pending(db, source)
+        assert [(row[1], row[2], row[3]) for row in pending] == [
+            ("derive_gap", "usage_proof_unprovable", "bounded")
+        ]
+        assert (pending[0][4], pending[0][5]) == (bad_id, bad_id)
+        # The evidence is repaired in place: the retry resolves the work and nothing churns.
+        packed = _sql(db, "SELECT raw_line FROM raw_events WHERE line_no = 1")[0][0]
+        _sql(db, "UPDATE raw_events SET raw_line = ? WHERE line_no = 3", (packed,))
+        backfill_usage_incremental(db)
+        assert _pending(db, source) == []
+
+    def test_pristine_codex_raw_only_ingestion_stages_acquisition_and_derives_without_the_file(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store import read_source_derive_completion
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "r.jsonl", _lines(_CODEX))
+        _ingest(db, source, "codex")
+        head = _sql(
+            db,
+            "SELECT acquisition_version, acquired_line_no, status FROM usage_source_state "
+            "WHERE source_path = ?",
+            (str(source),),
+        )
+        assert head == [("enh3745-v1", 11, "pending")]
+        source.unlink()
+        assert backfill_usage_incremental(db) == 2
+        conn = connect(db)
+        try:
+            done = read_source_derive_completion(conn, str(source))
+        finally:
+            conn.close()
+        assert (done.status, done.basis) == ("complete", "semantic")
+        assert [w[4:] for w in _witnesses(db)] == [("known", "known")] * 2
+
+    def test_raw_only_staging_rolls_back_with_the_ingestion(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.session_store import usage_source_tracking as tracking
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        # Named after its native session ID, as a Claude transcript is, so identity verifies.
+        source = _write(
+            tmp_path / f"{json.loads(_lines(_CLAUDE)[0])['sessionId']}.jsonl", _lines(_CLAUDE)
+        )
+
+        def boom(*args: object, **kwargs: object) -> bool:
+            raise RuntimeError("staging failed")
+
+        monkeypatch.setattr(lifecycle, "stage_raw_only_source", boom)
+        with pytest.raises(RuntimeError, match="staging failed"):
+            _ingest(db, source, "claude-code")
+        assert _sql(db, "SELECT COUNT(*) FROM raw_events") == [(0,)]
+        assert _sql(db, "SELECT COUNT(*) FROM usage_source_state") == [(0,)]
+        del tracking
