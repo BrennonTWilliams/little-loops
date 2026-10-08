@@ -132,6 +132,7 @@ class PlanFacts:
     retention: Retention = Retention.FULL_UNHELD
     recovery: Recovery = Recovery.NONE
     acquired: bool = False  # verified acquisition scope staged for this source
+    same_supplier: bool = True  # the committed row's supplier is this very record
 
 
 @dataclass(frozen=True)
@@ -226,6 +227,9 @@ def decide(facts: PlanFacts) -> PlannedAction:
 
     # SAME or OLDER: nothing newer to apply. The only permitted change is a separate
     # qualification action that preserves identity, numbers, timestamps, supplier and cost.
+    if facts.relation is Relation.SAME and not facts.same_supplier:
+        # A compatible copy shares the survivor's representation; it never promotes it.
+        return _noop("identical_copy")
     if (
         facts.relation is Relation.SAME
         and not committed.qualified
@@ -235,6 +239,10 @@ def decide(facts: PlanFacts) -> PlannedAction:
         if facts.retention is not Retention.FULL_UNHELD:
             return _noop("held_requalification_deferred")
         if facts.channel == "rollout":
+            if not committed.keyed:
+                # A row without a native request identity is legacy audit evidence;
+                # requalification never promotes it automatically.
+                return _noop("legacy_audit_preserved")
             return PlannedAction(
                 Action.QUALIFY,
                 "closure_requalification",

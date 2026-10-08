@@ -36,6 +36,16 @@ def _records() -> list[str]:
     return (_CLAUDE / "transcript-changing-usage-observed.jsonl").read_text().splitlines()
 
 
+def _unkeyed_tail() -> list[str]:
+    """The appended snapshots without a producer message id (unkeyed audit candidates)."""
+    out = []
+    for line in _records()[2:]:
+        record = json.loads(line)
+        record["message"].pop("id", None)
+        out.append(json.dumps(record))
+    return out
+
+
 def _completion(db: Path, source: Path) -> uss.SourceDeriveCompletion:
     conn = connect(db)
     try:
@@ -360,8 +370,10 @@ class TestHeldSources:
             "VALUES(?, '*', '*', 'dangling_raw_link', '2026-01-01T00:00:00Z')",
             (str(held),),
         )
+        # Unkeyed audit candidates cannot be proved distinct from a held source's protected
+        # history (ENH-3770), so they stay pending; proved-distinct keyed requests derive.
         with held.open("a") as handle:
-            handle.write("\n".join(_records()[2:]) + "\n")
+            handle.write("\n".join(_unkeyed_tail()) + "\n")
         result = refresh_usage_source(db, held)
         assert result["status"] == "incomplete"
         assert ("derive_gap", "held_source_skipped") in _obligations(db, held) or (
@@ -388,7 +400,7 @@ class TestHeldSources:
             (str(held),),
         )
         with held.open("a") as handle:
-            handle.write("\n".join(_records()[2:]) + "\n")
+            handle.write("\n".join(_unkeyed_tail()) + "\n")
         # Raw-only ingestion of the held source's append, then another source's refresh
         # advances the global scan past it.
         backfill_raw_events(db, jsonl_files=[held], host="claude-code")
@@ -418,16 +430,16 @@ class TestHeldSources:
             (str(held),),
         )
         with held.open("a") as handle:
-            handle.write("\n".join(_records()[2:]) + "\n")
+            handle.write("\n".join(_unkeyed_tail()) + "\n")
         backfill_raw_events(db, jsonl_files=[held], host="claude-code")
         floor = _sql(db, "SELECT value FROM meta WHERE key = 'usage_derive_raw_id'")
         pending = _sql(db, "SELECT COUNT(*) FROM usage_source_pending")
         monkeypatch.setattr(
             tracking,
-            "record_held_pending",
+            "record_replay_outcomes",
             lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")),
         )
-        monkeypatch.setattr(lifecycle, "record_held_pending", tracking.record_held_pending)
+        monkeypatch.setattr(lifecycle, "record_replay_outcomes", tracking.record_replay_outcomes)
         with pytest.raises(RuntimeError, match="boom"):
             backfill_usage_incremental(db)
         assert _sql(db, "SELECT value FROM meta WHERE key = 'usage_derive_raw_id'") == floor
@@ -501,13 +513,14 @@ class TestPruneVeto:
 
 
 class TestInvalidationSeams:
-    def test_standalone_rebuild_invalidates_current_completion_atomically(
+    def test_standalone_rebuild_preserves_current_completion_and_rolls_back_atomically(
         self, claude: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db, source = claude
         refresh_usage_source(db, source)
-        older = _completion(db, source).boundary
-        usage_before = _sql(db, "SELECT id FROM usage_events ORDER BY id")
+        before = _completion(db, source)
+        usage_before = _sql(db, "SELECT * FROM usage_events ORDER BY id")
+        deps_before = _sql(db, "SELECT COUNT(*) FROM usage_completion_dependencies")
         with monkeypatch.context() as patcher:
             patcher.setattr(
                 lifecycle,
@@ -516,13 +529,17 @@ class TestInvalidationSeams:
             )
             with pytest.raises(RuntimeError):
                 rebuild(db)
-        assert _completion(db, source).basis == "semantic"  # forced failure restored the facts
-        assert _sql(db, "SELECT id FROM usage_events ORDER BY id") == usage_before
+        assert _completion(db, source) == before  # forced failure restored the facts
+        assert _sql(db, "SELECT * FROM usage_events ORDER BY id") == usage_before
         rebuild(db)
+        # ENH-3770: an unchanged rebuild is a no-op for usage -- it neither replaces the
+        # observations completion consumed nor creates obligations merely because it ran.
         done = _completion(db, source)
-        assert (done.status, done.basis, done.outstanding) == ("pending", "none", "usage")
-        assert done.boundary == older  # historical boundary preserved
-        assert _sql(db, "SELECT COUNT(*) FROM usage_completion_dependencies") == [(0,)]
+        assert (done.status, done.basis, done.outstanding) == ("complete", "semantic", "none")
+        assert done.boundary == before.boundary
+        assert _sql(db, "SELECT * FROM usage_events ORDER BY id") == usage_before
+        assert _sql(db, "SELECT COUNT(*) FROM usage_completion_dependencies") == deps_before
+        assert _obligations(db, source) == []
 
     def test_rebuild_leaves_unrelated_live_usage_alone(self, claude: tuple[Path, Path]) -> None:
         db, source = claude
@@ -850,9 +867,22 @@ class TestDecodeGapRecovery:
         db, source = tmp / "h.db", tmp / "session.jsonl"
         source.write_text("\n".join(_records()[:2]) + "\n")
         refresh_usage_source(db, source)
+        # A parser refresh left cache + usage work; a bounded rebuild must not hide it.
+        conn = connect(db)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            head = uss.read_source_head(conn, str(source))
+            assert head is not None
+            uss.invalidate_usage_dependencies(conn, (), (head.scope,), reason="parser_refresh")
+            conn.commit()
+        finally:
+            conn.close()
+        assert _completion(db, source).outstanding == "both"
         rebuild(db, max_sessions=0)
+        # max_sessions limits summary compaction only: the deterministic caches consumed all
+        # retained raw, and guarded usage replay resolved its own component.
         done = _completion(db, source)
-        assert (done.status, done.outstanding) == ("pending", "usage")  # not acknowledged
+        assert (done.status, done.outstanding) == ("complete", "none")  # republished from proof
 
 
 class TestCodexGapRecovery:

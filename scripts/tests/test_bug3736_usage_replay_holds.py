@@ -501,9 +501,16 @@ class TestLegacySeeding:
         assert lifecycle._USAGE_DERIVE_VERSION == "enh3651-v1"
         assert lifecycle.REBUILD_DERIVE_VERSION == "bug3766-v1"
 
-    def test_rebuild_predicate_matches_shared_hold_fragment(self) -> None:
-        predicate = lifecycle._REBUILD_TABLE_PREDICATES["usage_events"]
-        assert predicate == f"channel IS NOT 'live' AND {USAGE_NOT_HELD_SQL}"
+    def test_rebuild_never_wipes_committed_usage(self) -> None:
+        # ENH-3770: rebuild reconciles with committed observations instead of deleting them,
+        # so the generic wipe predicate for usage_events matches nothing.
+        assert lifecycle._REBUILD_TABLE_PREDICATES["usage_events"] == "0"
+
+    def test_hold_fragment_still_describes_the_exact_source_and_population_predicate(
+        self,
+    ) -> None:
+        assert "usage_replay_holds" in USAGE_NOT_HELD_SQL
+        assert "h.source_path IS NULL" in USAGE_NOT_HELD_SQL
 
     def test_dangling_raw_pointer_seeds_a_source_hold(self, claude: Any) -> None:
         db, source = claude

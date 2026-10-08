@@ -375,12 +375,21 @@ class TestEventDatePricingCallSites:
             return json.dumps(rec)
 
         src = sqlite3.connect(":memory:")
-        src.execute("CREATE TABLE raw_events(raw_line TEXT, source_path TEXT, host TEXT)")
-        src.executemany(
-            "INSERT INTO raw_events VALUES(?, ?, NULL)",
-            [(line("2026-08-15T00:00:00Z"), "a"), (line("junk"), "b"), (line(None), "c")],
+        src.execute(
+            "CREATE TABLE raw_events(raw_line TEXT, source_path TEXT, host TEXT, host_basis TEXT, "
+            "event_type TEXT, ts TEXT, session_id TEXT, line_no INTEGER, ordinal INTEGER, "
+            "usage_contract TEXT, id INTEGER)"
         )
-        cursor = src.execute("SELECT raw_line, source_path, host FROM raw_events")
+        # ENH-3770: replay refuses rows without a durable raw identity, so give each one.
+        src.executemany(
+            "INSERT INTO raw_events VALUES(?, ?, NULL, NULL, 'assistant', ?, NULL, 1, NULL, NULL, ?)",
+            [
+                (line("2026-08-15T00:00:00Z"), "a", "2026-08-15T00:00:00Z", 1),
+                (line("junk"), "b", "junk", 2),
+                (line(None), "c", "", 3),
+            ],
+        )
+        cursor = src.execute("SELECT * FROM raw_events ORDER BY id")
         patcher = _pin_expired_today()
         conn = connect(db)
         try:

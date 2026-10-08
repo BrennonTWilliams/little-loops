@@ -57,6 +57,7 @@ REASONS = frozenset(
         "usage_derive_gap",
         "native_conflict",
         "version_changed",
+        "reconcile",
         "invalid_state",
     }
 )
@@ -69,6 +70,8 @@ _INVALIDATION_SHAPE: dict[str, tuple[str, bool, bool]] = {
     "codex_catchup": ("derive_gap", False, True),
     "native_conflict": ("native_conflict", False, True),
     "version_changed": ("derive_gap", False, True),
+    # A guarded reconciliation changed a committed observation that completion consumed.
+    "reconcile": ("derive_gap", False, True),
 }
 
 _INT64_MAX = 2**63 - 1

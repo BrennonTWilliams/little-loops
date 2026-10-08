@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import pytest
 
 from little_loops.session_store import (
+    backfill_raw_events,
     backfill_usage_incremental,
     connect,
     ensure_db,
@@ -247,7 +249,7 @@ class TestDeriveGuard:
         assert backfill_usage_incremental(db) == 0
         assert _usage(db) == []
 
-    def test_held_append_is_reported_as_skipped_work(self, store: tuple[Path, Path]) -> None:
+    def test_held_append_is_planned_not_skipped(self, store: tuple[Path, Path]) -> None:
         db, source = store
         _sql(
             db,
@@ -256,14 +258,14 @@ class TestDeriveGuard:
             (str(source),),
         )
         floor = int(_checkpoint(db)["usage_derive_raw_id"])
-        _sql(
-            db,
-            "INSERT INTO raw_events(ts, session_id, host, host_basis, source_path, line_no, "
-            "event_type, raw_line, parsed_json) "
-            "VALUES('2026-01-01T00:00:00Z', 's', 'claude-code', 'handle', ?, 99, 'assistant', "
-            "'{}', '{}')",
-            (str(source),),
-        )
+        before = _usage(db)
+        # A proved-distinct new request on a held source derives additively (ENH-3770);
+        # the protected rows and the hold are untouched.
+        record = json.loads((_CLAUDE / "transcript-v2.1.284.jsonl").read_text().splitlines()[0])
+        record["message"]["id"] = "msg_held_additive"
+        with source.open("a") as handle:
+            handle.write(json.dumps(record) + "\n")
+        backfill_raw_events(db, jsonl_files=[source], host="claude-code")
         conn = connect(db)
         try:
             conn.execute("BEGIN IMMEDIATE")
@@ -272,10 +274,10 @@ class TestDeriveGuard:
         finally:
             conn.close()
         assert disposition.status == "derived"
-        assert [(src, lo > floor, hi > floor) for src, lo, hi in disposition.held_skipped] == [
-            (str(source), True, True)
-        ]
-        # The scan advanced past the held row; durable pending (phase 3) keeps it reachable.
+        assert disposition.count == 1 and disposition.held_skipped == ()
+        after = _usage(db)
+        assert after[:2] == before and len(after) == 3
+        assert _sql(db, "SELECT COUNT(*) FROM usage_replay_holds") == [(1,)]
         assert int(_checkpoint(db)["usage_derive_raw_id"]) > floor
 
 

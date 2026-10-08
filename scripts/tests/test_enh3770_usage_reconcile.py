@@ -83,6 +83,20 @@ class TestNoopRows:
             False,
         )
 
+    def test_a_compatible_copy_from_another_supplier_never_promotes(self) -> None:
+        plan = decide(
+            _facts(
+                channel="rollout",
+                committed=_UNPRICED_AUDIT,
+                relation=Relation.SAME,
+                same_supplier=False,
+                qualified=True,
+                context=Context.COMPLETE,
+            )
+        )
+        assert (plan.action, plan.reason) == (Action.NOOP, "identical_copy")
+        assert plan.prices is False
+
     def test_identical_copy_cannot_promote_or_downgrade(self) -> None:
         # A measured row replayed by a copy that lacks context stays exactly as it is.
         plan = decide(
@@ -153,6 +167,15 @@ class TestQualifyRows:
             False,
         )
         assert plan.prices is True  # previously unpriced -> priced at most once
+
+    def test_legacy_rollout_audit_without_a_native_identity_is_never_promoted(self) -> None:
+        plan = decide(
+            dataclasses.replace(
+                self._codex(),
+                committed=CommittedFacts(qualified=False, priced=False, keyed=False),
+            )
+        )
+        assert (plan.action, plan.reason) == (Action.NOOP, "legacy_audit_preserved")
 
     def test_already_priced_row_is_not_repriced_on_qualification(self) -> None:
         plan = decide(

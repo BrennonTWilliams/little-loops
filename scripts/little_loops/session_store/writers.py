@@ -53,6 +53,7 @@ from little_loops.session_store.usage_proof import (
 )
 
 if TYPE_CHECKING:
+    from little_loops.session_store.usage_replay import ReplayReport
     from little_loops.subprocess_utils import ObservedAtBasis, TokenProvenance, TokenScopeKind
 
 logger = logging.getLogger(__name__)
@@ -3866,6 +3867,9 @@ class UsageObservation:
     usage: dict[str, Any]
     qualified: bool
     observation_key: str | None
+    # False when the payload's own session identity disagrees with the replay envelope:
+    # such a request can never be a qualified observation (ENH-3770).
+    identity_ok: bool = True
 
 
 @dataclass(frozen=True)
@@ -3908,13 +3912,20 @@ def normalize_host_usage(
     # a producer ID is not another request (``omission``): the last valid snapshot wins.
     if recognized is None or recognized.kind != "candidate" or recognized.session_id is None:
         return []
+    envelope_session = record.session_id
+    identity_ok = not (
+        isinstance(envelope_session, str)
+        and bool(envelope_session)
+        and envelope_session != recognized.session_id
+    )
     return [
         UsageObservation(
             session_id=recognized.session_id,
             model=recognized.model,
             usage=recognized.usage,
-            qualified=recognized.qualified,
-            observation_key=recognized.observation_key,
+            qualified=recognized.qualified and identity_ok,
+            observation_key=recognized.observation_key if identity_ok else None,
+            identity_ok=identity_ok,
         )
     ]
 
@@ -4134,147 +4145,13 @@ def _reconcile_usage_search(conn: sqlite3.Connection, scope: UsageSearchScope) -
     return written
 
 
-def _write_host_usage_observation(
-    conn: sqlite3.Connection,
-    replay: UsageReplayRecord,
-    observation: UsageObservation,
-    windows: list[tuple[str, str, str]],
-    search_scope: UsageSearchScope | None = None,
-) -> int:
-    """Persist one prepared assistant observation; return one only for a new row.
-
-    Search evidence is not written here: moved or inserted source anchors are recorded in
-    *search_scope* for transaction-final reconciliation (:func:`_reconcile_usage_search`).
-    """
-    from little_loops.observability.tracing import vendor_for_runner
-    from little_loops.pricing import _event_date, estimate_cost_usd
-
-    usage = observation.usage
-    input_tokens = usage.get("input_tokens")
-    output_tokens = usage.get("output_tokens")
-    cache_read = usage.get("cache_read_input_tokens")
-    cache_creation = usage.get("cache_creation_input_tokens")
-    ts = replay.ts
-    model = observation.model
-    cost_usd = estimate_cost_usd(
-        str(model or ""),
-        input_tokens,
-        output_tokens,
-        cache_read,
-        cache_creation,
-        as_of=_event_date(ts),
-    )
-    run_id = _derive_run_id_for_ts(ts, windows)
-    observation_key = observation.observation_key
-    if observation_key is not None:
-        existing = conn.execute(
-            "SELECT id, source_raw_event_id, source_path, model, input_tokens, "
-            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
-            "provenance, ts FROM usage_events WHERE observation_key = ?",
-            (observation_key,),
-        ).fetchone()
-        if existing is not None:
-            changed = (existing[3], existing[4], existing[5], existing[6], existing[7]) != (
-                model,
-                input_tokens,
-                output_tokens,
-                cache_read,
-                cache_creation,
-            )
-            conflict = existing[8] == "unknown" or (existing[2] != replay.source_label and changed)
-            newer = (
-                replay.raw_event_id is None
-                or existing[1] is None
-                or replay.raw_event_id >= existing[1]
-            )
-            if conflict:
-                logger.warning(
-                    "Claude message.id conflict for %s; retaining uncertain usage",
-                    observation_key,
-                )
-            if newer:
-                if search_scope is not None and (existing[2], existing[3], existing[9]) != (
-                    replay.source_label,
-                    model,
-                    ts,
-                ):
-                    search_scope.mark(existing[2], replay.source_label)
-                conn.execute(
-                    "UPDATE usage_events SET ts = ?, model = ?, input_tokens = ?, "
-                    "output_tokens = ?, cache_read_input_tokens = ?, "
-                    "cache_creation_input_tokens = ?, cost_usd = ?, run_id = ?, "
-                    "observed_at = ?, observed_at_basis = ?, source_raw_event_id = ?, "
-                    "source_path = ?, source_line_no = ?, provenance = ?, usage_contract = ? "
-                    "WHERE id = ?",
-                    (
-                        ts,
-                        model,
-                        input_tokens,
-                        output_tokens,
-                        cache_read,
-                        cache_creation,
-                        cost_usd,
-                        run_id,
-                        ts or None,
-                        "event" if ts else None,
-                        replay.raw_event_id,
-                        replay.source_label,
-                        replay.line_no,
-                        "unknown" if conflict else "measured",
-                        None if conflict else replay.usage_contract,
-                        existing[0],
-                    ),
-                )
-            elif conflict:
-                conn.execute(
-                    "UPDATE usage_events SET provenance = 'unknown', usage_contract = NULL "
-                    "WHERE id = ?",
-                    (existing[0],),
-                )
-            return 0
-    conn.execute(
-        "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
-        "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
-        "run_id, channel, provenance, host, provider_vendor, scope_kind, observed_at, "
-        "observed_at_basis, host_basis, usage_contract, source_raw_event_id, "
-        "source_path, source_line_no, observation_key) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript', ?, ?, ?, 'request', "
-        "?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            ts,
-            observation.session_id,
-            model,
-            None,
-            input_tokens,
-            output_tokens,
-            cache_read,
-            cache_creation,
-            cost_usd,
-            run_id,
-            "measured" if observation.qualified else "unknown",
-            replay.host,
-            vendor_for_runner(replay.host) if replay.host else None,
-            ts or None,
-            "event" if ts else None,
-            replay.host_basis,
-            replay.usage_contract if observation.qualified else None,
-            replay.raw_event_id,
-            replay.source_label,
-            replay.line_no,
-            observation_key,
-        ),
-    )
-    if search_scope is not None:
-        search_scope.mark(replay.source_label)
-    return 1
-
-
 def _backfill_usage_events(
     conn: sqlite3.Connection,
     source: list[Path] | sqlite3.Cursor,
     *,
     search_scope: UsageSearchScope | None = None,
     reindex_all: bool = False,
+    report: ReplayReport | None = None,
 ) -> int:
     """Seed ``usage_events`` from assistant ``message.usage`` blocks (ENH-2461).
 
@@ -4299,28 +4176,31 @@ def _backfill_usage_events(
     for the scopes the replay touched, or — with *reindex_all* (rebuild) — for the whole
     population. A caller passing *search_scope* accumulates scopes across several calls and
     reconciles once itself.
-    """
-    from little_loops.pricing import _event_date, estimate_cost_usd
 
-    count = 0
+    ENH-3770: this function only *collects* the logical requests a replay sees. Planning
+    against committed observations and every write, price and demotion happens in
+    :func:`little_loops.session_store.usage_replay.apply_replay`, which compares every
+    request before it prices or mutates anything. Raw-less input (no durable raw row id) is
+    refused there. *report* receives the per-source outcomes (inserted, replaced,
+    qualified, demoted, preserved-with-pending) for callers that persist unresolved work.
+    """
+    from little_loops.session_store import usage_replay
+
     deferred = search_scope is not None
     scope = search_scope if search_scope is not None else UsageSearchScope()
     windows = _load_loop_run_windows(conn)
-    from little_loops.observability.tracing import vendor_for_runner
 
     codex_states: dict[str, _CodexReplayState] = {}
+    claude_targets: list[usage_replay.ClaudeTarget] = []
     codex_candidates: list[_CodexCandidate] = []
     host_states: dict[tuple[str, str | None, str | None], HostUsageState] = {}
     holds = load_usage_replay_holds(conn)
     for replay in _iter_usage_replay_records(source):
         record = replay.payload
         is_codex_record = is_codex_native_record(replay.event_type, replay.host)
-        # BUG-3736: a held source's retained usage cannot be reconstructed from the
-        # raw rows that survive; replaying them would roll it back or duplicate it.
-        if holds.holds(
-            replay.source_label, replay.host, "rollout" if is_codex_record else "transcript"
-        ):
-            continue
+        # BUG-3736 / ENH-3770: a held source's retained usage cannot be reconstructed from
+        # the raw rows that survive, so its records are not skipped but planned under the
+        # hold: only proved-distinct requests add rows, protected rows never change.
         if is_codex_record:
             state = codex_states.setdefault(replay.source_label, _CodexReplayState())
             if replay.event_type == "session_meta":
@@ -4425,132 +4305,20 @@ def _backfill_usage_events(
             ),
         )
         for observation in normalize_host_usage(replay, state=host_state):
-            count += _write_host_usage_observation(conn, replay, observation, windows, scope)
-
-    # A response ID is the strongest observed request identity, but not yet a
-    # database uniqueness contract. Collapse identical replayed copies only;
-    # retain conflicting copies with unknown provenance for audit.
-    native_seen: dict[tuple[str, str], _CodexCandidate] = {}
-    distinct: list[_CodexCandidate] = []
-    for candidate in codex_candidates:
-        if candidate.request_identity_basis != "native_response" or not candidate.request_id:
-            distinct.append(candidate)
-            continue
-        key = (candidate.record.host or "", candidate.request_id)
-        earlier = native_seen.get(key)
-        if earlier is None:
-            native_seen[key] = candidate
-            distinct.append(candidate)
-        elif (
-            earlier.thread_id == candidate.thread_id
-            and earlier.turn_id == candidate.turn_id
-            and earlier.usage == candidate.usage
-        ):
-            continue
-        else:
-            earlier.conflict = True
-            candidate.conflict = True
-            distinct.append(candidate)
-            logger.warning("Codex response_id conflict for %s; retaining uncertain rows", key)
-
-    columns = (
-        "ts",
-        "session_id",
-        "model",
-        "state",
-        "input_tokens",
-        "output_tokens",
-        "cache_read_input_tokens",
-        "cache_creation_input_tokens",
-        "cost_usd",
-        "run_id",
-        "channel",
-        "provenance",
-        "host",
-        "provider_vendor",
-        "scope_kind",
-        "observed_at",
-        "observed_at_basis",
-        "host_basis",
-        "identity_basis",
-        "turn_id",
-        "request_id",
-        "request_identity_basis",
-        "stream_id",
-        "source_ordinal",
-        "source_line_no",
-        "source_raw_event_id",
-        "source_path",
-    )
-    insert_sql = (
-        f"INSERT INTO usage_events({', '.join(columns)}) VALUES({', '.join('?' for _ in columns)})"
-    )
-    for candidate in distinct:
-        replay = candidate.record
-        state = codex_states[replay.source_label]
-        candidate.closed = bool(candidate.turn_id and candidate.turn_id in state.closed_turns)
-        input_tokens, output_tokens, cache_read, cache_write, complete = _codex_components(
-            candidate.usage
-        )
-        verified_host = replay.host == "codex" and replay.host_basis == "handle"
-        verified_thread = bool(
-            candidate.thread_id and state.thread_id == candidate.thread_id and verified_host
-        )
-        measured = bool(
-            complete
-            and candidate.model
-            and candidate.closed
-            and verified_thread
-            and candidate.request_identity_basis == "native_response"
-            and not candidate.conflict
-        )
-        ts = replay.ts
-        model = candidate.model
-        cost_usd = (
-            estimate_cost_usd(
-                model,
-                input_tokens,
-                output_tokens,
-                cache_read,
-                cache_write,
-                as_of=_event_date(ts),
+            claude_targets.append(
+                usage_replay.claude_target(len(claude_targets), replay, observation)
             )
-            if measured and model
-            else None
-        )
-        conn.execute(
-            insert_sql,
-            (
-                ts,
-                candidate.thread_id,
-                model,
-                None,
-                input_tokens,
-                output_tokens,
-                cache_read,
-                cache_write,
-                cost_usd,
-                None,
-                "rollout",
-                "measured" if measured else "unknown",
-                "codex" if verified_host else None,
-                vendor_for_runner("codex") if verified_host else None,
-                "request",
-                ts or None,
-                "event" if ts else None,
-                replay.host_basis if verified_host else None,
-                "host_observed" if verified_thread else None,
-                candidate.turn_id,
-                candidate.request_id,
-                candidate.request_identity_basis if verified_host else "unverified",
-                candidate.stream_id,
-                replay.ordinal,
-                replay.line_no,
-                replay.raw_event_id,
-                replay.source_label,
-            ),
-        )
-        count += 1
+
+    count = usage_replay.apply_replay(
+        conn,
+        claude_targets,
+        codex_candidates,
+        codex_states,
+        holds=holds,
+        scope=scope,
+        run_id_for=lambda ts: _derive_run_id_for_ts(ts, windows),
+        report=report,
+    )
     if reindex_all:
         scope.full = True
     if reindex_all or not deferred:

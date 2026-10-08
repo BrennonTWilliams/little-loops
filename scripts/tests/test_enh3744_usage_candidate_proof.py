@@ -196,6 +196,7 @@ class TestSameKeyAndValueCapture:
     def test_pointer_and_session_alone_do_not_prove_an_unkeyed_audit(self, tmp_path: Path) -> None:
         db, source = _ingest(tmp_path, _CLAUDE, "claude-code", "session.jsonl")
         _sql(db, "UPDATE raw_events SET usage_contract = NULL")
+        _sql(db, "DELETE FROM usage_events")  # legacy store: no committed observations yet
         _sql(db, "DELETE FROM meta WHERE key LIKE 'usage_derive_%'")
         rebuild(db)
         # NULL persisted markers leave audit observations; they are not promoted.
@@ -213,6 +214,7 @@ class TestSameKeyAndValueCapture:
     ) -> None:
         db, source = _ingest(tmp_path, _CLAUDE, "claude-code", "session.jsonl")
         _sql(db, "UPDATE raw_events SET usage_contract = NULL")
+        _sql(db, "DELETE FROM usage_events")  # legacy store: no committed observations yet
         _sql(db, "DELETE FROM meta WHERE key LIKE 'usage_derive_%'")
         rebuild(db)
         _sql(db, "DELETE FROM usage_events WHERE id = (SELECT MIN(id) FROM usage_events)")
@@ -1142,5 +1144,10 @@ class TestPerSourcePrune:
         _make_old(db)
         result = prune(db, config=_CFG)
         assert result["deleted"] == {"raw_events": 0}
-        assert "usage_proof_unprovable" in result["retention_reasons"]
+        # The proved conflict leaves durable pending work (ENH-3770), which vetoes first;
+        # the semantic proof independently reports the same sources unprovable.
+        assert set(result["retention_reasons"]) & {
+            "usage_proof_unprovable",
+            "source_recovery_pending",
+        }
         assert _sql(db, "SELECT COUNT(*) FROM raw_events")[0][0] == 8

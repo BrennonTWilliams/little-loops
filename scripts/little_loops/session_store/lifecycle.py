@@ -60,25 +60,28 @@ from little_loops.session_store.usage_proof_scope import (
     collect_usage_proof_scope,
     inspect_scope,
 )
+from little_loops.session_store.usage_replay import ReplayReport
 from little_loops.session_store.usage_source_state import (
     REFUSAL_CODES,
     AcquisitionWitness,
     SourceScope,
     has_prior_semantic_success,
-    invalidate_usage_dependencies,
     pending_obligations,
     read_source_head,
     storage_available,
 )
 from little_loops.session_store.usage_source_tracking import (
+    RETRYABLE_USAGE_REASONS,
     Attempt,
     account_physical_lines,
     begin_attempt,
     finalize_source_refresh,
     has_sticky_rejection,
     record_failure_only,
-    record_held_pending,
     record_rejections,
+    record_replay_outcomes,
+    resolve_cache_obligations,
+    resolve_usage_obligations,
     sticky_rejection_lines,
     verify_claude_prefix,
 )
@@ -104,6 +107,7 @@ from little_loops.session_store.writers import (
     _pack_payload,
     _parse_aware_ts,
     _reconcile_usage_search,
+    _unpack_payload,
     host_layout_for,
     load_usage_replay_holds,
     mine_corrections_from_messages,
@@ -1214,12 +1218,11 @@ _REBUILD_TABLES = (
 )
 
 _REBUILD_TABLE_PREDICATES = {
-    "usage_events": (
-        "channel IS NOT 'live' AND NOT EXISTS (SELECT 1 FROM usage_replay_holds h WHERE "
-        "(h.source_path IS NOT NULL AND h.source_path = usage_events.source_path) OR "
-        "(h.source_path IS NULL AND (h.host = '*' OR h.host IS usage_events.host) "
-        "AND (h.channel = '*' OR h.channel IS usage_events.channel)))"
-    ),
+    # ENH-3770: ``rebuild`` never deletes committed usage observations. It compares every
+    # retained request with them (guarded reconciliation) and only adds, qualifies or
+    # demotes what it can prove; a row's identity, numbers, stored cost and timestamps
+    # survive. The predicate matches no row, so the generic wipe loop skips the table.
+    "usage_events": "0",
     "summary_nodes": "kind IS NOT 'retention'",
     "tool_events": "bytes_in IS NULL AND bytes_out IS NULL",
     "user_corrections": "source = 'backfill'",
@@ -1552,14 +1555,16 @@ def _usage_bootstrap_eligible(conn: sqlite3.Connection) -> bool:
 
 @dataclass(frozen=True)
 class _DeriveDisposition:
-    """Bounded outcome of one incremental derive (ENH-3745).
+    """Bounded outcome of one incremental derive (ENH-3745, ENH-3770).
 
     ``status`` is ``derived`` (the scan ran under valid or bootstrap proof) or
     ``skipped`` (checkpoint proof is missing or unusable; nothing was touched).
     ``reason`` is a bounded checkpoint status for a skip. ``scanned_bound`` is the raw ID
-    through which retained rows were actually scanned (None when skipped).
-    ``held_skipped`` maps a held source to the ``(first, last)`` raw IDs of appended
-    rows the replay writer skipped; those stay pending until ENH-3770.
+    through which retained rows were actually scanned (None when skipped); it certifies
+    retained *scheduling* only, never source completion or a hold release.
+    ``unresolved_sources`` are the scanned sources whose guarded replay left durable
+    pending work in this transaction (committed with the scan advance). ``held_skipped``
+    is kept for callers and is always empty: held sources are planned, not skipped.
     """
 
     status: str
@@ -1567,6 +1572,7 @@ class _DeriveDisposition:
     reason: str | None = None
     scanned_bound: int | None = None
     held_skipped: tuple[tuple[str, int, int], ...] = ()
+    unresolved_sources: frozenset[str] = frozenset()
 
 
 def _publish_usage_derive_checkpoint(
@@ -1589,16 +1595,64 @@ def _publish_usage_derive_checkpoint(
         )
 
 
+def _cache_pending_sources(conn: sqlite3.Connection) -> list[str]:
+    """Sources with an outstanding parser-derived cache obligation."""
+    if not storage_available(conn):
+        return []
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT source_path FROM usage_source_pending "
+            "WHERE raw_cache_pending = 1 AND kind = 'refresh' ORDER BY source_path"
+        )
+    ]
+
+
+def _cache_coverage_accounted(conn: sqlite3.Connection, source: str) -> bool:
+    """Whether every retained raw row of *source* was a recognizable record.
+
+    The cache writers skip undecodable payloads silently, so an unreadable row is the one
+    thing a replay cannot prove it consumed; any such row keeps the cache obligation.
+    """
+    for (raw_line,) in conn.execute(
+        "SELECT raw_line FROM raw_events WHERE source_path = ?", (source,)
+    ):
+        try:
+            payload = json.loads(_unpack_payload(raw_line))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+    return True
+
+
 def _set_usage_derive_checkpoint(
-    conn: sqlite3.Connection, state: _CheckpointState | None = None, *, bootstrap: bool = True
+    conn: sqlite3.Connection,
+    state: _CheckpointState | None = None,
+    *,
+    bootstrap: bool = True,
+    report: ReplayReport | None = None,
 ) -> bool:
-    """Stamp the checkpoint after a full replay under the shared safety rule.
+    """Persist the replay's unresolved scopes, then stamp the checkpoint under the safety rule.
 
     *state* is the checkpoint reading taken before the replay mutated anything. A valid
     floor is carried forward; an absent one is stamped only when *bootstrap* says the
     store was pristine. Missing/invalid/version-changed established proof stays untouched
-    and returns False.
+    and returns False. Unresolved scopes of a full replay (*report*) commit with it, and a
+    source whose replay was clean resolves its outstanding usage work (ENH-3770).
     """
+    if report is not None:
+        record_replay_outcomes(conn, _USAGE_DERIVE_VERSION, report.outcomes.values())
+        incomplete = report.incomplete_sources
+        for source in sorted(report.scanned_sources - incomplete):
+            resolve_usage_obligations(conn, source)
+        # A full rebuild just replayed every retained raw row into the deterministic
+        # parser-derived caches (``max_sessions`` limits only summary compaction), so the
+        # cache component of a parser refresh is consumed -- unless a retained row could not
+        # be accounted for at all.
+        for source in _cache_pending_sources(conn):
+            if _cache_coverage_accounted(conn, source):
+                resolve_cache_obligations(conn, source)
     state = state if state is not None else _read_usage_checkpoint(conn)
     if state.status == "absent" and not bootstrap:
         return False
@@ -1609,135 +1663,213 @@ def _set_usage_derive_checkpoint(
     return True
 
 
-def _usage_checkpoint_snapshot(conn: sqlite3.Connection) -> tuple[_CheckpointState, bool]:
-    """The checkpoint reading and bootstrap eligibility, taken before a replay mutates usage."""
-    state = _read_usage_checkpoint(conn)
-    return state, state.status == "absent" and _usage_bootstrap_eligible(conn)
+def _usage_checkpoint_snapshot(
+    conn: sqlite3.Connection,
+) -> tuple[_CheckpointState, bool, ReplayReport]:
+    """The checkpoint reading, bootstrap eligibility and a fresh replay report.
 
-
-def _invalidate_usage_for_rebuild(conn: sqlite3.Connection) -> None:
-    """Downgrade tracked completion that ``rebuild``'s usage delete/replay is about to replace.
-
-    Negative tracking only (ENH-3745): affected current completion and the deleted
-    observations' witnesses become pending/unavailable in the same transaction, and older
-    successful boundaries remain as historical evidence. The replay itself, and its
-    row/cost preservation, are unchanged (ENH-3770).
+    Taken before a replay mutates usage; the report collects the replay's unresolved scopes.
     """
-    if not storage_available(conn):
-        return
-    predicate = _REBUILD_TABLE_PREDICATES["usage_events"]
-    ids = tuple(row[0] for row in conn.execute(f"SELECT id FROM usage_events WHERE {predicate}"))
-    holds = load_usage_replay_holds(conn)
-    scopes = tuple(
-        head.scope
-        for head in (
-            read_source_head(conn, row[0])
-            for row in conn.execute("SELECT source_path FROM usage_source_state").fetchall()
-        )
-        if head is not None and not holds.holds(head.scope.source_path, head.scope.host, None)
-    )
-    invalidate_usage_dependencies(conn, ids, scopes, reason="rebuild")
+    state = _read_usage_checkpoint(conn)
+    return state, state.status == "absent" and _usage_bootstrap_eligible(conn), ReplayReport()
 
 
-def _invalidate_codex_catchup(conn: sqlite3.Connection, source: str) -> None:
-    """Invalidate tracked completion depending on *source*'s rollout observations."""
+_RETRY_SIGNATURE_KEY = "usage_retry_signature"
+
+
+def _retry_sources(conn: sqlite3.Connection) -> list[str]:
+    """Sources with an outstanding replay-resolvable usage obligation in the current generation."""
     if not storage_available(conn):
-        return
-    ids = tuple(
+        return []
+    marks = ", ".join("?" for _ in RETRYABLE_USAGE_REASONS)
+    return [
         row[0]
         for row in conn.execute(
-            "SELECT id FROM usage_events WHERE channel = 'rollout' AND source_path = ?", (source,)
+            "SELECT DISTINCT p.source_path FROM usage_source_pending p "
+            "JOIN usage_source_state s ON s.source_path = p.source_path "
+            "AND s.generation_id = p.generation_id AND s.derive_version = p.derive_version "
+            "WHERE p.usage_pending = 1 AND p.kind IN ('derive_gap', 'refresh') "
+            f"AND p.reason IN ({marks}) ORDER BY p.source_path",
+            sorted(RETRYABLE_USAGE_REASONS),
         )
-    )
-    head = read_source_head(conn, source)
-    invalidate_usage_dependencies(
-        conn, ids, (head.scope,) if head is not None else (), reason="codex_catchup"
-    )
+    ]
 
 
-def _held_appended_sources(
-    conn: sqlite3.Connection, checkpoint: int, holds: UsageReplayHolds
-) -> tuple[tuple[str, int, int], ...]:
-    """Held sources with candidate-capable rows above *checkpoint* the writer will skip."""
-    skipped: list[tuple[str, int, int]] = []
-    for source, host, first, last in conn.execute(
-        "SELECT source_path, host, MIN(id), MAX(id) FROM raw_events WHERE id > ? "
-        "AND event_type IN ('assistant', 'token_usage_record', 'event_msg', 'turn_context', "
-        "'session_meta') GROUP BY source_path, host ORDER BY source_path, host",
-        (checkpoint,),
+def _retry_signature(conn: sqlite3.Connection, sources: list[str]) -> str:
+    """Fingerprint of everything that could newly resolve an outstanding usage obligation.
+
+    Covers the retained rows of the outstanding sources (content-sensitive), the committed
+    observation population, the holds and the obligations themselves -- and nothing else, so
+    it stays cheap and never scans unrelated history.
+    """
+    digest = hashlib.sha256()
+    marks = ", ".join("?" for _ in sources)
+    for row in conn.execute(
+        "SELECT id, source_path, line_no, session_id, host, usage_contract, "
+        f"LENGTH(CAST(raw_line AS BLOB)) FROM raw_events WHERE source_path IN ({marks}) "
+        "ORDER BY id",
+        sources,
     ):
-        channel = "rollout" if host == "codex" else "transcript"
-        if holds.holds(source, host, channel):
-            skipped.append((source, first, last))
-    return tuple(skipped)
+        digest.update(repr(tuple(row)).encode("utf-8"))
+    usage = conn.execute(
+        "SELECT COUNT(*), COALESCE(MAX(id), 0), COALESCE(SUM(provenance = 'measured'), 0), "
+        "TOTAL(input_tokens), TOTAL(output_tokens), TOTAL(cost_usd), "
+        "COALESCE(SUM(observation_key IS NOT NULL), 0) FROM usage_events"
+    ).fetchone()
+    holds = conn.execute("SELECT COUNT(*) FROM usage_replay_holds").fetchone()[0]
+    pending = conn.execute(
+        "SELECT obligation_id, revision FROM usage_source_pending ORDER BY obligation_id"
+    ).fetchall()
+    digest.update(
+        json.dumps([sources, list(usage), holds, [list(r) for r in pending]]).encode("utf-8")
+    )
+    return digest.hexdigest()
 
 
-def _derive_usage_incremental_disposition(conn: sqlite3.Connection) -> _DeriveDisposition:
+def _retry_outstanding_usage(
+    conn: sqlite3.Connection,
+    replayed: set[str],
+    search_scope: UsageSearchScope,
+    report: ReplayReport,
+) -> tuple[int, list[str]]:
+    """Replay sources whose outstanding usage work sits at or below the checkpoint.
+
+    Independent of hold presence and of whether raw ``MAX`` moved. A signature of the inputs
+    that could change the outcome (retained raw, committed observations, holds and the
+    obligations themselves) skips a replay that cannot differ from the last one, so an
+    unresolvable scope does not re-scan on every call. Returns ``(inserts, clean_sources)``.
+    """
+    sources = [s for s in _retry_sources(conn) if s not in replayed]
+    if not sources:
+        return 0, []
+    signature = _retry_signature(conn, sources)
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (_RETRY_SIGNATURE_KEY,)).fetchone()
+    if row is not None and row[0] == signature:
+        return 0, []
+    count = 0
+    clean: list[str] = []
+    for source in sources:
+        before = set(report.outcomes)
+        count += _backfill_usage_events(
+            conn,
+            _usage_raw_cursor(conn, "WHERE source_path = ?", (source,)),
+            search_scope=search_scope,
+            report=report,
+        )
+        search_scope.mark(source)
+        if not any(key[0] == source for key in set(report.outcomes) - before) and not any(
+            key[0] == source for key in before
+        ):
+            clean.append(source)
+    return count, clean
+
+
+def _store_retry_signature(conn: sqlite3.Connection) -> None:
+    """Remember the post-retry state so an identical state is not replayed again."""
+    sources = _retry_sources(conn)
+    if not sources:
+        conn.execute("DELETE FROM meta WHERE key = ?", (_RETRY_SIGNATURE_KEY,))
+        return
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (_RETRY_SIGNATURE_KEY, _retry_signature(conn, sources)),
+    )
+
+
+def _derive_usage_incremental_disposition(
+    conn: sqlite3.Connection, attempt: Attempt | None = None
+) -> _DeriveDisposition:
     """Derive new replayable usage under an existing IMMEDIATE transaction.
 
     Validated same-version progress is never reset by a lower surviving raw maximum
     (retention). A pristine store with no checkpoint replays once without deleting
     anything. Missing, partial, malformed, contradictory or version-changed proof in an
-    established store skips untouched and reports a bounded reason; recovery that
-    preserves row identity is ENH-3770's.
+    established store skips untouched and reports a bounded reason.
+
+    ENH-3770: nothing is deleted. Every Codex source with appended rows is replayed whole
+    (its turn state starts before the slice) and every other appended row is replayed, all
+    through the guarded planner, which compares with committed observations before it
+    prices or writes. Every incomplete scanned scope -- held or unheld -- is persisted as
+    durable pending in this transaction, before the high-water advances, and outstanding
+    usage work at or below the checkpoint is retried even when raw ``MAX`` is unchanged.
     """
     state = _read_usage_checkpoint(conn)
     max_id = conn.execute("SELECT COALESCE(MAX(id), 0) FROM raw_events").fetchone()[0]
+    report = ReplayReport()
     if state.status == "absent":
         if not _usage_bootstrap_eligible(conn):
             return _DeriveDisposition("skipped", reason="checkpoint_missing")
-        count = _backfill_usage_events(conn, _usage_raw_cursor(conn))
+        count = _backfill_usage_events(conn, _usage_raw_cursor(conn), report=report)
+        record_replay_outcomes(
+            conn, _USAGE_DERIVE_VERSION, report.outcomes.values(), attempt=attempt
+        )
         _publish_usage_derive_checkpoint(conn, prior_floor=None, scanned_bound=max_id)
-        return _DeriveDisposition("derived", count, scanned_bound=max_id)
+        return _DeriveDisposition(
+            "derived",
+            count,
+            scanned_bound=max_id,
+            unresolved_sources=report.incomplete_sources,
+        )
     if not state.valid:
         return _DeriveDisposition("skipped", reason=f"checkpoint_{state.status}")
     checkpoint = int(state.floor or 0)
-    if max_id <= checkpoint:
-        return _DeriveDisposition("derived", 0, scanned_bound=checkpoint)
-    holds = load_usage_replay_holds(conn)
-    held_skipped = _held_appended_sources(conn, checkpoint, holds)
-    codex_sources = [
-        row[0]
-        for row in conn.execute(
-            "SELECT DISTINCT source_path FROM raw_events WHERE id > ? AND host = 'codex'",
-            (checkpoint,),
-        )
-        if not holds.holds(row[0], "codex", "rollout")
-    ]
     count = 0
+    replayed: set[str] = set()
     # ENH-3747: search evidence is reconciled once, from committed rows, for every source
-    # this catch-up touched — including held append skips and zero-insert sources.
+    # this catch-up touched -- including zero-insert sources.
     search_scope = UsageSearchScope()
-    search_scope.mark(*(held[0] for held in held_skipped), *codex_sources)
-    for source in codex_sources:
-        # Codex turn state can start before this slice. Reconstruct it from
-        # this source's stored prefix; do not rescan the JSONL file.
-        # ENH-3745: tracked completion that consumed the observations about to be deleted
-        # (this source, or a copy whose dedup supplier it is) is invalidated first, in this
-        # transaction; a rollback restores the rows and the facts together.
-        _invalidate_codex_catchup(conn, source)
-        conn.execute(
-            "DELETE FROM usage_events WHERE channel = 'rollout' AND source_path = ?",
-            (source,),
-        )
+    if max_id > checkpoint:
+        codex_sources = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT source_path FROM raw_events WHERE id > ? AND host = 'codex'",
+                (checkpoint,),
+            )
+        ]
+        search_scope.mark(*codex_sources)
+        for source in codex_sources:
+            # Codex turn state can start before this slice. Reconstruct it from this
+            # source's stored prefix; do not rescan the JSONL file. Rows already committed
+            # for the source are compared, never deleted.
+            replayed.add(source)
+            count += _backfill_usage_events(
+                conn,
+                _usage_raw_cursor(conn, "WHERE source_path = ?", (source,)),
+                search_scope=search_scope,
+                report=report,
+            )
+        if codex_sources:
+            placeholders = ", ".join("?" for _ in codex_sources)
+            where = f"WHERE id > ? AND source_path NOT IN ({placeholders})"
+            params = (checkpoint, *codex_sources)
+        else:
+            where = "WHERE id > ?"
+            params = (checkpoint,)
         count += _backfill_usage_events(
-            conn,
-            _usage_raw_cursor(conn, "WHERE source_path = ?", (source,)),
-            search_scope=search_scope,
+            conn, _usage_raw_cursor(conn, where, params), search_scope=search_scope, report=report
         )
-    if codex_sources:
-        placeholders = ", ".join("?" for _ in codex_sources)
-        where = f"WHERE id > ? AND source_path NOT IN ({placeholders})"
-        params = (checkpoint, *codex_sources)
-    else:
-        where = "WHERE id > ?"
-        params = (checkpoint,)
-    count += _backfill_usage_events(
-        conn, _usage_raw_cursor(conn, where, params), search_scope=search_scope
-    )
+        replayed.update(report.scanned_sources)
+    retried, clean = _retry_outstanding_usage(conn, replayed, search_scope, report)
+    count += retried
     _reconcile_usage_search(conn, search_scope)
-    _publish_usage_derive_checkpoint(conn, prior_floor=checkpoint, scanned_bound=max_id)
-    return _DeriveDisposition("derived", count, scanned_bound=max_id, held_skipped=held_skipped)
+    record_replay_outcomes(conn, _USAGE_DERIVE_VERSION, report.outcomes.values(), attempt=attempt)
+    for source in clean:
+        resolve_usage_obligations(conn, source)
+    if (
+        clean
+        or _retry_sources(conn)
+        or conn.execute("SELECT 1 FROM meta WHERE key = ?", (_RETRY_SIGNATURE_KEY,)).fetchone()
+    ):
+        _store_retry_signature(conn)
+    if max_id > checkpoint:
+        _publish_usage_derive_checkpoint(conn, prior_floor=checkpoint, scanned_bound=max_id)
+        return _DeriveDisposition(
+            "derived", count, scanned_bound=max_id, unresolved_sources=report.incomplete_sources
+        )
+    return _DeriveDisposition(
+        "derived", count, scanned_bound=checkpoint, unresolved_sources=report.incomplete_sources
+    )
 
 
 def _derive_usage_incremental_conn(conn: sqlite3.Connection) -> int:
@@ -1752,10 +1884,6 @@ def backfill_usage_incremental(db: Path | str = DEFAULT_DB_PATH) -> int:
     try:
         conn.execute("BEGIN IMMEDIATE")
         disposition = _derive_usage_incremental_disposition(conn)
-        if storage_available(conn):
-            # The scan may advance past held-source appends the writer skips; their
-            # pending bounds commit in the same transaction as the advance.
-            record_held_pending(conn, _USAGE_DERIVE_VERSION, disposition.held_skipped)
         conn.commit()
         return disposition.count
     except Exception:
@@ -2019,7 +2147,7 @@ def _refresh_codex_usage_source(db: Path | str, source: Path) -> dict[str, int |
                 prefix_proved = False
 
         accounting = account_physical_lines(path)
-        disposition = _derive_usage_incremental_disposition(conn)
+        disposition = _derive_usage_incremental_disposition(conn, attempt)
         with path.open("rb") as handle:
             final = path.stat()
             if (final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns) != (
@@ -2255,7 +2383,7 @@ def refresh_usage_source(
             prior_line_no=prior_line_no,
             exempt_lines=exempt_lines,
         )
-        disposition = _derive_usage_incremental_disposition(conn)
+        disposition = _derive_usage_incremental_disposition(conn, attempt)
         source_max_id = conn.execute(
             "SELECT COALESCE(MAX(id), 0) FROM raw_events WHERE source_path = ?",
             (str(path),),
@@ -2615,8 +2743,7 @@ def rebuild(
     }
     try:
         conn.execute("BEGIN IMMEDIATE")
-        usage_checkpoint, usage_bootstrap = _usage_checkpoint_snapshot(conn)
-        _invalidate_usage_for_rebuild(conn)
+        usage_checkpoint, usage_bootstrap, usage_report = _usage_checkpoint_snapshot(conn)
         # BUG-3766: provenance must be settled from the original search entries
         # before the wipe below deletes them.
         _classify_legacy_skill_origins(conn)
@@ -2682,7 +2809,7 @@ def rebuild(
             conn, _raw_events_cursor(), skip_live=live_skills
         )
         counts["usage_events"] = _backfill_usage_events(
-            conn, _raw_events_cursor(usage_order=True), reindex_all=True
+            conn, _raw_events_cursor(usage_order=True), reindex_all=True, report=usage_report
         )
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions, db=db)
@@ -2696,7 +2823,9 @@ def rebuild(
             (str(SCHEMA_VERSION),),
         )
         _stamp_rebuild_derive_version(conn)
-        _set_usage_derive_checkpoint(conn, usage_checkpoint, bootstrap=usage_bootstrap)
+        _set_usage_derive_checkpoint(
+            conn, usage_checkpoint, bootstrap=usage_bootstrap, report=usage_report
+        )
         conn.commit()
     except Exception:
         # A failed replay must not expose a partially replaced rollout set.

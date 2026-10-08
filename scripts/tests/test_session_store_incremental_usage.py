@@ -203,7 +203,7 @@ def test_catchup_failure_rolls_back_rows_and_checkpoint(
     db = tmp_path / "history.db"
     backfill_raw_events(db, jsonl_files=[source], host="claude-code")
 
-    def fail_after_one(conn: sqlite3.Connection, cursor: object) -> int:
+    def fail_after_one(conn: sqlite3.Connection, cursor: object, **kwargs: object) -> int:
         conn.execute("INSERT INTO usage_events(ts, channel) VALUES('t', 'transcript')")
         raise RuntimeError("injected derive failure")
 
@@ -251,7 +251,9 @@ def test_missing_message_id_stays_unqualified_and_copied_source_conflicts(
     copied2.write_text(json.dumps(divergent) + "\n")
     refresh_usage_source(db, copied2)
     rows = _usage_rows(db)
-    assert len(rows) == 2
+    # ENH-3770: a proved conflict demotes the committed row's qualification only (its numbers
+    # survive) and the conflicting copy is retained as its own unqualified audit row.
+    assert len(rows) == 3
     assert {row[7] for row in rows} == {"unknown"}
     assert {row[8] for row in rows} == {None}
     rebuild(db)
@@ -299,7 +301,7 @@ def test_failed_append_derive_leaves_committed_cursor_stale(
         patcher.setattr(
             lifecycle,
             "_derive_usage_incremental_disposition",
-            lambda conn: (_ for _ in ()).throw(RuntimeError("derive failed")),
+            lambda conn, *a, **k: (_ for _ in ()).throw(RuntimeError("derive failed")),
         )
         with pytest.raises(RuntimeError, match="derive failed"):
             refresh_usage_source(db, source)

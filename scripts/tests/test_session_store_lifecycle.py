@@ -2159,7 +2159,8 @@ class TestBackfillUsageEvents:
         live = [r for r in first if r[0] == "live"]
         assert {r[1] for r in live} == {"r1"} and {r[2] for r in live} == {"s1", None}
 
-    def test_rebuild_replaces_rollout_channel_rows(self, tmp_path: Path) -> None:
+    def test_rebuild_preserves_rollout_rows_without_retained_raw(self, tmp_path: Path) -> None:
+        # ENH-3770: no replay candidate proves such a row replaceable, so rebuild keeps it.
         db = tmp_path / "history.db"
         ensure_db(db)
         conn = connect(db)
@@ -2171,7 +2172,7 @@ class TestBackfillUsageEvents:
         rebuild(db)
         conn = connect(db)
         try:
-            assert conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0] == 1
         finally:
             conn.close()
 
@@ -2215,10 +2216,11 @@ class TestBackfillUsageEvents:
         rebuild(db)
         conn = connect(db)
         try:
-            rows = conn.execute("SELECT channel, run_id FROM usage_events").fetchall()
+            rows = conn.execute("SELECT channel, run_id FROM usage_events ORDER BY id").fetchall()
         finally:
             conn.close()
-        assert [tuple(r) for r in rows] == [("live", "r1")]
+        # The migration classified both legacy rows; rebuild (ENH-3770) preserves them.
+        assert [tuple(r) for r in rows] == [("transcript", None), ("live", "r1")]
 
     def test_run_id_backfilled_from_unambiguous_loop_run_window(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"

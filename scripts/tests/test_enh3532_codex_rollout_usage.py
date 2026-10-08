@@ -105,11 +105,14 @@ def test_direct_and_stored_replay_agree_and_copy_is_idempotent(tmp_path: Path) -
     ensure_db(stored)
     conn = connect(direct)
     try:
-        assert _backfill_usage_events(conn, [fixture]) == 2
+        # ENH-3770: the private direct-file helper has no durable raw identity, so it can
+        # neither mutate observations nor price; recognition parity below stays read-only.
+        with patch("little_loops.pricing.estimate_cost_usd", side_effect=AssertionError("priced")):
+            assert _backfill_usage_events(conn, [fixture]) == 0
         conn.commit()
     finally:
         conn.close()
-    original = _rows(direct)
+    assert _rows(direct) == []
     backfill_raw_events(stored, handles=[_handle(fixture, tmp_path)])
     conn = connect(stored)
     try:
@@ -138,13 +141,16 @@ def test_direct_and_stored_replay_agree_and_copy_is_idempotent(tmp_path: Path) -
     ]
     assert stored_metadata == direct_metadata
     rebuild(stored)
-    assert _rows(stored) == original
+    original = _rows(stored)
+    assert len(original) == 2
     copy = tmp_path / "copied-rollout.jsonl"
     copy.write_bytes(fixture.read_bytes())
     backfill_raw_events(stored, handles=[_handle(copy, tmp_path)])
-    assert rebuild(stored)["usage_events"] == 2
+    # Rebuild reconciles with committed rows (ENH-3770): the identical copy shares the
+    # survivor's representation, so nothing is inserted -- and nothing is rewritten.
+    assert rebuild(stored)["usage_events"] == 0
     assert _rows(stored) == original
-    assert rebuild(stored)["usage_events"] == 2
+    assert rebuild(stored)["usage_events"] == 0
     assert _rows(stored) == original
 
 

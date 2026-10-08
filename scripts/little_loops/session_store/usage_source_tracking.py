@@ -21,9 +21,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from little_loops.session_store.usage_proof_scope import UsageProofLimit, inspect_retained_source
 from little_loops.session_store.usage_source_state import (
@@ -371,6 +372,258 @@ def record_held_pending(
             ),
             expected_head_revision=head.revision if head is not None else None,
         )
+
+
+_GAP_REASONS = {
+    "evidence_limited": "usage_proof_limit",
+    "overlap_ambiguous": "held_source_skipped",
+}
+
+
+def _outcome_reason(reasons: set[str]) -> str:
+    """Finite pending reason for the bounded replay reasons a source accrued."""
+    for reason, mapped in _GAP_REASONS.items():
+        if reason in reasons:
+            return mapped
+    return "usage_proof_unprovable"
+
+
+def _pending_covered(conn: sqlite3.Connection, pending: SourcePending) -> bool:
+    """Whether an identical, at-least-as-wide obligation already exists (no churn to poll it)."""
+    scope = pending.scope
+    row = conn.execute(
+        "SELECT range_kind, first_raw_id, last_raw_id, raw_cache_pending, usage_pending "
+        "FROM usage_source_pending WHERE source_path = ? AND generation_id = ? "
+        "AND derive_version = ? AND kind = ? AND reason = ? "
+        "AND COALESCE(affected_usage_event_id, -1) = COALESCE(?, -1)",
+        (
+            scope.source_path,
+            scope.generation_id,
+            scope.derive_version,
+            pending.kind,
+            pending.reason,
+            pending.affected_usage_event_id,
+        ),
+    ).fetchone()
+    if row is None:
+        return False
+    range_kind, first, last, cache, usage = row
+    if pending.raw_cache_pending and not cache:
+        return False
+    if pending.usage_pending and not usage:
+        return False
+    if range_kind == "whole_source":
+        return True
+    if pending.range_kind == "whole_source":
+        return False
+    if first is None or last is None or pending.first_raw_id is None or pending.last_raw_id is None:
+        return False
+    return first <= pending.first_raw_id and pending.last_raw_id <= last
+
+
+def record_replay_outcomes(
+    conn: sqlite3.Connection,
+    derive_version: str,
+    outcomes: Iterable[Any],
+    *,
+    attempt: Attempt | None = None,
+) -> None:
+    """Persist every scanned scope a guarded replay left incomplete (ENH-3770).
+
+    Runs in the caller's write transaction, before the scan high-water is published, so
+    the unresolved work and the advance commit or roll back together. An identical
+    obligation that already covers the range is not merged again, so repeated identical
+    failures neither churn revisions nor lose their retry range. A source without a head
+    uses the refresh attempt's generation when it is that source, else a fresh one.
+    """
+    if not storage_available(conn):
+        return
+    for outcome in sorted(outcomes, key=lambda o: (o.source_path, o.kind)):
+        source = outcome.source_path
+        head = read_source_head(conn, source)
+        if head is not None:
+            generation = head.scope.generation_id
+            host, session = head.scope.host, head.scope.session_id
+        elif attempt is not None and attempt.scope.source_path == source:
+            generation = attempt.scope.generation_id
+            host, session = attempt.scope.host, attempt.scope.session_id
+        else:
+            generation, host, session = new_generation_id(), None, None
+        scope = SourceScope(source, generation, derive_version, host, session)
+        bounded = outcome.first_raw_id is not None and outcome.last_raw_id is not None
+        base = {
+            "scope": scope,
+            "range_kind": "bounded" if bounded else "whole_source",
+            "first_raw_id": outcome.first_raw_id if bounded else None,
+            "last_raw_id": outcome.last_raw_id if bounded else None,
+        }
+        if outcome.kind == "native_conflict":
+            pendings = [
+                SourcePending(
+                    kind="native_conflict",
+                    reason="native_conflict",
+                    affected_usage_event_id=affected,
+                    **base,  # type: ignore[arg-type]
+                )
+                for affected in (sorted(outcome.affected) or [None])
+            ]
+        else:
+            pendings = [
+                SourcePending(
+                    kind="derive_gap",
+                    reason=_outcome_reason(outcome.reasons),
+                    **base,  # type: ignore[arg-type]
+                )
+            ]
+        for pending in pendings:
+            if _pending_covered(conn, pending):
+                continue
+            current = read_source_head(conn, source)
+            record_source_pending(
+                conn, pending, expected_head_revision=current.revision if current else None
+            )
+
+
+# Obligations whose usage component a clean guarded replay plus clean retained proof resolves.
+# Acquisition failures, partial tails and "acquisition_unprovable" gaps are resolved by
+# re-acquisition, and a native conflict is never resolved by replaying it.
+RETRYABLE_USAGE_REASONS = frozenset(
+    {
+        "usage_proof_unprovable",
+        "usage_proof_limit",
+        "usage_derive_gap",
+        "held_source_skipped",
+        "codex_catchup",
+        "rebuild",
+        "parser_refresh",
+        "reconcile",
+    }
+)
+
+
+def publish_retained_completion(conn: sqlite3.Connection, source_path: str) -> bool:
+    """Publish semantic completion from retained proof against committed acquisition.
+
+    Only when the head already carries a verified acquisition (never manufactured from the
+    original file, which is not reread), no usage-component obligation of any generation
+    remains, and the post-write retained proof is clean. The boundary is the acquisition the
+    head already certified, so completion cannot reach past it.
+    """
+    head = read_source_head(conn, source_path)
+    if (
+        head is None
+        or head.acquisition_version != USAGE_ACQUISITION_VERSION
+        or head.acquired_offset is None
+        or head.acquired_line_no is None
+    ):
+        return False
+    if any(ob.usage_pending for ob in pending_obligations(conn, source_path)):
+        return False
+    reason, _bounds, deps = _proof_outcome(conn, source_path)
+    if reason is not None:
+        return False
+    max_raw_id = conn.execute(
+        "SELECT COALESCE(MAX(id), 0) FROM raw_events WHERE source_path = ?", (source_path,)
+    ).fetchone()[0]
+    publish_source_completion(
+        conn,
+        SourceDeriveCompletion(
+            status="complete",
+            reason=None,
+            basis="semantic",
+            scope=head.scope,
+            boundary=DerivedBoundary(
+                head.scope,
+                head.acquisition_version,
+                head.acquired_offset,
+                head.acquired_line_no,
+                max_raw_id,
+                None,
+            ),
+        ),
+        deps,
+        expected_head_revision=head.revision,
+    )
+    return True
+
+
+def resolve_usage_obligations(conn: sqlite3.Connection, source_path: str) -> int:
+    """Acknowledge the usage component of *source_path*'s resolved retryable obligations.
+
+    Only after the post-write retained proof (ENH-3744 correspondence over the committed
+    rows) is clean, and only for obligations in the head's current generation/derive
+    version; every acknowledgement is compare-and-swap on both captured revisions, and the
+    ``raw_cache`` component of a parser refresh is never touched. Returns how many
+    obligations changed. Count-only success never resolves pending work.
+    """
+    head = read_source_head(conn, source_path)
+    if head is None:
+        return 0
+    reason, _bounds, _deps = _proof_outcome(conn, source_path)
+    if reason is not None:
+        return 0
+    resolved = 0
+    for ob in pending_obligations(conn, source_path):
+        if (
+            ob.kind not in {"derive_gap", "refresh"}
+            or ob.reason not in RETRYABLE_USAGE_REASONS
+            or not ob.usage_pending
+            or ob.obligation_id is None
+        ):
+            continue
+        current = read_source_head(conn, source_path)
+        row = conn.execute(
+            "SELECT revision FROM usage_source_pending WHERE obligation_id = ?",
+            (ob.obligation_id,),
+        ).fetchone()
+        if current is None or row is None:
+            continue
+        if acknowledge_source_pending(
+            conn,
+            ob.obligation_id,
+            ConsumedRange(ob.scope, full_scope=True),
+            expected_head_revision=current.revision,
+            expected_obligation_revision=row[0],
+            components=frozenset({"usage"}),
+        ):
+            resolved += 1
+    if resolved:
+        publish_retained_completion(conn, source_path)
+    return resolved
+
+
+def resolve_cache_obligations(conn: sqlite3.Connection, source_path: str) -> int:
+    """Acknowledge the ``raw_cache`` component of *source_path*'s parser-refresh obligations.
+
+    Called only by a replay that has just consumed the whole retained source into the
+    deterministic parser-derived caches, in the same transaction as those writes, and only
+    for the head's current generation/derive version. The ``usage`` component is untouched
+    and every acknowledgement is compare-and-swap on both captured revisions.
+    """
+    head = read_source_head(conn, source_path)
+    if head is None:
+        return 0
+    resolved = 0
+    for ob in pending_obligations(conn, source_path):
+        if ob.kind != "refresh" or not ob.raw_cache_pending or ob.obligation_id is None:
+            continue
+        current = read_source_head(conn, source_path)
+        row = conn.execute(
+            "SELECT revision FROM usage_source_pending WHERE obligation_id = ?",
+            (ob.obligation_id,),
+        ).fetchone()
+        if current is None or row is None:
+            continue
+        if acknowledge_source_pending(
+            conn,
+            ob.obligation_id,
+            ConsumedRange(ob.scope, full_scope=True),
+            expected_head_revision=current.revision,
+            expected_obligation_revision=row[0],
+            components=frozenset({"raw_cache"}),
+        ):
+            resolved += 1
+    return resolved
 
 
 def _proof_outcome(
