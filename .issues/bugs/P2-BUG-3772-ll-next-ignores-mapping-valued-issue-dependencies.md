@@ -153,6 +153,17 @@ _Added by `/ll:refine-issue` — 2026-10-08 — based on codebase analysis:_
 - Constraint on explain: because explain text renders gate reasons and subject-scoped diagnostics but not `evidence["dependencies"]`, the field name, offending source path, and raw mapping value must be reachable from the affected target's gate reason or a diagnostic scoped to that target.
 - Verification: new regression cases cover mutual mapping-key cycle, mapping naming an outside unresolved prerequisite, outside one-sided `blocks` mapping (both orderings), empty-mapping body fallback, and string/list parity; run `python -m pytest scripts/tests/test_feat3561_phase_b_state.py scripts/tests/test_feat3561_phase_d_assess.py scripts/tests/test_feat3769_blockers.py scripts/tests/test_feat3561_phase_e_cli.py`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/next_arena/state.py` — add the unsupported-relationship evidence field to `SourceRecord` and to the single `SourceRecord(...)` constructor call in `build_source_record`; build one order-independent target-keyed index of one-sided `blocks`-mapping sources during `build_project_state` (not per target in the gate) so perf/linear-op tests keep passing
+- Update `scripts/little_loops/next_arena/blockers.py` — decide and implement whether `_independent_vetoes` surfaces a dependent's unsupported-shape exclusion (body-fallback edge case), since `build_blocker_index` never reaches `_prerequisites_gate`
+- Update `scripts/little_loops/next_arena/render.py` only if needed — keep the field/source/raw value reachable in `--explain` from the target's gate reason or a target-subject diagnostic (the `collect_diagnostics(scope_to=...)` filter drops source-subject diagnostics)
+- Update `tests/` — add mapping cases to `test_feat3561_phase_b_state.py`, `test_feat3561_phase_d_assess.py`, `test_feat3769_blockers.py`, `test_feat3561_phase_e_cli.py` with literal block-YAML fixtures via `project(...)`/`write_issue(..., text=...)`; keep the order-determinism, single-read/parse and linear-op perf tests green and avoid new regexes in `state.py` (`test_issue_parser.py` allowlist)
+- Update `docs/reference/CLI.md` — add the new diagnostic code to the `ll-next` **Diagnostics** list and note unsupported relationship shapes under "What gets recommended"; touch `docs/reference/API.md` `next_arena` rows if user-visible
+- No change needed — `output-schema.json` (free-form codes), `recording.py`, `graph.py`, and loops/hooks/skills have no consumers of these gates or diagnostics
+
 ## Impact
 
 - **Priority:** P2 — persuasive runnable recommendations can omit actual prerequisites or cycles.
@@ -193,5 +204,6 @@ _Added by `/ll:refine-issue` — 2026-10-08 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-10-08T15:35:11 - `892180dc-b296-4d11-bab1-4ceacfb93394.jsonl`
 - `/ll:refine-issue` - 2026-10-08T15:29:03 - `391386d4-3db8-4f5a-9e12-97e5935d2d4b.jsonl`
 - `/ll:capture-issue` - 2026-10-08T15:15:05 - `c063533a-bfa9-410e-8a16-0fe48d320a3b.jsonl`
