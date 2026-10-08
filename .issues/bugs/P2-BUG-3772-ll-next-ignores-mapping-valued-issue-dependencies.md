@@ -217,6 +217,7 @@ _Added by `/ll:confidence-check` on 2026-10-08_
 - Changed fields: none
 
 ## Session Log
+- `/ll:confidence-check` - 2026-10-08T17:40:49 - `cb0aee70-6b64-42fa-afd0-739f77347cf5.jsonl`
 - `/ll:confidence-check` - 2026-10-08T16:05:17 - `658f5ae0-b69c-4a05-9e63-5ba97e164dc7.jsonl`
 - `/ll:advise` - 2026-10-08T15:59:38 - `27057456-16a6-48c8-bc88-5010ad985f61.jsonl`
 - `/ll:ready-issue` - 2026-10-08T15:59:38 - `27057456-16a6-48c8-bc88-5010ad985f61.jsonl`
