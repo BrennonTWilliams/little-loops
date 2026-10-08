@@ -752,6 +752,7 @@ The pure domain package behind [`ll-next`](CLI.md#ll-next). Everything except `s
 | `actions` | Typed `action_spec` tagged union (`SlashActionSpec`, `variant: "slash"`), the seven-row `action_key` table, `action_fingerprint()` (`sha256:` of canonical `{variant, command, args}`), `render_slash()` / `parse_slash()` and option-safe `render_shell()` / `parse_shell()`. |
 | `state` | `collect_project_state(project_root, *, as_of=None, config=None) -> ProjectState`: one read of every issue file across all statuses, the identity inventory (duplicate full IDs, shared issue numbers, unnormalized filenames), lifecycle resolution and the dependency graph. |
 | `inputs` | `Diagnostic`, the captured `FormattingPolicy` and confidence `Thresholds`. |
+| `history` | Opt-in, injected `read_history_snapshot()` for `ll-next` consumers; never imported by `state` or the CLI core. See [below](#little_loopsnext_arenahistory). |
 | `graph`, `axes` | Dependency-graph analysis, bounded axis curves and the weighted geometric aggregate. |
 | `candidates` | `assess_candidates(state, *, settings=None) -> list[CandidateAssessment]` (every target and verb, with gates and exclusion reasons), `generate_candidates(state)` (eligible, runnable `Candidate` projections) and `assessments_for_target()`. |
 | `selection` | `select_candidates(candidates, *, top, bucket_order, caps)`: one pass when `top` is `None`, otherwise round-robin with per-type caps and one slot per target. |
@@ -775,6 +776,24 @@ picks = select_candidates(
 ```
 
 `ll-next --json` output is validated by the JSON Schema shipped at `little_loops/next_arena/output-schema.json`. Each recommendation has a complete action identity (`action_key`, `action_fingerprint`, `action_spec`, `display_command`, `bucket_rank`); the `--explain` assessment definition allows those fields to be `null` for an excluded target.
+
+### little_loops.next_arena.history
+
+```python
+read_history_snapshot(
+    target: HistoryTarget, *, as_of: datetime, requests: Sequence[HistoryReadRequest],
+    now: Callable[[], datetime],
+) -> HistorySnapshot
+```
+
+A read-only, fail-soft reader over `history.db`. Callers resolve the target **once** with `resolve_history_target(..., root=project_root)` (only when they have requests), freeze a relative local path to an absolute one at their CLI boundary, and pass the typed target in; the reader never re-resolves it. A relative `LL_HISTORY_DB` stays relative to the invocation's original working directory (unlike `history.db_path` and the default store, which are project-root-relative), so root and subdirectory invocations can select different stores.
+
+- **Requests** are a closed set keyed by kind; at most one per kind (a duplicate raises `ValueError` before anything opens, as do a naive `as_of` and a relative path). An empty list opens nothing. v1 defines `RecentSprintInvocations(project_root, sprint_names)` (kind `sprint_invocations`), which batches all candidate sprint names under one work budget and returns recent `ll-sprint` rows as `CliInvocationRow`; argument, completion and timestamp qualification belong to the consumer, which also applies the `as_of` upper bound (the reader carries it but does not parse timestamps).
+- **Results** are `HistoryReadResult(availability, reason, rows, coverage, diagnostics)` with `availability` of `available`, `partial` or `unavailable`. A remote (libsql/Hrana) target reports `unavailable(remote_unsupported_v1)` before any connection. Missing store or table, an incompatible `cli_events` shape (it must be an ordinary table whose sole primary key is `id INTEGER`), a lock timeout and an expired deadline are `unavailable`, never an exception and never evidence that a sprint "never ran". `HistorySnapshot.read_observed_at` is stamped when the first read establishes the transaction snapshot and is `None` when none did.
+- **Partial** results carry `HistoryReadCoverage` (completed vs. interrupted ID ranges, a visited-rows *upper bound*, returned/skipped counts, argument bytes) and a reason: `deadline`, `row_cap`, `id_span_cap`, `payload_limit` (an `args` value over 64 KiB is never transferred), `malformed_row` (invalid JSON or non-string-array `args`, skipped row by row) or `unscoped_store`. A partial result never proves the latest run; its rows are observed witnesses only.
+- **Ownership.** `cli_events` has no project column, so rows are trusted only when the store's physical path equals `<project_root>/.ll/history.db` (resolved root, literal `.ll/history.db`). A redirected or configured store is `partial(unscoped_store)` with no rows.
+- **Limits.** One read transaction, one shared 1-second `Deadline` and a 250 ms busy timeout. The walk covers at most 50,000 IDs in 200-ID primary-key windows and 2,000 rows (`NOT INDEXED`, so a `(binary, ts)` index is never used). These are not hard wall-time caps: SQLite lock polling, filesystem stalls and JSON decoding are not preempted. The snapshot is consistent in itself but not atomic with the issue/git state, and reflects the database as observed now, not as it was at `as_of`.
+- **Filesystem.** No cache, marker or telemetry file is written and the store is never created or migrated. For a WAL-mode database SQLite itself may create `-wal`/`-shm` coordination files on a read-only open; this is accepted rather than bypassed with `immutable=1`.
 
 ## little_loops.issue_parser
 

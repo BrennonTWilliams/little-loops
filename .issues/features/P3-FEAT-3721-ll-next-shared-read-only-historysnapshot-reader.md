@@ -3,10 +3,11 @@ id: FEAT-3721
 type: FEAT
 title: ll-next shared read-only HistorySnapshot reader
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-04'
 captured_at: '2026-10-04T01:29:51Z'
+completed_at: '2026-10-08T01:10:30Z'
 parent: EPIC-3710
 blocked_by:
 - BUG-3737
@@ -115,20 +116,20 @@ Consumer-owned collector (FEAT-3713/FEAT-3711), using landed `next_arena.state.P
 
 ## Acceptance Criteria
 
-- [ ] Read-only; never creates/migrates the main store or application cache/marker files; a WAL-mode fixture documents SQLite-managed sidecars without main-DB mutation or immutable reads; honors `LL_HISTORY_DB`, root-aware target resolution and typed-target pass-through without cwd re-resolution.
+- [x] Read-only; never creates/migrates the main store or application cache/marker files; a WAL-mode fixture documents SQLite-managed sidecars without main-DB mutation or immutable reads; honors `LL_HISTORY_DB`, root-aware target resolution and typed-target pass-through without cwd re-resolution.
 - [x] BUG-3737 is landed (done 2026-10-05); both backend read-only branches consume `little_loops.sqlite_uri.sqlite_file_uri`.
-- [ ] Reader-level existing/missing special-character path fixtures prove DB identity and no truncated/decoded aliases through the corrected backend. Primitive ordinary/deadline branch tests belong to BUG-3737; no second URI implementation is added.
-- [ ] Per-request availability with tested absent/compatible-old/incompatible/suppressed/locked/remote-unsupported degradation; range/returned-row-budget saturation cannot yield false exact results. Remote rejection performs no network/access/cache operation.
-- [ ] Explicit 250 ms configured SQLite busy timeout, remaining-deadline reclamping, one shared 1-second ENH-3720 deadline, finite visited-row budgets and one consistent read transaction are tested, including expiry between probes/pages and during fetching/decoding, concurrent writers and connection cleanup. Lock tests assert the configured/clamped mechanism, accounting for SQLite polling/rounding overshoot. Default backend behavior is unchanged; documented nonpreemptive limits and cross-source/as-of boundaries remain explicit.
-- [ ] Injected mid-fetch/decode expiry retains only complete pre-expiry rows and reports completed versus interrupted-range coverage truthfully; expiry during opening/metadata prevents subsequent CLI activity statements. A non-deadline SQL/decoder failure discards the CLI request's rows; malformed CLI argument rows instead yield counted partial coverage alongside valid rows. FEAT-3711 owns multi-request deadline/error isolation and strict identity-payload validation when it adds its production request kinds.
-- [ ] Tests assert primary-key query plans and finite primary-key-range visit upper bounds and returned-row counts with both the current unindexed source and a compatible `(binary, ts)` secondary index that otherwise selects a binary search/temporary sort. Maximum-ID/range queries use `NOT INDEXED`; compatible secondary indexes are not rejected. Out-of-order ingestion/timestamps cannot yield false newest evidence. No unbounded full-store scan/sort or index migration.
-- [ ] Same-column lookalike fixtures with no key, TEXT/INT/composite keys, `INTEGER PRIMARY KEY DESC`, `WITHOUT ROWID` and view/virtual-table shapes are rejected before maximum-ID/range queries. Plain and AUTOINCREMENT integer-rowid keys in compatible old/new schemas remain usable. Metadata checks share the transaction/deadline and cannot erase another request's evidence. Loose range-plan assertions establish rowid/integer-primary-key search without a temporary sort, not exact SQLite plan wording.
-- [ ] A multi-megabyte argument fixture proves the guarded SQL projection never transfers/decodes it in full; the returned-row/page caps bound aggregate argument transfer without a new framework. An oversized potentially matching row cannot establish an exact latest-run result. Intentional truncation retains only previously complete witnesses, with cap/coverage provenance; unexpected query/decoder failures and unscoped ownership do not yield trusted scoring evidence.
-- [ ] The snapshot uses the closed request-kind result map; duplicate kinds fail before opening and a single batched sprint request shares its fixed work caps across candidate names. Empty requests open nothing and `read_observed_at` remains `None` until a transaction snapshot exists. Recommendation point queries/readiness, multi-request deadline/error isolation, same-table request isolation and old-ID/schema interoperability tests ship with FEAT-3711, not synthetic future columns/test-only handlers in this slice.
-- [ ] A same-named sprint from a redirected/shared store cannot establish project-local recency: default DB symlink and `.ll`-directory symlink fixtures escaping the canonical project root stay unscoped, while an alias resolving to the direct owned store qualifies. FEAT-3711 can later add project-keyed feedback for that store without trusting its CLI ownership.
-- [ ] Resolver-to-reader integration fixtures call the existing root-aware resolver under root/subdirectory cwd, pin relative `LL_HISTORY_DB`'s cwd-relative exception, and prove the frozen absolute typed target survives a later cwd change without re-resolution. Config/default paths remain root-relative. These are injected API fixtures; actual demand-driven CLI invocation coverage ships with FEAT-3713/FEAT-3711.
-- [ ] Reader/API addition preserves landed core-only CLI modes and package/state imports without history resolution, connections or probes; actual demand-driven CLI consumers remain owned by FEAT-3713/FEAT-3711.
-- [ ] Documented in `API.md`; `python -m pytest scripts/tests/` passes.
+- [x] Reader-level existing/missing special-character path fixtures prove DB identity and no truncated/decoded aliases through the corrected backend. Primitive ordinary/deadline branch tests belong to BUG-3737; no second URI implementation is added.
+- [x] Per-request availability with tested absent/compatible-old/incompatible/suppressed/locked/remote-unsupported degradation; range/returned-row-budget saturation cannot yield false exact results. Remote rejection performs no network/access/cache operation.
+- [x] Explicit 250 ms configured SQLite busy timeout, remaining-deadline reclamping, one shared 1-second ENH-3720 deadline, finite visited-row budgets and one consistent read transaction are tested, including expiry between probes/pages and during fetching/decoding, concurrent writers and connection cleanup. Lock tests assert the configured/clamped mechanism, accounting for SQLite polling/rounding overshoot. Default backend behavior is unchanged; documented nonpreemptive limits and cross-source/as-of boundaries remain explicit.
+- [x] Injected mid-fetch/decode expiry retains only complete pre-expiry rows and reports completed versus interrupted-range coverage truthfully; expiry during opening/metadata prevents subsequent CLI activity statements. A non-deadline SQL/decoder failure discards the CLI request's rows; malformed CLI argument rows instead yield counted partial coverage alongside valid rows. FEAT-3711 owns multi-request deadline/error isolation and strict identity-payload validation when it adds its production request kinds.
+- [x] Tests assert primary-key query plans and finite primary-key-range visit upper bounds and returned-row counts with both the current unindexed source and a compatible `(binary, ts)` secondary index that otherwise selects a binary search/temporary sort. Maximum-ID/range queries use `NOT INDEXED`; compatible secondary indexes are not rejected. Out-of-order ingestion/timestamps cannot yield false newest evidence. No unbounded full-store scan/sort or index migration.
+- [x] Same-column lookalike fixtures with no key, TEXT/INT/composite keys, `INTEGER PRIMARY KEY DESC`, `WITHOUT ROWID` and view/virtual-table shapes are rejected before maximum-ID/range queries. Plain and AUTOINCREMENT integer-rowid keys in compatible old/new schemas remain usable. Metadata checks share the transaction/deadline and cannot erase another request's evidence. Loose range-plan assertions establish rowid/integer-primary-key search without a temporary sort, not exact SQLite plan wording.
+- [x] A multi-megabyte argument fixture proves the guarded SQL projection never transfers/decodes it in full; the returned-row/page caps bound aggregate argument transfer without a new framework. An oversized potentially matching row cannot establish an exact latest-run result. Intentional truncation retains only previously complete witnesses, with cap/coverage provenance; unexpected query/decoder failures and unscoped ownership do not yield trusted scoring evidence.
+- [x] The snapshot uses the closed request-kind result map; duplicate kinds fail before opening and a single batched sprint request shares its fixed work caps across candidate names. Empty requests open nothing and `read_observed_at` remains `None` until a transaction snapshot exists. Recommendation point queries/readiness, multi-request deadline/error isolation, same-table request isolation and old-ID/schema interoperability tests ship with FEAT-3711, not synthetic future columns/test-only handlers in this slice.
+- [x] A same-named sprint from a redirected/shared store cannot establish project-local recency: default DB symlink and `.ll`-directory symlink fixtures escaping the canonical project root stay unscoped, while an alias resolving to the direct owned store qualifies. FEAT-3711 can later add project-keyed feedback for that store without trusting its CLI ownership.
+- [x] Resolver-to-reader integration fixtures call the existing root-aware resolver under root/subdirectory cwd, pin relative `LL_HISTORY_DB`'s cwd-relative exception, and prove the frozen absolute typed target survives a later cwd change without re-resolution. Config/default paths remain root-relative. These are injected API fixtures; actual demand-driven CLI invocation coverage ships with FEAT-3713/FEAT-3711.
+- [x] Reader/API addition preserves landed core-only CLI modes and package/state imports without history resolution, connections or probes; actual demand-driven CLI consumers remain owned by FEAT-3713/FEAT-3711.
+- [x] Documented in `API.md`; `python -m pytest scripts/tests/` passes.
 
 ## Impact
 
@@ -165,8 +166,18 @@ A ready sprint can be recommended while its recent history is partial or unavail
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-08T01:10:30 - `2284b66b-e7f2-476a-a7c5-8aa9753727ab.jsonl`
 - `/ll:confidence-check` - 2026-10-08T00:50:34 - `73ebc884-e68a-40d3-b4e7-6385a1865b79.jsonl`
 - `/ll:ready-issue` - 2026-10-08T00:45:25 - `54533f29-9cc9-44eb-81ce-f0474be499a0.jsonl`
+
+## Resolution
+
+**Implemented** 2026-10-07 (`/ll:manage-issue`).
+
+- `scripts/little_loops/next_arena/history.py`: `read_history_snapshot()` with `RecentSprintInvocations`, `CliInvocationRow`, `HistoryReadCoverage`, `HistoryReadResult`, `HistorySnapshot`. Single read transaction, one shared 1 s `Deadline`, 250 ms busy timeout, `NOT INDEXED` primary-key window walk (50,000-ID span / 200-ID windows / 2,000 rows), 64 KiB guarded `args` projection, metadata-based source-shape check, physical-path ownership proof.
+- `scripts/tests/test_feat3721_history_snapshot.py` (60 tests) and `docs/reference/API.md`.
+- Core (`state`, `cli/next`) stays history-free; verified by a subprocess import test.
+- Full suite: 30486 passed; the 1 failure (`test_next_loop_golden` float rounding) and 8 `test_libsql_integration` live-endpoint errors reproduce on a clean checkout and are unrelated.
 
 ## Status
 
