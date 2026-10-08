@@ -904,7 +904,9 @@ def _assess_verb(
 
         return assess_run_loops(state, settings=settings)
     if verb == "run-sprint":
-        return []  # FEAT-3713 step 3 wires assess_run_sprints; None sprint domain = uncollected
+        from little_loops.next_arena.sprint_candidates import assess_run_sprints
+
+        return assess_run_sprints(state, settings=settings)
     if verb == "capture-issues":
         from little_loops.next_arena.scan_candidates import assess_capture_scope
 

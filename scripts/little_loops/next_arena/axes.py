@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from types import MappingProxyType
@@ -62,6 +62,10 @@ __all__ = [
     "parse_utc_datetime",
     "priority_axis",
     "readiness_gap_axis",
+    "sprint_priority_axis",
+    "sprint_ready_share_axis",
+    "sprint_since_last_run_axis",
+    "sprint_minimum_evidence_met",
     "staleness_axis",
     "validate_score",
     "waiver_true",
@@ -712,6 +716,68 @@ def compute_loop_axes(
         "recency": loop_recency_axis(latest_start, as_of),
         "success": loop_success_axis(completed, terminal),
     }
+
+
+# ------------------------------------------------------------------------------- sprint
+
+SPRINT_RECENCY_FULL_DAYS = 30.0
+
+
+def sprint_ready_share_axis(ready: int, remaining: int) -> AxisScore:
+    """``x = ready / remaining`` of the sprint's remaining members -> ``lerp(0.4, 1, x)``.
+
+    *ready* members pass every implementation gate now (dependency gates included, i.e. the
+    runnable first wave); this measures satisfied dependency gates, not concurrency or file
+    contention. No remaining member is missing (never a divide by zero).
+    """
+    curve = "lerp(0.4, 1, ready_members / remaining_members)"
+    source = "sprint_definition"
+    if remaining <= 0:
+        return axis_missing(curve, "no_remaining_members", source=source)
+    share = ready / remaining
+    raw = {"ready": ready, "remaining": remaining, "share": share}
+    return _present(curve, lerp(READY_SHARE_LO, share), raw=raw, source=source)
+
+
+def sprint_priority_axis(member_axes: Sequence[AxisScore]) -> AxisScore:
+    """Mean of the members' **already bounded** priority scores (``[0.2, 1]``); no re-mapping.
+
+    A single missing/invalid member priority leaves the axis missing rather than averaging a
+    selectively known subset or inventing a priority.
+    """
+    curve = "mean(member priority scores)"
+    source = "sprint_members"
+    if not member_axes:
+        return axis_missing(curve, "no_remaining_members", source=source)
+    scores = [item.score for item in member_axes]
+    if any(score is None for score in scores):
+        return axis_missing(curve, "member_priority_missing_or_invalid", source=source)
+    values = [float(score) for score in scores if score is not None]
+    mean = sum(values) / len(values)
+    return _present(curve, mean, raw={"members": len(values), "mean": mean}, source=source)
+
+
+def sprint_since_last_run_axis(
+    witness_age_days: float | None, *, raw: Any, missing_reason: str | None
+) -> AxisScore:
+    """``x = min(1, witness_age_days / 30)`` -> ``lerp(0.2, 1, x)`` from a qualified witness.
+
+    *witness_age_days* is the age of the newest qualified **ended** invocation observed in the
+    bounded read (an upper bound on the true latest-run age when the walk was incomplete, so
+    the score can be optimistic). ``None`` is missing with *missing_reason*; *raw* carries the
+    witness/coverage disclosure either way.
+    """
+    curve = "lerp(0.2, 1, min(1, witness_age_days / 30))"
+    source = "cli_events"
+    if witness_age_days is None or not math.isfinite(witness_age_days):
+        return axis_missing(curve, missing_reason or "no_qualified_witness", raw=raw, source=source)
+    x = min(1.0, max(0.0, witness_age_days) / SPRINT_RECENCY_FULL_DAYS)
+    return _present(curve, lerp(SINCE_LAST_RUN_LO, x), raw=raw, source=source)
+
+
+def sprint_minimum_evidence_met(axes: Mapping[str, AxisScore]) -> bool:
+    """Numeric sprint utility needs at least one resolved positive-weight axis."""
+    return any(item.score is not None and item.configured_weight > 0 for item in axes.values())
 
 
 # -------------------------------------------------------------------------- aggregation

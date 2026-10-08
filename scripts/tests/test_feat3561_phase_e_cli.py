@@ -510,4 +510,9 @@ def test_module_imports_no_history_helpers() -> None:
         "little_loops.next_arena.history",
         "read_history_snapshot",
         "freeze_history_target",
+        # FEAT-3713: the sprint-recency request is built and sent at this boundary only
+        "RecentSprintInvocations",
+        "HistoryReadResult",
+        "HistorySnapshot",
+        "sprint_history_names",
     }, history_imports

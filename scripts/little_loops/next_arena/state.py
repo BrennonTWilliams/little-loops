@@ -62,6 +62,7 @@ from little_loops.session_log import command_counts_in_body, commands_in_body, s
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.next_arena.history import HistorySnapshot
     from little_loops.next_arena.loop_state import (
         LoopContextInputs,
         LoopDefinitionRecord,
@@ -72,6 +73,11 @@ if TYPE_CHECKING:
     from little_loops.next_arena.registry import ArenaSettings
     from little_loops.next_arena.scan_activity import ScanActivity
     from little_loops.next_arena.scan_state import ScanDomain, ScanScope
+    from little_loops.next_arena.sprint_state import (
+        SprintDefinition,
+        SprintDomain,
+        SprintStateEvidence,
+    )
 
 __all__ = [
     "DEFAULT_LEVERAGE_CAP",
@@ -637,6 +643,12 @@ class ProjectState:
     scan_scope: ScanScope | None = None
     scan_activity: ScanActivity | None = None
     scan_diagnostics: tuple[Diagnostic, ...] = ()
+    #: Sprint domain (FEAT-3713). ``None`` means "not collected"; ``sprint_history`` is filled by
+    #: the CLI (``dataclasses.replace``) once sprint discovery supplies the candidate names.
+    sprint_definitions: tuple[SprintDefinition, ...] | None = None
+    sprint_state: SprintStateEvidence | None = None
+    sprint_history: HistorySnapshot | None = None
+    sprint_diagnostics: tuple[Diagnostic, ...] = ()
     _by_path: Mapping[str, SourceRecord] = field(repr=False, compare=False, default_factory=dict)
 
     def record_for_path(self, rel_path: str) -> SourceRecord | None:
@@ -660,6 +672,7 @@ def build_project_state(
     counter: OpCounter | None = None,
     loop_domain: LoopDomain | None = None,
     scan_domain: ScanDomain | None = None,
+    sprint_domain: SprintDomain | None = None,
 ) -> ProjectState:
     """Assemble a :class:`ProjectState` from captured records and evidence (pure).
 
@@ -693,6 +706,9 @@ def build_project_state(
         scan_scope=scan_domain.scope if scan_domain is not None else None,
         scan_activity=scan_domain.activity if scan_domain is not None else None,
         scan_diagnostics=scan_domain.diagnostics if scan_domain is not None else (),
+        sprint_definitions=sprint_domain.definitions if sprint_domain is not None else None,
+        sprint_state=sprint_domain.state if sprint_domain is not None else None,
+        sprint_diagnostics=sprint_domain.diagnostics if sprint_domain is not None else (),
         _by_path=MappingProxyType({r.rel_path: r for r in ordered}),
     )
 
@@ -712,6 +728,7 @@ def collect_project_state(
     config: BRConfig | None = None,
     include_loops: bool = False,
     include_scan: bool = False,
+    include_sprints: bool = False,
     settings: ArenaSettings | None = None,
 ) -> ProjectState:
     """Capture a :class:`ProjectState` for an already-resolved *project_root*.
@@ -729,6 +746,10 @@ def collect_project_state(
     plus, when the scope is usable, at most two git subprocesses); callers pass it only when
     that verb is in scope, so every other mode performs zero git calls. *settings* supplies the
     activity threshold/lookback and defaults to the config's resolved arena settings.
+
+    With *include_sprints* the sprint definitions (parsed read-only from the effective sprints
+    directory, never creating it) and the executor state file are captured; the sprint history
+    snapshot is attached separately by the CLI so this function never touches the history store.
     """
     as_of_utc = _normalize_as_of(as_of)
     root = project_root.resolve()
@@ -789,6 +810,11 @@ def collect_project_state(
             as_of=as_of_utc,
             settings=settings if settings is not None else config.next.resolve_arena_settings(),
         )
+    sprint_domain: SprintDomain | None = None
+    if include_sprints:
+        from little_loops.next_arena.sprint_state import collect_sprint_domain
+
+        sprint_domain = collect_sprint_domain(root, config=config)
     return build_project_state(
         records,
         project_root=root,
@@ -799,6 +825,7 @@ def collect_project_state(
         config_errors=config_errors,
         loop_domain=loop_domain,
         scan_domain=scan_domain,
+        sprint_domain=sprint_domain,
     )
 
 

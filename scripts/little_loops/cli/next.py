@@ -159,6 +159,78 @@ def _scan_in_scope(args: argparse.Namespace) -> bool:
     return not args.types or any(t in scan for t in args.types)
 
 
+def _sprints_in_scope(args: argparse.Namespace) -> bool:
+    """True when the sprint verb is in scope (definitions and history are collected only then)."""
+    from little_loops.next_arena.registry import sprint_verbs
+
+    sprint = set(sprint_verbs())
+    if args.explain is not None:
+        return args.explain[0] in sprint
+    return not args.types or any(t in sprint for t in args.types)
+
+
+def _attach_sprint_history(state: Any, root: Path) -> tuple[Any, Any]:
+    """Batch every candidate sprint name into one history request; ``(state, frozen target)``.
+
+    Runs only when valid sprint definitions exist. The original-cwd-relative history target is
+    frozen once here (independently of the recording gate) and returned so shown-offer recording
+    reuses it; a freeze or read failure makes sprint history *unavailable* (typed, per request)
+    without changing the recommendation outcome.
+    """
+    from dataclasses import replace
+
+    from little_loops.next_arena.history import (
+        HistoryReadResult,
+        HistorySnapshot,
+        RecentSprintInvocations,
+        read_history_snapshot,
+    )
+    from little_loops.next_arena.inputs import Diagnostic
+    from little_loops.next_arena.recording import freeze_history_target
+    from little_loops.next_arena.sprint_state import sprint_history_names
+
+    names = sprint_history_names(state.sprint_definitions)
+    if not names:
+        return state, None
+
+    def unavailable(reason: str, detail: str) -> Any:
+        from types import MappingProxyType
+
+        result = HistoryReadResult(
+            "unavailable",
+            reason,
+            diagnostics=(
+                Diagnostic(
+                    "history_unavailable",
+                    f"history sprint_invocations read unavailable: {reason} ({detail})",
+                    (),
+                    "sprint_invocations",
+                ),
+            ),
+        )
+        return HistorySnapshot(
+            MappingProxyType({"sprint_invocations": result}),
+            result.diagnostics,
+            state.as_of,
+            None,
+        )
+
+    try:
+        target, _provenance = freeze_history_target(root)
+    except Exception as exc:  # sprint history unavailable; recording re-evaluates its own gate
+        return replace(state, sprint_history=unavailable("target_unresolved", str(exc))), None
+    try:
+        snapshot = read_history_snapshot(
+            target,
+            as_of=state.as_of,
+            requests=[RecentSprintInvocations(project_root=root, sprint_names=names)],
+            now=_utc_now,
+        )
+    except Exception as exc:  # defensive: the reader reports storage trouble per request
+        return replace(state, sprint_history=unavailable("read_failed", str(exc))), target
+    return replace(state, sprint_history=snapshot), target
+
+
 def _fail(message: str) -> int:
     print(f"ll-next: {message}", file=sys.stderr)
     return _EXIT_USAGE
@@ -328,7 +400,12 @@ def _main_feedback(argv: list[str]) -> int:
 
 
 def _record_offers(
-    config: Any, root: Path, args: argparse.Namespace, selected: Any, as_of: datetime
+    config: Any,
+    root: Path,
+    args: argparse.Namespace,
+    selected: Any,
+    as_of: datetime,
+    frozen_target: Any = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Gate, then atomically record the shown rows; never changes the recommendations or exit."""
     from little_loops.next_arena.recording import (
@@ -347,7 +424,9 @@ def _record_offers(
     if reason is not None:
         return RecordingStatus("disabled", reason).to_dict(), []
     try:
-        target, _provenance = freeze_history_target(root)
+        target = frozen_target
+        if target is None:
+            target, _provenance = freeze_history_target(root)
         result = record_shown(
             selected,
             target=target,
@@ -454,13 +533,15 @@ def main_next() -> int:
         config=config,
         include_loops=_loops_in_scope(args),
         include_scan=_scan_in_scope(args),
+        include_sprints=_sprints_in_scope(args),
         settings=settings,
     )
     if state.config_errors:
         return _fail("invalid configuration: " + "; ".join(state.config_errors))
 
+    state, frozen_history_target = _attach_sprint_history(state, root)
     assessments = assess_candidates(state, settings=settings)
-    state_diagnostics = (*state.diagnostics, *state.loop_diagnostics)
+    state_diagnostics = (*state.diagnostics, *state.loop_diagnostics, *state.sprint_diagnostics)
 
     if args.explain is not None:
         verb, target = args.explain
@@ -517,7 +598,7 @@ def main_next() -> int:
     )
     diagnostics = collect_diagnostics(state_diagnostics, assessments, order)
     recording, rec_ids = _record_offers(
-        config, root, args, selected, state.as_of
+        config, root, args, selected, state.as_of, frozen_history_target
     )  # before rendering: IDs are exposed only for rows actually saved
     if args.json:
         envelope = build_envelope(

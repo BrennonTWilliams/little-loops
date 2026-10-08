@@ -27,6 +27,8 @@ from little_loops.next_arena.axes import (
     outcome_axis,
     priority_axis,
     readiness_gap_axis,
+    sprint_ready_share_axis,
+    sprint_since_last_run_axis,
     staleness_axis,
 )
 from little_loops.next_arena.graph import Leverage
@@ -132,9 +134,12 @@ def _extremes() -> dict[str, tuple[AxisScore, AxisScore]]:
         ),
         "success": (loop_success_axis(0, 5), loop_success_axis(5, 5)),
         # run-sprint (FEAT-3713): ready share 0 -> 0.4 floor, 1 -> 1.0; sprint recency age 0 ->
-        # 0.2 floor, >= 30 days -> 1.0 (curves built from the documented lerp bounds).
-        "ready_share": (_present(lerp(0.4, 0.0)), _present(lerp(0.4, 1.0))),
-        "since_last_run": (_present(lerp(0.2, 0.0)), _present(lerp(0.2, 1.0))),
+        # 0.2 floor, >= 30 days -> 1.0.
+        "ready_share": (sprint_ready_share_axis(0, 4), sprint_ready_share_axis(4, 4)),
+        "since_last_run": (
+            sprint_since_last_run_axis(0.0, raw={}, missing_reason=None),
+            sprint_since_last_run_axis(30.0, raw={}, missing_reason=None),
+        ),
     }
 
 
