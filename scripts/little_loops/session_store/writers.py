@@ -4047,13 +4047,105 @@ def _is_adjacent_record(
     return is_adjacent_record(previous, record.ordinal, record.line_no, usage)
 
 
+_USAGE_SEARCH_BATCH = 500
+
+
+@dataclass
+class UsageSearchScope:
+    """Source anchors whose ``usage`` search evidence needs regeneration (ENH-3747).
+
+    ``anchors`` collects the old and new stored ``source_path`` of every observation a
+    replay inserts or moves; ``full`` selects the whole usage-search population (rebuild).
+    """
+
+    anchors: set[str] = field(default_factory=set)
+    full: bool = False
+
+    def mark(self, *anchors: str | None) -> None:
+        self.anchors.update(a for a in anchors if a)
+
+
+def _usage_search_entry(
+    row_id: int,
+    session_id: Any,
+    channel: Any,
+    model: Any,
+    ts: Any,
+    source_path: Any,
+) -> dict[str, Any] | None:
+    """Search arguments for one committed ``usage_events`` row, or None if not indexed.
+
+    Only transcript-channel observations with stored source attribution are indexed
+    (the transcript writer's population); model, source and timestamp come from the
+    committed row, so fresh, updated and restored evidence render identically.
+    """
+    from little_loops.token_provenance import row_channel
+
+    if (
+        not source_path
+        or row_channel({"channel": channel, "session_id": session_id}) != "transcript"
+    ):
+        return None
+    return {
+        "content": f"{model or ''} usage",
+        "kind": "usage",
+        "ref": str(model or ""),
+        "anchor": source_path,
+        "ts": ts,
+    }
+
+
+def _reconcile_usage_search(conn: sqlite3.Connection, scope: UsageSearchScope) -> int:
+    """Regenerate ``usage`` search evidence for *scope* from committed observations.
+
+    Runs inside the caller's open transaction and never mutates ``usage_events``. Deletes
+    the usage search entries at each scoped anchor (or all of them for ``scope.full``)
+    and re-adds one per eligible observation in id order, in bounded anchor batches.
+    Returns the number of entries written.
+    """
+    written = 0
+    columns = "id, session_id, channel, model, ts, source_path"
+    if scope.full:
+        conn.execute("DELETE FROM search_index WHERE kind = 'usage'")
+        batches: list[tuple[str, tuple[str, ...]]] = [
+            (f"SELECT {columns} FROM usage_events ORDER BY id", ())
+        ]
+    else:
+        anchors = sorted(scope.anchors)
+        batches = []
+        for start in range(0, len(anchors), _USAGE_SEARCH_BATCH):
+            chunk = tuple(anchors[start : start + _USAGE_SEARCH_BATCH])
+            marks = ", ".join("?" for _ in chunk)
+            conn.execute(
+                f"DELETE FROM search_index WHERE kind = 'usage' AND anchor IN ({marks})", chunk
+            )
+            batches.append(
+                (
+                    f"SELECT {columns} FROM usage_events WHERE source_path IN ({marks}) ORDER BY id",
+                    chunk,
+                )
+            )
+    for sql, params in batches:
+        for row in conn.execute(sql, params).fetchall():
+            entry = _usage_search_entry(*row)
+            if entry is not None:
+                _index(conn, **entry)
+                written += 1
+    return written
+
+
 def _write_host_usage_observation(
     conn: sqlite3.Connection,
     replay: UsageReplayRecord,
     observation: UsageObservation,
     windows: list[tuple[str, str, str]],
+    search_scope: UsageSearchScope | None = None,
 ) -> int:
-    """Persist one prepared assistant observation; return one only for a new row."""
+    """Persist one prepared assistant observation; return one only for a new row.
+
+    Search evidence is not written here: moved or inserted source anchors are recorded in
+    *search_scope* for transaction-final reconciliation (:func:`_reconcile_usage_search`).
+    """
     from little_loops.observability.tracing import vendor_for_runner
     from little_loops.pricing import _event_date, estimate_cost_usd
 
@@ -4078,7 +4170,7 @@ def _write_host_usage_observation(
         existing = conn.execute(
             "SELECT id, source_raw_event_id, source_path, model, input_tokens, "
             "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
-            "provenance FROM usage_events WHERE observation_key = ?",
+            "provenance, ts FROM usage_events WHERE observation_key = ?",
             (observation_key,),
         ).fetchone()
         if existing is not None:
@@ -4101,6 +4193,12 @@ def _write_host_usage_observation(
                     observation_key,
                 )
             if newer:
+                if search_scope is not None and (existing[2], existing[3], existing[9]) != (
+                    replay.source_label,
+                    model,
+                    ts,
+                ):
+                    search_scope.mark(existing[2], replay.source_label)
                 conn.execute(
                     "UPDATE usage_events SET ts = ?, model = ?, input_tokens = ?, "
                     "output_tokens = ?, cache_read_input_tokens = ?, "
@@ -4166,18 +4264,18 @@ def _write_host_usage_observation(
             observation_key,
         ),
     )
-    _index(
-        conn,
-        content=f"{model or ''} usage",
-        kind="usage",
-        ref=str(model or ""),
-        anchor=replay.source_label,
-        ts=ts,
-    )
+    if search_scope is not None:
+        search_scope.mark(replay.source_label)
     return 1
 
 
-def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+def _backfill_usage_events(
+    conn: sqlite3.Connection,
+    source: list[Path] | sqlite3.Cursor,
+    *,
+    search_scope: UsageSearchScope | None = None,
+    reindex_all: bool = False,
+) -> int:
     """Seed ``usage_events`` from assistant ``message.usage`` blocks (ENH-2461).
 
     Persists the real LLM token counts the API returned (``input_tokens``,
@@ -4196,10 +4294,17 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     (ENH-2725) — see :func:`_derive_run_id_for_ts`. Rows with no derivable
     ``run_id`` stay ``NULL``, matching the live-writer path's behavior for
     non-loop sessions.
+
+    Usage search evidence (ENH-3747) is regenerated from the committed rows after replay:
+    for the scopes the replay touched, or — with *reindex_all* (rebuild) — for the whole
+    population. A caller passing *search_scope* accumulates scopes across several calls and
+    reconciles once itself.
     """
     from little_loops.pricing import _event_date, estimate_cost_usd
 
     count = 0
+    deferred = search_scope is not None
+    scope = search_scope if search_scope is not None else UsageSearchScope()
     windows = _load_loop_run_windows(conn)
     from little_loops.observability.tracing import vendor_for_runner
 
@@ -4320,7 +4425,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             ),
         )
         for observation in normalize_host_usage(replay, state=host_state):
-            count += _write_host_usage_observation(conn, replay, observation, windows)
+            count += _write_host_usage_observation(conn, replay, observation, windows, scope)
 
     # A response ID is the strongest observed request identity, but not yet a
     # database uniqueness contract. Collapse identical replayed copies only;
@@ -4446,6 +4551,10 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             ),
         )
         count += 1
+    if reindex_all:
+        scope.full = True
+    if reindex_all or not deferred:
+        _reconcile_usage_search(conn, scope)
     return count
 
 

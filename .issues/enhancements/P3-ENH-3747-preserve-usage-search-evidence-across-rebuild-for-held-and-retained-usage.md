@@ -3,10 +3,11 @@ id: ENH-3747
 type: ENH
 title: Preserve usage search evidence across rebuild for held and retained usage
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-10-05'
 captured_at: '2026-10-05T20:27:35Z'
+completed_at: '2026-10-08T20:47:01Z'
 parent: EPIC-3562
 labels:
 - observability
@@ -147,12 +148,24 @@ Reuse committed `usage_events`, `search_index` rows of kind `usage`, logical cha
 
 Out of scope: permission to mutate/preserve usage observations, hold release, parser-refresh observation algorithms, freshness, reader admission, new indexed producer channels or search-identity/schema migrations. ENH-3770 owns future guarded refresh integration and permitted usage mutations; this issue only reconciles search against the observation state committed by its caller.
 
+## Resolution
+
+**Implemented** | 2026-10-08
+
+- `writers.py`: `_usage_search_entry` renders one `(content, kind, ref, anchor, ts)` entry from a committed `usage_events` row (eligibility: `row_channel == "transcript"` plus non-empty `source_path`); `UsageSearchScope` collects old/new anchors; `_reconcile_usage_search` deletes and regenerates usage search for the scoped anchors (or the whole population) in id order, in bounded batches, inside the caller's transaction. `_write_host_usage_observation` no longer indexes inline; inserts and same-ID source/model/timestamp updates mark their scopes. `_backfill_usage_events` gained `search_scope=` (deferred, caller reconciles) and `reindex_all=` (rebuild).
+- `lifecycle.py`: `rebuild` passes `reindex_all=True` through its existing (fingerprint-excluded) usage call. Incremental catch-up accumulates Codex sources and held append skips into one scope and reconciles once before publishing the checkpoint; the per-source blanket search delete is gone. No-work and unusable-checkpoint returns remain untouched.
+- No schema change, `REBUILD_DERIVE_VERSION` / `_USAGE_DERIVE_VERSION` unchanged, fingerprint gate green.
+- Tests: `scripts/tests/test_enh3747_usage_search_reconcile.py` (25).
+- Full suite: only pre-existing, unrelated failures remain (`test_next_loop_golden` float rounding; `test_libsql_integration` live-endpoint errors) and 2 ruff findings in `tests/spike/bug3762_*`.
+
 ## Status
 
-**Open** | Created: 2026-10-05 | Priority: P3
+**Completed** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-10-08T20:47:01 - `47715e04-be7b-4db5-b59b-c0eb2159e1cb.jsonl`
+- `/ll:ready-issue` - 2026-10-08T20:34:18 - `9863dd16-8fe5-4773-bd13-c58a56df5bde.jsonl`
 - `/ll:confidence-check` - 2026-10-08T20:32:28 - `432fb4c5-e9d6-4d88-8204-e76c48d15678.jsonl`
 - Pre-implementation review - 2026-10-08 - Proved SQLite model coercion makes exact pre-storage audit search recovery impossible; chose one committed-row renderer with explicit touched-scope legacy normalization and no migration. Added source-only old/new-anchor updates, mixed Codex/transcript collateral deletion, batched reconciliation, final-state global rebuild and exact NULL/empty logical channel controls. Kept no-work/unusable-checkpoint paths untouched while successful touched-source/held-append skips repair search. Required ID-inclusive helper snapshots, no-source-access/no-pricing checks, zero-count repair and rollback after reconciliation. Synchronized ENH-3770's per-phase refresh/raw-link cross-anchor handoff and EPIC-3562's indexed-transcript scope. `/ll:advise` with Opus (confidence 0.80) supported committed rendering, anchor regeneration and the existing fingerprint-excluded rebuild call; a rendered-search migration/tuple-targeted alternative and its suggestion to leave successful held-source append scopes unrepaired were not adopted. Existing relevant regression baseline: 176 passed. No implementation, status change or numeric rescoring.
 - Pre-implementation unblocked-child review - 2026-10-07 - Corrected the landed ENH-3745 checkpoint/catch-up baseline and ENH-3770 ownership. Verified only the transcript host writer indexes usage; live and Codex rollout writers do not. Required reconstruction when earlier rebuilds already removed search rows, same-ID model/timestamp reconciliation, stable equal-tuple multiplicity, historical anchors without source access and non-usage fingerprint preservation. No implementation or readiness score claimed.

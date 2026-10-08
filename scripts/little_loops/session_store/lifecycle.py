@@ -85,6 +85,7 @@ from little_loops.session_store.usage_source_tracking import (
 from little_loops.session_store.writers import (
     SkillReplaySurvivor,
     UsageReplayHolds,
+    UsageSearchScope,
     _backfill_assistant_messages,
     _backfill_commit_events,
     _backfill_issues_and_snapshots,
@@ -102,6 +103,7 @@ from little_loops.session_store.writers import (
     _now,
     _pack_payload,
     _parse_aware_ts,
+    _reconcile_usage_search,
     host_layout_for,
     load_usage_replay_holds,
     mine_corrections_from_messages,
@@ -1703,6 +1705,10 @@ def _derive_usage_incremental_disposition(conn: sqlite3.Connection) -> _DeriveDi
         if not holds.holds(row[0], "codex", "rollout")
     ]
     count = 0
+    # ENH-3747: search evidence is reconciled once, from committed rows, for every source
+    # this catch-up touched — including held append skips and zero-insert sources.
+    search_scope = UsageSearchScope()
+    search_scope.mark(*(held[0] for held in held_skipped), *codex_sources)
     for source in codex_sources:
         # Codex turn state can start before this slice. Reconstruct it from
         # this source's stored prefix; do not rescan the JSONL file.
@@ -1714,9 +1720,10 @@ def _derive_usage_incremental_disposition(conn: sqlite3.Connection) -> _DeriveDi
             "DELETE FROM usage_events WHERE channel = 'rollout' AND source_path = ?",
             (source,),
         )
-        conn.execute("DELETE FROM search_index WHERE kind = 'usage' AND anchor = ?", (source,))
         count += _backfill_usage_events(
-            conn, _usage_raw_cursor(conn, "WHERE source_path = ?", (source,))
+            conn,
+            _usage_raw_cursor(conn, "WHERE source_path = ?", (source,)),
+            search_scope=search_scope,
         )
     if codex_sources:
         placeholders = ", ".join("?" for _ in codex_sources)
@@ -1725,7 +1732,10 @@ def _derive_usage_incremental_disposition(conn: sqlite3.Connection) -> _DeriveDi
     else:
         where = "WHERE id > ?"
         params = (checkpoint,)
-    count += _backfill_usage_events(conn, _usage_raw_cursor(conn, where, params))
+    count += _backfill_usage_events(
+        conn, _usage_raw_cursor(conn, where, params), search_scope=search_scope
+    )
+    _reconcile_usage_search(conn, search_scope)
     _publish_usage_derive_checkpoint(conn, prior_floor=checkpoint, scanned_bound=max_id)
     return _DeriveDisposition("derived", count, scanned_bound=max_id, held_skipped=held_skipped)
 
@@ -2671,7 +2681,9 @@ def rebuild(
         counts["skill_events"] = _backfill_skill_events(
             conn, _raw_events_cursor(), skip_live=live_skills
         )
-        counts["usage_events"] = _backfill_usage_events(conn, _raw_events_cursor(usage_order=True))
+        counts["usage_events"] = _backfill_usage_events(
+            conn, _raw_events_cursor(usage_order=True), reindex_all=True
+        )
         counts["corrections"] = mine_corrections_from_messages(conn, config)
         counts["summaries"] = _compact_sessions(conn, config, max_sessions=max_sessions, db=db)
         # Non-destructive UPDATE-only enrichment — deliberately not part of
