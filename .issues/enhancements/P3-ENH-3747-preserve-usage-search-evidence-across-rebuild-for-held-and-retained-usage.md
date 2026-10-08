@@ -118,7 +118,7 @@ Reuse committed `usage_events`, `search_index` rows of kind `usage`, logical cha
 ### Dependent Files
 
 - Existing search readers and schema stay unchanged. Stored source attribution is required; a legacy missing source or erased pre-storage model distinction is not recoverable by adding a migration. `token_provenance.row_channel` owns logical compatibility. `scripts/little_loops/session_store/usage_refresh.py` is a future ENH-3770 integration site: phase 1 currently commits source-anchor search deletion separately from replay. Its observation deletion by `source_raw_event_id` can also delete a copied observation whose own source anchor differs from the refreshed source, leaving stale search outside `source_keys`. ENH-3770 must capture actual old/new anchors from every affected observation, including raw-link matches, and reconcile each phase before commit. This issue delivers/tests the reusable deletion/replacement seam without changing refresh's observation algorithm.
-- ENH-3744's proof/prune veto and ENH-3745's checkpoint/source-state are done. ENH-3770 owns guarded reconciliation and hold release/replacement; it remains blocked on this issue. Implement this restoration first for *every surviving committed observation from an indexed producer path that replay does not re-derive*, including future preserved unheld transcript rows. Current Codex/live channels stay unindexed. ENH-3770's implementation is a regression scenario, not a prerequisite here. This issue independently gates epic closure.
+- ENH-3744's proof/prune veto and ENH-3745's checkpoint/source-state are done. ENH-3770 owns guarded reconciliation and hold release/replacement; this issue's `done` status satisfies that prerequisite. Reuse the delivered `UsageSearchScope`, `_usage_search_entry`, `_reconcile_usage_search` and `_backfill_usage_events(search_scope=..., reindex_all=...)` seams for *every surviving committed observation from an indexed producer path that replay does not re-derive*, including future preserved unheld transcript rows. Current Codex/live channels stay unindexed. ENH-3770's implementation is a regression scenario, not a prerequisite here. This issue independently gates epic closure.
 - BUG-3761 and BUG-3766 are done: `lifecycle.rebuild` restores surviving tools/corrections and `_reindex_skill_survivors` restores surviving skills after the blanket search-kind deletion, suppressing their replay twins. Keep all three mechanisms and kinds independent. `REBUILD_DERIVE_VERSION` is already `bug3766-v1`; usage restoration must retain the non-usage fingerprint checked by `scripts/tests/test_enh3678_rebuild_derive_gate.py`, rather than claiming a new generic rebuild-version bump.
 
 ### Tests
@@ -163,6 +163,8 @@ Out of scope: permission to mutate/preserve usage observations, hold release, pa
 **Completed** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
+
+- ENH-3770 dependency/handoff review - 2026-10-08 - Confirmed the delivered renderer and scoped batch reconciliation satisfy its search prerequisite; replaced stale blocked-status prose with the exact landed helper handoff. ENH-3770 retains parser-refresh per-phase integration and the existing search regression suite. Historical verification limitations and the `done` status remain unchanged.
 
 - `/ll:manage-issue` - 2026-10-08T20:47:01 - `47715e04-be7b-4db5-b59b-c0eb2159e1cb.jsonl`
 - `/ll:ready-issue` - 2026-10-08T20:34:18 - `9863dd16-8fe5-4773-bd13-c58a56df5bde.jsonl`
