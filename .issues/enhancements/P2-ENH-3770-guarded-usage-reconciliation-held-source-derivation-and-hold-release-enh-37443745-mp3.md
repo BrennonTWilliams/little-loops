@@ -233,10 +233,14 @@ _Added by `/ll:confidence-check` on 2026-10-08_
 - minor open latitude: recovery-reader signature is illustrative; `_USAGE_DERIVE_VERSION` bump to be re-justified at implementation
 
 ### Risk Factor Delta
-- Baseline: none recorded
+- Added: none
+- No longer reported: none
+- Retained: `blocked-by-enh-3747-open`, `broad-change-sites`, `deep-reconciliation-rewiring`, `wide-writer-seam-blast-radius`
+- Changed fields: none
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-10-08T20:16:43 - `44a0d2a9-4b89-482f-bb49-7a0ad7c6c1ba.jsonl`
 - Pre-implementation review - 2026-10-08 - Corrected `max_sessions` cache-coverage semantics and synchronized the ENH-3745 handoff; required phase-1 acquisition-head/authority creation for untracked sources and advancement for appended recovery. Added explicit whole-retained-population checkpoint repair versus metadata-preserving source recovery, rawless direct-helper gating and pre-pricing cross-source conflicts including equal-count contradictory model context and first-derive different-thread collisions. Corrected search producer/reset claims and the stripped-usage fixture location. `/ll:advise` with Opus (confidence 0.75) supported coverage-based acknowledgement and explicit checkpoint publication; its smaller deferral option was declined because recovery is already in scope. Kept older-version obligations fail-closed and summary compaction outside refresh cache acknowledgement. Readiness remains blocked on ENH-3747; no implementation or numeric rescoring. Relevant existing suites/prose gate: 157 passed.
 - `/ll:confidence-check` - 2026-10-08T19:59:54 - `68f86f32-26f3-4a59-825f-0a51741d037e.jsonl`
 - Pre-implementation landed-handoff review - 2026-10-07 - Corrected the actual disposition owner and non-destructive invalid-checkpoint baseline; ENH-3747 remains the only open prerequisite. Added shared target factoring, preservation/component-aware invalidation, typed acquisition-authority/revision reads, transaction-local CAS revision chaining, retained post-write completion publication and inverse whole-held-population inventory. Required rawless/unmatched/mixed-channel and stale acquisition controls. Opus confidence 0.78 supported reader independence and production witness interoperability; automatic witness certification from singleton keys/equal values was not adopted, so unwitnessed unchanged historical rows explicitly remain unknown. Format/design/dependency checks and relevant existing suites/prose gate: 330 passed. No implementation or readiness score.
