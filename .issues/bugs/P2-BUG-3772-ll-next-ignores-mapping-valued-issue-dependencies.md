@@ -12,12 +12,22 @@ relates_to:
 - FEAT-3713
 - FEAT-3561
 confidence_score: 95
-outcome_confidence: 86
-score_complexity: 18
+outcome_confidence: 82
+score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
-risk_factors: []
+risk_factors:
+- id: identity-terminal-contract
+  domain: outcome
+  criterion: complexity
+  description: Graph protocol and terminal/ambiguity contract change spans state,
+    graph and candidates with a shared live-source predicate
+- id: raw-rendering-unpinned
+  domain: outcome
+  criterion: ambiguity
+  description: Deterministic escaped raw rendering and anonymous-source diagnostic
+    subject are described but not pinned to an exact format
 ---
 
 # BUG-3772: ll-next ignores mapping-valued issue dependencies
@@ -193,7 +203,21 @@ Pre-implementation review on `main` at `0d111015e` (2026-10-08): disposable prob
 
 **Open** | Created: 2026-10-08 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-10-08_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Risk Factor Delta
+- Added: `identity-terminal-contract`, `raw-rendering-unpinned`
+- No longer reported: none
+- Retained: none
+- Changed fields: none
+
 ## Session Log
+- `/ll:confidence-check` - 2026-10-08T16:05:17 - `658f5ae0-b69c-4a05-9e63-5ba97e164dc7.jsonl`
 - `/ll:advise` - 2026-10-08T15:59:38 - `27057456-16a6-48c8-bc88-5010ad985f61.jsonl`
 - `/ll:ready-issue` - 2026-10-08T15:59:38 - `27057456-16a6-48c8-bc88-5010ad985f61.jsonl`
 - `/ll:advise` (opus, 0.80) + manual pre-implementation review - 2026-10-08 - moved evidence into the graph (no blockers/ProjectState change), added terminal-source and body-fallback-suppression rules, resolved all three risk factors
