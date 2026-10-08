@@ -695,7 +695,24 @@ def _walk_codex_source(pairs: list[tuple[int, Any]]) -> list[_Cand]:
                 if isinstance(native_thread, str) and native_thread != thread:
                     cand.proof = _proof(cand, "unprovable", "identity_contradiction")
             cands.append(cand)
+    _finalize_codex_targets(cands, state)
     return cands
+
+
+def _finalize_codex_targets(cands: list[_Cand], state: _CodexState) -> None:
+    """Add the closure each request actually consumed once the whole native span is read.
+
+    A request's value record can precede its ``task_complete``; qualification consumes that
+    later closure (the writer decides ``closed`` after the whole source), so it belongs to
+    the request's dependency set. Only the request's own turn closure is added -- never
+    another turn's -- and the captured value supplier and model are left untouched.
+    """
+    for cand in cands:
+        if cand.proof is not None or cand.turn_id is None:
+            continue
+        closure = state.complete_ids.get(cand.turn_id)
+        if closure is not None and closure not in cand.context:
+            cand.context.append(closure)
 
 
 def _codex_may_carry_usage(record: Any) -> bool:
@@ -770,6 +787,15 @@ def _codex_obs_matches(obs: Mapping[str, Any], cand: _Cand) -> bool:
     return not (model is not None and cand.model is not None and model != cand.model)
 
 
+def models_compatible(first: Any, second: Any) -> bool:
+    """Whether two consumed models can belong to one request (missing context is compatible).
+
+    Equal counts with two *known, different* models are not an identical copy; an absent
+    model alone is never evidence of a different request (ENH-3770).
+    """
+    return first is None or second is None or first == second
+
+
 def _evaluate_codex(cands: list[_Cand], index: _Index) -> None:
     # Response-copy dedup follows the writer: first copy per (host, response) wins;
     # identical thread/turn/usage copies coalesce, conflicting copies stay separate.
@@ -784,6 +810,7 @@ def _evaluate_codex(cands: list[_Cand], index: _Index) -> None:
             earlier.thread_id == cand.thread_id
             and earlier.turn_id == cand.turn_id
             and earlier.usage == cand.usage
+            and models_compatible(earlier.model, cand.model)
         ):
             cand.follows = earlier
         else:

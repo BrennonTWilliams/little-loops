@@ -53,12 +53,12 @@ from little_loops.session_store.sessions import (
 from little_loops.session_store.targets import HistoryTarget, LocalTarget
 from little_loops.session_store.usage_proof import (
     RETENTION_LIMIT,
-    inspect_usage_candidates,
     retention_reasons,
 )
 from little_loops.session_store.usage_proof_scope import (
     UsageProofLimit,
     collect_usage_proof_scope,
+    inspect_scope,
 )
 from little_loops.session_store.usage_source_state import (
     REFUSAL_CODES,
@@ -3106,11 +3106,7 @@ def _semantic_veto(
         )
     except UsageProofLimit:
         return {_RETENTION_LIMIT}
-    proofs = [
-        proof
-        for proof in inspect_usage_candidates(scope.records, scope.observations)
-        if proof.source_label == source_path
-    ]
+    proofs = list(inspect_scope(scope))
     reasons = set(retention_reasons(proofs))
     if reasons:
         return reasons

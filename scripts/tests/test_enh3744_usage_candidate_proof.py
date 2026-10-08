@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import builtins
 import copy
+import dataclasses
 import json
 import shutil
 import sqlite3
@@ -553,6 +554,37 @@ class TestPureCodexProof:
         proofs = inspect_usage_candidates(records, [obs])
         assert proofs[0].correspondence == "represented"
 
+    def test_request_frontier_includes_the_actual_forward_closure(self) -> None:
+        records = _codex_records()
+        obs = _codex_obs(1, records[3])
+        (proof, _) = inspect_usage_candidates(records, [obs])
+        assert proof.correspondence == "represented"
+        # header, task start, model context and the *later* task_complete are all consumed.
+        wanted = {records[i].raw_event_id for i in (0, 1, 2, -1)}
+        assert wanted <= set(proof.context_raw_event_ids)
+
+    def test_a_closure_for_another_turn_is_not_borrowed(self) -> None:
+        records = _codex_records()
+        other = dataclasses.replace(
+            records[-1], payload={"type": "task_complete", "turn_id": "other-turn"}
+        )
+        records[-1] = other
+        (proof, _) = inspect_usage_candidates(records, [_codex_obs(1, records[3])])
+        assert other.raw_event_id not in proof.context_raw_event_ids
+
+    def test_absent_closure_adds_no_forward_dependency(self) -> None:
+        records = [r for r in _codex_records() if r.payload.get("type") != "task_complete"]
+        (proof, _) = inspect_usage_candidates(records, [_codex_obs(1, records[3])])
+        assert proof.correspondence == "represented"
+        assert set(proof.context_raw_event_ids) == {records[i].raw_event_id for i in (0, 1, 2, 3)}
+
+    def test_forward_closure_does_not_move_the_value_supplier(self) -> None:
+        records = _codex_records()
+        obs = _codex_obs(1, records[3])
+        (proof, _) = inspect_usage_candidates(records, [obs])
+        assert proof.supplier_sources == (records[3].source_label,)
+        assert proof.supplier_positions == ((records[3].line_no, records[3].ordinal),)
+
     def test_missing_recognition_context_is_not_assumed(self) -> None:
         records = _codex_records()
         obs = _codex_obs(1, records[3], turn_id="other-turn")
@@ -633,6 +665,64 @@ class TestPureCodexProof:
         records[4] = UsageReplayRecord(**{**records[4].__dict__, "ordinal": 3, "line_no": 3})
         proofs = inspect_usage_candidates(records, [_codex_obs(1, records[3])])
         assert {p.reason for p in proofs} == {"native_order_unproven"}
+
+
+class TestCodexModelCompatibility:
+    """ENH-3770: equal counts with proved incompatible models are not an identical copy."""
+
+    @staticmethod
+    def _pair(model_b: str | None) -> tuple[list[UsageReplayRecord], UsageReplayRecord]:
+        first = _codex_records(1, source="/c/a.jsonl")
+        second = _codex_records(100, source="/c/b.jsonl")
+        if model_b is None:
+            second = [r for r in second if r.event_type != "turn_context"]
+        else:
+            second = [
+                dataclasses.replace(r, payload={**r.payload, "model": model_b})
+                if r.event_type == "turn_context"
+                else r
+                for r in second
+            ]
+        value_b = next(r for r in second if r.event_type == "token_usage_record")
+        return [*first, *second], value_b
+
+    def test_incompatible_models_are_not_coalesced(self) -> None:
+        records, value_b = self._pair("gpt-other")
+        first_value = next(r for r in records if r.event_type == "token_usage_record")
+        proofs = inspect_usage_candidates(records, [_codex_obs(1, first_value)])
+        by_raw = {p.raw_event_id: p for p in proofs}
+        assert by_raw[first_value.raw_event_id].correspondence == "represented"
+        copy = by_raw[value_b.raw_event_id]
+        assert (copy.correspondence, copy.reason) == ("missing", "no_exact_link")
+
+    def test_missing_context_alone_is_a_compatible_copy(self) -> None:
+        records, value_b = self._pair(None)
+        first_value = next(r for r in records if r.event_type == "token_usage_record")
+        proofs = inspect_usage_candidates(records, [_codex_obs(1, first_value)])
+        by_raw = {p.raw_event_id: p for p in proofs}
+        assert (
+            by_raw[value_b.raw_event_id].correspondence,
+            by_raw[value_b.raw_event_id].reason,
+        ) == (
+            "represented",
+            "coalesced_copy",
+        )
+
+    def test_identical_models_still_coalesce(self) -> None:
+        records, value_b = self._pair("gpt-x")
+        first_value = next(r for r in records if r.event_type == "token_usage_record")
+        proofs = inspect_usage_candidates(records, [_codex_obs(1, first_value)])
+        by_raw = {p.raw_event_id: p for p in proofs}
+        assert by_raw[value_b.raw_event_id].reason == "coalesced_copy"
+
+    def test_source_order_does_not_change_the_verdict(self) -> None:
+        records, value_b = self._pair("gpt-other")
+        first_value = next(r for r in records if r.event_type == "token_usage_record")
+        swapped = [*records[6:], *records[:6]]
+        proofs = inspect_usage_candidates(swapped, [_codex_obs(1, first_value)])
+        by_raw = {p.raw_event_id: p for p in proofs}
+        assert by_raw[value_b.raw_event_id].correspondence == "missing"
+        assert by_raw[first_value.raw_event_id].correspondence == "represented"
 
 
 class TestRetainedDecodeTotality:
@@ -753,6 +843,124 @@ class TestProofLimits:
             conn.close()
         monkeypatch.setattr(scope_mod, "PROOF_LIMITS", ProofLimits(max_items=20))
         assert {p.correspondence for p in _proofs(db, source)} == {"represented"}
+
+
+class TestPeerContext:
+    """ENH-3770: peers carry their bounded header/model/closure context and consume the budget."""
+
+    @staticmethod
+    def _two_codex_sources(tmp_path: Path) -> tuple[Path, Path, Path]:
+        db, first = _ingest(tmp_path, _CODEX, "codex", "a.jsonl")
+        second = tmp_path / "b.jsonl"
+        shutil.copy(_CODEX, second)
+        backfill_raw_events(db, jsonl_files=[second], host="codex")
+        backfill_usage_incremental(db)
+        return db, first, second
+
+    @staticmethod
+    def _scope(db: Path, source: Path, **kwargs: Any) -> Any:
+        conn = connect(db)
+        try:
+            return scope_mod.collect_usage_proof_scope(conn, str(source), **kwargs)
+        finally:
+            conn.close()
+
+    def test_peer_header_model_and_closure_rows_are_loaded(self, tmp_path: Path) -> None:
+        db, first, second = self._two_codex_sources(tmp_path)
+        scope = self._scope(db, first)
+        peer_types = {
+            row[0]
+            for row in _sql(
+                db,
+                "SELECT event_type FROM raw_events WHERE source_path = ?",
+                (str(second),),
+            )
+        }
+        loaded = {
+            r.event_type
+            for r in scope.records
+            if isinstance(r, UsageReplayRecord) and r.source_label == str(second)
+        }
+        assert {"session_meta", "turn_context", "event_msg", "token_usage_record"} <= peer_types
+        assert loaded == peer_types
+        assert scope.related_raw_event_ids
+
+    def test_claude_peers_need_no_extra_context_rows(self, tmp_path: Path) -> None:
+        db, first = _ingest(tmp_path, _CLAUDE, "claude-code", "a.jsonl")
+        second = tmp_path / "b.jsonl"
+        shutil.copy(_CLAUDE, second)
+        backfill_raw_events(db, jsonl_files=[second], host="claude-code")
+        backfill_usage_incremental(db)
+        scope = self._scope(db, first)
+        assert {
+            r.event_type
+            for r in scope.records
+            if isinstance(r, UsageReplayRecord) and r.source_label == str(second)
+        } <= {"assistant"}
+
+    def test_every_examined_peer_and_context_row_consumes_the_shared_budget(
+        self, tmp_path: Path
+    ) -> None:
+        db, first, _ = self._two_codex_sources(tmp_path)
+        scope = self._scope(db, first)
+        needed = len(scope.records) + len(scope.observations)
+        # Exactly enough budget succeeds; one fewer item withholds the whole scope.
+        self._scope(db, first, limits=ProofLimits(max_items=needed))
+        with pytest.raises(scope_mod.UsageProofLimit):
+            self._scope(db, first, limits=ProofLimits(max_items=needed - 1))
+
+    def test_peer_context_alone_exceeding_the_budget_permits_no_partial_plan(
+        self, tmp_path: Path
+    ) -> None:
+        db, first, _ = self._two_codex_sources(tmp_path)
+        own = _sql(db, "SELECT COUNT(*) FROM raw_events WHERE source_path = ?", (str(first),))[0][0]
+        observations = len(self._scope(db, first).observations)
+        # Own rows + observations + the peer's value rows fit; its context rows do not.
+        with pytest.raises(scope_mod.UsageProofLimit):
+            _proofs(db, first, limits=ProofLimits(max_items=own + observations + 2))
+
+    def test_corrupt_peer_context_leaves_matching_candidates_unprovable(
+        self, tmp_path: Path
+    ) -> None:
+        db, first, second = self._two_codex_sources(tmp_path)
+        _sql(
+            db,
+            "UPDATE raw_events SET raw_line = ? WHERE source_path = ? AND event_type = 'turn_context'",
+            ("{not json", str(second)),
+        )
+        outcomes = _outcomes(_proofs(db, first))
+        assert ("unprovable", "peer_context_unreadable") in outcomes
+        assert ("represented", "native_response") not in outcomes
+
+    def test_corrupt_peer_context_vetoes_prune_of_the_dependent_source(
+        self, tmp_path: Path
+    ) -> None:
+        db, first, second = self._two_codex_sources(tmp_path)
+        _sql(
+            db,
+            "UPDATE raw_events SET raw_line = ? WHERE source_path = ? AND event_type = 'turn_context'",
+            ("{not json", str(second)),
+        )
+        _make_old(db, f"source_path = '{first}'")
+        result = prune(db, config=_CFG, dry_run=True)
+        assert "usage_proof_unprovable" in result["retention_reasons"]
+
+    def test_member_qualified_collection_loads_peer_context_from_its_own_member(
+        self, tmp_path: Path
+    ) -> None:
+        db, first, second = self._two_codex_sources(tmp_path)
+        conn = connect(tmp_path / "empty.db")
+        try:
+            conn.execute("ATTACH DATABASE ? AS member", (str(db),))
+            scope = scope_mod.collect_usage_proof_scope(conn, str(first), schema="member")
+        finally:
+            conn.close()
+        assert any(
+            isinstance(r, UsageReplayRecord)
+            and r.source_label == str(second)
+            and r.event_type == "turn_context"
+            for r in scope.records
+        )
 
 
 class TestPureness:

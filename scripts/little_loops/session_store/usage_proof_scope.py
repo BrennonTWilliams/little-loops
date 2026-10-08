@@ -11,6 +11,7 @@ partial candidate success is ever returned. Prune and read-only consumers share 
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import sqlite3
 import zlib
@@ -71,6 +72,7 @@ class ProofScope:
     records: tuple[UsageReplayRecord | UsageReplayFailure, ...]
     observations: tuple[dict[str, Any], ...]
     related_raw_event_ids: frozenset[int]
+    peer_failures: tuple[UsageReplayFailure, ...] = ()
 
 
 def _row_select(schema: str) -> str:
@@ -268,18 +270,27 @@ def collect_usage_proof_scope(
     )
 
     related: dict[int, UsageReplayRecord] = {}
+    peer_failures: dict[int, UsageReplayFailure] = {}
 
-    def keep(row: tuple[Any, ...]) -> None:
-        if row[11] in own_ids or row[11] in related:
+    def examine(row: tuple[Any, ...], *, context: bool = False) -> None:
+        """Decode one peer or peer-context row; every examined row consumes the budget."""
+        raw_id = row[11]
+        if raw_id in own_ids or raw_id in related or raw_id in peer_failures:
             return
+        budget.item()
         candidate = _record(row, budget)
+        if isinstance(candidate, UsageReplayFailure):
+            # An unreadable peer cannot be ruled out as a conflicting copy: keep it as evidence.
+            peer_failures[raw_id] = candidate
+            return
+        if context:
+            related[raw_id] = candidate
+            return
         key, response = _peer_keys(candidate)
-        if isinstance(candidate, UsageReplayRecord) and (
-            (key is not None and key in claude_keys)
-            or (response is not None and response in response_ids)
+        if (key is not None and key in claude_keys) or (
+            response is not None and response in response_ids
         ):
-            budget.item()
-            related[candidate.raw_event_id] = candidate  # type: ignore[index]
+            related[raw_id] = candidate
 
     for chunk in _chunks(sessions):
         marks = ", ".join("?" for _ in chunk)
@@ -289,7 +300,7 @@ def collect_usage_proof_scope(
             "ORDER BY source_path, COALESCE(ordinal, line_no), line_no, id",
             (source, *chunk, *overlay_params),
         ):
-            keep(tuple(row))
+            examine(tuple(row))
     links = {
         o["source_raw_event_id"]
         for o in observations
@@ -302,14 +313,38 @@ def collect_usage_proof_scope(
         for row in conn.execute(
             f"{row_select} WHERE id IN ({marks}){overlay_sql}", (*chunk, *overlay_params)
         ):
-            keep(tuple(row))
+            examine(tuple(row))
+    # A Codex peer's identity, model and closure live in its header/turn/event rows, not in
+    # the value record: load them (bounded by the same budget) so a copy is compared with
+    # the context it actually consumed. Claude peers are self-contained.
+    peer_sources = sorted(
+        {r.source_label for r in related.values() if r.event_type == "token_usage_record"}
+    )
+    for chunk in _chunks(peer_sources):
+        marks = ", ".join("?" for _ in chunk)
+        for row in conn.execute(
+            f"{row_select} WHERE source_path IN ({marks}) "
+            f"AND event_type IN ('session_meta', 'turn_context', 'event_msg'){overlay_sql}",
+            (*chunk, *overlay_params),
+        ):
+            examine(tuple(row), context=True)
 
-    ordered = [*records, *related.values()]
+    peers = sorted(
+        related.values(),
+        key=lambda r: (
+            r.source_label,
+            r.ordinal if r.ordinal is not None else (r.line_no or 0),
+            r.line_no or 0,
+            r.raw_event_id or 0,
+        ),
+    )
+    ordered = [*records, *peers, *peer_failures.values()]
     return ProofScope(
         source=source,
         records=tuple(ordered),
         observations=tuple(observations),
         related_raw_event_ids=frozenset(related),
+        peer_failures=tuple(peer_failures.values()),
     )
 
 
@@ -363,5 +398,28 @@ def inspect_retained_source(
     scope = collect_usage_proof_scope(
         conn, source, deleted_sources=deleted_sources, cutoff=cutoff, limits=limits, schema=schema
     )
-    proofs = inspect_usage_candidates(scope.records, scope.observations, channel=channel)
-    return tuple(p for p in proofs if p.source_label == source)
+    return inspect_scope(scope, channel=channel)
+
+
+def inspect_scope(
+    scope: ProofScope, *, channel: str | None = None
+) -> tuple[UsageCandidateProof, ...]:
+    """Prove *scope*'s own candidates; an unreadable peer makes keyed candidates unprovable.
+
+    Related rows are context only and are never returned. A peer row that failed to decode
+    could be a conflicting copy of any keyed candidate, so those candidates cannot be
+    proved represented (or missing) while it stays unreadable (ENH-3770).
+    """
+    proofs = [
+        p
+        for p in inspect_usage_candidates(scope.records, scope.observations, channel=channel)
+        if p.source_label == scope.source
+    ]
+    if not scope.peer_failures:
+        return tuple(proofs)
+    return tuple(
+        dataclasses.replace(p, correspondence="unprovable", reason="peer_context_unreadable")
+        if p.native_key is not None and p.correspondence in {"represented", "missing"}
+        else p
+        for p in proofs
+    )

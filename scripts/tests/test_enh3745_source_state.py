@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -58,6 +59,21 @@ def _complete(
         scope=scope,
         boundary=uss.DerivedBoundary(scope, _ACQ, offset, 4, raw_id, "2026-01-01T00:00:00Z"),
     )
+
+
+def _auth_json(**overrides: object) -> str:
+    """A persisted ``OriginalAcquisition`` document for ``/a.jsonl`` generation ``g1``."""
+    fields: dict[str, object] = {
+        "source_path": "/a.jsonl",
+        "generation_id": "g1",
+        "derive_version": _VERSION,
+        "acquisition_version": _ACQ,
+        "offset": 1,
+        "line_no": 4,
+        "source_revision": 1,
+    }
+    fields.update(overrides)
+    return json.dumps(fields)
 
 
 class TestMigration:
@@ -665,6 +681,60 @@ class TestWitnesses:
                 ),
             )
 
+    def test_invalidated_qualification_keeps_uncontradicted_residual_context(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        residual = (
+            uss.QualificationDependency("closure", "/a", "g1", _VERSION, 5, None, None, 2, 11),
+        )
+        uss.write_observation_witness(
+            conn,
+            uss.ObservationWitness(
+                7, "known", "invalidated", "/a", "codex", "s", "g1", _VERSION, 3, 1, 9, residual
+            ),
+        )
+        got = uss.read_observation_witness(conn, 7)
+        # Non-affirmative aggregate status, supplier untouched, only the residual frontier kept.
+        assert (got.value_status, got.qualification_status) == ("known", "invalidated")
+        assert got.qualification_dependencies == residual
+        assert (got.supplier_source_path, got.supplier_line_no, got.supplier_raw_id) == ("/a", 3, 9)
+
+    def test_invalidated_residual_context_is_still_role_and_position_validated(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        bad_role = uss.QualificationDependency("bogus", "/a", "g1", _VERSION, 5, None, None, 2, 11)
+        bad_line = uss.QualificationDependency("model", "/a", "g1", _VERSION, 0, None, None, 2, 11)
+        for dep in (bad_role, bad_line):
+            with pytest.raises(uss.UsageSourceInvalid):
+                uss.write_observation_witness(
+                    conn,
+                    uss.ObservationWitness(
+                        7, "known", "invalidated", "/a", None, None, "g1", _VERSION, 3, 1, 9, (dep,)
+                    ),
+                )
+        assert (
+            conn.execute("SELECT COUNT(*) FROM usage_observation_dependencies").fetchone()[0] == 0
+        )
+
+    @pytest.mark.parametrize("status", ["unavailable", "not_consumed"])
+    def test_non_affirmative_unavailable_statuses_still_reject_a_frontier(
+        self, conn: sqlite3.Connection, status: str
+    ) -> None:
+        with pytest.raises(uss.UsageSourceInvalid):
+            uss.write_observation_witness(
+                conn,
+                uss.ObservationWitness(
+                    7,
+                    "known",
+                    status,
+                    qualification_dependencies=(
+                        uss.QualificationDependency(
+                            "model", "/a", "g1", _VERSION, 3, None, None, 1, 2
+                        ),
+                    ),
+                ),
+            )
+
     def test_witness_write_rolls_back_together(self, tmp_path: Path) -> None:
         db = tmp_path / "h.db"
         ensure_db(db)
@@ -742,9 +812,123 @@ class TestInvalidation:
             ),
         )
         uss.invalidate_usage_dependencies(conn, (), (_scope("/a.jsonl"),), reason="parser_refresh")
-        for source in ("/a.jsonl", "/copy.jsonl"):
-            completion = uss.read_source_derive_completion(conn, source)
-            assert (completion.status, completion.outstanding) == ("pending", "both")
+        refreshed = uss.read_source_derive_completion(conn, "/a.jsonl")
+        assert (refreshed.status, refreshed.outstanding) == ("pending", "both")
+        # ENH-3770: a copy that only consumed /a's usage/context owes usage recovery, never
+        # fabricated parser-cache work (its own raw rows did not change).
+        copy = uss.read_source_derive_completion(conn, "/copy.jsonl")
+        assert (copy.status, copy.outstanding) == ("pending", "usage")
+
+    def _witness(
+        self, conn: sqlite3.Connection, event_id: int, status: str = "known", deps: tuple = ()
+    ) -> None:
+        uss.write_observation_witness(
+            conn,
+            uss.ObservationWitness(
+                event_id, "known", status, "/sup", "codex", "s", "g1", _VERSION, 3, 1, 9, deps
+            ),
+        )
+
+    _MODEL = uss.QualificationDependency("model", "/sup", "g1", _VERSION, 2, None, None, 1, 4)
+    _CLOSURE = uss.QualificationDependency("closure", "/sup", "g1", _VERSION, 8, None, None, 5, 12)
+
+    def test_preserved_witnesses_survive_while_dependents_are_still_invalidated(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        self._tracked(
+            conn,
+            "/a.jsonl",
+            (
+                uss.CompletionDependency("d7", "observation", usage_event_id=7),
+                uss.CompletionDependency("d8", "observation", usage_event_id=8),
+            ),
+        )
+        self._witness(conn, 7, deps=(self._MODEL, self._CLOSURE))
+        self._witness(conn, 8, deps=(self._MODEL,))
+        uss.invalidate_usage_dependencies(
+            conn, (7, 8), (), reason="codex_catchup", preserve_witness_ids=(7,)
+        )
+        kept = uss.read_observation_witness(conn, 7)
+        assert (kept.value_status, kept.qualification_status) == ("known", "known")
+        assert len(kept.qualification_dependencies) == 2
+        assert uss.read_observation_witness(conn, 8).value_status == "unavailable"
+        assert uss.read_source_derive_completion(conn, "/a.jsonl").outstanding == "usage"
+
+    def test_preserved_ids_alone_create_no_obligation(self, conn: sqlite3.Connection) -> None:
+        self._tracked(
+            conn, "/a.jsonl", (uss.CompletionDependency("d7", "observation", usage_event_id=7),)
+        )
+        self._witness(conn, 7)
+        uss.invalidate_usage_dependencies(conn, (), (), reason="rebuild", preserve_witness_ids=(7,))
+        assert uss.read_source_derive_completion(conn, "/a.jsonl").basis == "semantic"
+        assert uss.read_observation_witness(conn, 7).qualification_status == "known"
+
+    def test_contradicted_role_leaves_supplier_value_and_independent_context(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        self._tracked(
+            conn, "/a.jsonl", (uss.CompletionDependency("d7", "observation", usage_event_id=7),)
+        )
+        self._witness(conn, 7, deps=(self._MODEL, self._CLOSURE))
+        uss.invalidate_usage_dependencies(
+            conn, (), (), reason="native_conflict", contradicted={7: frozenset({"model"})}
+        )
+        got = uss.read_observation_witness(conn, 7)
+        assert (got.value_status, got.qualification_status) == ("known", "invalidated")
+        assert (got.supplier_source_path, got.supplier_line_no, got.supplier_raw_id) == (
+            "/sup",
+            3,
+            9,
+        )
+        assert [d.role for d in got.qualification_dependencies] == ["closure"]
+        completion = uss.read_source_derive_completion(conn, "/a.jsonl")
+        assert (completion.status, completion.basis, completion.outstanding) == (
+            "unprovable",
+            "none",
+            "usage",
+        )
+
+    def test_contradicting_every_role_leaves_an_empty_non_affirmative_frontier(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        self._witness(conn, 7, deps=(self._MODEL, self._CLOSURE))
+        uss.invalidate_usage_dependencies(
+            conn,
+            (),
+            (),
+            reason="native_conflict",
+            contradicted={7: frozenset({"model", "closure"})},
+        )
+        got = uss.read_observation_witness(conn, 7)
+        assert got.qualification_status == "invalidated"
+        assert got.qualification_dependencies == ()
+
+    def test_contradiction_never_manufactures_a_witness_for_an_unwitnessed_row(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        uss.invalidate_usage_dependencies(
+            conn, (), (), reason="native_conflict", contradicted={7: frozenset({"model"})}
+        )
+        assert conn.execute("SELECT COUNT(*) FROM usage_observation_witnesses").fetchone()[0] == 0
+
+    def test_unavailable_witness_is_not_promoted_to_invalidated(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        self._witness(conn, 7, status="unavailable")
+        uss.invalidate_usage_dependencies(
+            conn, (), (), reason="native_conflict", contradicted={7: frozenset({"model"})}
+        )
+        assert uss.read_observation_witness(conn, 7).qualification_status == "unavailable"
+
+    def test_unknown_contradicted_role_is_rejected_before_any_write(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        self._witness(conn, 7, deps=(self._MODEL,))
+        with pytest.raises(uss.UsageSourceInvalid):
+            uss.invalidate_usage_dependencies(
+                conn, (), (), reason="native_conflict", contradicted={7: frozenset({"bogus"})}
+            )
+        assert uss.read_observation_witness(conn, 7).qualification_status == "known"
 
     def test_untracked_source_is_left_alone(self, conn: sqlite3.Connection) -> None:
         uss.invalidate_usage_dependencies(conn, (), (_scope("/nope"),), reason="rebuild")
@@ -772,6 +956,177 @@ class TestInvalidation:
     def test_unknown_reason_is_rejected(self, conn: sqlite3.Connection) -> None:
         with pytest.raises(uss.UsageSourceInvalid):
             uss.invalidate_usage_dependencies(conn, (), (), reason="whatever")
+
+
+class TestPendingRecoveryReader:
+    """ENH-3770: typed recovery reads carry both CAS revisions and validated authority."""
+
+    @staticmethod
+    def _authority(scope: uss.SourceScope, revision: int, **kw: object) -> uss.OriginalAcquisition:
+        fields: dict[str, object] = {
+            "scope": scope,
+            "acquisition_version": _ACQ,
+            "offset": 100,
+            "line_no": 4,
+            "source_revision": revision,
+        }
+        fields.update(kw)
+        return uss.OriginalAcquisition(**fields)  # type: ignore[arg-type]
+
+    def _pend(
+        self,
+        conn: sqlite3.Connection,
+        authority: uss.OriginalAcquisition | None,
+        scope: uss.SourceScope | None = None,
+    ) -> tuple[uss.SourceScope, int]:
+        scope = scope or _scope()
+        rev = _acquire(conn, scope)
+        rev = uss.record_source_pending(
+            conn,
+            uss.SourcePending(
+                scope,
+                "refresh",
+                "parser_refresh",
+                raw_cache_pending=True,
+                original_acquisition=authority,
+            ),
+            expected_head_revision=rev,
+        )
+        return scope, rev
+
+    def test_carries_head_and_obligation_revisions_and_decoded_authority(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        scope = _scope()
+        authority = self._authority(scope, 1)
+        scope, rev = self._pend(conn, authority, scope)
+        (recovery,) = uss.read_pending_recovery(conn, scope.source_path)
+        assert isinstance(recovery, uss.PendingRecovery)
+        assert recovery.head_revision == rev == uss.head_revision(conn, scope.source_path)
+        assert recovery.obligation_revision == 1
+        assert recovery.original_acquisition == authority
+        assert recovery.pending.original_acquisition == authority
+        assert (recovery.pending.kind, recovery.pending.reason) == ("refresh", "parser_refresh")
+        assert recovery.pending.obligation_id is not None
+
+    def test_plain_pending_reader_still_never_reports_authority(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        scope = _scope()
+        scope, _ = self._pend(conn, self._authority(scope, 1), scope)
+        (plain,) = uss.pending_obligations(conn, scope.source_path)
+        assert plain.original_acquisition is None
+
+    def test_merge_bumps_obligation_revision_and_head_revision_independently(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        scope, rev = self._pend(conn, self._authority(_scope(), 1))
+        rev = uss.record_source_pending(
+            conn,
+            uss.SourcePending(scope, "refresh", "parser_refresh", raw_cache_pending=True),
+            expected_head_revision=rev,
+        )
+        (recovery,) = uss.read_pending_recovery(conn, scope.source_path)
+        assert recovery.obligation_revision == 2
+        assert recovery.head_revision == rev
+        assert recovery.original_acquisition is not None  # merge keeps the stored authority
+
+    def test_absent_authority_is_none_but_obligation_is_retained(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        scope, _ = self._pend(conn, None)
+        (recovery,) = uss.read_pending_recovery(conn, scope.source_path)
+        assert recovery.original_acquisition is None
+        assert recovery.pending.usage_pending is True
+
+    @pytest.mark.parametrize(
+        "stored",
+        [
+            "not json",
+            "[]",
+            "{}",
+            json.dumps({"source_path": "/a.jsonl"}),
+            _auth_json(offset=True),  # a boolean is not an integer position
+            _auth_json(offset=-1),
+            _auth_json(line_no="4"),
+            _auth_json(acquisition_version=""),
+            _auth_json(source_revision=0),
+            _auth_json(source_revision=999),  # beyond the current head revision
+            _auth_json(source_path="/other.jsonl"),  # authority for another scope
+            _auth_json(generation_id="g0"),
+            _auth_json(derive_version="old"),
+        ],
+    )
+    def test_malformed_or_wrong_scope_authority_withholds_permission_not_the_obligation(
+        self, conn: sqlite3.Connection, stored: str
+    ) -> None:
+        scope, _ = self._pend(conn, None)
+        conn.execute("UPDATE usage_source_pending SET original_acquisition_json = ?", (stored,))
+        (recovery,) = uss.read_pending_recovery(conn, scope.source_path)
+        assert recovery.original_acquisition is None
+        assert recovery.pending.original_acquisition is None
+        assert recovery.pending.kind == "refresh"
+
+    def test_older_generation_obligations_are_read_with_their_own_scope(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        old = _scope(generation="g0")
+        self._pend(conn, self._authority(old, 1), old)
+        new = _scope(generation="g1")
+        rev = _acquire(conn, new, expected=uss.head_revision(conn, new.source_path))
+        recoveries = uss.read_pending_recovery(conn, new.source_path)
+        assert [r.pending.scope.generation_id for r in recoveries] == ["g0"]
+        assert recoveries[0].head_revision == rev
+        assert recoveries[0].original_acquisition is not None
+
+    def test_other_sources_are_not_returned(self, conn: sqlite3.Connection) -> None:
+        self._pend(conn, None, _scope("/a.jsonl"))
+        self._pend(conn, None, _scope("/b.jsonl"))
+        assert [
+            r.pending.scope.source_path for r in uss.read_pending_recovery(conn, "/b.jsonl")
+        ] == ["/b.jsonl"]
+
+    @pytest.mark.parametrize(
+        "alias", ["nope", "main; DROP TABLE meta", "x" * 80, "", "1bad", 'a"b']
+    )
+    def test_unsafe_alias_is_empty_not_main(self, conn: sqlite3.Connection, alias: str) -> None:
+        scope, _ = self._pend(conn, None)
+        assert uss.read_pending_recovery(conn, scope.source_path, schema=alias) == ()
+
+    def test_pre_migration_member_is_empty_without_writes(self, tmp_path: Path) -> None:
+        old = tmp_path / "old.db"
+        ensure_db(old)
+        raw = sqlite3.connect(str(old))
+        for table in _TABLES:
+            raw.execute(f"DROP TABLE {table}")
+        raw.commit()
+        raw.close()
+        ro = connect_readonly(old)
+        try:
+            ro.execute("BEGIN")
+            assert uss.read_pending_recovery(ro, "/a") == ()
+            ro.rollback()
+        finally:
+            ro.close()
+
+    def test_attached_member_reads_its_own_recovery_state(self, tmp_path: Path) -> None:
+        a, b = tmp_path / "a.db", tmp_path / "b.db"
+        for path in (a, b):
+            ensure_db(path)
+        cb = connect(b)
+        try:
+            scope, rev = self._pend(cb, self._authority(_scope(), 1))
+            cb.commit()
+        finally:
+            cb.close()
+        ca = connect(a)
+        try:
+            ca.execute("ATTACH DATABASE ? AS other", (str(b),))
+            assert uss.read_pending_recovery(ca, scope.source_path) == ()
+            (recovery,) = uss.read_pending_recovery(ca, scope.source_path, schema="other")
+            assert recovery.head_revision == rev
+        finally:
+            ca.close()
 
 
 class TestReadersOnOtherMembers:

@@ -17,6 +17,7 @@ import json
 import re
 import sqlite3
 import uuid
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -199,6 +200,23 @@ class ConsumedRange:
     first_offset: int | None = None
     end_offset: int | None = None
     full_scope: bool = False
+
+
+@dataclass(frozen=True)
+class PendingRecovery:
+    """One outstanding obligation with the revisions and authority recovery must validate.
+
+    ``head_revision`` and ``obligation_revision`` are the two compare-and-swap revisions an
+    acknowledgement needs (never the acquisition revision stored in the authority).
+    ``original_acquisition`` is the persisted authority only when it decodes, is typed and
+    names this obligation's exact source/generation/derive version (ENH-3770); otherwise
+    it is ``None`` -- permission is withheld while the obligation stays outstanding.
+    """
+
+    pending: SourcePending
+    head_revision: int
+    obligation_revision: int
+    original_acquisition: OriginalAcquisition | None = None
 
 
 @dataclass(frozen=True)
@@ -695,6 +713,107 @@ def pending_obligations(
     return tuple(out)
 
 
+def _decode_original_acquisition(
+    raw: object, scope: SourceScope, head_revision_now: int
+) -> OriginalAcquisition | None:
+    """Validate a persisted ``OriginalAcquisition`` against its obligation's scope.
+
+    Returns ``None`` for anything that is not exactly the typed record this module writes:
+    malformed JSON, wrong types (booleans are not integers), negative positions, an empty
+    version, another scope, or an acquisition revision beyond the current head revision.
+    """
+    if not isinstance(raw, str):
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    text_fields = ("source_path", "generation_id", "derive_version", "acquisition_version")
+    if not all(isinstance(data.get(name), str) and data[name] for name in text_fields):
+        return None
+    if (data["source_path"], data["generation_id"], data["derive_version"]) != (
+        scope.source_path,
+        scope.generation_id,
+        scope.derive_version,
+    ):
+        return None
+    offset, line_no, revision = data.get("offset"), data.get("line_no"), data.get("source_revision")
+    if not (_int_ok(offset) and _int_ok(line_no) and _int_ok(revision, minimum=1)):
+        return None
+    assert isinstance(offset, int) and isinstance(line_no, int) and isinstance(revision, int)
+    if revision > head_revision_now:
+        return None
+    return OriginalAcquisition(
+        scope=scope,
+        acquisition_version=data["acquisition_version"],
+        offset=offset,
+        line_no=line_no,
+        source_revision=revision,
+    )
+
+
+def read_pending_recovery(
+    conn: sqlite3.Connection, source_path: str, *, schema: str = "main"
+) -> tuple[PendingRecovery, ...]:
+    """Outstanding obligations of *source_path* with revisions and validated authority.
+
+    A pure ``SELECT`` over the supplied member (ENH-3770): empty for an unsafe alias or a
+    pre-migration store, ordered like :func:`pending_obligations`. Malformed, wrong-scope or
+    future-revision authority yields ``original_acquisition=None`` while the obligation is
+    still returned, so a caller can never mistake absence of permission for absence of work.
+    """
+    safe = _safe_schema(conn, schema)
+    if (
+        safe is None
+        or not _table_exists(conn, safe, "usage_source_pending")
+        or not _table_exists(conn, safe, "usage_source_state")
+    ):
+        return ()
+    head = conn.execute(
+        f"SELECT revision FROM {safe}.usage_source_state WHERE source_path = ?", (source_path,)
+    ).fetchone()
+    head_rev = int(head[0]) if head is not None else 0
+    out: list[PendingRecovery] = []
+    for row in conn.execute(
+        "SELECT obligation_id, source_path, generation_id, derive_version, kind, reason, "
+        "range_kind, refusal_code, affected_usage_event_id, first_raw_id, last_raw_id, "
+        "first_line_no, last_line_no, first_offset, end_offset, raw_cache_pending, "
+        f"usage_pending, revision, original_acquisition_json FROM {safe}.usage_source_pending "
+        "WHERE source_path = ? ORDER BY obligation_id",
+        (source_path,),
+    ):
+        scope = SourceScope(row[1], row[2], row[3])
+        authority = _decode_original_acquisition(row[18], scope, head_rev)
+        out.append(
+            PendingRecovery(
+                pending=SourcePending(
+                    scope=scope,
+                    kind=row[4],
+                    reason=row[5],
+                    range_kind=row[6],
+                    refusal_code=row[7],
+                    affected_usage_event_id=row[8],
+                    first_raw_id=row[9],
+                    last_raw_id=row[10],
+                    first_line_no=row[11],
+                    last_line_no=row[12],
+                    first_offset=row[13],
+                    end_offset=row[14],
+                    raw_cache_pending=bool(row[15]),
+                    usage_pending=bool(row[16]),
+                    original_acquisition=authority,
+                    obligation_id=row[0],
+                ),
+                head_revision=head_rev,
+                obligation_revision=int(row[17]),
+                original_acquisition=authority,
+            )
+        )
+    return tuple(out)
+
+
 def _min_known(a: int | None, b: int | None) -> int | None:
     known = [v for v in (a, b) if v is not None]
     return min(known) if known else None
@@ -1003,13 +1122,18 @@ def publish_source_completion(
 
 
 def write_observation_witness(conn: sqlite3.Connection, witness: ObservationWitness) -> None:
-    """Atomically write the actual supplier and replace its entire qualification frontier."""
+    """Atomically write the actual supplier and replace its entire qualification frontier.
+
+    ``invalidated`` may retain the independently valid, uncontradicted context a conflict
+    proof left standing (ENH-3770). That residual frontier is bookkeeping only: the status
+    stays non-affirmative, so it can neither qualify a row nor prove a figure as-of.
+    """
     _require(_int_ok(witness.usage_event_id, minimum=1), "usage_event_id")
     _require(witness.value_status in VALUE_STATUSES, "value_status")
     _require(witness.qualification_status in QUALIFICATION_STATUSES, "qualification_status")
     for name in ("supplier_line_no", "supplier_ordinal", "supplier_raw_id"):
         _require(_int_ok(getattr(witness, name)), name)
-    if witness.qualification_status in {"unavailable", "invalidated", "not_consumed"}:
+    if witness.qualification_status in {"unavailable", "not_consumed"}:
         # Unavailable evidence cannot be encoded as an empty proved frontier.
         _require(not witness.qualification_dependencies, "frontier")
     for dep in witness.qualification_dependencies:
@@ -1132,23 +1256,39 @@ def invalidate_usage_dependencies(
     source_scopes: tuple[SourceScope, ...],
     *,
     reason: str,
+    preserve_witness_ids: Collection[int] = (),
+    contradicted: Mapping[int, frozenset[str]] | None = None,
 ) -> None:
     """Invalidate tracked completion that consumed the affected observations/sources.
 
     Call *before* the mutation, in the mutating transaction. Enumerates reverse
     dependencies first (including sources whose dedup supplier is elsewhere), downgrades
-    every affected tracked head to ``pending`` with usage-pending (and, for a parser
-    refresh, raw-cache) disposition, preserves older success tuples as historical, then
-    removes the deleted observations' witness and frontier rows. Untracked sources are
-    untouched (negative tracking only).
+    every affected tracked head to ``pending`` with usage-pending disposition, preserves
+    older success tuples as historical, then settles the observations' witness rows.
+    Untracked sources are untouched (negative tracking only).
+
+    Only a source named in *source_scopes* -- one whose own raw rows change -- owes
+    ``raw_cache`` work for a parser refresh; a reverse dependent (for example a copy that
+    only consumed another source's usage or context) owes usage recovery alone.
+
+    Witness handling (ENH-3770): an id in *preserve_witness_ids* keeps its supplier and
+    frontier rows (the writer replaces them atomically when a permitted change lands); an
+    id in *contradicted* keeps its supplier and value evidence, drops only the listed
+    dependency roles and becomes ``invalidated`` when it was ``known`` (a witness that does
+    not exist is never created); every other id loses its witness and frontier as before.
+    Both kinds of id still invalidate their dependents.
     """
     shape = _INVALIDATION_SHAPE.get(reason)
     _require(shape is not None, "reason")
     assert shape is not None
     kind, cache, usage = shape
+    narrowed = dict(contradicted or {})
+    for roles in narrowed.values():
+        _require(bool(roles) and roles <= DEPENDENCY_ROLES, "contradicted_roles")
     if not storage_available(conn):
         return
-    ids = tuple(dict.fromkeys(usage_event_ids))
+    keep = frozenset(preserve_witness_ids)
+    ids = tuple(dict.fromkeys((*usage_event_ids, *narrowed)))
     affected: dict[tuple[str, str, str], SourceScope] = {}
     for scope in source_scopes:
         _validate_scope(scope)
@@ -1181,7 +1321,7 @@ def invalidate_usage_dependencies(
                 kind=kind,
                 reason=reason if reason in REASONS else "invalid_state",
                 range_kind="whole_source",
-                raw_cache_pending=cache,
+                raw_cache_pending=cache and source_path in sources,
                 usage_pending=usage,
             ),
             expected_head_revision=head.revision,
@@ -1191,14 +1331,28 @@ def invalidate_usage_dependencies(
             "AND derive_version = ?",
             (source_path, generation, version),
         )
-    for start in range(0, len(ids), 500):
-        chunk = ids[start : start + 500]
+    doomed = tuple(i for i in ids if i not in keep and i not in narrowed)
+    for start in range(0, len(doomed), 500):
+        chunk = doomed[start : start + 500]
         marks = ", ".join("?" for _ in chunk)
         conn.execute(
             f"DELETE FROM usage_observation_witnesses WHERE usage_event_id IN ({marks})", chunk
         )
         conn.execute(
             f"DELETE FROM usage_observation_dependencies WHERE usage_event_id IN ({marks})", chunk
+        )
+    for event_id, roles in sorted(narrowed.items()):
+        conn.execute(
+            "UPDATE usage_observation_witnesses SET qualification_status = 'invalidated' "
+            "WHERE usage_event_id = ? AND qualification_status = 'known'",
+            (event_id,),
+        )
+        marks = ", ".join("?" for _ in roles)
+        conn.execute(
+            "DELETE FROM usage_observation_dependencies WHERE usage_event_id = ? "
+            f"AND role IN ({marks}) AND EXISTS (SELECT 1 FROM usage_observation_witnesses "
+            "WHERE usage_event_id = ? AND qualification_status = 'invalidated')",
+            (event_id, *sorted(roles), event_id),
         )
 
 

@@ -895,3 +895,216 @@ class TestCodexGapRecovery:
         refresh_usage_source(db, source, host="codex")
         done = _completion(db, source)
         assert done.basis == "none" and done.boundary == older
+
+
+class TestAcquisitionStaging:
+    """ENH-3770: verified acquisition is staged before reconciliation, then reused."""
+
+    _WITNESS = uss.AcquisitionWitness(1, 2, 100, 3, "ab")
+
+    @staticmethod
+    def _open(tmp_path: Path) -> sqlite3.Connection:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        conn.execute("BEGIN IMMEDIATE")
+        return conn
+
+    def _attempt(self, conn: sqlite3.Connection, source: str = "/s.jsonl") -> tracking.Attempt:
+        attempt = tracking.begin_attempt(
+            conn, source, lifecycle._USAGE_DERIVE_VERSION, host="claude-code", session_id="sess"
+        )
+        assert attempt is not None
+        return attempt
+
+    def _finalize(
+        self,
+        conn: sqlite3.Connection,
+        attempt: tracking.Attempt,
+        accounting: tracking.PhysicalAccounting,
+    ) -> tracking.FinalizeResult:
+        return tracking.finalize_source_refresh(
+            conn,
+            attempt,
+            accounting=accounting,
+            witness=self._WITNESS,
+            coverage_proved=True,
+            derive_status="derived",
+            derive_reason=None,
+            held_skipped=(),
+            source_max_raw_id=0,
+            now="2026-10-08T00:00:00Z",
+        )
+
+    def test_staging_creates_the_head_and_acquisition_without_completion(
+        self, tmp_path: Path
+    ) -> None:
+        conn = self._open(tmp_path)
+        try:
+            attempt = self._attempt(conn)
+            accounting = tracking.PhysicalAccounting(100, 4)
+            staged = tracking.stage_source_acquisition(
+                conn, attempt, accounting=accounting, witness=self._WITNESS, coverage_proved=True
+            )
+            assert staged is not None
+            head = uss.read_source_head(conn, "/s.jsonl")
+            assert head is not None and head.revision == staged.head_revision
+            assert (head.status, head.reason) == ("pending", "not_yet_derived")
+            assert (head.acquired_offset, head.acquired_line_no) == (100, 4)
+            assert head.scope.generation_id == attempt.scope.generation_id
+            assert head.successful is None  # acquisition alone never publishes completion
+            assert uss.read_source_derive_completion(conn, "/s.jsonl").basis == "none"
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_unproved_coverage_stages_nothing(self, tmp_path: Path) -> None:
+        conn = self._open(tmp_path)
+        try:
+            staged = tracking.stage_source_acquisition(
+                conn,
+                self._attempt(conn),
+                accounting=tracking.PhysicalAccounting(100, 4),
+                witness=self._WITNESS,
+                coverage_proved=False,
+            )
+            assert staged is None
+            assert uss.read_source_head(conn, "/s.jsonl") is None
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_unclean_accounting_and_missing_attempt_stage_nothing(self, tmp_path: Path) -> None:
+        conn = self._open(tmp_path)
+        try:
+            rejected = tracking.PhysicalAccounting(
+                100, 4, (tracking.RejectedRange("json_failure", 2, 2, 10, 20),)
+            )
+            assert (
+                tracking.stage_source_acquisition(
+                    conn,
+                    self._attempt(conn),
+                    accounting=rejected,
+                    witness=self._WITNESS,
+                    coverage_proved=True,
+                )
+                is None
+            )
+            assert (
+                tracking.stage_source_acquisition(
+                    conn,
+                    None,
+                    accounting=tracking.PhysicalAccounting(100, 4),
+                    witness=self._WITNESS,
+                    coverage_proved=True,
+                )
+                is None
+            )
+            assert uss.read_source_head(conn, "/s.jsonl") is None
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_restaging_an_identical_acquisition_writes_nothing(self, tmp_path: Path) -> None:
+        conn = self._open(tmp_path)
+        try:
+            attempt = self._attempt(conn)
+            accounting = tracking.PhysicalAccounting(100, 4)
+            first = tracking.stage_source_acquisition(
+                conn, attempt, accounting=accounting, witness=self._WITNESS, coverage_proved=True
+            )
+            again = tracking.stage_source_acquisition(
+                conn,
+                self._attempt(conn),
+                accounting=accounting,
+                witness=self._WITNESS,
+                coverage_proved=True,
+            )
+            assert first is not None and again is not None
+            assert again.head_revision == first.head_revision
+            assert uss.head_revision(conn, "/s.jsonl") == first.head_revision
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_advanced_acquisition_restages_with_a_new_revision(self, tmp_path: Path) -> None:
+        conn = self._open(tmp_path)
+        try:
+            attempt = self._attempt(conn)
+            first = tracking.stage_source_acquisition(
+                conn,
+                attempt,
+                accounting=tracking.PhysicalAccounting(100, 4),
+                witness=self._WITNESS,
+                coverage_proved=True,
+            )
+            later = tracking.stage_source_acquisition(
+                conn,
+                self._attempt(conn),
+                accounting=tracking.PhysicalAccounting(180, 7),
+                witness=uss.AcquisitionWitness(1, 2, 180, 3, "cd"),
+                coverage_proved=True,
+            )
+            assert first is not None and later is not None
+            assert later.head_revision == first.head_revision + 1
+            head = uss.read_source_head(conn, "/s.jsonl")
+            assert head is not None and (head.acquired_offset, head.acquired_line_no) == (180, 7)
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_finalize_reuses_a_staged_acquisition_without_a_second_write(
+        self, tmp_path: Path
+    ) -> None:
+        conn = self._open(tmp_path)
+        try:
+            attempt = self._attempt(conn)
+            accounting = tracking.PhysicalAccounting(100, 4)
+            staged = tracking.stage_source_acquisition(
+                conn, attempt, accounting=accounting, witness=self._WITNESS, coverage_proved=True
+            )
+            assert staged is not None
+            result = self._finalize(conn, attempt, accounting)
+            assert result.complete
+            # staging inserted revision 1; finalize only published completion (one bump).
+            assert uss.head_revision(conn, "/s.jsonl") == staged.head_revision + 1
+            assert uss.read_source_derive_completion(conn, "/s.jsonl").basis == "semantic"
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_unchanged_retry_finalize_does_not_restage_a_matching_acquisition(
+        self, tmp_path: Path
+    ) -> None:
+        conn = self._open(tmp_path)
+        try:
+            attempt = self._attempt(conn)
+            accounting = tracking.PhysicalAccounting(100, 4)
+            assert self._finalize(conn, attempt, accounting).complete
+            before = uss.head_revision(conn, "/s.jsonl")
+            retry = self._finalize(conn, self._attempt(conn), accounting)
+            assert retry.complete
+            # No acquisition rewrite: only the completion publication bumps the head.
+            assert uss.head_revision(conn, "/s.jsonl") == (before or 0) + 1
+        finally:
+            conn.rollback()
+            conn.close()
+
+    def test_rollback_restores_every_staged_fact(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            attempt = self._attempt(conn)
+            tracking.stage_source_acquisition(
+                conn,
+                attempt,
+                accounting=tracking.PhysicalAccounting(100, 4),
+                witness=self._WITNESS,
+                coverage_proved=True,
+            )
+            conn.rollback()
+            assert conn.execute("SELECT COUNT(*) FROM usage_source_state").fetchone()[0] == 0
+        finally:
+            conn.close()

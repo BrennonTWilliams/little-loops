@@ -32,6 +32,7 @@ from little_loops.session_store.usage_source_state import (
     CompletionDependency,
     ConsumedRange,
     DerivedBoundary,
+    HeadState,
     SourceDeriveCompletion,
     SourcePending,
     SourceScope,
@@ -419,6 +420,78 @@ def _proof_outcome(
 
 
 @dataclass(frozen=True)
+class StagedAcquisition:
+    """A verified acquisition already recorded in this transaction (ENH-3770).
+
+    ``head_revision`` is the head revision the staging left behind. It proves acquisition
+    only: staging never publishes semantic completion and grants no mutation authority.
+    """
+
+    scope: SourceScope
+    boundary: AcquisitionBoundary
+    witness: AcquisitionWitness
+    head_revision: int
+
+
+def _acquisition_recorded(
+    head: HeadState | None,
+    scope: SourceScope,
+    boundary: AcquisitionBoundary,
+    witness: AcquisitionWitness,
+) -> bool:
+    """Whether *head* already carries exactly this acquisition (so rewriting it is churn)."""
+    if head is None:
+        return False
+    return (
+        head.scope.generation_id == scope.generation_id
+        and head.scope.derive_version == scope.derive_version
+        and (scope.host is None or head.scope.host == scope.host)
+        and (scope.session_id is None or head.scope.session_id == scope.session_id)
+        and head.acquisition_version == boundary.acquisition_version
+        and head.acquired_offset == boundary.offset
+        and head.acquired_line_no == boundary.line_no
+        and head.acquisition_witness == json.loads(witness.to_json())
+    )
+
+
+def stage_source_acquisition(
+    conn: sqlite3.Connection,
+    attempt: Attempt | None,
+    *,
+    accounting: PhysicalAccounting,
+    witness: AcquisitionWitness,
+    coverage_proved: bool,
+) -> StagedAcquisition | None:
+    """Record a verified, clean acquisition before reconciliation needs generation authority.
+
+    Runs in the caller's write transaction and writes only the source head's acquisition
+    fields through :func:`record_source_acquisition`. Returns ``None`` -- writing nothing --
+    without an attempt, without proved zero-origin/verified coverage, or when the
+    accounting has rejected lines or an unterminated tail: such an acquisition is not a
+    verified scope. An identical acquisition already on the head is reused without another
+    write, so an unchanged retry never churns the head revision.
+    """
+    if attempt is None or not coverage_proved or not accounting.clean:
+        return None
+    scope = attempt.scope
+    boundary = AcquisitionBoundary(
+        USAGE_ACQUISITION_VERSION, accounting.offset, accounting.line_count
+    )
+    head = read_source_head(conn, scope.source_path)
+    if _acquisition_recorded(head, scope, boundary, witness):
+        assert head is not None
+        return StagedAcquisition(scope, boundary, witness, head.revision)
+    revision = record_source_acquisition(
+        conn,
+        scope,
+        boundary,
+        witness,
+        expected_head_revision=head.revision if head is not None else None,
+    )
+    return StagedAcquisition(scope, boundary, witness, revision)
+
+
+@dataclass(frozen=True)
 class FinalizeResult:
     """Truthful bounded outcome of one finalization (never carries source content)."""
 
@@ -463,15 +536,19 @@ def finalize_source_refresh(
         record_held_pending(conn, version, held_skipped)
         return FinalizeResult(False, "acquisition_unprovable")
     if coverage_proved:
-        rev = record_source_acquisition(
-            conn,
-            scope,
-            AcquisitionBoundary(
-                USAGE_ACQUISITION_VERSION, accounting.offset, accounting.line_count
-            ),
-            witness,
-            expected_head_revision=expected,
+        boundary = AcquisitionBoundary(
+            USAGE_ACQUISITION_VERSION, accounting.offset, accounting.line_count
         )
+        # ENH-3770: an identical acquisition already on the head -- staged earlier in this
+        # transaction or recorded by an unchanged retry -- is reused as is; the head is
+        # rewritten only when the acquisition actually advanced.
+        if _acquisition_recorded(current, scope, boundary, witness):
+            assert current is not None
+            rev = current.revision
+        else:
+            rev = record_source_acquisition(
+                conn, scope, boundary, witness, expected_head_revision=expected
+            )
     else:
         rev = record_source_pending(
             conn,
