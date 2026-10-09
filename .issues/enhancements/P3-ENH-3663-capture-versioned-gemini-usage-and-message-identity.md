@@ -19,7 +19,7 @@ gate:
 - kind: external
   satisfied: false
   owner: user
-  evidence: "Working Vertex/model configuration for Gemini CLI >=0.46.0. ENH-3648: 0.46.0 live probe lacked Vertex configuration."
+  evidence: "Working authentication/model access for the selected Gemini provider and a captured version-qualified CLI contract. ENH-3648's 0.46.0 live attempt lacked its selected Vertex configuration; this prior provider-specific blocker does not require every supported path to use Vertex."
 blocks:
 - ENH-3674
 ---
@@ -40,7 +40,7 @@ identity of independent usage observations.
 
 ## Expected Behavior
 
-With working Vertex/model configuration, capture sanitized live and on-disk
+With working authentication/model access for the selected provider, capture sanitized live and on-disk
 0.46.0-or-newer records with tool use and resume. Verify whether repeated
 message IDs rewrite one usage record or represent distinct requests; record
 cache inclusivity/write semantics, omissions, reasoning/output inclusion,
@@ -53,13 +53,15 @@ and reader are verified.
 ## Acceptance Criteria
 
 - [ ] Source-present or affirmative no-source completion follows **Completion Rule**; no-source evidence has a scoped native proof and unavailable-reader handoff, while unavailable access remains unknown. A selected source declares its acquisition channel and retained-raw logical-candidate identity for quality derive-status integration.
-- [ ] For a selected usage-bearing source: Capture repeated message IDs with changed token values and their ordered update transition. Prove whether the later record replaces one observation or is a distinct request, give ENH-3674 the identity/version rule, and retain a final valid record after the update; an unchanged duplicate alone is insufficient.
+- [ ] For a selected usage-bearing source: Either capture repeated message IDs with changed token values and their ordered update transition, or supply affirmative version/channel-scoped native evidence and captured finalized/no-update controls proving the selected source is immutable. For an update-capable contract, prove replacement versus distinct request, hand ENH-3674 the identity/revision rule and retain a final valid record; an unchanged duplicate alone is insufficient. For a proved immutable contract, declare repeated/copy handling and rejection of contradictory changed-value records without fabricating a native update. The existing unversioned historical pair remains unproved and cannot establish either branch for a new version.
 - [ ] For a selected usage-bearing source: The ENH-3674 handoff identifies a captured provider/version-qualified contract and an evidenced exact-version or compatibility rule, with matching and mismatch/absent-identity fixtures. Runtime values come from a verified native source; missing evidence remains audit-only/unavailable rather than inheriting a host-wide supported verdict.
-- [ ] For a selected usage-bearing source: Capture sanitized, versioned Gemini live and full-enough stored sessions with tool use and resume under working Vertex/model configuration; retain the session header and repeated-ID records needed for parser and identity tests.
+- [ ] For a selected usage-bearing source: Capture sanitized, versioned Gemini live and full-enough stored sessions with tool use and resume under working authentication/model access for the selected provider; retain the session header and repeated-ID records needed for parser and identity tests.
 - [ ] For a selected usage-bearing source: Record per-metric/channel `supported`, evidence-backed `unsupported`, or `unknown` verdicts for input, output, and cache read/write; record the thoughts/output relationship separately. Establish inclusivity, omissions, request grain/reset behavior, and whether repeated IDs replace one observation or identify independent requests.
+- [ ] For a selected usage-bearing source: Account for `tokens.tool` and `tokens.total` as well as input/output/cached/thoughts. Establish whether tool tokens overlap another component, are a disjoint output component or are outside the selected consumption metric; do not silently discard a nonzero component or infer its relation from the existing zero sample. Reconcile the declared native total where its semantics permit it; unknown relations affecting normalized figures keep the evidence gate unresolved.
+- [ ] For the selected native journal shape: classify header context, `$set.messages` patches and `$rewindTo` for request identity, ordering and recorded consumption. The current parser discards header/rewind context, unpacks messages and stamps the header session into normalized output. Prove whether patches/rewinds change visible history, revise a consumption observation or authoritatively retract it; context visibility alone cannot retract recorded usage. Supply ordered patch/rewind/resume controls when this shape can emit them, and name the native supplier position plus any consumed context that delivery must retain. Legacy whole-document `.json` is outside the current discovery glob; select it only with an explicit evidence-backed scope change.
 - [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger. Also record the native field path(s) that carry request/replay identity, model and the usage-bearing fields, and the event type the adapter will store them under — the input to the delivery's history-sanitizer path registration (EPIC-3562 § Shared Delivery Ownership).
 - [ ] For a selected usage-bearing source: Give ENH-3674 a replay-ready fixture and identity rule. ENH-3674 owns preserving native `tokens` through the file-level parser and proving stored ingestion, trigger, and reader behavior.
-- [ ] If Vertex/model access remains unavailable, record the exact configuration blocker, leave current-version availability `unknown`, and keep this issue open or `blocked`; the unversioned historical pair alone cannot certify the current contract.
+- [ ] If the selected provider's authentication/model access remains unavailable, record the exact blocker, leave current-version availability `unknown`, and keep this issue open or `blocked`; the unversioned historical pair alone cannot certify the current contract.
 
 ## Completion Rule
 
@@ -80,6 +82,8 @@ Fixture sanitization: strip credentials, tokens, absolute home paths and prompt 
 The usage-bearing contract and fixture requirements below apply to a selected usage-bearing path. An affirmative no-source handoff instead supplies the scoped native absence proof and unavailable-reader disposition defined in Completion Rule.
 
 Give ENH-3674 the observed provider and CLI/source version, the native envelope or verified source of those values, and a stable fixture contract reference. Record whether qualification requires the exact captured version or permits a specific compatibility range backed by evidence. A current local CLI version alone cannot qualify a historical record. A host-level capability note does not qualify every provider/version.
+
+Identify the actual usage supplier and every consumed identity/qualification-context record by durable native/stored position. `parse_gemini_session` currently numbers normalized output, including synthetic tool-result records; that enumeration is not a native physical line. Preserve the mapping to a physical record and message/item ordinal, or document another stable position scheme that the shared source boundary can check without confusing the two. If provider/version, message identity or session comes from the header or a patch, declare how that context survives sanitized raw retention and rebuild. ENH-3674 maps the evidence onto the landed supplier/context witness and guarded replay interfaces; current dependency roles are only `model` and `closure`, so extend the shared mapping narrowly when an evidenced additional role is needed rather than mislabeling it or fabricating positions.
 
 Include a matching fixture and unmatched-provider, unsupported/unproved-version, absent provider/version, and unproved identity cases. Specify the audit-only/unavailable reason for each mismatch. The delivery issue persists the ingest-time contract/evidence on `raw_events` (using existing metadata where sufficient) and reuses it on rebuild; it must not substitute later machine configuration or promote an old unknown. No all-provider capture matrix or mandatory new column is implied. ENH-3731/3732/3733 implement ENH-3723's recorded shared eligibility policy, separately from this native evidence contract. The handoff also declares the normalized acquisition channel and a pure logical-candidate/key rule usable by ENH-3732's derive-status reader on retained raw evidence. This prevents a newly supported transcript source from being treated as excluded/non-usage while its observations are pending; a host name alone is not a channel rule. The matching delivery implements and tests that extension before production publication. Its retained-evidence rule must fit ENH-3744's shared pure recognition/key/coalescing/correspondence interface: distinguish a represented candidate, intentional no-observation and unprovable/missing native context. This issue supplies the evidence, not a second production proof engine; the delivery also tests pruning/held-source recovery and ENH-3745's source-local completion handoff.
 
@@ -115,6 +119,8 @@ Include a matching fixture and unmatched-provider, unsupported/unproved-version,
 **Open** | Created: 2026-09-29 | Priority: P3
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-08 - Scoped the prior Vertex configuration blocker to its selected provider; added `tokens.tool`/total accounting, journal patch/rewind versus consumption semantics, and the native-position/context handoff. The parser currently emits normalized enumeration positions and drops header/rewind context, so replay qualification needs an explicit retained mapping. No new native proof or status change.
 
 - Pre-implementation epic review - 2026-10-07 - Added the native identity-path recording requirement: ENH-3751 now sanitizes every raw_events insert and `pii._protocol_rules` is the only protection for replay-identity fields, so the matching delivery needs these paths from this evidence. No captured proof or readiness claim.
 
