@@ -35,11 +35,11 @@ from scripts.tests.spike.enh3752_raw_redaction.redaction_core import (
     fetch_one,
     fetch_page,
 )
-from tests import hrana_stub
-from tests.hrana_stub import HranaStub
 
 from little_loops.session_store.hrana import HranaClient
 from little_loops.session_store.libsql import LibsqlConnection
+from tests import hrana_stub
+from tests.hrana_stub import HranaStub
 
 SPIKE_DIR = Path(__file__).parent
 MIB = 1 << 20
@@ -241,7 +241,11 @@ class TestBoundedDecode:
         cap = core.SINGLE_ROW_DECODED_CAP
         for bad in (big[:-4], big + b"\x00", big + big):  # truncated, trailing, concatenated
             exc = refusal("blob", bad, decoded_cap=cap)
-            assert (exc.reason, exc.limit_kind, exc.limit_bytes) == ("resource_limit", "decoded", cap)
+            assert (exc.reason, exc.limit_kind, exc.limit_bytes) == (
+                "resource_limit",
+                "decoded",
+                cap,
+            )
         good = as_blob(padded_json(MIB))
         for bad in (good[:-4], good + b"\x00", good + good):  # defect detectable within the bound
             exc = refusal("blob", bad, decoded_cap=cap)
@@ -327,7 +331,9 @@ class TestPlanBounds:
         ok, ok_problems = core.plan_row(obs, core.scrub_marker, request_cap=est)
         assert ok_problems == () and ok is not None  # cap
         no, no_problems = core.plan_row(obs, core.scrub_marker, request_cap=est - 1)
-        assert no is None and no_problems == (core.Problem(None, "resource_limit", "request", est - 1),)
+        assert no is None and no_problems == (
+            core.Problem(None, "resource_limit", "request", est - 1),
+        )
         # the estimate really bounds the captured wire body and the write succeeds
         assert remote.conn.executemany(UPDATE_SQL, [plan.params]).rowcount == 1
         body = len(remote.stub.requests[-1]["body"].encode())  # type: ignore[union-attr]
@@ -390,7 +396,9 @@ class TestPlanBounds:
 def _lost_ack_row(s: Store, row_id: int) -> tuple[core.Observed, core.Plan]:
     s.insert(row_id, as_blob(payload_json(3_000_000)), as_blob(payload_json(3_000_000, False)))
     obs = obs_of(s, row_id)
-    assert obs.parsed.length is not None and obs.parsed.length > core.STORED_CAP  # big clean sibling
+    assert (
+        obs.parsed.length is not None and obs.parsed.length > core.STORED_CAP
+    )  # big clean sibling
     plan, problems = core.plan_row(obs, core.scrub_marker)
     assert problems == () and plan is not None and plan.changed and plan.parsed is None
     return obs, plan

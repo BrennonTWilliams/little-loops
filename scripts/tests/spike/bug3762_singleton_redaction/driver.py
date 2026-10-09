@@ -42,7 +42,9 @@ def payload_json(hex_chars: int, secret: bool = True, *, seed: int = SEED) -> st
     body = random.Random(seed).randbytes(hex_chars // 2).hex()
     if secret:
         body += " " + core.SECRET
-    return json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": body}]}})
+    return json.dumps(
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": body}]}}
+    )
 
 
 def as_blob(text: str) -> bytes:
@@ -195,10 +197,9 @@ def main() -> None:  # pragma: no cover - manual recording entry point
     import tempfile
     from pathlib import Path
 
-    from tests.hrana_stub import HranaStub
-
     from little_loops.session_store.hrana import HranaClient
     from little_loops.session_store.libsql import LibsqlConnection
+    from tests.hrana_stub import HranaStub
 
     results = []
     with tempfile.TemporaryDirectory() as tmp:
