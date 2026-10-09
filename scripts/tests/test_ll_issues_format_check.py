@@ -527,6 +527,75 @@ class TestFormatCheckUnappliedDecisionMultiPoint:
         ]
 
 
+_RESTATEMENT_BUG_BODY = _MULTI_DECISION_BUG_BODY.replace(
+    "## Impact",
+    "## Program Design\n\n### Types\n\nUses `rej1` for storage.\n\n## Impact",
+)
+
+
+class TestFormatCheckGapAnalysisGuardCandidates:
+    """ENH-3765: the structured candidates the gap-analysis write guard consumes."""
+
+    def _detail(
+        self,
+        body: str,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> list[dict[str, str]]:
+        _write_issue(format_check_dir, "P3-BUG-9108-test-bug.md", body)
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9108",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+        detail = json.loads(out)["unapplied_decision_detail"]
+        assert isinstance(detail, list)
+        return detail
+
+    def test_program_design_candidate_reported_with_string_pairs(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        detail = self._detail(_RESTATEMENT_BUG_BODY, temp_project_dir, format_check_dir, capsys)
+        assert {"section": "Program Design", "identifier": "rej1"} in detail
+        for entry in detail:
+            assert isinstance(entry["section"], str) and entry["section"]
+            assert isinstance(entry["identifier"], str) and entry["identifier"]
+
+    def test_impact_is_not_a_detector_section(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _MULTI_DECISION_BUG_BODY.replace("- **Effort**: Small", "- **Effort**: Uses `rej1`")
+        detail = self._detail(body, temp_project_dir, format_check_dir, capsys)
+        assert all(entry["section"] != "Impact" for entry in detail)
+
+    def test_appended_winner_restatement_leaves_rejected_candidate(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _RESTATEMENT_BUG_BODY.replace(
+            "Uses `rej1` for storage.",
+            "Uses `rej1` for storage.\n\nAlso, per the selection, use `win1` for storage.",
+        )
+        detail = self._detail(body, temp_project_dir, format_check_dir, capsys)
+        assert {"section": "Program Design", "identifier": "rej1"} in detail
+
+
 # ---------------------------------------------------------------------------
 # TestFormatCheckIssueNotFound
 # ---------------------------------------------------------------------------

@@ -63,7 +63,7 @@ Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.y
 - No separate gate state (2026-09-29): the `portfolio` engine command prints `premortem` or `render` as its last stdout line from the resolved profile (or `fail`), and `portfolio` routes on it (`evaluate: classify` with both happy tokens listed explicitly and `_: finalize_failed` — a default that reached `validate_portfolio` would break classify safety; `render` routes to `render_report`). A disabled finisher costs **zero** parent steps.
 - `premortem_critic` (LLM, one call, winner + runner-up) → `premortem_defender` (LLM, one call) → `annotate` (script: engine command `annotate`). Total **3 successful-path parent visits** (critic, defender, `annotate`; the gate is folded into `portfolio`); no rounds, no counter, no `premortem_rounds`, no `retry_counter`, no per-run counter file.
 - `annotate` is a command of `little_loops.brainstorm_engine` (FEAT-3582 § Solution): it reads the two LLM outputs from files, validates the schema and idea-body immutability, writes `premortem.json`, updates `portfolio.json` `flags`, and never touches `winners.md`, `ideas.jsonl` idea rows, `ranking`, or slots.
-- Read-only means explicit Read tool declarations where the host supports them, plus prompt instructions; the executor has no per-state filesystem jail and some hosts ignore tool allowlists with a warning. Fingerprint immutable ideas/ranked portfolio fields/winners before prompt dispatch and verify them before annotation/sinks. Actual canonical-file mutation is an integrity failure; a revised body merely present in model output is still a fail-open schema skip. Record unsupported tool-scope limitations honestly.
+- Read-only means explicit Read tool declarations where the host supports them, plus prompt instructions; the executor has no per-state filesystem jail and some hosts ignore tool allowlists with a warning. In this feature's enablement change, extend the existing portfolio command to publish premortem_input.json before emitting the premortem token. It pins canonical ideas/profile, the current judging-input digest, immutable ranked portfolio fields/unrelated flags and winners.md. Create once and verify on replay before replacing any portfolio/finisher input; do not re-snapshot after a resumed prompt. Annotate verifies that persisted digest before annotation and on fixed-error skip paths. Actual canonical-file mutation is an integrity failure; a revised body merely present in model output is still a fail-open schema skip. Record unsupported tool-scope limitations honestly. This capability-gated extension adds no state/call and creates no finisher artifact when disabled.
 - Report rendering adds the `Risks & Kill Criteria` section from `premortem.json`.
 
 **Out of scope (follow-up candidate):** demotion/promotion of conceded ideas, `winner: null`, and an all-conceded outcome. If added later it must use a concession signal that does not come from the defender (e.g. a rebuttal call where the critic rates each fatal-risk mitigation `holds` or `fails`, script concedes on `fails`), define a "round" as one critic+defender pass over the whole critiqued set, and re-introduce `conceded`/nullable `winner` in FEAT-3582's Data Contract in the same change.
@@ -81,6 +81,8 @@ All in the FEAT-3667 engine, invoked in YAML as `$${LL_PYTHON:-python3} -m littl
 
 - `annotate(portfolio: dict, critic_out: str, defender_out: str, ideas: list[IdeaRecord]) -> tuple[dict, Premortem | None]` — validates and merges; returns the updated `flags` and the `Premortem`, or `None` on fail-open skip
 - `render_risks(premortem: Premortem, ideas: list[IdeaRecord]) -> str` — the `Risks & Kill Criteria` report section
+
+This child owns the named additive portfolio-command extension: publish/verify premortem_input.json when premortem is enabled, and preserve existing annotation flags on equal-input portfolio replay. Fingerprints exclude only this child's own mutable annotation flags; all other pinned fields must match. Update CLI reads/writes/conformance documentation in the enablement change. FEAT-3667's disabled/core semantics remain unchanged.
 
 `critique` and `defend` are LLM states (`premortem_critic`, `premortem_defender`), not functions.
 
@@ -138,7 +140,7 @@ Annotation input limits are 64 KiB UTF-8 per raw capture, exactly one tagged JSO
 
 Publication spans premortem.json and portfolio flags, so separate atomic replacements are not a transaction. Replaying annotate from the same saved captures must repair either interruption boundary to the same result, preserve unrelated flags and remove stale success on an explicit skip. Inject failures between both writes and verify replay before report/validation/sinks; successful annotation replay cannot introduce duplicate flags.
 
-The tail600 core reserve cannot guarantee two post-tournament calls plus retries. In the enablement change, add the maximum critic+defender action time **including bounded retry dispatches and backoff**, plus annotate/render/validation/finalization overhead, to TAIL_S and the parent's timeout/engine guard. Assert the longest finisher/error/salvage path fits with a fake clock. Do not budget only +3 visits: elapsed time and invocations are separate. ENH-3734 later verifies the combined optional value, and earlier children may already have raised the timeout.
+The tail600 core reserve cannot guarantee two post-tournament calls plus retries. In the enablement change, add the critic+defender action time with one retry allowance per prompt (EPIC-3581 § Budget sizing rule, `2*T + 30` each; the all-retries bound is informational), plus annotate/render/validation/finalization overhead, to TAIL_S and the parent's timeout/engine guard. Assert the longest finisher/error/salvage path fits with a fake clock. Do not budget only +3 visits: elapsed time and invocations are separate. ENH-3734 later verifies the combined optional value, and earlier children may already have raised the timeout.
 
 ## Implementation Steps
 
@@ -150,7 +152,7 @@ The tail600 core reserve cannot guarantee two post-tournament calls plus retries
 ## Impact
 
 - **Priority**: P4 - optional finisher that refines output but is not needed for a working engine
-- **Effort**: Small - two LLM states and one small, unit-tested engine command
+- **Effort**: Medium - two LLM states, bounded schema/annotation publication, persistent input checks, replay/error fixtures and derived post-tournament budgets
 - **Risk**: Low - off by default for `artifact`/`visual`; annotate-only, fails open, cannot alter an idea or a ranking
 - **Breaking Change**: No
 
@@ -166,12 +168,15 @@ The tail600 core reserve cannot guarantee two post-tournament calls plus retries
 - Critic declares Read-only tool names and reads portfolio.json/ideas.jsonl, without an additional block state. Defender receives captured critic output inside its registered untrusted-output nonce fence and declares Read-only tools. Successful captures reach raw files via builtin printf with `:shell` quoting, preserving delimiter lines/metacharacters/newlines as data; quote interpreter/path arguments. Host-error branches use fixed --skip-reason values and never consume prior captures. Exactly three additional visits on the successful no-retry path; at most two successful LLM responses, with actual retry dispatches recorded separately.
 - Real executor/resume fixtures seed old successful captures then raise critic/defender errors; critic failure never dispatches defender and neither failure reuses old annotations. Transport fixtures include literal heredoc terminators and shell metacharacters. Zero-wait-ladder and mixed API/infra retry fixtures account for all dispatches/backoff with a fake clock. Actual canonical-file mutation fails integrity before sinks; malformed output alone still skips annotations.
 - Unit fixtures cover the 1/5/6/0-risk boundaries, 200/500-code-point boundaries, 64-KiB raw limit, empty/oversized strings, duplicate tagged records, report escaping and both annotation/flag publication interruption boundaries. Oversized or malformed advice is logged/skipped rather than truncated or treated as a run failure.
+- Persistent input fixtures interrupt after the portfolio snapshot/before either prompt, mutate canonical data, then resume through success and fixed-error skip paths: integrity fails before sinks. Equal-input portfolio/annotate replay preserves existing annotations/unrelated flags; changed judging inputs cannot inherit old annotations. The disabled path creates no snapshot and keeps its existing bytes/visits.
 - Whichever optional feature lands first replaces the literal max_steps==60 assertion with one derived from built capability paths; this child's own increment and retry visits remain its responsibility.
 - Timeout, host error, rate-limit exhaustion and missing/malformed critic/defender captures produce premortem_skipped and proceed to render_report. Deterministic annotate/I/O errors still fail the run. A disabled finisher adds zero visits.
 - This issue records its own functional/business reference run with annotations, import origin, actual call/token cost and an honest report; FEAT-3596 does not own it.
 
 
 ## Review Decisions
+
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78):_ provisional until the core lands (EPIC-3687 § Provisional); re-evaluate value against core results before starting, and cancellation is an allowed outcome (this P4 child otherwise gates its P3 epic). Tail sizing now follows EPIC-3581 § Budget sizing rule. The snapshot/replay machinery is kept as specified; no contract change.
 
 _2026-10-05 executor review and `/ll:advise` with Opus (confidence 0.70):_ corrected the long-wait ladder, stale-capture error branches, printf/:shell transport, separate output-fence registration, bounded annotation input/publication replay, host scope limitations and preset integration map. The core evidence issue does not verify the all-optional budget; ENH-3734 owns that work. Historical four-step and heredoc statements below are superseded by the active three-visit contract. Kept the three-visit route rather than adding an intermediate critic validator; a malformed exit-0 critic may waste the bounded defender call. Numeric limits are design choices, not measured quality thresholds.
 
@@ -218,6 +223,8 @@ _Added by `/ll:confidence-check` on 2026-09-29 (first score against the annotate
 - `annotate` needs `portfolio.json`, `ideas.jsonl`, and the engine module, none of which exist yet. Signatures are pinned only against FEAT-3582's spec, so recheck them once FEAT-3582 lands.
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
+- Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - `/ll:refine-issue` - 2026-10-05T17:31:36-06:00 - `EPIC-3687 pre-implementation review`
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-05T03:38:25 - `a86cd5e0-6077-4ee6-8374-60b76cefc32b.jsonl`

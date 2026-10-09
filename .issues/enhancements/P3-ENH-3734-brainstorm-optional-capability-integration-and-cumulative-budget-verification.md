@@ -30,7 +30,7 @@ The pre-review EPIC-3687 Scope Boundary promised cross-capability fixtures and t
 
 ## Expected Behavior
 
-- Deterministic executor fixtures exercise all eight combinations of the three built capability knobs, including explicit mixed-mode overrides. Artifact-invariant fixtures execute real deterministic engine shell actions while stubbing prompt/browser responses; fully mocked actions are suitable for additional route-only checks, not evidence of file publication/recovery. Add interrupted materialize publication and tournament restart after committed image verdicts: reuse the manifest/probe plan without new calls; changed assets/inputs must fail without overwriting results. No fixture requires a live LLM or Playwright.
+- Deterministic executor fixtures exercise all eight combinations of the three built capability knobs, including explicit mixed-mode overrides. Set all three knobs explicitly in every case so preset defaults cannot change the matrix. Artifact-invariant fixtures execute real deterministic engine shell actions while stubbing prompt/browser responses; fully mocked actions are suitable for additional route-only checks, not evidence of file publication/recovery. Add interrupted materialize publication and tournament restart after committed image verdicts: reuse the manifest/probe plan without new calls; changed assets/inputs must fail without overwriting results. Persistent materialize/finisher snapshots are checked across resume/error routes rather than replaced with current mutated inputs. No fixture requires a live LLM or Playwright.
 - Grounding runs before shortlisting; materialize only receives surviving finalists; the pre-tournament floor prevents judging an empty or one-player field. Candidates without valid mockup source never enter HTML fallback judging.
 - Pre-mortem malformed output, host error, and timeout preserve idea bodies, ranking, slots and winners.md, mark the skip, and continue to render/validate/sinks. A deterministic engine I/O error remains a run failure.
 - The cumulative parent step/time budget includes the auto classifier, the maximum nine lenses with bounded ingestion and each bounded grounding inventory, grounding's complete 60 s deadline/publication/state-timeout cost before shortlisting, materialize's preparation/render/compositing bounds, bounded retries, tournament salvage, both pre-mortem calls, every sink branch, and finalization. Grounding/materialize extend pre-tournament work; pre-mortem extends the post-tournament tail. Engine time-guard values agree with shipped YAML. All rate-limited prompt states explicitly disable both tiers, including rate_limit_long_wait_ladder:[0]. API/infra retries still count as dispatches and state visits.
@@ -92,7 +92,7 @@ Owns optional-capability combinations and cumulative step/time verification only
 ## Implementation Steps
 
 1. Read the landed optional implementations and enumerate each combined success, skip, degradation and salvage path.
-2. Add the combination matrix and targeted interaction failure fixtures using MockActionRunner.
+2. Add the combination matrix and targeted interaction failure fixtures using the hybrid runner with real deterministic engine actions and stubbed prompt/browser responses.
 3. Derive cumulative step/time bounds; correct shipped budget constants and assertions if needed.
 4. Record the mixed-capability reference run under postmortems/ and verify the full local suite.
 
@@ -118,6 +118,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Review Notes
 
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78):_ provisional until the optional children land (EPIC-3687 § Provisional). The matrix is 2^k over the capabilities actually built (a cancelled child shrinks it), and must report the remaining step slack (the core has about 9-11 visits before optional capabilities; all three add about 8; retries consume visits). Cumulative time follows EPIC-3581 § Budget sizing rule. No contract change.
+
 _2026-10-05 executor review and `/ll:advise` with Opus (confidence 0.70):_ all four existing children suffice. Adopted real deterministic shell integration, fresh-attempt/render-source matching, bounded annotation/source validation, explicit retry/clock accounting and an all-three-enabled evidence run. Retained the eight-combination matrix with real artifact effects. Dissent: per-verdict stamp/compositing remains the heaviest P3 mechanism; no reversal of its existing capability-sanity purpose is warranted. Bounds are design choices, not live measurements.
 
 _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ added manifest/verdict restart and grounding-deadline combinations. Count grounding in pre-tournament elapsed time, not the post-tournament tail suggested by the advisor. No new live measurements; scope/ownership and deferred capabilities are unchanged.
@@ -127,4 +129,6 @@ _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ added manifest
 **Open** | Created: 2026-10-05 | Priority: P3
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
+- Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - `/ll:refine-issue` - 2026-10-05T17:31:36-06:00 - `EPIC-3687 pre-implementation review`

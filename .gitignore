@@ -189,3 +189,4 @@ db-build/
 .gemini/
 .kimi-code/
 .qwen/
+.ll/learning-tests/

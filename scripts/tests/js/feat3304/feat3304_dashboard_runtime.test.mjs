@@ -127,3 +127,196 @@ test("prepare/step caps collected rows while counting the true total", () => {
   assert.equal(rows.length, CAP, "more rows were materialized than the cap allows");
   db.close();
 });
+
+// ---------------------------------------------------------------------------
+// ENH-3733: execute the generated page's OWN query/render loop.
+//
+// The engine-level checks above repeat prepare/step by hand; they cannot prove
+// what the page does with a stored INTEGER. This evaluates the page's second
+// <script> (the IIFE containing runQuery/renderTable) against a minimal DOM
+// stub and the embedded snapshot, then reads the rendered cells back.
+// ---------------------------------------------------------------------------
+
+function sliceNthScript(source, n) {
+  let from = 0;
+  let open = -1;
+  for (let i = 0; i <= n; i++) {
+    open = source.indexOf("<script>", from);
+    assert.ok(open !== -1, `script #${n} not found in the generated page`);
+    from = source.indexOf("</scr" + "ipt>", open) + 1;
+  }
+  const close = source.indexOf("</scr" + "ipt>", open);
+  return source.slice(open + "<script>".length, close);
+}
+
+class StubElement {
+  constructor(tag) {
+    this.tag = tag;
+    this.children = [];
+    this.listeners = {};
+    this.className = "";
+    this.value = "";
+    this.type = "";
+    this._text = "";
+  }
+  get textContent() {
+    return this._text;
+  }
+  set textContent(value) {
+    this._text = value;
+    if (value === "") {
+      this.children = [];
+    }
+  }
+  appendChild(child) {
+    this.children.push(child);
+    return child;
+  }
+  addEventListener(name, fn) {
+    this.listeners[name] = fn;
+  }
+}
+
+async function loadPage() {
+  const byId = new Map();
+  const document = {
+    getElementById(id) {
+      if (!byId.has(id)) {
+        byId.set(id, new StubElement("#" + id));
+      }
+      return byId.get(id);
+    },
+    createElement(tag) {
+      return new StubElement(tag);
+    },
+  };
+  new Function(
+    "document",
+    "initSqlJs",
+    "atob",
+    "Blob",
+    "DecompressionStream",
+    "Response",
+    sliceNthScript(html, 1)
+  )(document, initSqlJs, atob, Blob, DecompressionStream, Response);
+  const status = document.getElementById("status");
+  for (let i = 0; i < 200 && !/^Snapshot loaded/.test(status.textContent); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.match(status.textContent, /^Snapshot loaded/, "the page never finished loading");
+  return {
+    status,
+    sqlBox: document.getElementById("sql"),
+    runButton: document.getElementById("run"),
+    viewButtons: document.getElementById("views").children,
+    results: document.getElementById("results"),
+  };
+}
+
+// Rendered rows as {column: cell text}, read back from the stub DOM.
+function renderedRows(results) {
+  const table = results.children[0].children[0];
+  const [thead, tbody] = table.children;
+  const columns = thead.children[0].children.map((th) => th.textContent);
+  return tbody.children.map((tr) =>
+    Object.fromEntries(columns.map((name, i) => [name, tr.children[i].textContent]))
+  );
+}
+
+function runCustom(page, sql) {
+  page.sqlBox.value = sql;
+  page.runButton.listeners.click();
+  return renderedRows(page.results);
+}
+
+const BOUNDARY = {
+  "boundary-2p53m1": "9007199254740991",
+  "boundary-2p53": "9007199254740992",
+  "boundary-2p53p1": "9007199254740993",
+  "boundary-2p63m1": "9223372036854775807",
+};
+
+test("the predefined usage view renders exact integers, zero, NULL and independent availability", async () => {
+  const page = await loadPage();
+  const usage = page.viewButtons.find((b) => b.textContent === "Usage by model and channel");
+  assert.ok(usage, "predefined usage view button is missing");
+  usage.listeners.click();
+  const rows = renderedRows(page.results);
+  const byModel = (name) => rows.filter((r) => r.model === name);
+
+  for (const [name, exact] of Object.entries(BOUNDARY)) {
+    const [row] = byModel(name);
+    assert.equal(row.canonical_input_tokens, exact, `${name} lost precision in the page loop`);
+    assert.equal(row.token_availability, "available");
+  }
+  const [zero] = byModel("zero-model");
+  assert.equal(zero.canonical_input_tokens, "0", "zero must render as 0, never blank or 0n");
+  assert.equal(zero.canonical_cost_usd, "0");
+  assert.equal(zero.token_availability, "available");
+
+  const [tiny] = byModel("tiny-cost-model");
+  assert.equal(tiny.canonical_cost_usd, "0", "four-decimal presentation");
+  assert.equal(tiny.cost_availability, "available", "availability uses the unrounded cost");
+
+  const [unpriced] = byModel("unpriced-model");
+  assert.equal(unpriced.canonical_cost_usd, "", "unavailable cost renders blank, not zero");
+  assert.equal(unpriced.cost_availability, "unavailable");
+  assert.equal(unpriced.cost_reason, "unpriced_contributor");
+  assert.equal(unpriced.token_availability, "available");
+
+  const [overflow] = byModel("overflow-model");
+  assert.equal(overflow.canonical_input_tokens, "");
+  assert.equal(overflow.token_reason, "snapshot_integer_overflow");
+  assert.equal(overflow.cost_availability, "available");
+  assert.equal(overflow.canonical_cost_usd, "0.5");
+
+  for (const row of byModel("audit-only-model")) {
+    assert.equal(row.token_availability, "unavailable");
+    assert.equal(row.token_reason, "coverage_unknown");
+  }
+  assert.ok(byModel("(unknown model)").length === 1);
+});
+
+test("custom SQL reads exact integers and original REAL values through the shared loop", async () => {
+  const page = await loadPage();
+  const ints = runCustom(
+    page,
+    "SELECT model, canonical_input_tokens FROM usage_coverage_audit " +
+      "WHERE model LIKE 'boundary-%' ORDER BY model"
+  );
+  assert.equal(ints.length, Object.keys(BOUNDARY).length);
+  for (const row of ints) {
+    assert.equal(row.canonical_input_tokens, BOUNDARY[row.model], row.model);
+  }
+  const [real] = runCustom(
+    page,
+    "SELECT canonical_cost_usd FROM usage_coverage_audit WHERE model = 'tiny-cost-model'"
+  );
+  assert.equal(real.canonical_cost_usd, "0.00001", "custom SQL exposes the original REAL value");
+  const [zero] = runCustom(
+    page,
+    "SELECT canonical_input_tokens AS n, canonical_cost_usd AS c FROM usage_coverage_audit " +
+      "WHERE model = 'zero-model'"
+  );
+  assert.deepEqual(zero, { n: "0", c: "0" });
+  const [nulls] = runCustom(
+    page,
+    "SELECT canonical_input_tokens AS n FROM usage_coverage_audit WHERE model = 'overflow-model'"
+  );
+  assert.equal(nulls.n, "");
+});
+
+test("the render cap and unmodified SQL survive the exact-integer read", async () => {
+  const page = await loadPage();
+  const cap = Number(/var ROW_CAP = (\d+);/.exec(html)[1]);
+  const total = cap + 7;
+  const rows = runCustom(
+    page,
+    `WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < ${total}) ` +
+      "SELECT n FROM c"
+  );
+  assert.equal(rows.length, cap, "more rows were rendered than the cap allows");
+  assert.equal(page.status.textContent, `showing ${cap} of ${total} rows`);
+  assert.equal(rows[0].n, "1");
+  assert.ok(!/LIMIT/i.test(page.sqlBox.value), "the submitted SQL must not gain a LIMIT");
+});

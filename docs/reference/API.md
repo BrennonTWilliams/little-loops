@@ -55,6 +55,7 @@ pip install little-loops
 | `little_loops.text_utils` | Text extraction utilities for issue content |
 | `little_loops.pii` | PII detection and redaction utilities (`detect_pii`, `redact_pii`, `apply_pii_action`) and the session-history payload policy (`redact_history_text`, `sanitize_history_payload`) |
 | `little_loops.cli` | CLI entry points (package) |
+| `little_loops.next_arena` | The `ll-next` action arena (FEAT-3561): verb registry, typed action specs, project-state capture, bounded axes, candidate assessment, round-robin selection and output rendering. See [below](#little_loopsnext_arena). |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
 | `little_loops.autodev_summary` | `autodev` run finalization: staged-issue promotion, the `=== Autodev Summary ===` report, and `summary.json` (`python3 -m little_loops.autodev_summary`) |
@@ -736,9 +737,79 @@ Weighted geometric mean, computed in log space, over the axes that have a presen
 ```python
 BRConfig.next -> NextConfig
 NextConfig.resolve_loop_history_weights() -> dict[str, float]
+NextConfig.resolve_arena_settings() -> ArenaSettings
 ```
 
-`BRConfig.next` is a raw-preserving envelope of the merged `next` setting: constructing `BRConfig` (and `to_dict()`) never validates it. `resolve_loop_history_weights()` returns a fresh `{"frequency", "recency", "success"}` mapping in that order with defaults applied, or raises `NextConfigError` (a `ValueError`) naming the offending setting. See [`next`](CONFIGURATION.md#next).
+`BRConfig.next` is a raw-preserving envelope of the merged `next` setting: constructing `BRConfig` (and `to_dict()`) never validates it. `resolve_loop_history_weights()` returns a fresh `{"frequency", "recency", "success"}` mapping in that order with defaults applied, or raises `NextConfigError` (a `ValueError`) naming the offending setting. `resolve_arena_settings()` returns a frozen `ArenaSettings(weights, caps, refine_cap)`: per-action-type axis weights (read-only mappings in each type's fixed axis order), per-type selection caps and the refinement cap, with defaults applied. It validates only `next.verbs` and raises `NextConfigError` for unknown keys, boolean/negative/non-finite weights, non-positive or boolean caps, or an all-zero weight set. See [`next`](CONFIGURATION.md#next).
+
+## little_loops.next_arena
+
+The pure domain package behind [`ll-next`](CLI.md#ll-next). Everything except `state.collect_project_state` operates on an injected, immutable `ProjectState`: no clock, cwd, environment, git, network or history-database access.
+
+| Module | Role |
+|--------|------|
+| `registry` | Verb registry in canonical order (`implement-issue`, `refine-issue`, `resolve-blocker`, `run-loop`, `run-sprint`, `capture-issues`), each verb's candidate domain (`issue`, `loop`, `sprint` or `scan`), `SCHEMA_VERSION` (4), action-variant names (`slash`, `loop`, `sprint`, `scan`), `ArenaSettings` (weights, caps, `refine_cap`, `activity_threshold`, `activity_lookback_days`). CLI choices, config keys and schema enums derive from it. |
+| `actions` | Typed `action_spec` tagged union (`SlashActionSpec`, `variant: "slash"`; `LoopActionSpec`, `variant: "loop"` with `target`, `definition_source`, `definition_digest`, `fingerprint_scope` and `working_directory`; `SprintActionSpec`, `variant: "sprint"`, the loop fields plus an assessed `members` snapshot of `{issue_id, status}` that is not fingerprint material; `ScanActionSpec`, `variant: "scan"` with `target: "project"` and the sorted `focus_dirs` / `exclude_patterns` scope), the seven-row slash `action_key` table plus `run-loop`, `run-sprint` and `scan-codebase`, `action_fingerprint()` (`sha256:` of the canonical variant projection; the loop digest covers the **top-level definition bytes** only, scope `v1/top-level-bytes`), `render_slash()` / `render_loop()` / `render_sprint()` / `render_scan()` / `render_action()` and option-safe `render_shell()` / `parse_shell()`. |
+| `state` | `collect_project_state(project_root, *, as_of=None, config=None, include_loops=False, include_scan=False, include_sprints=False, settings=None) -> ProjectState`: one read of every issue file across all statuses, the identity inventory (duplicate full IDs, shared issue numbers, unnormalized filenames), lifecycle resolution and the dependency graph. With `include_loops=True` it also captures the loop domain (`loop_definitions`, `loop_history`, `loop_inventory`, `loop_inputs`); these are `None` (not collected) otherwise. `include_sprints=True` captures `sprint_definitions` / `sprint_state` and `include_scan=True` the `scan_scope` / `scan_activity` (at most two git subprocesses); the sprint-history snapshot is attached separately by the CLI with `dataclasses.replace`. |
+| `loop_state` | Collection-phase loop capture for `run-loop`: `collect_loop_definitions()` reads each top-level loop source once, hashes and validates that same buffer (runner-equivalent validation resolved from the project root, warnings kept as diagnostics), `resolve_target()` mirrors `resolve_loop_path` precedence over the captured inventory, `zero_argument_context()` models the runner's no-input preflight symbolically, and `collect_loop_history()` makes one batched pass over `<loops_dir>/.history`. |
+| `blockers`, `loop_candidates` | The `resolve-blocker` (`assess_resolve_blockers()`, one-pass direct-dependent index) and `run-loop` (`assess_run_loops()`) generators; `assess_candidates()` routes each verb to its own candidate domain. |
+| `sprint_state`, `sprint_parity`, `sprint_history`, `sprint_candidates` | The `run-sprint` generator: `parse_sprint_definition()` (pure, read-once, bytes-hashed definition parser; never `SprintManager`), `collect_sprint_domain()`, executor-parity checks against the plain `ll-sprint run` command (terminal removal and relationship shapes), the sprint-recency adapter `sprint_history_evidence()` over the shared `sprint_invocations` snapshot, and `assess_run_sprints()`. |
+| `scan_state`, `scan_activity`, `scan_candidates` | The `capture-issues` generator: `resolve_scan_scope()` (canonical scope, symlink and existence checks, literal-Git-path `path_in_scope()`), `load_scope_activity()` (at most two read-only `git` calls under `--no-lazy-fetch`, 5,000 records / 16 MiB / 2 s bounds, exact inclusive UTC window) and the evidence-only `assess_capture_scope()`. |
+| `inputs` | `Diagnostic`, the captured `FormattingPolicy` and confidence `Thresholds`. |
+| `history` | Opt-in, injected `read_history_snapshot()` for `ll-next` consumers; never imported by `state` or the CLI core. See [below](#little_loopsnext_arenahistory). |
+| `graph`, `axes` | Dependency-graph analysis, bounded axis curves and the weighted geometric aggregate. |
+| `candidates` | `assess_candidates(state, *, settings=None) -> list[CandidateAssessment]` (every target and verb, with gates and exclusion reasons), `generate_candidates(state)` (eligible, runnable `Candidate` projections) and `assessments_for_target()`. |
+| `selection` | `select_candidates(candidates, *, top, bucket_order, caps)`: one pass when `top` is `None`, otherwise round-robin with per-type caps and one slot per target. |
+| `render` | `build_envelope()`, `render_json()`, `render_text()`, `render_explain_text()`, `collect_diagnostics()` and `build_output_schema()` / `load_output_schema()` for the packaged `output-schema.json`. |
+
+```python
+from pathlib import Path
+
+from little_loops.next_arena.candidates import generate_candidates
+from little_loops.next_arena.selection import bucket_order_for, select_candidates
+from little_loops.next_arena.state import collect_project_state
+
+state = collect_project_state(Path.cwd())
+settings = state.config.next.resolve_arena_settings()
+picks = select_candidates(
+    generate_candidates(state, settings=settings),
+    top=None,
+    bucket_order=bucket_order_for(None),
+    caps=settings.caps,
+)
+```
+
+`ll-next --json` output is validated by the JSON Schema shipped at `little_loops/next_arena/output-schema.json` (`schema_version` 4: the `run-sprint` / `capture-issues` verbs, the `sprint` and `scan` action variants, the `run-sprint` / `scan-codebase` action keys and the `ready_share` / `since_last_run` axes; version 3 added the required envelope `recording` `{status, reason}`, a required-nullable `rec_id` on every recommendation and microsecond-precision `as_of`; version 2 added the `loop` action variant, the `run-loop` action key and a nullable `blocker` summary on alternates). `ll-next feedback --json` documents are described by `little_loops/next_arena/feedback-schema.json` (`schema_version` 2: its `offer.action_spec` union grew the same `sprint` and `scan` variants). Each recommendation has a complete action identity (`action_key`, `action_fingerprint`, `action_spec`, `display_command`, `bucket_rank`); the `--explain` assessment definition allows those fields to be `null` for an excluded target.
+
+`SourceRecord.unsupported_relationships` holds one frozen `UnsupportedRelationship(field, keys, raw)` per nonempty mapping-valued `blocked_by` / `blocks` / `depends_on` (exact keys; `raw` is a deterministic escaped single-line rendering). A nonempty mapping suppresses the body-section fallback for its field and never creates a graph edge; instead `build_issue_graph` adds a `Prerequisite` with `reason="unsupported_relationship_shape"` and `prerequisite_id=None` to the declaring issue (`blocked_by`/`depends_on`) or to each existing issue named by an exact key (`blocks`), and a live source gets an `unsupported_dependency_shape` diagnostic. `evidence["dependencies"]["unresolved"]` entries of this kind also carry `raw_excerpt` and `raw_truncated` (at most `UNSUPPORTED_RAW_EXCERPT_LIMIT` = 512 characters).
+
+### little_loops.next_arena.history
+
+```python
+read_history_snapshot(
+    target: HistoryTarget, *, as_of: datetime, requests: Sequence[HistoryReadRequest],
+    now: Callable[[], datetime],
+) -> HistorySnapshot
+```
+
+A read-only, fail-soft reader over `history.db`. Callers resolve the target **once** with `resolve_history_target(..., root=project_root)` (only when they have requests), freeze a relative local path to an absolute one at their CLI boundary, and pass the typed target in; the reader never re-resolves it. A relative `LL_HISTORY_DB` stays relative to the invocation's original working directory (unlike `history.db_path` and the default store, which are project-root-relative), so root and subdirectory invocations can select different stores.
+
+- **Requests** are a closed set keyed by kind; at most one per kind (a duplicate raises `ValueError` before anything opens, as do a naive `as_of` and a relative path). An empty list opens nothing. v1 defines `RecentSprintInvocations(project_root, sprint_names)` (kind `sprint_invocations`), which batches all candidate sprint names under one work budget and returns recent `ll-sprint` rows as `CliInvocationRow`; argument, completion and timestamp qualification belong to the consumer, which also applies the `as_of` upper bound (the reader carries it but does not parse timestamps). `RecommendationLookup(project_key, rec_id)` (kind `recommendation_lookup`) is an exact point lookup of one recommendation's `shown` / `accepted_explicit` rows (at most two, through the unique `(rec_id, kind)` index, independent of the CLI history caps; rows of other projects are never returned), and `RecommendationSchemaProbe()` (kind `recommendation_schema`) reports a `RecommendationSchemaStatus(stamp, write_ready, read_compatible, reason)` payload on `HistoryReadResult.schema_status`. Both inspect only metadata before any identity data: an ordinary `recommendation_events` table with a plain, non-partial, BINARY `(rec_id, kind)` unique index (a view, virtual table or lookalike index is `incompatible_*`). Each kind keeps its own result slot, so one request's failure or an incompatible shape leaves the others intact; once the shared deadline is spent, unstarted requests are `unavailable(deadline_exhausted)` without issuing statements.
+- **Results** are `HistoryReadResult(availability, reason, rows, coverage, diagnostics)` with `availability` of `available`, `partial` or `unavailable`. A remote (libsql/Hrana) target reports `unavailable(remote_unsupported_v1)` before any connection. Missing store or table, an incompatible `cli_events` shape (it must be an ordinary table whose sole primary key is `id INTEGER`), a lock timeout and an expired deadline are `unavailable`, never an exception and never evidence that a sprint "never ran". `HistorySnapshot.read_observed_at` is stamped when the first read establishes the transaction snapshot and is `None` when none did.
+- **Partial** results carry `HistoryReadCoverage` (completed vs. interrupted ID ranges, a visited-rows *upper bound*, returned/skipped counts, argument bytes) and a reason: `deadline`, `row_cap`, `id_span_cap`, `payload_limit` (an `args` value over 64 KiB is never transferred), `malformed_row` (invalid JSON or non-string-array `args`, skipped row by row) or `unscoped_store`. A partial result never proves the latest run; its rows are observed witnesses only.
+- **Ownership.** `cli_events` has no project column, so rows are trusted only when the store's physical path equals `<project_root>/.ll/history.db` (resolved root, literal `.ll/history.db`). A redirected or configured store is `partial(unscoped_store)` with no rows.
+- **Limits.** One read transaction, one shared 1-second `Deadline` and a 250 ms busy timeout. The walk covers at most 50,000 IDs in 200-ID primary-key windows and 2,000 rows (`NOT INDEXED`, so a `(binary, ts)` index is never used). These are not hard wall-time caps: SQLite lock polling, filesystem stalls and JSON decoding are not preempted. The snapshot is consistent in itself but not atomic with the issue/git state, and reflects the database as observed now, not as it was at `as_of`.
+- **Filesystem.** No cache, marker or telemetry file is written and the store is never created or migrated. For a WAL-mode database SQLite itself may create `-wal`/`-shm` coordination files on a read-only open; this is accepted rather than bypassed with `immutable=1`.
+
+### little_loops.next_arena.recording
+
+```python
+record_shown(offers, *, target, project_key, invocation_id, as_of, requested_top, requested_types, now) -> RecordingResult
+record_accepted(rec_id, *, target, project_key, invocation_id, now) -> AcceptanceWriteResult
+lookup_feedback(snapshot, rec_id, *, provenance=None) -> FeedbackResult | FeedbackUnavailable
+```
+
+The `recommendation_events` seam behind `ll-next` recording, `accept` and `feedback` (schema version 63). `target` is the once-frozen absolute history target (`freeze_history_target`), never re-resolved from the working directory. Writers are **local SQLite, existing store only**: they preflight the schema through the read-only reader, open the file with `connect_existing_writable(target, timeout=0.25)` (no creation, no migration, no pragmas), recheck the schema inside `BEGIN IMMEDIATE`, and roll back and close on any failure. `record_shown` inserts one batch with a plain `INSERT` (any conflict rolls back every row and yields `unavailable(write_failed)` with no IDs); `record_accepted` copies the immutable `shown` row into an `accepted_explicit` row with `ON CONFLICT(rec_id COLLATE BINARY, kind COLLATE BINARY) DO NOTHING`, reads the pair back in the same transaction and returns the original acknowledgement time on replay. Identity SQL spells `COLLATE BINARY` on `rec_id`, `kind` and `project_key`. `project_key_for(root)` is the SHA-256 of the resolved project root. A stored offer whose `action_spec` names an unregistered variant is `unsupported_action_spec` (only that ID is affected), a malformed recognized payload is `malformed_offer`, and a missing or changed acknowledgement is `inconsistent_acknowledgement`; none is ever reported as unknown or accepted. There is no total write deadline (the 250 ms busy timeout applies per operation).
 
 ## little_loops.issue_parser
 
@@ -2671,6 +2742,14 @@ print(report)
 ## little_loops.git_operations
 
 Git utility functions for status checking and .gitignore management.
+
+### Gitignore-style path matching
+
+```python
+def file_matches_pattern(file_path: str, pattern: str, *, literal_path: bool = False) -> bool
+```
+
+Gitignore-style match of a repo-relative path against one pattern. By default a backslash in *file_path* is read as a separator. With `literal_path=True` the path is treated as literal Git-emitted bytes (on POSIX a NUL-delimited Git filename may contain a backslash or newline, and only `/` separates components); the pattern is normalized either way. `ll-next` uses the literal mode so an exclusion of `src/a/b.py` never suppresses the distinct file `src/a\b.py`.
 
 ### Porcelain parsing and dirty-tree preservation (BUG-2963)
 
@@ -9198,6 +9277,68 @@ of insertion order: `empty_selection`, `coverage_overlap_unresolved`, `coverage_
 publishes a canonical value only when its qualification is eligible, and
 `ObservationGroup.audit_subtotal()` returns the valid-value sum with no gate.
 
+### build_snapshot_db usage accounting tables
+
+```python
+from little_loops.session_store.queries import build_snapshot_db
+
+def build_snapshot_db(
+    db: Path, dest: Path, *, tables: list[str], since: str | None = None, local_mode: bool = False
+) -> str | None
+```
+
+When `usage_event` is exported, the snapshot carries three usage tables (ENH-3543,
+ENH-3733): `usage_events` (raw observations for audit), `selected_usage_events`
+(rows the coverage policy accepted, labelled with their `coverage`) and
+`usage_coverage_audit` (one row per model and channel). The return value is still the
+source `schema_version`; it is now read inside the same read transaction as the
+exported rows, so the version, raw rows, selected rows and audit rows always describe
+one committed revision of the source store.
+
+`usage_coverage_audit` qualifies usage with [`qualify_usage`](#qualify_usage--usagequalification)
+at **model scope**. Every in-filter audit observation of a logical model (rows with no model
+share the reserved `(unknown model)` bucket; legacy NULL channels use the logical channel)
+forms one group, and tokens and cost are qualified separately. The group's result
+controls every channel row: a complete channel cannot make an incomplete model
+available. Each row therefore repeats four model-scoped metadata columns next to its own
+per-channel values:
+
+| Column | Meaning |
+|--------|---------|
+| `provenance` | Aggregate `measured` / `estimated` / `mixed` / `unknown` label of the whole model |
+| `qualification_reason` | Why the four `canonical_*_tokens` are NULL (bounded code), or NULL when available |
+| `cost_qualification_reason` | Why `canonical_cost_usd` is NULL (bounded code), or NULL when available |
+| `qualification_policy_version` | The `USAGE_QUALIFICATION_POLICY_VERSION` that produced the result |
+
+`coverage_reason` stays a coverage diagnostic and is separate from the accounting
+reasons. Reasons are drawn only from a fixed vocabulary — the qualification reasons, the
+coverage reason codes and `snapshot_integer_overflow`; anything else is written as
+`unclassified`.
+
+- All four `canonical_*_tokens` columns are NULL together when tokens do not qualify;
+  `canonical_cost_usd` follows its own result, so valid tokens stay available when cost is
+  unpriced. A qualified channel whose observed values are all zero reports `0`; a
+  channel/model/window with no observations gets no row, never an invented zero.
+- `raw_*` and `known_*` columns are audit subtotals over valid values only (non-negative
+  integers; finite non-negative costs). `raw_missing_cost_count` and
+  `known_missing_cost_count` count **NULL costs only**; inadmissible or overflowing values
+  are excluded from subtotals and surface through the qualification reasons. (Before
+  allowlist version 4 these counts also included inadmissible values.)
+- SQLite INTEGER columns hold at most `2**63 - 1`. A raw or known token subtotal above
+  that is written as NULL without dropping any observation row or count. If a canonical
+  *channel* token subtotal cannot be represented, all canonical token components of that
+  model become NULL with `snapshot_integer_overflow`; cost is unaffected, and the source
+  readers (which are not limited by SQLite) are unchanged. Values are never rounded or
+  clamped to fit.
+- Old snapshot files and standalone dashboards generated before these columns existed
+  remain historical audit artifacts and are not certified under the current policy;
+  regenerate the dashboard to get the model-scoped view. A snapshot generated from a
+  store with no usage observations has empty usage tables and therefore no policy-version
+  row.
+
+Custom SQL against these tables stays an audit tool: a `SUM` over selected rows or NULLs
+does not certify a complete population, so read the canonical columns and their reasons.
+
 ### select_usage_coverage / select_usage_observations
 
 ```python
@@ -10482,6 +10623,10 @@ class RawRedactionProblem:
     row_id: int | None   # None for an operation-level diagnostic
     column: str | None   # "raw_line" / "parsed_json" / None
     reason: str          # fixed code, never content
+    stored_bytes: int | None = None  # exact stored column length; size refusals only
+    limit_kind: str | None = None    # stored | decoded | replacement_stored |
+                                     # replacement_decoded | request (remote only)
+    limit_bytes: int | None = None   # the exhausted budget; size refusals only
 ```
 
 `RawRedactionReport` carries `policy_version`, `target` (local path or remote provider/project
@@ -10489,7 +10634,10 @@ only), `dry_run`, `snapshot_max_id` and `last_scanned_id` (both `None` for an em
 `scanned`, `would_change` (candidate rows, both modes), `updates_applied` (acknowledged
 committed UPDATE applications), `unattributed_updates_applied`, `reconciled`,
 `counts_by_column`, `counts_complete`, `failed`, `conflicts`, `unconfirmed`, `problems` (at most
-100), `omitted_problems`, `stop_reason` and `complete`. `0 <= unattributed_updates_applied <=
+100), `omitted_problems`, `stop_reason`, `complete` and `oversize_refused` (defaulted to `0`).
+`oversize_refused` counts distinct rows refused by a size budget (reason
+`unverifiable_oversize`); it is a subset of `failed`, is kept independently of the truncated
+`problems`, and each such row is left entirely unchanged. `0 <= unattributed_updates_applied <=
 updates_applied`; applications plus `reconciled` is not a distinct-row partition.
 `counts_complete` is `False` when a short or lost acknowledgement leaves the confirmed counters a
 lower bound.
@@ -10502,8 +10650,15 @@ context cannot be validated is left unchanged and reported with a fixed reason c
 guarded by each row's original storage class, bytes and context, so a concurrent change is a
 conflict and is never overwritten; short or lost acknowledgements are reconciled by bounded
 re-reads and at most one guarded retry per row. `batch_size` is a row ceiling per page; internal
-bounds (at most 8 value-returning rows per page, 1 MiB stored and 4 MiB decoded per column, 8 MiB
-per remote write request) still apply.
+bounds (at most 8 value-returning rows per page, 1 MiB stored and 4 MiB decoded per column) still
+apply to the scan. A row above them is promoted once to a bounded single-row path: one coherent
+read of both payloads and the context, validated at 8 MiB stored and 8 MiB decoded per column
+(finite limits, not a total memory guarantee; the decoded limit is usually the binding one).
+Replacements are bounded by the same limits, and on remote targets only the guarded write request
+must also fit 8 MiB (local writes have no request-size limit). A row that still cannot be
+validated or safely written stays unchanged, keeps the run incomplete, and is reported as
+`unverifiable_oversize` with the exhausted budget; it may retain unredacted matches. The public
+signature is unchanged and no setting controls these limits.
 
 **Errors.** `batch_size` must be a positive `int` (`ValueError`). Before a snapshot exists an
 expected failure raises `RawRedactionError` (a `HistoryError`) whose `reason` is one of
@@ -10541,7 +10696,7 @@ def rebuild(
 ) -> dict[str, int]
 ```
 
-Wipes `tool_events`, `message_events`, `assistant_messages`, `skill_events`, `sessions`, `user_corrections`, non-retention `summary_nodes`, `summary_spans`, and the `search_index` rows for `kind in ('tool', 'message', 'skill', 'correction')`, then re-derives them by replaying every `raw_events` row through `_iter_events()`. Rows that cannot be replayed are preserved: `kind='retention'` summary nodes (written by `compact()`; their IDs and columns are unchanged, so `raw_events.summary_node_id` links stay valid) and `channel='live'` usage events. Leaf/condensed summary nodes are regenerated only when `config` enables `history.compaction`; with `config` omitted (hook and `refresh` rebuilds) they are cleared and not regenerated, and summaries whose raw rows were pruned are not recoverable. The replay runs in one write transaction, so an enabled config can make host summarization calls while the write lock is held. Idempotent. On success, updates the `last_rebuild_version` meta key to `SCHEMA_VERSION` and stamps `rebuild_derive_version` with `REBUILD_DERIVE_VERSION`, in the same transaction as the derived rows. Issue/loop/commit/cli/file/test_run/orchestration tables are outside `raw_events`'s scope and are left untouched — no re-derivation path exists for them.
+Wipes `tool_events`, `message_events`, `assistant_messages`, replay-origin `skill_events`, `sessions`, `user_corrections`, non-retention `summary_nodes`, `summary_spans`, and the `search_index` rows for `kind in ('tool', 'message', 'skill', 'correction')`, then re-derives them by replaying every `raw_events` row through `_iter_events()`. Rows that cannot be replayed are preserved: `kind='retention'` summary nodes (written by `compact()`; their IDs and columns are unchanged, so `raw_events.summary_node_id` links stay valid), `channel='live'` usage events, `tool_events` rows with a populated `bytes_in` or `bytes_out` (PostToolUse hook rows), `user_corrections` rows whose `source` is not `'backfill'` (BUG-3761), and every `skill_events` row whose `origin` is not `'transcript'` (BUG-3766; writers stamp `prompt_hook`, `skill_host` and `transcript`, and rebuild classifies NULL-origin rows as `skill_host` (completion evidence), `transcript` (unique `.jsonl` search anchor) or `legacy`; `_backfill_skill_events(..., skip_live=Sequence[SkillReplaySurvivor])` suppresses one replay twin per surviving `prompt_hook` row matching session, skill, stored args and a 1 s timestamp window). Surviving tool and correction rows keep every field and ID and are re-indexed into `search_index` with the writers' own arguments; `_backfill_tool_events(..., skip_live=Counter)` skips transcript tool_use blocks that duplicate a surviving live row (count-bounded per `(session_id, tool_name, args_hash)`), so tool counts do not double. A tool row with both byte columns NULL and a correction with source `'backfill'` are classified as replay output and are wiped. Leaf/condensed summary nodes are regenerated only when `config` enables `history.compaction`; with `config` omitted (hook and `refresh` rebuilds) they are cleared and not regenerated, and summaries whose raw rows were pruned are not recoverable. The replay runs in one write transaction, so an enabled config can make host summarization calls while the write lock is held. Idempotent. On success, updates the `last_rebuild_version` meta key to `SCHEMA_VERSION` and stamps `rebuild_derive_version` with `REBUILD_DERIVE_VERSION`, in the same transaction as the derived rows. Issue/loop/commit/cli/file/test_run/orchestration tables are outside `raw_events`'s scope and are left untouched — no re-derivation path exists for them.
 
 #### `rebuild_needed`
 
@@ -10564,9 +10719,19 @@ def compact(
 
 Sweeps `raw_events` rows older than `analytics.retention.raw_event_max_age_days` (default 90) that aren't yet `compacted`, groups them by `session_id`, and inserts one `kind='retention'` `summary_nodes` row per session — a deterministic one-liner (no host-CLI call), distinct from the LLM-backed `history.compaction` feature's `kind='condensed'` nodes so the two features' dedup indexes never collide. Marks the swept rows `compacted=1` with `summary_node_id` set. `and_prune=True` also calls `prune()` afterward and adds `pruned_rows`, `retained_rows` and `retention_reasons` to the returned dict.
 
-`prune()` now deletes only `raw_events` rows already marked `compacted=1` past the cutoff (previously it deleted directly from `tool_events`/`cli_events`/`file_events`/`message_events` and never touched `search_index`, leaving stale FTS rows behind a since-deleted event — the "FTS5 leak"). Because `rebuild()` always wipes+re-populates `search_index` from current cache-table state, running `rebuild()` after a `prune()` brings FTS row counts back in sync.
+`prune()` now deletes only `raw_events` rows already marked `compacted=1` past the cutoff (previously it deleted directly from `tool_events`/`cli_events`/`file_events`/`message_events` and never touched `search_index`, leaving stale FTS rows behind a since-deleted event — the "FTS5 leak"). Because `rebuild()` always wipes `search_index` and re-populates it from current cache-table state (replayed rows plus re-indexed surviving live tool/correction rows), running `rebuild()` after a `prune()` brings FTS row counts back in sync.
 
-`prune()` never deletes part of a usage-bearing source (BUG-3736): such a source is removed only whole, when every row is old, compacted and at or below a valid current-version usage derive checkpoint, and a `usage_replay_holds` marker is written in the same `BEGIN IMMEDIATE` transaction. Otherwise its rows are kept. The result dict gains `retained` (`{"raw_events": N}`) and a sorted `retention_reasons` list from `usage_derive_unverified`, `usage_derive_pending` and `usage_replay_context_required`. `rebuild()`, `backfill_usage_incremental()` and `refresh_raw_events()` skip held sources: no delete of their non-live usage, no replay of their raw rows, and `refresh_raw_events()` reports `usage_replay_held` before invalidating anything.
+`prune()` never deletes part of a usage-bearing source (BUG-3736): such a source is removed only whole, when every row is old, compacted and at or below a valid current-version usage derive checkpoint, and a `usage_replay_holds` marker is written in the same `BEGIN IMMEDIATE` transaction. Otherwise its rows are kept. The result dict gains `retained` (`{"raw_events": N}`) and a sorted `retention_reasons` list from `usage_derive_unverified`, `usage_derive_pending`, `usage_replay_context_required`, `usage_derive_gap`, `usage_proof_unprovable`, `usage_proof_limit` and `source_recovery_pending` (ENH-3745: an unresolved acquisition failure, native conflict, parser-refresh, held-source derive gap or raw-cache obligation keeps the source's raw rows; prune never acknowledges or deletes the obligation). Even with a valid checkpoint, `prune()` keeps a source whose logical usage candidates are not all represented by committed observations (ENH-3744). Each source is planned, protected and deleted in its own `BEGIN IMMEDIATE` transaction that re-reads cross-source evidence; a failure rolls back only that source, stops further deletion and re-raises with a note that earlier sources may have committed (re-running is safe). `dry_run=True` reads one snapshot, writes nothing and reports the counts and reasons an actual run would produce.
+
+**Usage candidate proof** (`little_loops.session_store.usage_proof`). `inspect_usage_candidates(records, observations, *, channel=None) -> tuple[UsageCandidateProof, ...]` is a pure function: it reads no files, runs no SQL, prices nothing and never calls the write normalizers. `records` is a deterministically ordered retained proof scope of `UsageReplayRecord` (or `UsageReplayFailure` for rows that could not be decoded) and `observations` are the committed `usage_events` rows selected by that scope's native identities and exact raw links. Each `UsageCandidateProof.correspondence` is `represented`, `missing`, `intentional_omission`, `excluded_channel` or `unprovable`, with a bounded `reason`; `status()` returns only those two fields. Internal evidence (matched/protected observation IDs, required raw context, actual supplier sources) is never part of `repr` or `status()`. `little_loops.session_store.usage_proof_scope.inspect_retained_source(conn, source)` collects a source's bounded scope from an open connection and returns its proofs (read-only; raises `UsageProofLimit` when the scope crosses its private item/byte bounds). Retained-only proof does not certify older already-pruned or parser-filtered source inventories. `refresh_raw_events()` still refuses a held source (`usage_replay_held`) before touching anything; `rebuild()` and `backfill_usage_incremental()` plan a held source's retained rows under the guarded reconciliation described below instead of skipping or replaying them.
+
+**Source completion and freshness** (`little_loops.session_store`, ENH-3745). `usage_source_freshness(db, source, *, conn=None) -> dict` keeps its `status`, `reason`, `as_of` and `as_of_offset` keys. With `conn`, the caller supplies an already-active pinned read transaction with `PRAGMA query_only = 1` (inactive, autocommit or writable connections return `unknown` / `read_snapshot_unavailable` and are left unchanged); no second history connection is opened and the caller's transaction is never begun, committed, rolled back or closed. Without `conn` the function begins one owned read transaction before its first database read. `as_of`/`as_of_offset` are the last *successfully derived* boundary for a source with semantic tracking (unknown when unproved), and the legacy cursor values otherwise. A source with no cursor reports any durable pending/failure reason before `source_untracked`. Invalid checkpoint or cursor numerics yield `unknown` (`checkpoint_invalid`, `cursor_invalid`), never an exception.
+
+`read_source_derive_completion(conn, source_path, *, schema="main") -> SourceDeriveCompletion` reads committed state only (no stat, parse, pricing or write; `schema` must be `main` or a generated-safe alias attached to `conn`, never falling back to `main`). `status` is `complete`, `pending` or `unprovable`; `basis` is `semantic` only for proved complete state, otherwise `none`; `outstanding` reports unresolved `usage` / `raw_cache` work. Missing storage or an untracked source is `unprovable` with a bounded reason. `read_observation_witness(conn, usage_event_id, *, schema="main")` returns the applied-value supplier and consumed qualification frontier, or explicitly *unavailable* values for legacy or absent rows. `refresh_usage_source` returns `status: "incomplete"` with a bounded `reason` when ingestion advanced but derivation, acquisition or source proof did not complete. See the [History & Session Guide](../guides/HISTORY_SESSION_GUIDE.md#usage-derive-freshness-and-source-completion) for the scan-versus-completion model.
+
+**Guarded usage reconciliation** (`little_loops.session_store`, ENH-3770). `backfill_usage_incremental()`, `rebuild()` and the derive step of `refresh_usage_source()` never delete committed usage observations. Every retained request is first compared with the committed observations and only then priced or written; the integer each returns still counts *newly inserted* observation rows, so a replacement, a qualification, a no-op, search repair and a released protection all contribute zero. Replaying unchanged data is idempotent: row IDs, stored historical costs, timestamps and provenance are untouched, and nothing is repriced. A strictly later native position of the same request replaces its row in place and prices once; a larger ingestion ID, equal numbers or a path alias never counts as newer, and order that cannot be proved leaves the committed row as it is. Codex requests whose turn close arrives in a later append are qualified in place on fully retained, unheld sources, priced at most once, and keep their value position. Compatible copies of one request across sources share one observation. A proved conflict between copies (different values, or equal counts under different known models) demotes only the committed row's provenance to unknown and keeps the conflicting copy as unpriced unknown-provenance audit evidence; readers that require measured provenance therefore reject both, and a repeated replay cannot restore it. A payload whose own session disagrees with its stored envelope never becomes a qualified observation, and raw-less input (no durable raw row) is refused. A held source accepts proved-distinct keyed requests on top of its protected history, which stays unchanged; requests that cannot be proved distinct from it stay pending. `rebuild()` still re-derives every cache from raw events and re-indexes usage search from the committed rows. An exact-source replay hold is lifted only when every observation it covers -- including rows with no retained raw evidence and rows of any host or channel -- is proved reconstructible from retained evidence, nothing is pending and no conflict stands; wildcard population holds and other sources' protection are never touched. An established unusable derive checkpoint (missing, partial, version-changed, malformed or contradictory) is never silently restamped: outstanding per-source work may still recover, and only a complete retained-population replay that leaves nothing unresolved republishes it, to the bound that replay actually scanned.
+
+Anything a replay cannot prove is kept as durable per-source pending work in the same transaction that advances the scan checkpoint, and outstanding usage work at or below the checkpoint is retried on later calls even when no new raw row arrived. It clears only after the retained evidence is proved sufficient; a count or a normal return never clears it. `RefreshResult.needs_rebuild` of `refresh_raw_events()` reports the committed refresh obligations of the requested sources (parser-derived cache work and usage work), so an unchanged retry, or a crash between the raw refresh and the derive, still reports unfinished work. The refresh updates verified existing lines in place and appends new native lines, keeping raw IDs and observation links; a following `rebuild()` consumes the cache work, and the usage work clears only when its reconciliation resolves it. `outstanding_refresh_work(db, paths)` re-reads that state for any set of sources (including skipped ones and either path spelling). Raw ingestion that read a whole source from zero (or re-verified a tracked source's retained prefix) while the file stayed stable records a verified acquisition and one usage handoff, so a later derive completes from the retained rows without reading the original file; historical raw rows with no tracking gain no invented lineage. An audit observation whose original line matches the recovered original exactly may be certified in place by an explicit refresh; contradictory retained values stay protected and the work stays pending.
 
 ### cli_event_context
 

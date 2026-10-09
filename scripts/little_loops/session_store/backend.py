@@ -450,11 +450,14 @@ class SqliteBackend:
     def connect_existing_writable(
         self, target: Path | HistoryTarget, *, timeout: float = 5.0
     ) -> sqlite3.Connection:
-        """Writable open of an *existing* store for explicit-transaction maintenance (ENH-3752).
+        """Writable open of an *existing* store for explicit-transaction writers (ENH-3752).
 
         Uses ``mode=rw``, so a missing file raises instead of being created; it never migrates
-        and applies no pragma. The connection is in autocommit (``isolation_level=None``) so
-        the caller issues ``BEGIN``/``COMMIT`` itself. Raises :class:`HistoryUnavailable`.
+        and applies no pragma. The connection is in autocommit (``isolation_level=None``) with
+        no row factory, so the caller issues ``BEGIN``/``COMMIT``/``ROLLBACK``, sets any row
+        factory and closes it. Consumers: store maintenance (ENH-3752) and ``ll-next``
+        recommendation recording/``accept`` (FEAT-3711, ``timeout=0.25``). Raises
+        :class:`HistoryUnavailable`.
         """
         path = _local_path(target, "connect_existing_writable")
         try:
@@ -589,7 +592,10 @@ def connect_readonly(
 def connect_existing_writable(
     target: Path | str | HistoryTarget | None = None, *, timeout: float = 5.0
 ) -> sqlite3.Connection:
-    """Non-creating writable open of the resolved *local* store (ENH-3752 maintenance only).
+    """Non-creating writable open of the resolved *local* store (ENH-3752, FEAT-3711).
+
+    Used by maintenance and by ``ll-next`` recommendation recording/``accept``; other callers
+    keep the schema-ensuring :func:`open_history` and its default policy.
 
     Raises :class:`HistoryUnsupported` for a remote target and :class:`HistoryUnavailable` when
     the store is missing or unopenable; it never creates, migrates or configures the store.

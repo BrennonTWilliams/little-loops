@@ -198,6 +198,9 @@ def handle(event: LLHookEvent) -> LLHookResult:
             with remote_telemetry.telemetry_scope():
                 conn = connect(cwd / ".ll" / "history.db")
             try:
+                # Byte columns are always integers here (never NULL): ``rebuild()``
+                # preserves rows with a populated byte column as live hook telemetry
+                # (BUG-3761), while replay rows bind NULL for both.
                 cursor = conn.execute(
                     "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
                     "result_size, bytes_in, bytes_out, cache_hit, agent_type, "

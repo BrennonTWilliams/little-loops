@@ -51,6 +51,8 @@ Classify each default-shaped path with `resolve_history_store(path, root=project
 
 Keep one shared safe reason for route/page responses: `History snapshots are not supported with a remote libsql backend.` HTTP 501 returns `{"verdict":"unsupported","reason":"<shared reason>"}`. In `refreshHistory`, handle 501 separately, parse its reason, render it with `textContent`, and clear the stored polling interval. Treat it as an unavailable panel state, with no error toast. Network errors and 5xx retain retry behavior. The initial remote page skips snapshot loading entirely. Local-missing behavior and explicit local overrides remain unchanged. `skills/update-docs` stays DB-first for an actual local history file and uses the documented file scan only for a remote target or truly missing local file.
 
+Handle 501 **before** a generic 5xx/error branch; it is itself a 5xx. The retryable-5xx promise excludes this explicit unsupported verdict. Plant the rendered-client test so a generic retry branch would cause another fetch and fail it.
+
 ## Motivation
 
 A remote backend should not look like an empty local database. These paths bypass the normal target resolver and make wrong but plausible output, making the failure harder to spot than a traceback.
@@ -61,6 +63,8 @@ A remote backend should not look like an empty local database. These paths bypas
 2. Guard `--trim` in `main_doctor` using its existing `_remote_target()` pattern. For a local target, pass the resolver's returned Path to the existing `collect_trim_report(..., db_path=...)` parameter; otherwise a redirected `LL_HISTORY_DB` would still be ignored. Leave `doctor_trim.py` local-only. Add one shared unavailable-reason value consumed by the serve route, page factory, and loop `--serve` render.
 3. Replace the `skills/update-docs` literal-path existence check with target-aware behavior. Add a pytest hazard gate over `skills/`, `commands/`, `loops/*.yaml`, and `hooks/` for executable `history.db` existence tests and `resolve_history_db()` calls, with reasoned allowlist entries. This issue is no longer `blocked_by` ENH-3657/ENH-3700 (2026-10-02 Opus review): it never edits `session_store/backend.py`, and its five Python sites classify with `resolve_history_store`, not the central guard. CT-0 (`skills/improve-claude-md/SKILL.md` ~L206-209) calls `resolve_history_db()` directly, so the gate flags it until ENH-3728 switches it to `resolve_history_store`: add a **temporary** allowlist entry for CT-0 that ENH-3728's PR removes. Add a **permanent** allowlist entry for `context-monitor.sh` with the reason "remote writes intentionally skipped (ENH-3680 cancelled)". Do not flag the bare string in prose.
 4. Add remote-stub tests and local twins, then update the remote-history support docs with end-user wording.
+
+The CT-0 exemption is conditional on a **still-present** executable hazard, not on an assumed merge order. If ENH-3728 landed first, never introduce it. Add a stale-exemption check requiring each scoped allowlist entry to match its actual current hazard; when CT-0 changes, the gate must pass without its entry. This preserves independent eligibility and does not add a dependency edge.
 
 ### Preserve explicit snapshot-target intent through export
 
@@ -117,7 +121,7 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 ## Implementation Steps
 
-1. Land ENH-3677's shared `remote` test fixture, then implement the Python target checks and one shared unavailable reason. ENH-3657/ENH-3700 may edit the same remote-operation test file: merge independent assertions rather than replacing rows. `cli/doctor.py` and the `CLI.md` install-surface check wording are also touched by ENH-3698 and ENH-3679: sequence those edits, do not run them in parallel.
+1. Land ENH-3677's shared `remote` test fixture, then implement the Python target checks and one shared unavailable reason. ENH-3657/ENH-3700 may edit the same remote-operation test file: merge independent assertions rather than replacing rows. ENH-3698 and ENH-3679 are already done; preserve their landed `cli/doctor.py` / `CLI.md` install-surface check behavior rather than scheduling them as pending work.
 2. Implement the named `refreshHistory` 501 branch and polling cancellation. Update `skills/update-docs` and add the narrow hazard gate with a **temporary** CT-0 allowlist entry only while ENH-3728's CT-0 change remains pending (its PR removes the entry), and a **permanent** `context-monitor.sh` entry (reason: remote writes intentionally skipped). Scan packaged built-in loops under `scripts/little_loops/loops/` as well as repository `loops/` and `.loops/` executable artifacts.
 3. Add a remote stub plus local twin for each changed path, including a foreign-cwd/project-root case and `LL_HISTORY_DB` redirection. Confirm the existing local missing-file behavior.
 4. Update documentation and run `python -m pytest scripts/tests/`, `ruff check scripts/`, and `python -m mypy scripts/little_loops/`.
@@ -138,6 +142,7 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 - [ ] The remote page/loop render never calls `build_history_payload` or initializes/polls a history snapshot; SSE and interactions remain functional. Execute the rendered client's 501/timer behavior in a pytest-wrapped JavaScript test (skip gracefully if the runtime is absent), rather than checking strings or a copied implementation alone.
 - [ ] A real history-route 501 is followed by a successful page/SSE request on the same server; the unavailable snapshot cannot terminate the server or disable its other routes. The notice is fixed safe text and remote classification never consults a stale local shadow snapshot.
 - [ ] `skills/update-docs` stays DB-first for a real local history file, takes the explicit scan fallback for a remote target or missing local file, and never reads a stale shadow DB; source and regenerated skill mirrors agree. The narrow hazard gate passes with documented allowlist entries, temporary CT-0 only while needed and permanent context-monitor only for its intentional remote no-op.
+- [ ] The hazard gate rejects stale scoped exemptions; either ENH-3658/3728 landing order ends with no CT-0 exemption after its hazard is removed. The client handles 501 before retryable 5xx logic and its next queued tick makes no fetch.
 - [ ] Remote-stub and local-twin tests cover every changed site; `python -m pytest scripts/tests/` passes.
 
 ## Related
@@ -156,9 +161,10 @@ For local SQLite, a present `history.db` still drives all five Python views and 
 
 _Updated 2026-10-02 after the EPIC-3693 pre-implementation review._
 
-Prior 85/75 scores were cleared because the revised client/hazard-gate scope changed. The client question is resolved: the named dashboard template requires a safe 501 branch and polling cancellation. Implementation remains blocked by ENH-3677. Re-run `/ll:confidence-check` after that fixture lands; do not reuse the old aggregate as approval. Sequence shared doctor edits with ENH-3679/3698 at integration.
+Prior 85/75 scores were cleared because the revised client/hazard-gate scope changed. The client question is resolved: the named dashboard template requires a safe 501 branch and polling cancellation. Implementation remains blocked by ENH-3677. Re-run `/ll:confidence-check` after that fixture lands; do not reuse the old aggregate as approval. Preserve the already-landed ENH-3679/3698 doctor behavior at integration.
 
 ## Session Log
+- EPIC-3693 review #6 + `/ll:advise` (opus, user_requested, confidence 0.62) - 2026-10-06 - conditional CT-0 allowlisting now has an executable stale-exemption gate; rendered client explicitly handles 501 before generic 5xx retry. Existing independent eligibility and snapshot scope retained; implementation not performed.
 - EPIC-3693 review #3 - 2026-10-05 - existing target/provenance/renderer scope retained, file ownership clarified and same-server usability after 501 made explicit; implementation not performed
 - EPIC-3693 pre-implementation review + `/ll:advise` (claude-opus-5-5, user_requested) - 2026-10-04 - explicit snapshot provenance, renderer skip path, trim override and mirror/test wiring amended; implementation not performed
 - `/ll:confidence-check` - 2026-09-30T05:10:36 - `defb8cbc-fb4d-4d9b-9b95-eac7264d3124.jsonl`

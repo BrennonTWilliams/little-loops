@@ -160,6 +160,7 @@ _LL_PERMISSIONS: tuple[str, ...] = (
     "Bash(ll-migrate-labels:*)",
     "Bash(ll-migrate-relationships:*)",
     "Bash(ll-migrate-status:*)",
+    "Bash(ll-next:*)",
     "Bash(ll-parallel:*)",
     "Bash(ll-queue:*)",
     "Bash(ll-session:*)",

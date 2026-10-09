@@ -108,10 +108,25 @@ class TestRebuildNeeded:
         assert rebuild_needed(db) == RebuildState("stale", "derive_mismatch")
 
     @pytest.mark.parametrize("last", ["58", "59", "60"])
-    def test_unmarked_legacy_store_at_or_above_floor_is_current(self, db: Path, last: str) -> None:
+    def test_unmarked_legacy_store_at_or_above_floor_is_current(
+        self, db: Path, last: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Only while the current derive version still equals the frozen legacy one;
+        # BUG-3761's bump moved it, so the frozen-baseline path is exercised by patching.
+        monkeypatch.setattr(
+            lifecycle, "REBUILD_DERIVE_VERSION", lifecycle._FROZEN_LEGACY_DERIVE_VERSION
+        )
         _set_meta(db, last_rebuild_version=last)
         assert rebuild_needed(db) == RebuildState("current", "legacy_floor")
         assert _meta(db, "rebuild_derive_version") is None  # no hook-side write
+
+    @pytest.mark.parametrize("last", ["58", "59", "60"])
+    def test_unmarked_legacy_store_is_stale_after_derivation_bump(
+        self, db: Path, last: str
+    ) -> None:
+        assert REBUILD_DERIVE_VERSION != lifecycle._FROZEN_LEGACY_DERIVE_VERSION
+        _set_meta(db, last_rebuild_version=last)
+        assert rebuild_needed(db) == RebuildState("stale", "derive_mismatch")
 
     @pytest.mark.parametrize("last", ["57", "0"])
     def test_unmarked_store_below_floor_rebuilds(self, db: Path, last: str) -> None:
@@ -124,7 +139,12 @@ class TestRebuildNeeded:
         _drop_meta(db, "last_rebuild_version")
         assert rebuild_needed(db) == null_state == RebuildState("stale", "no_stamp")
 
-    def test_null_stamp_is_treated_as_absent(self, db: Path) -> None:
+    def test_null_stamp_is_treated_as_absent(
+        self, db: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            lifecycle, "REBUILD_DERIVE_VERSION", lifecycle._FROZEN_LEGACY_DERIVE_VERSION
+        )
         _set_meta(db, rebuild_derive_version=None, last_rebuild_version="58")
         assert rebuild_needed(db) == RebuildState("current", "legacy_floor")
 
@@ -453,7 +473,7 @@ class TestDeriveFingerprint:
     def test_resolved_function_set_matches_snapshot(self) -> None:
         sources, _manifest = sources_at(REPO_ROOT, None)
         resolved = [f"{m}.{n}" for m, n in resolve_function_set(sources)]
-        assert len(resolved) == 23
+        assert len(resolved) == 28
         assert resolved == self._snapshot()["function_set"], (
             "the set of functions reachable from rebuild() changed; regenerate "
             "rebuild_fingerprint.json (see this class's docstring) and consider a bump"

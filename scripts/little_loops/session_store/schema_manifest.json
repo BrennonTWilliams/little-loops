@@ -589,6 +589,24 @@
       "partial": false,
       "unique": false
     },
+    "idx_usage_completion_dependencies_observation": {
+      "columns": [
+        "usage_event_id"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": false
+    },
+    "idx_usage_completion_dependencies_source": {
+      "columns": [
+        "dependency_source_path",
+        "dependency_generation_id",
+        "dependency_derive_version"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
     "idx_usage_events_model": {
       "columns": [
         "model"
@@ -637,6 +655,26 @@
       "partial": true,
       "unique": true
     },
+    "idx_usage_observation_dependencies_source": {
+      "columns": [
+        "source_path",
+        "generation_id",
+        "derive_version"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_usage_observation_witnesses_supplier": {
+      "columns": [
+        "supplier_source_path",
+        "supplier_generation_id",
+        "supplier_derive_version"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
     "idx_usage_replay_holds_key": {
       "columns": [
         null,
@@ -646,6 +684,52 @@
       "origin": "c",
       "partial": false,
       "unique": true
+    },
+    "idx_usage_source_pending_cache": {
+      "columns": [
+        "source_path"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": false
+    },
+    "idx_usage_source_pending_key": {
+      "columns": [
+        "source_path",
+        "generation_id",
+        "derive_version",
+        "kind",
+        "reason",
+        null
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": true
+    },
+    "idx_usage_source_pending_source": {
+      "columns": [
+        "source_path"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
+    },
+    "idx_usage_source_pending_usage": {
+      "columns": [
+        "source_path"
+      ],
+      "origin": "c",
+      "partial": true,
+      "unique": false
+    },
+    "idx_usage_source_state_scope": {
+      "columns": [
+        "generation_id",
+        "derive_version"
+      ],
+      "origin": "c",
+      "partial": false,
+      "unique": false
     },
     "idx_verdict_kind": {
       "columns": [
@@ -2112,6 +2196,119 @@
       ],
       "type": "table"
     },
+    "recommendation_events": {
+      "columns": [
+        {
+          "name": "id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "event_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "rec_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ts",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "project_key",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "invocation_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "as_of",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "rank",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "action_type",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "action_key",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "action_fingerprint",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "target_key",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "action_spec",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "requested_top",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "requested_types",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
     "research_triage_events": {
       "columns": [
         {
@@ -2408,6 +2605,12 @@
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
+        },
+        {
+          "name": "origin",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2743,6 +2946,83 @@
       ],
       "type": "table"
     },
+    "usage_completion_dependencies": {
+      "columns": [
+        {
+          "name": "source_path",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "generation_id",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "derive_version",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "dependency_id",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "usage_event_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "dependency_source_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "dependency_generation_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "dependency_derive_version",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "line_no",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "ordinal",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "raw_event_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
     "usage_events": {
       "columns": [
         {
@@ -2934,6 +3214,142 @@
       ],
       "type": "table"
     },
+    "usage_observation_dependencies": {
+      "columns": [
+        {
+          "name": "usage_event_id",
+          "notnull": true,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "role",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "source_path",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "generation_id",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "derive_version",
+          "notnull": true,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "line_no",
+          "notnull": true,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "host",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "ordinal",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "raw_event_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        }
+      ],
+      "type": "table"
+    },
+    "usage_observation_witnesses": {
+      "columns": [
+        {
+          "name": "usage_event_id",
+          "notnull": false,
+          "pk": true,
+          "type": "INTEGER"
+        },
+        {
+          "name": "supplier_source_path",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "supplier_host",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "supplier_session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "supplier_generation_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "supplier_derive_version",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "supplier_line_no",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "supplier_ordinal",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "supplier_raw_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "value_status",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "qualification_status",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
     "usage_replay_holds": {
       "columns": [
         {
@@ -3040,6 +3456,256 @@
         {
           "name": "updated_at",
           "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "usage_source_pending": {
+      "columns": [
+        {
+          "name": "obligation_id",
+          "notnull": false,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "source_path",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "generation_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "derive_version",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "reason",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "range_kind",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "refusal_code",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "affected_usage_event_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "first_raw_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "last_raw_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "first_line_no",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "last_line_no",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "first_offset",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "end_offset",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "revision",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "raw_cache_pending",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "usage_pending",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "original_acquisition_json",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        }
+      ],
+      "type": "table"
+    },
+    "usage_source_state": {
+      "columns": [
+        {
+          "name": "source_path",
+          "notnull": false,
+          "pk": true,
+          "type": "TEXT"
+        },
+        {
+          "name": "generation_id",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "derive_version",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "revision",
+          "notnull": true,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "host",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "status",
+          "notnull": true,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "reason",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "acquisition_version",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "acquired_offset",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "acquired_line_no",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "acquisition_witness_json",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "successful_host",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "successful_session_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "successful_generation_id",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "successful_derive_version",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "successful_acquisition_version",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "successful_offset",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "successful_line_no",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "successful_raw_id",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "successful_at",
+          "notnull": false,
           "pk": false,
           "type": "TEXT"
         }
@@ -3165,5 +3831,5 @@
       "type": "table"
     }
   },
-  "schema_version": 60
+  "schema_version": 63
 }

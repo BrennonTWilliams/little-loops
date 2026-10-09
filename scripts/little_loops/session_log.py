@@ -200,12 +200,19 @@ def parse_session_log(content: str) -> list[str]:
     Returns:
         List of distinct command names (e.g. ["/ll:refine-issue", "/ll:ready-issue"]).
     """
-    body = session_log_body(content)
+    return commands_in_body(session_log_body(content))
+
+
+def commands_in_body(body: str | None) -> list[str]:
+    """Distinct /ll:* command names (first-seen order) in an extracted Session Log *body*.
+
+    The body-level half of :func:`parse_session_log` for callers that already hold the
+    :func:`session_log_body` result and would otherwise re-run its fence scan.
+    """
     if body is None:
         return []
-    cmds = _COMMAND_RE.findall(body)
     # Deduplicate while preserving insertion order
-    return list(dict.fromkeys(cmds))
+    return list(dict.fromkeys(_COMMAND_RE.findall(body)))
 
 
 def count_session_commands(content: str) -> dict[str, int]:
@@ -219,7 +226,14 @@ def count_session_commands(content: str) -> dict[str, int]:
     Returns:
         Mapping of command name to occurrence count (e.g. {"/ll:refine-issue": 3}).
     """
-    body = session_log_body(content)
+    return command_counts_in_body(session_log_body(content))
+
+
+def command_counts_in_body(body: str | None) -> dict[str, int]:
+    """Occurrence count of each /ll:* command in an extracted Session Log *body*.
+
+    The body-level half of :func:`count_session_commands` (see :func:`commands_in_body`).
+    """
     if body is None:
         return {}
     counts: dict[str, int] = {}

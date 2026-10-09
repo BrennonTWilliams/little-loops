@@ -1,0 +1,12 @@
+{
+  "id": "6820b86c-53dd-4007-aa75-9269d6a94044",
+  "type": "decision",
+  "timestamp": "2026-10-07T00:20:39Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A's channel label must be backfilled from the same signals; B avoids v61 slot contention and ~41 SCHEMA_VERSION pin edits, matches BUG-3715 shape",
+  "rule": "Option B: predicates on existing columns (bytes_in IS NOT NULL / source != 'backfill'), no migration",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: nullable channel column + v61 migration",
+  "issue": "BUG-3761"
+}

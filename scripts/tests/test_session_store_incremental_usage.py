@@ -147,22 +147,37 @@ def test_truncation_refuses_reused_line_numbers(tmp_path: Path) -> None:
         conn.close()
 
 
-def test_normalizer_version_change_replays_historical_rows(
+def test_established_version_mismatch_preserves_usage_and_repairs_to_the_scanned_bound(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """ENH-3745/3770: a version change never replays destructively; clean repair restamps."""
     source = tmp_path / "session.jsonl"
     source.write_bytes((_CLAUDE / "transcript-v2.1.284.jsonl").read_bytes())
     db = tmp_path / "history.db"
     refresh_usage_source(db, source)
+    before = _usage_rows(db)
+    assert len(before) == 2
+    meta_before = _meta(db)
+    monkeypatch.setattr(lifecycle, "_USAGE_DERIVE_VERSION", "new-normalizer")
+    assert backfill_usage_incremental(db) == 0
+    assert _usage_rows(db) == before  # row IDs, costs and provenance untouched
+    meta_after = _meta(db)
+    # The retained population reconciled cleanly, so only the freshly scanned bound and the
+    # current version are published -- never max(untrusted prior, bound).
+    assert meta_after == {
+        "usage_derive_version": "new-normalizer",
+        "usage_derive_raw_id": meta_before["usage_derive_raw_id"],
+    }
+
+
+def _meta(db: Path) -> dict[str, str]:
     conn = connect(db)
     try:
-        conn.execute("DELETE FROM usage_events WHERE channel = 'transcript'")
-        conn.commit()
+        return dict(
+            conn.execute("SELECT key, value FROM meta WHERE key LIKE 'usage_derive_%'").fetchall()
+        )
     finally:
         conn.close()
-    monkeypatch.setattr(lifecycle, "_USAGE_DERIVE_VERSION", "new-normalizer")
-    assert backfill_usage_incremental(db) == 2
-    assert len(_usage_rows(db)) == 2
 
 
 def test_codex_turn_crossing_slice_boundary_matches_rebuild(tmp_path: Path) -> None:
@@ -194,7 +209,7 @@ def test_catchup_failure_rolls_back_rows_and_checkpoint(
     db = tmp_path / "history.db"
     backfill_raw_events(db, jsonl_files=[source], host="claude-code")
 
-    def fail_after_one(conn: sqlite3.Connection, cursor: object) -> int:
+    def fail_after_one(conn: sqlite3.Connection, cursor: object, **kwargs: object) -> int:
         conn.execute("INSERT INTO usage_events(ts, channel) VALUES('t', 'transcript')")
         raise RuntimeError("injected derive failure")
 
@@ -242,7 +257,9 @@ def test_missing_message_id_stays_unqualified_and_copied_source_conflicts(
     copied2.write_text(json.dumps(divergent) + "\n")
     refresh_usage_source(db, copied2)
     rows = _usage_rows(db)
-    assert len(rows) == 2
+    # ENH-3770: a proved conflict demotes the committed row's qualification only (its numbers
+    # survive) and the conflicting copy is retained as its own unqualified audit row.
+    assert len(rows) == 3
     assert {row[7] for row in rows} == {"unknown"}
     assert {row[8] for row in rows} == {None}
     rebuild(db)
@@ -289,8 +306,8 @@ def test_failed_append_derive_leaves_committed_cursor_stale(
     with monkeypatch.context() as patcher:
         patcher.setattr(
             lifecycle,
-            "_derive_usage_incremental_conn",
-            lambda conn: (_ for _ in ()).throw(RuntimeError("derive failed")),
+            "_derive_usage_incremental_disposition",
+            lambda conn, *a, **k: (_ for _ in ()).throw(RuntimeError("derive failed")),
         )
         with pytest.raises(RuntimeError, match="derive failed"):
             refresh_usage_source(db, source)

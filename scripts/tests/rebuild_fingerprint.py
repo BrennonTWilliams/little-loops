@@ -26,8 +26,10 @@ from typing import Any
 PRUNED_NAMES = frozenset(
     {
         "_backfill_usage_events",
+        "_invalidate_usage_for_rebuild",
         "_set_usage_derive_checkpoint",
         "_stamp_rebuild_derive_version",
+        "_usage_checkpoint_snapshot",
         "refuse_on_remote",
     }
 )

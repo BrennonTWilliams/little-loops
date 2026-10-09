@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 60
+SCHEMA_VERSION = 63
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -99,6 +99,13 @@ _KINDLESS_TABLES = frozenset(
         "raw_events",
         # Source-tail checkpoints are internal replay state, not searchable events.
         "usage_source_cursors",
+        # (ENH-3745) Source completion, pending/failure obligations and the minimal
+        # observation/completion dependency witnesses are internal derive state.
+        "usage_source_state",
+        "usage_source_pending",
+        "usage_observation_witnesses",
+        "usage_observation_dependencies",
+        "usage_completion_dependencies",
         # Replay hold markers are internal retention state (BUG-3736).
         "usage_replay_holds",
         "correction_retirements",
@@ -106,6 +113,9 @@ _KINDLESS_TABLES = frozenset(
         # recent row for an issue, so there is no "recent by kind" concept to
         # register. See record_prepatch_evidence/read_prepatch_evidence.
         "prepatch_evidence",
+        # (FEAT-3711) ll-next shown/accepted rows are looked up by exact rec_id, never searched
+        # by kind, and are outside the rebuild wipe (no source to replay them from).
+        "recommendation_events",
     }
 )
 
@@ -1570,7 +1580,170 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE loop_events ADD COLUMN to_state TEXT;
     """,
+    # v61 (BUG-3766): writer provenance for skill_events. Nullable with no default
+    # or CHECK: the three writers stamp 'prompt_hook' | 'skill_host' | 'transcript',
+    # rebuild() may classify unattributable historical rows 'legacy', and NULL means
+    # unclassified (stale-process insert or pre-v61 row). rebuild() wipes only
+    # origin = 'transcript'; every other row is live telemetry replay cannot recreate.
+    """
+    ALTER TABLE skill_events ADD COLUMN origin TEXT;
+    """,
+    # v62 (ENH-3745): source-local derive completion, pending/failure obligations and the
+    # minimal observation/completion dependency witnesses. Internal state only: no
+    # cascading foreign key to raw_events, usage_source_cursors or usage_events, so native
+    # scope/position witnesses survive prune and replacement. Nothing is seeded from legacy
+    # cursors or the global checkpoint; a legacy source simply has no semantic completion.
+    """
+    CREATE TABLE usage_source_state (
+        source_path TEXT PRIMARY KEY,
+        generation_id TEXT NOT NULL,
+        derive_version TEXT NOT NULL,
+        revision INTEGER NOT NULL CHECK (typeof(revision) = 'integer' AND revision >= 1),
+        host TEXT,
+        session_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('complete', 'pending', 'unprovable')),
+        reason TEXT,
+        acquisition_version TEXT,
+        acquired_offset INTEGER CHECK (acquired_offset IS NULL OR (typeof(acquired_offset) = 'integer' AND acquired_offset >= 0)),
+        acquired_line_no INTEGER CHECK (acquired_line_no IS NULL OR (typeof(acquired_line_no) = 'integer' AND acquired_line_no >= 0)),
+        acquisition_witness_json TEXT,
+        successful_host TEXT,
+        successful_session_id TEXT,
+        successful_generation_id TEXT,
+        successful_derive_version TEXT,
+        successful_acquisition_version TEXT,
+        successful_offset INTEGER CHECK (successful_offset IS NULL OR (typeof(successful_offset) = 'integer' AND successful_offset >= 0)),
+        successful_line_no INTEGER CHECK (successful_line_no IS NULL OR (typeof(successful_line_no) = 'integer' AND successful_line_no >= 0)),
+        successful_raw_id INTEGER CHECK (successful_raw_id IS NULL OR (typeof(successful_raw_id) = 'integer' AND successful_raw_id >= 0)),
+        successful_at TEXT
+    );
+    CREATE INDEX idx_usage_source_state_scope
+        ON usage_source_state(generation_id, derive_version);
+    CREATE TABLE usage_source_pending (
+        obligation_id TEXT PRIMARY KEY,
+        source_path TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        derive_version TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN (
+            'derive_gap', 'acquisition_failure', 'partial_tail', 'refresh', 'native_conflict')),
+        reason TEXT NOT NULL,
+        range_kind TEXT NOT NULL CHECK (range_kind IN ('bounded', 'whole_source')),
+        refusal_code TEXT,
+        affected_usage_event_id INTEGER CHECK (affected_usage_event_id IS NULL OR (typeof(affected_usage_event_id) = 'integer' AND affected_usage_event_id >= 0)),
+        first_raw_id INTEGER CHECK (first_raw_id IS NULL OR (typeof(first_raw_id) = 'integer' AND first_raw_id >= 0)),
+        last_raw_id INTEGER CHECK (last_raw_id IS NULL OR (typeof(last_raw_id) = 'integer' AND last_raw_id >= 0)),
+        first_line_no INTEGER CHECK (first_line_no IS NULL OR
+            (typeof(first_line_no) = 'integer' AND first_line_no >= 1)),
+        last_line_no INTEGER CHECK (last_line_no IS NULL OR
+            (typeof(last_line_no) = 'integer' AND last_line_no >= 1)),
+        first_offset INTEGER CHECK (first_offset IS NULL OR (typeof(first_offset) = 'integer' AND first_offset >= 0)),
+        end_offset INTEGER CHECK (end_offset IS NULL OR (typeof(end_offset) = 'integer' AND end_offset >= 0)),
+        revision INTEGER NOT NULL CHECK (typeof(revision) = 'integer' AND revision >= 1),
+        raw_cache_pending INTEGER NOT NULL CHECK (raw_cache_pending IN (0, 1)),
+        usage_pending INTEGER NOT NULL CHECK (usage_pending IN (0, 1)),
+        original_acquisition_json TEXT
+    );
+    CREATE UNIQUE INDEX idx_usage_source_pending_key
+        ON usage_source_pending(source_path, generation_id, derive_version, kind, reason,
+                                COALESCE(affected_usage_event_id, -1));
+    CREATE INDEX idx_usage_source_pending_source ON usage_source_pending(source_path);
+    CREATE INDEX idx_usage_source_pending_usage
+        ON usage_source_pending(source_path) WHERE usage_pending = 1;
+    CREATE INDEX idx_usage_source_pending_cache
+        ON usage_source_pending(source_path) WHERE raw_cache_pending = 1;
+    CREATE TABLE usage_observation_witnesses (
+        usage_event_id INTEGER PRIMARY KEY,
+        supplier_source_path TEXT,
+        supplier_host TEXT,
+        supplier_session_id TEXT,
+        supplier_generation_id TEXT,
+        supplier_derive_version TEXT,
+        supplier_line_no INTEGER CHECK (supplier_line_no IS NULL OR (typeof(supplier_line_no) = 'integer' AND supplier_line_no >= 0)),
+        supplier_ordinal INTEGER CHECK (supplier_ordinal IS NULL OR (typeof(supplier_ordinal) = 'integer' AND supplier_ordinal >= 0)),
+        supplier_raw_id INTEGER CHECK (supplier_raw_id IS NULL OR (typeof(supplier_raw_id) = 'integer' AND supplier_raw_id >= 0)),
+        value_status TEXT NOT NULL CHECK (value_status IN ('known', 'unavailable', 'invalidated')),
+        qualification_status TEXT NOT NULL CHECK (qualification_status IN (
+            'known', 'not_consumed', 'unavailable', 'invalidated'))
+    );
+    CREATE INDEX idx_usage_observation_witnesses_supplier
+        ON usage_observation_witnesses(supplier_source_path, supplier_generation_id,
+                                       supplier_derive_version);
+    CREATE TABLE usage_observation_dependencies (
+        usage_event_id INTEGER NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('model', 'closure')),
+        source_path TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        derive_version TEXT NOT NULL,
+        line_no INTEGER NOT NULL CHECK (typeof(line_no) = 'integer' AND line_no >= 1),
+        host TEXT,
+        session_id TEXT,
+        ordinal INTEGER CHECK (ordinal IS NULL OR (typeof(ordinal) = 'integer' AND ordinal >= 0)),
+        raw_event_id INTEGER CHECK (raw_event_id IS NULL OR (typeof(raw_event_id) = 'integer' AND raw_event_id >= 0)),
+        PRIMARY KEY (usage_event_id, role, source_path, generation_id, derive_version, line_no)
+    );
+    CREATE INDEX idx_usage_observation_dependencies_source
+        ON usage_observation_dependencies(source_path, generation_id, derive_version);
+    CREATE TABLE usage_completion_dependencies (
+        source_path TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        derive_version TEXT NOT NULL,
+        dependency_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('observation', 'context')),
+        usage_event_id INTEGER CHECK (usage_event_id IS NULL OR (typeof(usage_event_id) = 'integer' AND usage_event_id >= 0)),
+        dependency_source_path TEXT,
+        dependency_generation_id TEXT,
+        dependency_derive_version TEXT,
+        line_no INTEGER CHECK (line_no IS NULL OR
+            (typeof(line_no) = 'integer' AND line_no >= 1)),
+        ordinal INTEGER CHECK (ordinal IS NULL OR (typeof(ordinal) = 'integer' AND ordinal >= 0)),
+        raw_event_id INTEGER CHECK (raw_event_id IS NULL OR (typeof(raw_event_id) = 'integer' AND raw_event_id >= 0)),
+        PRIMARY KEY (source_path, generation_id, derive_version, dependency_id)
+    );
+    CREATE INDEX idx_usage_completion_dependencies_observation
+        ON usage_completion_dependencies(usage_event_id) WHERE usage_event_id IS NOT NULL;
+    CREATE INDEX idx_usage_completion_dependencies_source
+        ON usage_completion_dependencies(dependency_source_path, dependency_generation_id,
+                                         dependency_derive_version);
+    """,
+    # v63 (FEAT-3711): append-only ``ll-next`` recommendation events -- a ``shown`` row per
+    # offered recommendation and one ``accepted_explicit`` acknowledgement copied from it.
+    # No foreign keys, plain TEXT/BINARY columns. ``UNIQUE (rec_id, kind)`` makes accept
+    # retries idempotent and is the lookup index (an exact-identity point seek; no other
+    # index has a consumer). ``session_id`` is always NULL in v1. Excluded from
+    # _REBUILD_TABLES/_REBUILD_SEARCH_KINDS (no kind): the rows have no transcript or raw
+    # source to replay, so a rebuild() wipe would be unrecoverable data loss.
+    """
+    CREATE TABLE recommendation_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        rec_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('shown', 'accepted_explicit')),
+        ts TEXT NOT NULL,
+        project_key TEXT NOT NULL,
+        session_id TEXT,
+        invocation_id TEXT NOT NULL,
+        as_of TEXT NOT NULL,
+        rank INTEGER NOT NULL CHECK (rank >= 1),
+        action_type TEXT NOT NULL,
+        action_key TEXT NOT NULL,
+        action_fingerprint TEXT NOT NULL,
+        target TEXT NOT NULL,
+        target_key TEXT NOT NULL,
+        action_spec TEXT NOT NULL,
+        requested_top INTEGER,
+        requested_types TEXT NOT NULL,
+        UNIQUE (rec_id, kind)
+    );
+    """,
 ]
+
+#: First schema version that carries ``recommendation_events`` (FEAT-3711), derived from the
+#: migration list so the write-readiness floor follows the assigned migration, never a literal.
+RECOMMENDATION_EVENTS_MIN_VERSION: int = next(
+    index + 1
+    for index, script in enumerate(_MIGRATIONS)
+    if "CREATE TABLE recommendation_events" in script
+)
 
 
 def _configure_connection(

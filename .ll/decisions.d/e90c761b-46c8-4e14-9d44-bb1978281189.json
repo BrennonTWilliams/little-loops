@@ -1,0 +1,12 @@
+{
+  "id": "fdf825a0-00c8-4ee3-a80a-b86be905b0fe",
+  "type": "decision",
+  "timestamp": "2026-10-07T00:53:15Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Pre-implementation review with ll:advise Opus 5.5 (confidence 0.8). Amends decision 6820b86c-53dd-4007-aa75-9269d6a94044 within Option B: both byte columns are NULL on every replay write, while ctx_stats already recognizes either non-NULL byte column as telemetry. The narrower wipe preserves output-only rows without retaining replay rows. NULL correction sources survive. Materialize normalized survivor keys to avoid quadratic FTS matching; recorded in the rewritten issue.",
+  "rule": "Option B amendment: wipe tool_events only when bytes_in IS NULL AND bytes_out IS NULL; wipe user_corrections only when source = backfill; preserve existing search entries by normalized survivor keys; no migration",
+  "scope": "issue",
+  "alternatives_rejected": "Channel migration adds no information for legacy rows; bytes_in-only wipe unnecessarily deletes output-only telemetry; timestamp precision is not a valid provenance signal",
+  "issue": "BUG-3761"
+}

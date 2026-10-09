@@ -19,7 +19,7 @@ gate:
 - kind: external
   satisfied: false
   owner: user
-  evidence: "Working Qwen Code auth (OAuth free tier discontinued): supply an API key or alternate provider. ENH-3648: OAuth free tier discontinued; live probe failed."
+  evidence: "Working authentication/model access for the selected Qwen provider. ENH-3648's configured account lost OAuth free-tier access and its live probe failed; that failed account/provider path is not a host-wide telemetry verdict."
 blocks:
 - ENH-3673
 ---
@@ -33,7 +33,7 @@ Prove the Qwen native token-usage contract needed by ENH-3673. This issue record
 ## Current Behavior
 
 ENH-3648 captured a real Qwen Code 0.24.6 on-disk UI/assistant usage pair.
-The live probe failed after the configured OAuth free tier was discontinued.
+The live probe failed after the configured account's OAuth free tier was discontinued.
 The pair reports zero cached content and no cache-write field; input
 inclusivity, thought-token inclusion, response identity across the two
 representations, and resume/compaction behavior remain unknown.
@@ -56,8 +56,9 @@ stored ingestion, trigger and reader are proven.
 - [ ] For a selected usage-bearing source: The ENH-3673 handoff identifies a captured provider/version-qualified contract and an evidenced exact-version or compatibility rule, with matching and mismatch/absent-identity fixtures. Runtime values come from a verified native source; missing evidence remains audit-only/unavailable rather than inheriting a host-wide supported verdict.
 - [ ] For a selected usage-bearing source: Capture a sanitized, versioned Qwen live/transcript pair with tool use and resume under working authentication. Preserve enough of the native assistant record, including `message.parts`, to make the transcript usable in `iter_events` parser tests; the current reduced usage pair yields no event.
 - [ ] For a selected usage-bearing source: Record per-metric/channel `supported`, evidence-backed `unsupported`, or `unknown` verdicts for input, output, and cache read/write; record the thought/output relationship separately. Prove or leave explicit the inclusivity, omission, grain/reset, and UI/assistant request-join semantics.
-- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger.
+- [ ] Select the canonical native source/channel or record an evidence-backed no-source verdict; classify possible duplicate copies. Record provider/CLI version, excluded channels, and the non-duplication rationale in the fixture README and EPIC-3562 ledger. Record a candidate after-usage event and source-write timing, or an explicit unknown; the delivery issue proves the working trigger. Also record the native field path(s) that carry request/replay identity, model and the usage-bearing fields, and the event type the adapter will store them under — the input to the delivery's history-sanitizer path registration (EPIC-3562 § Shared Delivery Ownership).
 - [ ] For a selected usage-bearing source: Give ENH-3673 the complete-enough native fixture and duplicate-pair rule. ENH-3673 proves that the parser preserves `usageMetadata` and that one response produces one stored observation and a fresh selected read.
+- [ ] For a selected usage-bearing source: Classify the selected record's content requirements and context explicitly. `normalize_qwen_record` currently drops every `system` record and assistants with absent/empty `message.parts`; prove whether the selected usage-bearing assistant can arrive without content, and whether a UI record is required identity/provider/model context or an excluded duplicate. The handoff names the actual stored supplier position, any consumed neighboring context and native ordering/update rule; an excluded UI copy need not be ingested, but required context must survive sanitized raw retention and rebuild. Equal counts or adjacency alone cannot prove a request join.
 - [ ] If authentication or nonzero cache behavior remains unavailable, record the exact blocker and keep those semantics `unknown`; keep this evidence issue open or `blocked` rather than claiming unsupported telemetry.
 
 ## Completion Rule
@@ -79,6 +80,8 @@ Fixture sanitization: strip credentials, tokens, absolute home paths and prompt 
 The usage-bearing contract and fixture requirements below apply to a selected usage-bearing path. An affirmative no-source handoff instead supplies the scoped native absence proof and unavailable-reader disposition defined in Completion Rule.
 
 Give ENH-3673 the observed provider and CLI/source version, the native envelope or verified source of those values, and a stable fixture contract reference. Record whether qualification requires the exact captured version or permits a specific compatibility range backed by evidence. A current local CLI version alone cannot qualify a historical record. A host-level capability note does not qualify every provider/version.
+
+Identify the actual usage supplier and every consumed identity/qualification-context record by durable stored position (physical line and item ordinal where available, or a documented equivalent), not a guessed raw-row allocation order. If response identity, provider/version, model or session comes from another native record, declare that dependency and its preservation rule. ENH-3673 maps it onto the landed supplier/context witness and guarded replay interfaces; current shared dependency roles are only `model` and `closure`, so any additional evidenced role needs a narrow shared extension rather than a misleading role or fabricated position. This issue supplies the native rule, not a competing witness store.
 
 Include a matching fixture and unmatched-provider, unsupported/unproved-version, absent provider/version, and unproved identity cases. Specify the audit-only/unavailable reason for each mismatch. The delivery issue persists the ingest-time contract/evidence on `raw_events` (using existing metadata where sufficient) and reuses it on rebuild; it must not substitute later machine configuration or promote an old unknown. No all-provider capture matrix or mandatory new column is implied. ENH-3731/3732/3733 implement ENH-3723's recorded shared eligibility policy, separately from this native evidence contract. The handoff also declares the normalized acquisition channel and a pure logical-candidate/key rule usable by ENH-3732's derive-status reader on retained raw evidence. This prevents a newly supported transcript source from being treated as excluded/non-usage while its observations are pending; a host name alone is not a channel rule. The matching delivery implements and tests that extension before production publication. Its retained-evidence rule must fit ENH-3744's shared pure recognition/key/coalescing/correspondence interface: distinguish a represented candidate, intentional no-observation and unprovable/missing native context. This issue supplies the evidence, not a second production proof engine; the delivery also tests pruning/held-source recovery and ENH-3745's source-local completion handoff.
 
@@ -114,6 +117,10 @@ Include a matching fixture and unmatched-provider, unsupported/unproved-version,
 **Open** | Created: 2026-09-29 | Priority: P3
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-08 - Scoped the failed OAuth account's access gate, recorded the actual parser drops for UI and content-free assistant records, and added canonical-supplier/neighboring-context and durable-position evidence for the landed guarded replay handoff. Excluded UI copies need not be ingested; required join context must survive. No new native proof or status change.
+
+- Pre-implementation epic review - 2026-10-07 - Added the native identity-path recording requirement: ENH-3751 now sanitizes every raw_events insert and `pii._protocol_rules` is the only protection for replay-identity fields, so the matching delivery needs these paths from this evidence. No captured proof or readiness claim.
 
 - Pre-implementation epic review - 2026-10-05 - Connected the existing acquisition-channel/logical-candidate evidence to ENH-3744's shared pure proof and ENH-3745's source-local progress contract. Native evidence/access/partial-support closeout rules remain unchanged; no captured proof or readiness pass is claimed.
 

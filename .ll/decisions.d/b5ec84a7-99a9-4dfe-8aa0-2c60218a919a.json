@@ -1,0 +1,12 @@
+{
+  "id": "66592853-37b3-4605-abc8-637fdbff52aa",
+  "type": "decision",
+  "timestamp": "2026-10-07T02:49:23Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Preimplementation review and Opus consult (confidence 0.80) support coherent singleton reads over chunking. Existing page projection stays unchanged; lower decoded cap covers the observed 4.7 MB maximum and limits allocation growth. Dirty rows exceeding exact guarded request budgets remain unchanged and are explicitly reported as known-dirty unwritten. Mechanism proof remains required.",
+  "rule": "Clarify Option A: coherent bounded singleton SELECT; stored cap PAGE_ROWS_MAX * STORED_CAP (8 MiB), decoded cap 2 * DECODED_CAP (8 MiB); no public size flag; retain 8 MiB full-value guarded write/replacement budgets and explicit size-refusal floor.",
+  "scope": "issue",
+  "alternatives_rejected": "Chunk requests without a coherent snapshot; raising shared page bounds through a size flag; 16 MiB decoded cap without memory evidence; larger singleton write caps without provider evidence; report-only repair as the sole fix.",
+  "issue": "BUG-3762"
+}

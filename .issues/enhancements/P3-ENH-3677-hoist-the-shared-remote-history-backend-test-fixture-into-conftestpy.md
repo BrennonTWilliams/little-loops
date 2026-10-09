@@ -15,6 +15,7 @@ blocks:
 - ENH-3682
 - ENH-3668
 - ENH-3728
+- ENH-3768
 parent: EPIC-3693
 epic: EPIC-3693
 ---
@@ -56,6 +57,7 @@ Dedicated fixture tests cover one successful lifecycle, config-write failure, mi
 
 - **In scope**: one shared `remote` fixture in `scripts/tests/conftest.py`; migrating the six existing copies to it.
 - **Out of scope**: new remote-reader behavior tests (ENH-3657, ENH-3658), changing `HranaStub` or its constructor/start failure contract, any non-test code. The shared-fixture lifecycle and registration tests specified here are in scope.
+- **Non-copy `remote` fixtures (2026-10-07):** `test_raw_redaction.py::remote` (ENH-3752; yields `(HranaStub, RemoteTarget)`, direct-backend, no cwd/config/telemetry setup) and `tests/spike/bug3762_singleton_redaction/test_singleton_core.py::remote` (BUG-3762 spike; yields a `Store`) are not copies. Leave them alone: pytest's closest-fixture rule keeps them module-local after the hoist, and the shadow gate below forbids `remote` only where the hoist must win.
 
 ## Behavior Parity
 
@@ -84,7 +86,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 - **Files to modify (test-only)**: `scripts/tests/conftest.py` (gains the shared `remote`; no `remote`/`stub` exists there today, so no name collision) and the six copies — `test_remote_operation_matrix.py:30`, `test_remote_hooks.py:29`, `test_libsql_backend.py:67`, `test_remote_doctor.py:35`, `test_remote_ingestion_telemetry.py:58`, `test_remote_callers_bug3652.py:67`.
 - **Dependents inside the six files**: `test_remote_hooks.py::TestDeadEndpointDegrades.dead` (class-level fixture at :158) requests `remote`, rewrites the config, calls `remote.stop()` and returns it; it must keep working against the shared fixture. `test_libsql_backend.py::TestConnection.conn` and several `TestReadOnly`/`TestConnection` tests use the local `stub` directly (without `remote`) and stay on it.
-- **Consumers waiting on this**: ENH-3657, ENH-3700, ENH-3658, ENH-3682 and ENH-3728 (frontmatter `blocks`); deferred ENH-3668 also cites it. ENH-3729's general SFT failure-routing tests are backend-independent and need no fixture edge. ENH-3680 is cancelled and requires no fixture or spool work. BUG-3659 is closed; repointing its historical fixture note is optional.
+- **Consumers waiting on this**: ENH-3657, ENH-3700, ENH-3658, ENH-3682, ENH-3728 and ENH-3768 (frontmatter `blocks`); deferred ENH-3668 also cites it. ENH-3729's general SFT failure-routing tests are backend-independent and need no fixture edge. ENH-3680 is cancelled and requires no fixture or spool work. BUG-3659 is closed; repointing its historical fixture note is optional.
 - **Stub location**: `HranaStub` lives in `scripts/tests/hrana_stub.py` (`class HranaStub(http.server.ThreadingHTTPServer)`; `.start()`, `.stop()`, `.url`, `.requests`, `.fail_next`, `.delay`, `.db`). All eight consumers import it as `from tests.hrana_stub import HranaStub`.
 - **Cache/reset entry points** (public, already called by every copy): `little_loops.session_store.db.clear_backend_config_cache`, `little_loops.session_store.remote_schema.clear_verification_cache`, `little_loops.session_store.remote_telemetry.reset_for_tests`.
 - **Same-shape setups that are NOT `remote` copies** (out of scope): `stub` fixtures in `test_remote_schema.py:38`, `test_hrana_client.py:39`, `test_libsql_backend.py:40`; autouse `_fresh` in `test_libsql_integration.py:74` and `_reset` in `test_remote_schema.py`. Unrelated `stub` fixtures (`_Stub`) in `test_autodev_proof_reentry.py:78`, `test_advise_ready_gate.py:81`.
@@ -92,7 +94,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
-- **Re-verified 2026-09-29 (gap analysis)**: exactly six `def remote(` fixtures exist under `scripts/tests` (`test_remote_operation_matrix.py:30`, `test_remote_hooks.py:29`, `test_libsql_backend.py:67`, `test_remote_doctor.py:35`, `test_remote_ingestion_telemetry.py:58`, `test_remote_callers_bug3652.py:67`); no `remote` or `stub` fixture is defined in any of the three conftests (`scripts/tests/conftest.py`, `conformance/conftest.py`, `spike/action_stall_run_scope/conftest.py`), so no collision at any conftest level. `test_libsql_backend.py:67` is the only copy that is not self-contained (takes the local `stub` at `:40`).
+- **Re-verified 2026-09-29 (gap analysis)**: exactly six `def remote(` fixtures exist under `scripts/tests` (`test_remote_operation_matrix.py:30`, `test_remote_hooks.py:29`, `test_libsql_backend.py:67`, `test_remote_doctor.py:35`, `test_remote_ingestion_telemetry.py:58`, `test_remote_callers_bug3652.py:67`); no `remote` or `stub` fixture is defined in any of the three conftests (`scripts/tests/conftest.py`, `conformance/conftest.py`, `spike/action_stall_run_scope/conftest.py`), so no collision at any conftest level. `test_libsql_backend.py:67` is the only copy that is not self-contained (takes the local `stub` at `:40`). **Update 2026-10-07:** `def remote(` now appears eight times — these six plus `test_raw_redaction.py:807` and `tests/spike/bug3762_singleton_redaction/test_singleton_core.py:77` (both distinct, non-copy shapes; see Scope Boundaries). The "exactly one registration under `scripts/tests`" wording is therefore replaced by a deny-list gate.
 - **Stale wiring-note target**: BUG-3659 is `status: done`, so the Dependent Files/Documentation notes above that ask to repoint its `test_remote_hooks.py::remote` references describe a closed record. Editing it is optional and not needed for the acceptance criteria.
 - **Consumer chain**: ENH-3657/3700/3658/3682 use this fixture; ENH-3682 additionally depends on external ENH-3720's deadline primitive. ENH-3668 is deferred and ENH-3684/3685 reach it transitively. ENH-3680 is cancelled, with remote writes intentionally skipped; no spool prerequisite is to be re-added.
 - **Non-fixture `remote` names are safe**: `test_session_store_backend.py` (`:311`, `:328`, `:353`) and `spike/session_store_backend_dialect/test_backend.py:94` bind `remote` as a local variable, not a fixture request, so a conftest-level fixture does not affect them.
@@ -112,7 +114,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_conftest_cap.py` — new `TestRemoteFixture`: no test covers the fixture itself. Follow the `TestNoLiveHostCLIGuard` / `TestGuardRealSocketTransport` pattern — drive `conftest.remote.__wrapped__(tmp_path, fixture_patch)` with `next(gen)` inside a separate `monkeypatch.context()`. Assert `LL_HISTORY_DB` deleted, libsql config written, cwd is `tmp_path`, caches/telemetry reset, and normal generator teardown stops the server. Inject config-write and migration errors before yield; also inject a stop error after real shutdown and verify the resets still run. Assert cwd/env restoration outside the nested context, without calling `undo()` on pytest's outer monkeypatch [Agent 3 finding; amended 2026-10-05]
-- `scripts/tests/` (new gate file, e.g. `test_no_shadowed_remote_fixture.py`) — check the **effective fixture name**, not only the function name: the literal `name=` argument wins when present, otherwise use the function name. Thus `def remote` with `@pytest.fixture` and any function with `@pytest.fixture(name="remote")` register `remote`. Walk class-method fixtures too. Require exactly one such registration, in the root `scripts/tests/conftest.py`; a nested conftest can also shadow it and is not an exemption. Permit distinctly named variant fixtures depending on `remote` and ordinary non-fixture `remote` helpers. Add small planted-source cases for the named alias and allowed variant; use the existing AST-gate pattern rather than importing test modules. The implementation may use a literal-name detector for these established pytest decorator forms; no general Python name resolver is required [amended 2026-10-05]
+- `scripts/tests/` (new gate file, e.g. `test_no_shadowed_remote_fixture.py`) — **deny-list, not global uniqueness (review #7).** Check the **effective fixture name** (the literal `name=` argument when present, otherwise the function name; class-method fixtures included). Require (a) the root `scripts/tests/conftest.py` registers effective name `remote` exactly once and (b) none of the six migrated files (`test_remote_operation_matrix.py`, `test_remote_hooks.py`, `test_libsql_backend.py`, `test_remote_doctor.py`, `test_remote_ingestion_telemetry.py`, `test_remote_callers_bug3652.py`) and no nested conftest registers it. Other files' `remote` fixtures (`test_raw_redaction.py`, spikes) stay legal; distinctly named variants depending on `remote` and non-fixture `remote` helpers are allowed. No allowlist or stale-entry logic. Add small planted-source cases: `def remote` in a migrated file, a `name="remote"` alias there, a nested conftest registration (all flagged); an unrelated file's `remote` and an allowed variant (not flagged). Use the existing AST-gate pattern; no test-module imports. A literal-name detector for the established decorator forms suffices [amended 2026-10-07]
 - `scripts/tests/test_remote_hooks.py` — session-start tests need `LL_NON_INTERACTIVE` deleted in their file-local variant. Dead-endpoint consumers can still stop the shared stub early; fixture teardown remains idempotent, as today.
 - `scripts/tests/test_remote_ingestion_telemetry.py` — `TestRemoteIngestion.test_watermark_is_per_machine_and_the_global_key_is_untouched` and `test_another_machines_progress_does_not_skip_older_transcripts` need `LL_MACHINE_ID="machine-a"` layered file-locally; `test_a_warm_file_cache_skips_the_verification_round_trip` / `test_a_stale_file_cache_entry_is_ignored` rely on the fixture's cache clears + `migrate_remote` before `yield` [Agent 3 finding]
 - `scripts/tests/test_remote_doctor.py` — `_write(...)` helper is reused mid-test (~:99, ~:113); `TestNoTokenLeaks` and `TestHistoryDbProbe` call `remote.stop()` directly [Agent 3 finding]
@@ -151,7 +153,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 1. `scripts/tests/conftest.py` provides one `remote` fixture whose observable contract matches the union of the five self-contained copies (same env, config shape, chdir, cache clears, migration, yielded `HranaStub`), with caches and remote telemetry reset before and after use.
-2. Each of the six files resolves `remote` from conftest; the AST registration gate requires its only effective definition at `scripts/tests/conftest.py`, including class-method and `name="remote"` registrations. The libsql file's dependence on its pre-migrating `stub` is resolved without introducing a second stub per test. Bind remote leak assertions/client credentials to the yielded stub's actual token, preserving direct-backend constants where still needed.
+2. Each of the six files resolves `remote` from conftest; the AST registration gate requires the root conftest to register effective name `remote` exactly once and forbids it in the six migrated files and any nested conftest, including class-method and `name="remote"` registrations (unrelated files' own `remote` fixtures stay legal). The libsql file's dependence on its pre-migrating `stub` is resolved without introducing a second stub per test. Bind remote leak assertions/client credentials to the yielded stub's actual token, preserving direct-backend constants where still needed.
 3. Apply the named variant ownership above; do not introduce another fixture registered as `remote`. Add the effective-name registration gate and dedicated successful/setup-failure/stop-error lifecycle tests, preserving existing watermark/warn-once assertions and outer monkeypatch isolation.
 4. Verification: `python -m pytest scripts/tests/test_remote_operation_matrix.py scripts/tests/test_remote_hooks.py scripts/tests/test_libsql_backend.py scripts/tests/test_remote_doctor.py scripts/tests/test_remote_ingestion_telemetry.py scripts/tests/test_remote_callers_bug3652.py` passes, then the full `python -m pytest scripts/tests/`.
 5. `docs/development/TESTING.md` § Built-in Fixtures gains a one-line entry for the shared `remote` so ENH-3657/ENH-3658 authors find it.
@@ -161,7 +163,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Add `TestRemoteFixture` to `scripts/tests/test_conftest_cap.py` — drive `remote.__wrapped__` inside a separate monkeypatch context; assert successful teardown and injected setup-failure cleanup (stub stopped, caches/telemetry cleared, cwd/env restored after the context)
-- Add a shadow gate under `scripts/tests/` — AST scan for a `pytest.fixture`-decorated `def remote` outside `conftest.py`, with planted-source detector tests; this automates the "no file-local `def remote(`" acceptance criterion
+- Add the deny-list shadow gate under `scripts/tests/` — AST scan that the root conftest registers effective name `remote` once and the six migrated files / nested conftests do not, with planted-source detector tests; this automates the "no leftover file-local `remote` in the migrated files" criterion without constraining unrelated fixtures such as `test_raw_redaction.py::remote`
 - Keep `HranaStub` and `little_loops.session_store.*` imports inside the conftest fixture body (`test_conftest_cap.py` re-executes conftest as `conftest_under_test`); keep `delenv("LL_HISTORY_DB")` inside the shared body (autouse `_isolate_history_db` sets it first)
 - No closed-issue edit or obsolete ENH-3657 STOP-note removal is required; the current active plans already request the shared fixture.
 
@@ -176,7 +178,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - [ ] A single `remote` fixture lives in `scripts/tests/conftest.py`; the six copies are removed.
 - [ ] Reconciled differences (cache/telemetry reset before and after, file-local `LL_MACHINE_ID` / `LL_NON_INTERACTIVE` setup, separate direct-backend `stub` fixture) are covered; all six files still pass unchanged in behavior.
-- [ ] Exactly one effective `remote` fixture registration exists under `scripts/tests`, in the root conftest; no named alias or nested conftest shadows it. Distinct variants and non-fixture helpers are allowed by the AST gate.
+- [ ] The root conftest registers effective name `remote` exactly once; none of the six migrated files and no nested conftest registers it (alias `name="remote"` and class-method forms included). Distinct variants, non-fixture helpers and unrelated non-copy fixtures (`test_raw_redaction.py::remote`, the BUG-3762 spike) are allowed by the AST gate.
 - [ ] Config-write/migration failure after successful start stops the server and clears process caches/telemetry; resets also run if stopping raises. Successful use and failed setup restore cwd/env through an isolated monkeypatch context without undoing the surrounding test's isolation. Existing early-stop consumers remain supported; constructor/start failure handling is unchanged. Material variant fixtures reuse exactly one stub and only requested tests incur its cost.
 - [ ] Remote leak assertions/client credentials match the actual yielded stub's token; lifecycle coverage asserts the token environment value equals `remote.token`, so hoisting cannot make leak checks pass against an unrelated credential.
 - [ ] `python -m pytest scripts/tests/` passes.
@@ -190,7 +192,7 @@ _Added by `/ll:refine-issue` — 2026-09-30 — based on codebase analysis:_
 
 ## Related
 
-- BUG-3652 (landed without hoisting), ENH-3657, ENH-3658, ENH-3682 (blocked by this).
+- BUG-3652 (landed without hoisting), ENH-3657, ENH-3658, ENH-3682, ENH-3768 (blocked by this).
 
 ## Status
 
@@ -209,6 +211,7 @@ Historical scores and `verify_verdict: VALID` were cleared on 2026-10-04. The fr
 - Keep the independent libsql `stub` for direct-backend tests; remote consumers and variants must not request a second server. Cleanup must cover migration/setup failures before yield.
 
 ## Session Log
+- EPIC-3693 review #7 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-07 - code check found two new non-copy `remote` fixtures (`test_raw_redaction.py:807`, BUG-3762 spike) that would have failed the planned "exactly one registration" gate on landing; replaced with a deny-list gate over the root conftest, the six migrated files and nested conftests. ENH-3768 added as a consumer. Scores remain cleared; implementation not performed.
 - Pre-implementation review + `/ll:advise --signal user_requested --host claude-code --model opus` - 2026-10-05 - effective fixture registration, post-start cleanup, outer monkeypatch isolation and actual-token assertions pinned; Opus confidence 0.85. Fresh 100/67 scores cleared because the plan changed; no implementation or passing-suite claim.
 - `/ll:confidence-check` - 2026-10-05T18:32:56 - `a7f624ef-fd4a-4f3c-baa9-6b359d58b554.jsonl`
 - EPIC-3693 review #3 - 2026-10-05 - six copies and variant/cleanup plan confirmed; backend-independent ENH-3729 removed from blocks, ENH-3728 remains a fixture consumer; no new fixture scope or implementation

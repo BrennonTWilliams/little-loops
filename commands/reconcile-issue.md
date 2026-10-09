@@ -1,5 +1,5 @@
 ---
-description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose
+description: Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings — plus, conditionally, a Scope Boundaries claim contradicted by those findings — without appending or bulldozing human prose (with `--from-verify-evidence`, also decision-derived Program Design directives and Impact Effort/Risk lines named by DIRECTIVE_DRIFT evidence)
 argument-hint: "ISSUE_ID [--check] [--from-verify-evidence]"
 allowed-tools:
   - Read
@@ -16,7 +16,7 @@ arguments:
     description: Issue ID to reconcile (e.g., FEAT-2672, BUG-004)
     required: true
   - name: flags
-    description: "Optional flags: --check (report the plateau verdict without writing, for FSM evaluators); --from-verify-evidence (BUG-3695: also treat the recorded DIRECTIVE_DRIFT verify_evidence as a source, allowing entailed Acceptance Criteria / Implementation Step additions)"
+    description: "Optional flags: --check (report the plateau verdict without writing, for FSM evaluators); --from-verify-evidence (BUG-3695: also treat the recorded DIRECTIVE_DRIFT verify_evidence as a source, allowing entailed Acceptance Criteria / Implementation Step additions, and — BUG-3763 — in-place rewrite of evidenced decision-derived Program Design directives / Impact Effort/Risk lines from the recorded selection)"
     required: false
 ---
 
@@ -167,6 +167,38 @@ eligible. When eligible:
   findings.
 - All other sections stay preserved; provenance/wiring-marker protections hold.
 
+**Decision-derived design/estimate propagation (BUG-3763) — conditional
+carve-out of the `--from-verify-evidence` extension.** When the extension is
+eligible, you MAY also rewrite, **in place**, the specific `## Program Design`
+directive passages and the decision-derived `## Impact` **Effort/Risk** lines
+that an evidence item names as describing a *rejected* option. This is not a
+general rewrite of those sections; it applies only when ALL of:
+- the issue records an **unambiguous selected option and its Decision
+  Rationale** for the decision group that governs the evidenced passage —
+  another decision group's selection, conflicting selections, or a section name
+  alone confers no authority;
+- the selected mechanism still stands (a mechanism refuted by code belongs to
+  `PROPOSAL_UNSOUND`, not this carve-out — do not rewrite);
+- the evidence item names the specific Program Design passage or Impact
+  Effort/Risk line that describes the rejected option;
+- **re-reading the current issue** shows the item still identifies the same
+  passage and that a correction is entailed by the governing selection. Stale,
+  ambiguous or already-resolved evidence authorizes no edit: report it under
+  `## CONCERNS` and invent no replacement.
+
+Rewrite those passages from the recorded selection and its rationale; existing
+recorded findings may substantiate the selected mechanism but never introduce a
+new design or override the selection. If these sources are insufficient,
+preserve the passage and report the concern. Impact eligibility is limited to
+decision-derived Effort/Risk text — Severity, Affected populations, factual
+incident history and unrelated estimates stay protected. Preserve accurate
+Program Design directives, `### Decision Rationale`/option records, human
+rationale, research/provenance blocks and every unrelated section; edit only the
+named passages and never replace the whole H2 around protected material. The raw
+`unapplied_decision_detail` scanner candidates are advisory, not edit authority:
+do not delete legitimate history to clear them. Ordinary reconciliation,
+unflagged callers and evidence for other verdicts keep the ordinary scope.
+
 ## Process
 
 ### 0. Parse Flags
@@ -210,7 +242,9 @@ Read the full issue file. Extract:
   the directive sections must describe the **selected** mechanism, not a
   superseded one.
 - Only when `FROM_VERIFY_EVIDENCE` is true: the frontmatter `verify_verdict`
-  and `verify_evidence`. The extension (see Contract) is active only if the
+  and `verify_evidence` — and, for evidence items naming `## Program Design` or
+  `## Impact`, the current text of those named passages plus the recorded
+  selected option and its Decision Rationale (BUG-3763). The extension (see Contract) is active only if the
   verdict is exactly `DIRECTIVE_DRIFT` and the evidence is nonempty; otherwise
   ignore both fields and proceed under the ordinary contract.
 
@@ -234,6 +268,14 @@ code. Then:
   addition and no `[refused-evidence]` line (covered is distinct from refused).
 - **Applicable** target not yet covered → an *accepted uncovered target*; only
   these participate in the evidence-based stale-section detection of step 4.
+- **Design/estimate propagation target (BUG-3763)** — a Program Design passage or
+  Impact Effort/Risk line that the item says describes a rejected option. It is a
+  fourth role, distinct from AC, fixture and context-only; the role table above
+  must not silently discard it. It is *eligible* only under the Contract's
+  design/estimate carve-out conditions (re-read the issue first); an ineligible
+  one is reported under `## CONCERNS` as `[refused-evidence]` (stale, ambiguous,
+  insufficient source, or unsupported by the governing selection) and edits
+  nothing. An eligible one counts as an accepted uncovered target for step 4.
 
 All-refused evidence is **not** an early-return condition: continue with step 4
 and 4a so ordinary contradiction detection still runs.
@@ -266,10 +308,13 @@ contradiction as:
 When the `--from-verify-evidence` extension is eligible, a directive section
 that is **missing an entailed criterion or step** for an *accepted uncovered
 target* (step 3b) also counts as stale for this step (a coverage gap, not only a
-contradiction). Refused and already-covered targets never make a section stale.
+contradiction). An eligible design/estimate propagation target (step 3b) makes
+`## Program Design` or `## Impact` stale for this step even when no older
+directive section changes. Refused and already-covered targets never make a section stale.
 
 If **no** section is stale, no accepted uncovered target remains, and no Scope
-Boundaries claim is contradicted (directives already match findings), this is a
+Boundaries claim is contradicted, and no eligible design/estimate propagation
+target remains (directives already match findings), this is a
 no-op: emit verdict `RECONCILED` with an empty `## CORRECTIONS_MADE` (`None`) and
 stop after the session-log append. Any refused targets are still listed under
 `## CONCERNS` (one `[refused-evidence]` line each). Do not manufacture edits.
@@ -292,6 +337,13 @@ the findings. Rules:
   outcome and how it is verified; a new step continues the numbering. Never
   add an Integration Map entry. Do not edit `verify_verdict`/`verify_evidence`
   yourself (the loop's `clear_verify_verdict` removes them before re-verifying).
+- Design/estimate propagation (BUG-3763): edit only the named Program Design
+  directive passages / Impact Effort/Risk lines in place, replacing the
+  rejected-option text with the selected mechanism from the recorded selection and
+  rationale. Never touch the original decision records, other Program Design
+  directives that are still accurate, or any provenance block; add no new
+  mechanism. A design-only or Impact-only edit still counts as a rewrite for
+  step 5b.
 - Keep the section's heading and overall shape (numbered steps stay numbered;
   AC stays a `- [ ]` checklist; every `## Integration Map` subsection stays a
   bulleted file/pattern list).
@@ -337,8 +389,12 @@ the findings. Rules:
 
 ### 5b. Clear resolved Concerns and stale scores
 
-Runs **only** when step 5 rewrote at least one directive section, and **never**
-under `--check`. A no-op run leaves scores, Confidence Check Notes and outcome
+Runs **only** when step 5 rewrote at least one directive section — including a
+design-only or Impact-only propagation edit (BUG-3763) — and **never** under
+`--check`. No-op, refusal and marker-only passes never clear scores. Move only
+the Concerns the rewrite actually resolved. Do not clear
+`verify_verdict`/`verify_evidence` here: the loop's `normalize_structure` and
+`clear_verify_verdict` precede fresh verification. A no-op run leaves scores, Confidence Check Notes and outcome
 flags untouched.
 
 1. **Move resolved Concerns.** In the **last** `## Confidence Check Notes`
@@ -378,8 +434,10 @@ evidence-target triage** when the extension is eligible (no frontmatter write, n
 rewrite, no score clearing, no session log, **and no marker clearing** — check
 mode never writes, so the ENH-2992 clearing rule does not apply here). Then:
 - If ≥1 section is stale (including a coverage gap for an accepted uncovered
-  target), OR ≥1 Scope Boundaries claim is contradicted (step 4a) — a
-  reconcilable plateau exists: print `[ID] reconcile: NEEDED` and `exit 0`.
+  target or an eligible design/estimate propagation target), OR ≥1
+  Scope Boundaries claim is contradicted (step 4a) — a reconcilable plateau
+  exists (a design-only/Impact-only plateau is reported with no edits): print
+  `[ID] reconcile: NEEDED` and `exit 0`.
   Context-only evidence with no other drift is **not** a plateau.
 - Otherwise: print `[ID] reconcile: CLEAN` and `exit 1`.
 
@@ -403,6 +461,8 @@ This integrates with FSM `evaluate: type: exit_code` routing.
 - Tests: [rewritten | unchanged]
 - Documentation: [rewritten | unchanged]
 - Scope Boundaries: [rewritten | decision-directive | unchanged]
+- Program Design: [rewritten (decision propagation) | unchanged]
+- Impact: [rewritten (decision propagation) | unchanged]
 
 ## CORRECTIONS_MADE
 - [reconcile] Rewrote Implementation Steps 1-3 to describe the corrected <X>
@@ -410,6 +470,7 @@ This integrates with FSM `evaluate: type: exit_code` routing.
 - [reconcile] Updated AC bullet 2 to match the <Y> finding
 - [reconcile] Added AC "<outcome + how verified>" for verify_evidence item "<section: drift>" (--from-verify-evidence)
 - [reconcile] Added Implementation Step <N> for fixture-invalidation evidence item "<drift>" (--from-verify-evidence)
+- [reconcile] Rewrote Program Design / Impact Effort/Risk passage "<short quote>" to the selected option "<name>" for verify_evidence item "<section: drift>" (--from-verify-evidence, BUG-3763)
 - [reconcile] Removed superseded "Files to Modify" entry <path> (finding: <…>)
 - [reconcile] Rewrote Scope Boundaries claim to match the <Z> finding (factual mismatch)
 - [reconcile] Rewrote Scope Boundaries claim into a decision directive: "<X> or
@@ -448,7 +509,9 @@ $ARGUMENTS
   (exit 0 if a reconcilable plateau exists, exit 1 if the body is already clean).
   `--from-verify-evidence` — (BUG-3695) additionally treat a persisted
   `DIRECTIVE_DRIFT` `verify_evidence` as a source so entailed Acceptance Criteria
-  / Implementation Steps may be added (never Integration Map entries). Only
+  / Implementation Steps may be added (never Integration Map entries), and — BUG-3763 —
+  evidenced decision-derived Program Design directives / Impact Effort/Risk lines
+  are rewritten in place from the recorded selection. Only
   `refine-to-ready-issue`'s `reconcile_issue` state passes it.
 
 ---

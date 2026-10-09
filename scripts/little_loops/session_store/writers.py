@@ -24,7 +24,8 @@ import sys
 import threading
 import time
 import zlib
-from collections.abc import Generator, Sequence
+from collections import Counter
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -40,10 +41,19 @@ from little_loops.session_store.backend import (
     translate_sqlite_errors,
 )
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_store
+from little_loops.session_store.queries import RECOMMENDATION_EVENT_COLUMNS
 from little_loops.session_store.schema import _LOOP_EVENT_TYPES
 from little_loops.session_store.targets import RemoteTarget
+from little_loops.session_store.usage_proof import (
+    codex_components,
+    codex_count_signature,
+    is_adjacent_record,
+    is_codex_native_record,
+    recognize_claude_usage,
+)
 
 if TYPE_CHECKING:
+    from little_loops.session_store.usage_replay import ReplayReport
     from little_loops.subprocess_utils import ObservedAtBasis, TokenProvenance, TokenScopeKind
 
 logger = logging.getLogger(__name__)
@@ -358,6 +368,8 @@ def record_correction(
         if not capture.corrections:
             return
     content = content[:512]
+    # ``source`` must never be the reserved 'backfill' (the replay marker):
+    # ``rebuild()`` wipes ``source = 'backfill'`` rows and preserves all others (BUG-3761).
     conn = _connect_telemetry(db_path)
     ts = _now()
     try:
@@ -384,6 +396,9 @@ def record_skill_event(
     ``skill_name`` must match one of the configured glob patterns or the write is
     suppressed. Missing ``capture`` key or missing ``config`` defaults to permissive
     (no behavior change).
+
+    The row is stamped ``origin = 'prompt_hook'`` (BUG-3766): ``rebuild()`` preserves
+    it and suppresses its transcript twin instead of wiping it.
     """
     if config is not None:
         from little_loops.config.features import AnalyticsCaptureConfig, feature_enabled_for
@@ -396,7 +411,8 @@ def record_skill_event(
     ts = _now()
     try:
         conn.execute(
-            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+            "INSERT INTO skill_events(ts, session_id, skill_name, args, origin) "
+            "VALUES(?, ?, ?, ?, 'prompt_hook')",
             (ts, session_id, skill_name, args),
         )
         _index(
@@ -785,6 +801,9 @@ def skill_event_context(
     (``user_prompt_submit`` → :func:`record_skill_event`) is NOT covered — it
     stays ``analytics.enabled``-gated, which remains the project-level off
     switch for hook writes.
+
+    The row is stamped ``origin = 'skill_host'`` (BUG-3766) so ``rebuild()``
+    preserves it, completion fields included.
     """
     args = args[:200]
     conn: sqlite3.Connection | None = None
@@ -822,7 +841,8 @@ def skill_event_context(
         try:
             conn = _connect_telemetry(effective_path)
             cursor = conn.execute(
-                "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
+                "INSERT INTO skill_events(ts, session_id, skill_name, args, origin) "
+                "VALUES(?, ?, ?, ?, 'skill_host')",
                 (ts, session_id, skill_name, args),
             )
             row_id = cursor.lastrowid
@@ -3661,11 +3681,25 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
         yield line, source_label
 
 
-def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+def _backfill_tool_events(
+    conn: sqlite3.Connection,
+    source: list[Path] | sqlite3.Cursor,
+    *,
+    skip_live: Counter[tuple[str | None, str, str]] | None = None,
+) -> int:
     """Seed ``tool_events`` from assistant tool-use blocks in session JSONL files.
 
     *source* is either a list of on-disk JSONL files (legacy) or a
     ``raw_events`` cursor (the :func:`rebuild` path) — see :func:`_iter_events`.
+
+    Replay rows always bind NULL ``bytes_in``/``bytes_out``; ``rebuild()`` relies on
+    that to tell them from byte-bearing hook rows (BUG-3761), so changing it here
+    needs a matching ``_REBUILD_TABLE_PREDICATES`` change.
+
+    *skip_live* (BUG-3761) is a multiset of ``(session_id, tool_name, args_hash)``
+    keys for surviving live hook rows. A tool_use block whose key has a remaining
+    count decrements it and is skipped (no INSERT, no index entry), so a live row
+    and its transcript twin yield one row. Mutated in place; ``None`` disables it.
     """
     count = 0
     for line, source_label in _iter_events(source):
@@ -3691,6 +3725,12 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
                 else None
             )
             mcp_server, mcp_tool = _parse_mcp_tool_name(tool_name)
+            args_hash = _hash_args(args)
+            if skip_live:
+                live_key = (session_id, tool_name, args_hash)
+                if skip_live.get(live_key, 0) > 0:
+                    skip_live[live_key] -= 1
+                    continue
             conn.execute(
                 "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, "
                 "result_size, bytes_in, bytes_out, cache_hit, agent_type, "
@@ -3700,7 +3740,7 @@ def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3
                     ts,
                     session_id,
                     tool_name,
-                    _hash_args(args),
+                    args_hash,
                     None,
                     None,
                     None,
@@ -3827,6 +3867,9 @@ class UsageObservation:
     usage: dict[str, Any]
     qualified: bool
     observation_key: str | None
+    # False when the payload's own session identity disagrees with the replay envelope:
+    # such a request can never be a qualified observation (ENH-3770).
+    identity_ok: bool = True
 
 
 @dataclass(frozen=True)
@@ -3858,87 +3901,73 @@ def normalize_host_usage(
         or state.session_id != record.session_id
     ):
         raise ValueError("HostUsageState does not match replay source, host, and session")
-    if record.host in {"codex", "kimi-code"} or record.payload.get("type") != "assistant":
-        return []
-    payload = record.payload
-    message = payload.get("message")
-    if not isinstance(message, dict):
-        return []
-    usage = message.get("usage")
-    if not isinstance(usage, dict):
-        return []
-    if usage.get("input_tokens") is None and usage.get("output_tokens") is None:
-        return []
-    # BUG-3530: a NULL session_id row would be classified as live and survive
-    # rebuild, so an assistant usage observation needs a source session ID.
-    session_id = payload.get("sessionId")
-    if not isinstance(session_id, str) or not session_id:
-        return []
-
-    from little_loops.session_store.claude_usage import (
-        CLAUDE_USAGE_CONTRACT,
-        claude_transcript_contract,
+    recognized = recognize_claude_usage(
+        record.payload,
+        host=record.host,
+        host_basis=record.host_basis,
+        usage_contract=record.usage_contract,
     )
-
-    native_contract = claude_transcript_contract(
-        payload, host=record.host, host_basis=record.host_basis
-    )
-    message_id = message.get("id")
-    # A malformed current-version Claude snapshot with a producer ID is not
-    # another request; the last valid snapshot for that ID wins.
-    if (
-        record.host == "claude-code"
-        and record.host_basis == "handle"
-        and payload.get("version") == "2.1.284"
-        and isinstance(message_id, str)
-        and message_id
-        and native_contract is None
-    ):
+    # BUG-3530: a NULL session_id row would be classified as live and survive rebuild, so
+    # ``missing_session`` yields nothing; a malformed current-version Claude snapshot with
+    # a producer ID is not another request (``omission``): the last valid snapshot wins.
+    if recognized is None or recognized.kind != "candidate" or recognized.session_id is None:
         return []
-    qualified = (
-        record.usage_contract == CLAUDE_USAGE_CONTRACT and native_contract == CLAUDE_USAGE_CONTRACT
-    )
-    observation_key = (
-        json.dumps([record.host, session_id, message_id], separators=(",", ":"))
-        if qualified and isinstance(message_id, str) and message_id
-        else None
+    envelope_session = record.session_id
+    identity_ok = not (
+        isinstance(envelope_session, str)
+        and bool(envelope_session)
+        and envelope_session != recognized.session_id
     )
     return [
         UsageObservation(
-            session_id=session_id,
-            model=message.get("model"),
-            usage=usage,
-            qualified=qualified,
-            observation_key=observation_key,
+            session_id=recognized.session_id,
+            model=recognized.model,
+            usage=recognized.usage,
+            qualified=recognized.qualified and identity_ok,
+            observation_key=recognized.observation_key if identity_ok else None,
+            identity_ok=identity_ok,
         )
     ]
 
 
+def usage_replay_record_from_row(payload: dict[str, Any], row: Sequence[Any]) -> UsageReplayRecord:
+    """Build a replay record from a decoded stored payload and its ``_usage_raw_cursor`` row."""
+    return UsageReplayRecord(
+        payload=payload,
+        source_label=str(row[1]),
+        host=row[2],
+        host_basis=row[3] if len(row) > 3 else None,
+        event_type=str(row[4] if len(row) > 4 else payload.get("type") or ""),
+        ts=str((row[5] if len(row) > 5 else payload.get("timestamp")) or ""),
+        session_id=row[6] if len(row) > 6 else payload.get("sessionId"),
+        line_no=row[7] if len(row) > 7 else None,
+        ordinal=row[8] if len(row) > 8 else None,
+        usage_contract=row[9] if len(row) > 9 else None,
+        raw_event_id=row[10] if len(row) > 10 else None,
+    )
+
+
 def _iter_usage_replay_records(
     source: list[Path] | sqlite3.Cursor,
+    failures: list[tuple[str, int | None]] | None = None,
 ) -> Generator[UsageReplayRecord, None, None]:
-    """Adapt direct envelopes and stored inner payloads to the same replay input."""
+    """Adapt direct envelopes and stored inner payloads to the same replay input.
+
+    A stored row that cannot be decoded produces no record, but its ``(source, raw id)`` is
+    appended to *failures* when given: it may have been a usage candidate, so the replay
+    reports the scope as incomplete instead of silently skipping it (ENH-3770).
+    """
     if isinstance(source, sqlite3.Cursor):
         for row in source:
             try:
                 payload = json.loads(_unpack_payload(row[0]))
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
+            except (json.JSONDecodeError, TypeError, ValueError, zlib.error):
+                payload = None
             if not isinstance(payload, dict):
+                if failures is not None:
+                    failures.append((str(row[1]), row[10] if len(row) > 10 else None))
                 continue
-            yield UsageReplayRecord(
-                payload=payload,
-                source_label=str(row[1]),
-                host=row[2],
-                host_basis=row[3] if len(row) > 3 else None,
-                event_type=str(row[4] if len(row) > 4 else payload.get("type") or ""),
-                ts=str((row[5] if len(row) > 5 else payload.get("timestamp")) or ""),
-                session_id=row[6] if len(row) > 6 else payload.get("sessionId"),
-                line_no=row[7] if len(row) > 7 else None,
-                ordinal=row[8] if len(row) > 8 else None,
-                usage_contract=row[9] if len(row) > 9 else None,
-                raw_event_id=row[10] if len(row) > 10 else None,
-            )
+            yield usage_replay_record_from_row(payload, row)
         return
 
     from little_loops.session_store.claude_usage import claude_transcript_contract
@@ -4007,6 +4036,10 @@ class _CodexReplayState:
     last_count: str | None = None
     preceding_record: tuple[dict[str, Any], int | None, int | None] | None = None
     stream_id: str | None = None
+    # ENH-3770: native position (line_no, ordinal, raw id) of the model / closure rows a turn
+    # consumed, so qualification can persist the context it actually used.
+    model_ctx: dict[str, tuple[int | None, int | None, int | None]] = field(default_factory=dict)
+    closure_ctx: dict[str, tuple[int | None, int | None, int | None]] = field(default_factory=dict)
 
 
 @dataclass
@@ -4023,14 +4056,11 @@ class _CodexCandidate:
     stream_id: str | None
     closed: bool = False
     conflict: bool = False
+    model_ctx: tuple[int | None, int | None, int | None] | None = None
 
 
-def _codex_count_signature(info: dict[str, Any]) -> str | None:
-    total = info.get("total_token_usage")
-    last = info.get("last_token_usage")
-    if not isinstance(total, dict) or not isinstance(last, dict):
-        return None
-    return json.dumps([total, last], sort_keys=True, separators=(",", ":"))
+_codex_count_signature = codex_count_signature
+_codex_components = codex_components
 
 
 def _is_adjacent_record(
@@ -4038,164 +4068,105 @@ def _is_adjacent_record(
     record: UsageReplayRecord,
     usage: dict[str, Any],
 ) -> bool:
-    if previous is None or previous[0] != usage:
-        return False
-    _, ordinal, line_no = previous
-    if ordinal is not None and record.ordinal is not None:
-        return record.ordinal == ordinal + 1
-    return line_no is not None and record.line_no == line_no + 1
+    return is_adjacent_record(previous, record.ordinal, record.line_no, usage)
 
 
-def _codex_components(
-    usage: dict[str, Any],
-) -> tuple[int | None, int | None, int | None, int | None, bool]:
-    """Return disjoint components and whether a producer count is complete."""
-    from little_loops.subprocess_utils import normalize_codex_input
-
-    split = normalize_codex_input(usage)
-    output = usage.get("output_tokens")
-    valid_output = type(output) is int and output >= 0
-    complete = split.consistent and valid_output
-    return (
-        split.uncached_input,
-        output if valid_output else None,
-        split.cache_read,
-        split.cache_write,
-        complete,
-    )
+_USAGE_SEARCH_BATCH = 500
 
 
-def _write_host_usage_observation(
+@dataclass
+class UsageSearchScope:
+    """Source anchors whose ``usage`` search evidence needs regeneration (ENH-3747).
+
+    ``anchors`` collects the old and new stored ``source_path`` of every observation a
+    replay inserts or moves; ``full`` selects the whole usage-search population (rebuild).
+    """
+
+    anchors: set[str] = field(default_factory=set)
+    full: bool = False
+
+    def mark(self, *anchors: str | None) -> None:
+        self.anchors.update(a for a in anchors if a)
+
+
+def _usage_search_entry(
+    row_id: int,
+    session_id: Any,
+    channel: Any,
+    model: Any,
+    ts: Any,
+    source_path: Any,
+) -> dict[str, Any] | None:
+    """Search arguments for one committed ``usage_events`` row, or None if not indexed.
+
+    Only transcript-channel observations with stored source attribution are indexed
+    (the transcript writer's population); model, source and timestamp come from the
+    committed row, so fresh, updated and restored evidence render identically.
+    """
+    from little_loops.token_provenance import row_channel
+
+    if (
+        not source_path
+        or row_channel({"channel": channel, "session_id": session_id}) != "transcript"
+    ):
+        return None
+    return {
+        "content": f"{model or ''} usage",
+        "kind": "usage",
+        "ref": str(model or ""),
+        "anchor": source_path,
+        "ts": ts,
+    }
+
+
+def _reconcile_usage_search(conn: sqlite3.Connection, scope: UsageSearchScope) -> int:
+    """Regenerate ``usage`` search evidence for *scope* from committed observations.
+
+    Runs inside the caller's open transaction and never mutates ``usage_events``. Deletes
+    the usage search entries at each scoped anchor (or all of them for ``scope.full``)
+    and re-adds one per eligible observation in id order, in bounded anchor batches.
+    Returns the number of entries written.
+    """
+    written = 0
+    columns = "id, session_id, channel, model, ts, source_path"
+    if scope.full:
+        conn.execute("DELETE FROM search_index WHERE kind = 'usage'")
+        batches: list[tuple[str, tuple[str, ...]]] = [
+            (f"SELECT {columns} FROM usage_events ORDER BY id", ())
+        ]
+    else:
+        anchors = sorted(scope.anchors)
+        batches = []
+        for start in range(0, len(anchors), _USAGE_SEARCH_BATCH):
+            chunk = tuple(anchors[start : start + _USAGE_SEARCH_BATCH])
+            marks = ", ".join("?" for _ in chunk)
+            conn.execute(
+                f"DELETE FROM search_index WHERE kind = 'usage' AND anchor IN ({marks})", chunk
+            )
+            batches.append(
+                (
+                    f"SELECT {columns} FROM usage_events WHERE source_path IN ({marks}) ORDER BY id",
+                    chunk,
+                )
+            )
+    for sql, params in batches:
+        for row in conn.execute(sql, params).fetchall():
+            entry = _usage_search_entry(*row)
+            if entry is not None:
+                _index(conn, **entry)
+                written += 1
+    return written
+
+
+def _backfill_usage_events(
     conn: sqlite3.Connection,
-    replay: UsageReplayRecord,
-    observation: UsageObservation,
-    windows: list[tuple[str, str, str]],
+    source: list[Path] | sqlite3.Cursor,
+    *,
+    search_scope: UsageSearchScope | None = None,
+    reindex_all: bool = False,
+    report: ReplayReport | None = None,
+    plan_out: list[Any] | None = None,
 ) -> int:
-    """Persist one prepared assistant observation; return one only for a new row."""
-    from little_loops.observability.tracing import vendor_for_runner
-    from little_loops.pricing import _event_date, estimate_cost_usd
-
-    usage = observation.usage
-    input_tokens = usage.get("input_tokens")
-    output_tokens = usage.get("output_tokens")
-    cache_read = usage.get("cache_read_input_tokens")
-    cache_creation = usage.get("cache_creation_input_tokens")
-    ts = replay.ts
-    model = observation.model
-    cost_usd = estimate_cost_usd(
-        str(model or ""),
-        input_tokens,
-        output_tokens,
-        cache_read,
-        cache_creation,
-        as_of=_event_date(ts),
-    )
-    run_id = _derive_run_id_for_ts(ts, windows)
-    observation_key = observation.observation_key
-    if observation_key is not None:
-        existing = conn.execute(
-            "SELECT id, source_raw_event_id, source_path, model, input_tokens, "
-            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, "
-            "provenance FROM usage_events WHERE observation_key = ?",
-            (observation_key,),
-        ).fetchone()
-        if existing is not None:
-            changed = (existing[3], existing[4], existing[5], existing[6], existing[7]) != (
-                model,
-                input_tokens,
-                output_tokens,
-                cache_read,
-                cache_creation,
-            )
-            conflict = existing[8] == "unknown" or (existing[2] != replay.source_label and changed)
-            newer = (
-                replay.raw_event_id is None
-                or existing[1] is None
-                or replay.raw_event_id >= existing[1]
-            )
-            if conflict:
-                logger.warning(
-                    "Claude message.id conflict for %s; retaining uncertain usage",
-                    observation_key,
-                )
-            if newer:
-                conn.execute(
-                    "UPDATE usage_events SET ts = ?, model = ?, input_tokens = ?, "
-                    "output_tokens = ?, cache_read_input_tokens = ?, "
-                    "cache_creation_input_tokens = ?, cost_usd = ?, run_id = ?, "
-                    "observed_at = ?, observed_at_basis = ?, source_raw_event_id = ?, "
-                    "source_path = ?, source_line_no = ?, provenance = ?, usage_contract = ? "
-                    "WHERE id = ?",
-                    (
-                        ts,
-                        model,
-                        input_tokens,
-                        output_tokens,
-                        cache_read,
-                        cache_creation,
-                        cost_usd,
-                        run_id,
-                        ts or None,
-                        "event" if ts else None,
-                        replay.raw_event_id,
-                        replay.source_label,
-                        replay.line_no,
-                        "unknown" if conflict else "measured",
-                        None if conflict else replay.usage_contract,
-                        existing[0],
-                    ),
-                )
-            elif conflict:
-                conn.execute(
-                    "UPDATE usage_events SET provenance = 'unknown', usage_contract = NULL "
-                    "WHERE id = ?",
-                    (existing[0],),
-                )
-            return 0
-    conn.execute(
-        "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
-        "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
-        "run_id, channel, provenance, host, provider_vendor, scope_kind, observed_at, "
-        "observed_at_basis, host_basis, usage_contract, source_raw_event_id, "
-        "source_path, source_line_no, observation_key) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript', ?, ?, ?, 'request', "
-        "?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            ts,
-            observation.session_id,
-            model,
-            None,
-            input_tokens,
-            output_tokens,
-            cache_read,
-            cache_creation,
-            cost_usd,
-            run_id,
-            "measured" if observation.qualified else "unknown",
-            replay.host,
-            vendor_for_runner(replay.host) if replay.host else None,
-            ts or None,
-            "event" if ts else None,
-            replay.host_basis,
-            replay.usage_contract if observation.qualified else None,
-            replay.raw_event_id,
-            replay.source_label,
-            replay.line_no,
-            observation_key,
-        ),
-    )
-    _index(
-        conn,
-        content=f"{model or ''} usage",
-        kind="usage",
-        ref=str(model or ""),
-        anchor=replay.source_label,
-        ts=ts,
-    )
-    return 1
-
-
-def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
     """Seed ``usage_events`` from assistant ``message.usage`` blocks (ENH-2461).
 
     Persists the real LLM token counts the API returned (``input_tokens``,
@@ -4214,31 +4185,39 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     (ENH-2725) — see :func:`_derive_run_id_for_ts`. Rows with no derivable
     ``run_id`` stay ``NULL``, matching the live-writer path's behavior for
     non-loop sessions.
-    """
-    from little_loops.pricing import _event_date, estimate_cost_usd
 
-    count = 0
+    Usage search evidence (ENH-3747) is regenerated from the committed rows after replay:
+    for the scopes the replay touched, or — with *reindex_all* (rebuild) — for the whole
+    population. A caller passing *search_scope* accumulates scopes across several calls and
+    reconciles once itself.
+
+    ENH-3770: this function only *collects* the logical requests a replay sees. Planning
+    against committed observations and every write, price and demotion happens in
+    :func:`little_loops.session_store.usage_replay.apply_replay`, which compares every
+    request before it prices or mutates anything. Raw-less input (no durable raw row id) is
+    refused there. *report* receives the per-source outcomes (inserted, replaced,
+    qualified, demoted, preserved-with-pending) for callers that persist unresolved work.
+    A caller passing *plan_out* gets the planned actions appended and nothing is written,
+    priced or indexed (a side-effect-free proof pass, e.g. for hold-release inventory).
+    """
+    from little_loops.session_store import usage_replay
+
+    deferred = search_scope is not None
+    scope = search_scope if search_scope is not None else UsageSearchScope()
     windows = _load_loop_run_windows(conn)
-    from little_loops.observability.tracing import vendor_for_runner
 
     codex_states: dict[str, _CodexReplayState] = {}
+    claude_targets: list[usage_replay.ClaudeTarget] = []
     codex_candidates: list[_CodexCandidate] = []
     host_states: dict[tuple[str, str | None, str | None], HostUsageState] = {}
     holds = load_usage_replay_holds(conn)
-    for replay in _iter_usage_replay_records(source):
+    decode_failures: list[tuple[str, int | None]] = []
+    for replay in _iter_usage_replay_records(source, decode_failures):
         record = replay.payload
-        is_codex_record = replay.event_type in {
-            "session_meta",
-            "turn_context",
-            "token_usage_record",
-            "event_msg",
-        } and (replay.host == "codex" or replay.event_type == "session_meta")
-        # BUG-3736: a held source's retained usage cannot be reconstructed from the
-        # raw rows that survive; replaying them would roll it back or duplicate it.
-        if holds.holds(
-            replay.source_label, replay.host, "rollout" if is_codex_record else "transcript"
-        ):
-            continue
+        is_codex_record = is_codex_native_record(replay.event_type, replay.host)
+        # BUG-3736 / ENH-3770: a held source's retained usage cannot be reconstructed from
+        # the raw rows that survive, so its records are not skipped but planned under the
+        # hold: only proved-distinct requests add rows, protected rows never change.
         if is_codex_record:
             state = codex_states.setdefault(replay.source_label, _CodexReplayState())
             if replay.event_type == "session_meta":
@@ -4254,6 +4233,11 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
                 model = record.get("model")
                 if isinstance(turn_id, str) and isinstance(model, str) and model:
                     state.model_by_turn[turn_id] = model
+                    state.model_ctx[turn_id] = (
+                        replay.line_no,
+                        replay.ordinal,
+                        replay.raw_event_id,
+                    )
             elif replay.event_type == "event_msg":
                 subtype = record.get("type")
                 if subtype == "task_started":
@@ -4265,6 +4249,11 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
                     turn_id = record.get("turn_id")
                     if isinstance(turn_id, str):
                         state.closed_turns.add(turn_id)
+                        state.closure_ctx[turn_id] = (
+                            replay.line_no,
+                            replay.ordinal,
+                            replay.raw_event_id,
+                        )
                     if turn_id == state.current_turn:
                         state.current_turn = None
                 elif subtype == "token_count":
@@ -4291,6 +4280,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
                             request_id=None,
                             request_identity_basis="unverified",
                             stream_id=state.stream_id,
+                            model_ctx=state.model_ctx.get(state.current_turn or ""),
                         )
                     )
             elif replay.event_type == "token_usage_record":
@@ -4319,6 +4309,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
                         if valid_identity
                         else "unverified",
                         stream_id=state.stream_id,
+                        model_ctx=state.model_ctx.get(turn_id if isinstance(turn_id, str) else ""),
                     )
                 )
                 state.preceding_record = (
@@ -4343,132 +4334,30 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             ),
         )
         for observation in normalize_host_usage(replay, state=host_state):
-            count += _write_host_usage_observation(conn, replay, observation, windows)
-
-    # A response ID is the strongest observed request identity, but not yet a
-    # database uniqueness contract. Collapse identical replayed copies only;
-    # retain conflicting copies with unknown provenance for audit.
-    native_seen: dict[tuple[str, str], _CodexCandidate] = {}
-    distinct: list[_CodexCandidate] = []
-    for candidate in codex_candidates:
-        if candidate.request_identity_basis != "native_response" or not candidate.request_id:
-            distinct.append(candidate)
-            continue
-        key = (candidate.record.host or "", candidate.request_id)
-        earlier = native_seen.get(key)
-        if earlier is None:
-            native_seen[key] = candidate
-            distinct.append(candidate)
-        elif (
-            earlier.thread_id == candidate.thread_id
-            and earlier.turn_id == candidate.turn_id
-            and earlier.usage == candidate.usage
-        ):
-            continue
-        else:
-            earlier.conflict = True
-            candidate.conflict = True
-            distinct.append(candidate)
-            logger.warning("Codex response_id conflict for %s; retaining uncertain rows", key)
-
-    columns = (
-        "ts",
-        "session_id",
-        "model",
-        "state",
-        "input_tokens",
-        "output_tokens",
-        "cache_read_input_tokens",
-        "cache_creation_input_tokens",
-        "cost_usd",
-        "run_id",
-        "channel",
-        "provenance",
-        "host",
-        "provider_vendor",
-        "scope_kind",
-        "observed_at",
-        "observed_at_basis",
-        "host_basis",
-        "identity_basis",
-        "turn_id",
-        "request_id",
-        "request_identity_basis",
-        "stream_id",
-        "source_ordinal",
-        "source_line_no",
-        "source_raw_event_id",
-        "source_path",
-    )
-    insert_sql = (
-        f"INSERT INTO usage_events({', '.join(columns)}) VALUES({', '.join('?' for _ in columns)})"
-    )
-    for candidate in distinct:
-        replay = candidate.record
-        state = codex_states[replay.source_label]
-        candidate.closed = bool(candidate.turn_id and candidate.turn_id in state.closed_turns)
-        input_tokens, output_tokens, cache_read, cache_write, complete = _codex_components(
-            candidate.usage
-        )
-        verified_host = replay.host == "codex" and replay.host_basis == "handle"
-        verified_thread = bool(
-            candidate.thread_id and state.thread_id == candidate.thread_id and verified_host
-        )
-        measured = bool(
-            complete
-            and candidate.model
-            and candidate.closed
-            and verified_thread
-            and candidate.request_identity_basis == "native_response"
-            and not candidate.conflict
-        )
-        ts = replay.ts
-        model = candidate.model
-        cost_usd = (
-            estimate_cost_usd(
-                model,
-                input_tokens,
-                output_tokens,
-                cache_read,
-                cache_write,
-                as_of=_event_date(ts),
+            claude_targets.append(
+                usage_replay.claude_target(len(claude_targets), replay, observation)
             )
-            if measured and model
-            else None
-        )
-        conn.execute(
-            insert_sql,
-            (
-                ts,
-                candidate.thread_id,
-                model,
-                None,
-                input_tokens,
-                output_tokens,
-                cache_read,
-                cache_write,
-                cost_usd,
-                None,
-                "rollout",
-                "measured" if measured else "unknown",
-                "codex" if verified_host else None,
-                vendor_for_runner("codex") if verified_host else None,
-                "request",
-                ts or None,
-                "event" if ts else None,
-                replay.host_basis if verified_host else None,
-                "host_observed" if verified_thread else None,
-                candidate.turn_id,
-                candidate.request_id,
-                candidate.request_identity_basis if verified_host else "unverified",
-                candidate.stream_id,
-                replay.ordinal,
-                replay.line_no,
-                replay.raw_event_id,
-                replay.source_label,
-            ),
-        )
-        count += 1
+
+    if report is not None:
+        for failed_source, failed_raw_id in decode_failures:
+            report.note(failed_source, failed_raw_id, "decode_failure")
+    count = usage_replay.apply_replay(
+        conn,
+        claude_targets,
+        codex_candidates,
+        codex_states,
+        holds=holds,
+        scope=scope,
+        run_id_for=lambda ts: _derive_run_id_for_ts(ts, windows),
+        report=report,
+        plan_out=plan_out,
+    )
+    if plan_out is not None:
+        return 0
+    if reindex_all:
+        scope.full = True
+    if reindex_all or not deferred:
+        _reconcile_usage_search(conn, scope)
     return count
 
 
@@ -4664,7 +4553,75 @@ def _backfill_prompt_opt(conn: sqlite3.Connection, source: list[Path] | sqlite3.
     return count
 
 
-def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
+@dataclass(frozen=True)
+class SkillReplaySurvivor:
+    """A surviving live ``prompt_hook`` skill row eligible to suppress a replay twin (BUG-3766)."""
+
+    id: int
+    session_id: str
+    skill_name: str
+    args: str
+    ts: datetime  # timezone-aware UTC
+
+
+# Replay timestamps are the transcript's; the hook stamps its own wall clock a moment later.
+_SKILL_TWIN_WINDOW_S = 1.0
+
+
+def _parse_aware_ts(value: object) -> datetime | None:
+    """Parse an ISO 8601 string to a timezone-aware UTC datetime (``None`` if naive/invalid)."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _match_skill_survivor(
+    pool: dict[tuple[str, str, str], list[SkillReplaySurvivor]],
+    consumed: set[int],
+    session_id: str | None,
+    skill_name: str,
+    args: str,
+    ts: str,
+) -> bool:
+    """Consume the closest unused survivor twin of one replay record; ``True`` if found.
+
+    A twin shares the normalized non-empty session ID, skill name and stripped stored
+    arguments, with timestamps within ``_SKILL_TWIN_WINDOW_S`` inclusive. Ties break on
+    the smallest row ID. Naive/invalid timestamps and empty sessions never match.
+    """
+    if not session_id:
+        return False
+    replay_ts = _parse_aware_ts(ts)
+    if replay_ts is None:
+        return False
+    best: SkillReplaySurvivor | None = None
+    best_diff = 0.0
+    for survivor in pool.get((session_id, skill_name, args.strip()), ()):
+        if survivor.id in consumed:
+            continue
+        diff = abs((survivor.ts - replay_ts).total_seconds())
+        if diff > _SKILL_TWIN_WINDOW_S:
+            continue
+        if best is None or diff < best_diff or (diff == best_diff and survivor.id < best.id):
+            best, best_diff = survivor, diff
+    if best is None:
+        return False
+    consumed.add(best.id)
+    return True
+
+
+def _backfill_skill_events(
+    conn: sqlite3.Connection,
+    source: list[Path] | sqlite3.Cursor,
+    *,
+    skip_live: Sequence[SkillReplaySurvivor] | None = None,
+) -> int:
     """Seed ``skill_events`` from /ll: invocations in user blocks of session JSONL files.
 
     Mirrors :func:`_backfill_messages` but selects ``type == "user"`` records and
@@ -4673,8 +4630,19 @@ def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     to include a backfill path (BUG-2283). Used by ``ll-logs stats`` so pre-init
     invocations are reflected in skill invocation counts. *source* accepts either
     JSONL files or a raw_events cursor — see :func:`_iter_events`.
+
+    Inserted rows are stamped ``origin = 'transcript'`` (BUG-3766), the one class
+    ``rebuild()`` wipes. *skip_live* is the surviving live ``prompt_hook`` rows: each
+    is consumed at most once by its closest replay twin, which is then neither inserted
+    nor indexed (and not counted). Omitted, every record is inserted.
     """
     count = 0
+    pool: dict[tuple[str, str, str], list[SkillReplaySurvivor]] = {}
+    for survivor in skip_live or ():
+        pool.setdefault(
+            (survivor.session_id, survivor.skill_name, survivor.args.strip()), []
+        ).append(survivor)
+    consumed: set[int] = set()
     for line, source_label in _iter_events(source):
         try:
             record = json.loads(line)
@@ -4706,9 +4674,13 @@ def _backfill_skill_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             skill_name = skill_name[: -len("</command-name>")]
         args_m = _BACKFILL_ARGS_RE.search(text)
         args = args_m.group(1).strip()[:200] if args_m else ""
+        normalized_sid = str(session_id) if session_id else None
+        if pool and _match_skill_survivor(pool, consumed, normalized_sid, skill_name, args, ts):
+            continue
         conn.execute(
-            "INSERT INTO skill_events(ts, session_id, skill_name, args) VALUES(?, ?, ?, ?)",
-            (ts, str(session_id) if session_id else None, skill_name, args),
+            "INSERT INTO skill_events(ts, session_id, skill_name, args, origin) "
+            "VALUES(?, ?, ?, ?, 'transcript')",
+            (ts, normalized_sid, skill_name, args),
         )
         _index(
             conn,
@@ -4764,3 +4736,84 @@ def mine_corrections_from_messages(conn: sqlite3.Connection, config: dict | None
             )
             count += 1
     return count
+
+
+# --------------------------------------------------------------------------- recommendations
+# FEAT-3711: ``recommendation_events`` SQL for ``ll-next``. These run inside a transaction the
+# caller owns (``BEGIN IMMEDIATE`` ... ``COMMIT``/``ROLLBACK`` on an existing-store connection),
+# so neither helper commits, creates the table, migrates, or swallows an integrity failure.
+
+_RECOMMENDATION_INSERT_SQL = (
+    "INSERT INTO main.recommendation_events ("
+    + ", ".join(RECOMMENDATION_EVENT_COLUMNS)
+    + ") VALUES ("
+    + ", ".join("?" for _ in RECOMMENDATION_EVENT_COLUMNS)
+    + ")"
+)
+
+# Copies every offer column from the immutable ``shown`` row; only event_id, kind, ts and
+# invocation_id are the acknowledging run's own. The shown-row/project WHERE precedes ON CONFLICT
+# (SQLite parser ambiguity), and the BINARY conflict target matches the migration's identity index
+# so an unrelated differently-collated constraint still raises instead of being ignored.
+_RECOMMENDATION_ACK_SQL = (
+    "INSERT INTO main.recommendation_events ("
+    + ", ".join(RECOMMENDATION_EVENT_COLUMNS)
+    + ") SELECT "
+    + ", ".join(
+        {
+            "event_id": ":event_id",
+            "kind": "'accepted_explicit'",
+            "ts": ":ts",
+            "invocation_id": ":invocation_id",
+        }.get(column, column)
+        for column in RECOMMENDATION_EVENT_COLUMNS
+    )
+    + " FROM main.recommendation_events "
+    "WHERE rec_id COLLATE BINARY = :rec_id AND kind COLLATE BINARY = 'shown' "
+    "AND project_key COLLATE BINARY = :project_key "
+    "ON CONFLICT(rec_id COLLATE BINARY, kind COLLATE BINARY) DO NOTHING"
+)
+
+
+def insert_shown_recommendation_events(
+    conn: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
+) -> None:
+    """Plain-``INSERT`` every shown row; any constraint or UUID collision raises.
+
+    Deliberately not ``INSERT OR IGNORE``: that silently discards NOT NULL/CHECK violations and
+    unrelated conflicts, so a partially recorded batch could expose IDs that were never stored.
+    The caller rolls the whole batch back on the first exception.
+    """
+    for row in rows:
+        conn.execute(
+            _RECOMMENDATION_INSERT_SQL,
+            tuple(row[column] for column in RECOMMENDATION_EVENT_COLUMNS),
+        )
+
+
+def acknowledge_recommendation_event(
+    conn: sqlite3.Connection,
+    *,
+    rec_id: str,
+    project_key: str,
+    event_id: str,
+    ts: str,
+    invocation_id: str,
+) -> int:
+    """Append an ``accepted_explicit`` row copied from the project's ``shown`` row.
+
+    Returns the number of rows inserted: 0 when no such shown row exists in this project, or when
+    the identity was already acknowledged (an idempotent replay). The caller reads the pair back
+    in the same transaction before reporting success.
+    """
+    cursor = conn.execute(
+        _RECOMMENDATION_ACK_SQL,
+        {
+            "event_id": event_id,
+            "ts": ts,
+            "invocation_id": invocation_id,
+            "rec_id": rec_id,
+            "project_key": project_key,
+        },
+    )
+    return int(cursor.rowcount)

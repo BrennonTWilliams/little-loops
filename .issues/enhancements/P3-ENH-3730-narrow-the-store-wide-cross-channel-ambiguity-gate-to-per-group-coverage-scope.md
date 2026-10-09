@@ -24,13 +24,15 @@ relates_to:
 
 ## Summary
 
-Decide whether verified overlap domains can safely narrow `select_usage_coverage`'s global ambiguity gate enough to justify implementation. Independent `_coverage_key` groups alone do not prove disjointness: a sessionless live observation could duplicate a verified transcript group. Preserve wildcard uncertainty and the full requested population. BUG-3735 separately repairs output narrowing that currently hides possible counterparts; this enhancement must compose with that fix rather than reintroduce it.
+Decide whether verified overlap domains can safely narrow `select_usage_coverage`'s global ambiguity gate enough to justify implementation. Independent `_coverage_key` groups alone do not prove disjointness: a sessionless live observation could duplicate a verified transcript group. Preserve wildcard uncertainty and the full requested population. BUG-3735's completed output-narrowing repair retains possible counterparts; this enhancement must preserve that behavior.
 
 ## Current Behavior
 
 `select_usage_coverage` computes `ambiguous_cross_channel` over its acquired rows: live plus non-live channels are present and any row lacks verified identity. Every group is then unresolved. The original 2026-10-04 local-store probe found all 20,045 groups unresolved across 517,222 rows; that is a dated observation, not a current count.
 
 A read-only 2026-10-05 distribution check found 295 live rows: 33 with no verified host, 262 with a verified invocation host but no proved session identity, and none with a verified host/session pair. `row_host_verified` treats an observed live invocation host as verified even without replay `host_basis=handle`; replay requires that marker. Under the conservative domain proposal, the 33 host-wildcard rows still taint possible opposite-channel groups store-wide. Narrowing domains therefore does not promise numeric all-history totals on this store.
+
+Repeated on 2026-10-07 at `659639f17` through `open_history_readonly(..., ensure=False)` in one read transaction: source schema 63; 409 logical live rows (33 host-wildcard, 376 verified-host/unproved-session, zero verified host/session pairs) and 522,655 transcript observations. These are dated measured counts. The surviving host-wildcard rows still prevent opposite-channel recovery under the proposed policy; that is a policy inference, not a benchmark of an implemented domain algorithm.
 
 BUG-3735 reproduced a distinct correctness defect: host/session SQL filtering drops wildcard counterparts before ambiguity is checked. This issue must not use the already-scoped reader as proof that those rows are independent.
 
@@ -45,7 +47,9 @@ Preserve the declared ENH-3748 logical `channel=` acquisition scope. Determine o
 1. **Implement conservative domains** only if fixture/aggregate-level evidence demonstrates a useful recovered figure while every same-host/session and unknown-host wildcard control remains unresolved. Record that measured benefit and the algorithm before coding.
 2. **Retain the global gate and defer/cancel this enhancement with a rationale** if wildcard evidence makes it a no-op or the benefit does not justify complexity. This does not waive BUG-3735 or shared qualification, and does not block host capture or production publication after those correctness gates pass.
 
-The 2026-10-05 distribution above is the baseline. Do not implement the discarded “each group is independent, ignore unrelated unidentified rows” shortcut. Until this decision is recorded, `decision_needed: true` remains; an issue-file review is not an implementation-readiness pass.
+The 2026-10-07 distribution above refreshes the earlier baseline. Do not implement the discarded “each group is independent, ignore unrelated unidentified rows” shortcut. Until this decision is recorded, `decision_needed: true` remains; an issue-file review is not an implementation-readiness pass.
+
+**Reviewer recommendation (2026-10-07, Opus-concurring): option 2.** The refreshed distribution retains 33 live rows with no verified host (wildcards across every host), 376 host-local wildcards and no verified host/session pairs. The conservative rule therefore predicts no recovered opposite-channel figure on this store; no domain implementation was benchmarked. Cancel with that rationale (BUG-3735/ENH-3748 behavior stays as landed) unless a representative store demonstrates useful recovery with every wildcard control preserved. Cancelling removes a closure blocker from EPIC-3562. `decision_needed: true` stays until a human records the decision (`/ll:decide-issue ENH-3730`).
 
 ## Proposed Solution
 
@@ -62,7 +66,7 @@ The only admissible narrowing policy is conservative potential-overlap domains:
 
 ### Signatures
 
-- `select_usage_coverage(conn, *, since=None, require_run_id=False, host=None, session_id=None, channel=None) -> CoverageSelection` — the `channel` argument is ENH-3748's implemented acquisition scope; keep its semantics in either landing order. Refine only ambiguity classification after the decision.
+- `select_usage_coverage(conn, *, since=None, require_run_id=False, host=None, session_id=None, channel=None) -> CoverageSelection` — the `channel` argument is ENH-3748's implemented acquisition scope; preserve its semantics. Refine only ambiguity classification after the decision.
 - `_verified_usage_identity`, `_coverage_key`, `_classify_coverage` in `history_reader/usage.py` — reuse existing verification and unknown/unresolved prerequisites; do not treat key separation as proof against wildcard rows.
 
 ### Call Path
@@ -104,7 +108,7 @@ The only admissible narrowing policy is conservative potential-overlap domains:
 ## Implementation Steps
 
 1. Record the implement/defer/cancel decision using the current distribution and a representative recovered-group fixture; specify which aggregate actually benefits.
-2. If approved, implement conservative summaries and compose with BUG-3735/ENH-3748 filter order in either landing order.
+2. If approved, implement conservative summaries and preserve BUG-3735/ENH-3748's landed filter order.
 3. Drive source/snapshot/session consumers through wildcard, verified-disjoint, unresolved and filtered populations; document expected remaining blanks.
 4. Run `python -m pytest scripts/tests/`.
 
@@ -139,5 +143,8 @@ The only admissible narrowing policy is conservative potential-overlap domains:
 
 ## Session Log
 
+- Pre-implementation consumer review - 2026-10-07 - Repeated the distribution on one strict read-only schema-63 snapshot at `659639f17`: 409 live observations (33 host-wildcard, 376 verified-host/unproved-session, zero verified pairs) and 522,655 transcript observations. The recommendation remains option 2; distinguished measured counts from the conservative-policy inference and made no algorithm benchmark, implementation, decision or status claim.
+
+- Pre-implementation epic review - 2026-10-07 - Recorded a reviewer recommendation for option 2 (retain the gate, cancel with rationale): the existing distribution makes conservative domains a no-op on this store. Opus consult (confidence 0.72) agreed. Decision left to the human; no status change.
 - Pre-implementation epic review - 2026-10-05 - Opus critique (confidence 0.74) rejected independent-group certification without wildcard domains. Added a concrete decision/design/integration/test contract and the read-only live distribution (33 host-wildcard, 262 verified-host/unproved-session, no verified-host/session live rows). Kept BUG-3735 correctness separate and recorded uncertainty about availability benefit.
 - `/ll:capture-issue` - 2026-10-05T02:23:32 - `dd4da702-03cb-4aad-8b85-189a7f98afba.jsonl`

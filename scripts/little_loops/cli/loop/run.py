@@ -29,10 +29,11 @@ from little_loops.cli.loop.signals import register_loop_signal_handlers
 from little_loops.fsm.context_seed import (
     apply_context_overrides,
     inject_design_context,
+    parse_program_md,
+    required_context_keys,
     seed_confidence_thresholds,
     seed_parameter_defaults,
 )
-from little_loops.fsm.interpolation import InterpolationError, parse_interpolation_suffixes
 from little_loops.fsm.loop_paths import get_builtin_loops_dir, resolve_loop_path
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH
@@ -41,61 +42,10 @@ from little_loops.session_store import DEFAULT_DB_PATH
 def _parse_program_md(path: Path) -> dict[str, str]:
     """Parse .ll/program.md heading sections into context key-value pairs.
 
-    Sections mapped:
-      ## Directive  → directive (prose)
-      ## Targets    → targets (space-joined list items)
-      ## Benchmark  → each key: value pair injected directly
-      ## Budget     → budget (prose)
-      ## Constraints → constraints (prose)
+    Thin wrapper over :func:`little_loops.fsm.context_seed.parse_program_md` (shared with
+    the ``ll-next`` zero-argument loop eligibility check).
     """
-    if not path.exists():
-        return {}
-    try:
-        content = path.read_text()
-    except OSError:
-        return {}
-
-    def _extract(heading: str) -> str:
-        m = re.search(rf"^##\s+{re.escape(heading)}\s*$", content, re.MULTILINE | re.IGNORECASE)
-        if not m:
-            return ""
-        start = m.end()
-        nxt = re.search(r"^##\s", content[start:], re.MULTILINE)
-        return content[start : start + nxt.start()].strip() if nxt else content[start:].strip()
-
-    result: dict[str, str] = {}
-
-    directive = _extract("Directive")
-    if directive:
-        result["directive"] = directive
-
-    targets_text = _extract("Targets")
-    if targets_text:
-        items = [
-            line.lstrip("-* \t").strip()
-            for line in targets_text.splitlines()
-            if line.strip().startswith(("-", "*"))
-        ]
-        result["targets"] = " ".join(items) if items else targets_text
-
-    benchmark_text = _extract("Benchmark")
-    if benchmark_text:
-        for line in benchmark_text.splitlines():
-            if ":" in line:
-                k, _, v = line.partition(":")
-                k, v = k.strip(), v.strip()
-                if k and v:
-                    result[k] = v
-
-    budget = _extract("Budget")
-    if budget:
-        result["budget"] = budget
-
-    constraints = _extract("Constraints")
-    if constraints:
-        result["constraints"] = constraints
-
-    return result
+    return parse_program_md(path)
 
 
 def _write_queue_start_metadata(
@@ -313,38 +263,12 @@ def cmd_run(
         print_execution_plan(fsm, edge_label_colors=_edge_label_colors)
         return 0
 
-    # Pre-run validation: check required context variables are present.
-    # Guarded/transformed refs are safe even when the underlying key is
-    # missing or carries a suffix — the FSM interpolation engine
-    # (fsm/interpolation.py's parse_interpolation_suffixes()) parses these
-    # suffixes off before resolving the real var name, so the CLI pre-flight
-    # calls the same shared helper to stay aligned with the engine:
-    #   - `:default=value` / trailing `?` supply a fallback at render time,
-    #     so a missing key is not an error (BUG-2553).
-    #   - `:shell` is a transform (shlex.quote) on the resolved value; the
-    #     real var name is what must exist in context, not `input:shell`.
-    #     Strip it before the membership check so `${context.input:shell}`
-    #     validates against `input` (BUG-2553 successor), in any suffix
-    #     ordering (ENH-3337).
-    _ctx_var_re = re.compile(r"\$\{context\.([^}.]+)")
-    missing_keys: set[str] = set()
-    for state in fsm.states.values():
-        templates = [state.action] if state.action else []
-        if state.evaluate and state.evaluate.prompt:
-            templates.append(state.evaluate.prompt)
-        for template in templates:
-            for m in _ctx_var_re.finditer(template):
-                raw = m.group(1)
-                try:
-                    var_path, default_value, nullable, _shell = parse_interpolation_suffixes(raw)
-                except InterpolationError:
-                    # Malformed suffix chain; interpolate() will raise its own
-                    # clear error at render time — not this pre-flight's job.
-                    continue
-                if default_value is not None or nullable:
-                    continue
-                if var_path not in fsm.context:
-                    missing_keys.add(var_path)
+    # Pre-run validation: check required context variables are present. The guarded/
+    # transformed-ref semantics (`:default=`, trailing `?`, `:shell`) live in the shared
+    # required_context_keys() helper so this pre-flight cannot drift from the engine or
+    # from ll-next's zero-argument loop eligibility check.
+    required_keys = required_context_keys(fsm.states.values())
+    missing_keys = {key for key in required_keys if key not in fsm.context}
     if missing_keys:
         for key in sorted(missing_keys):
             logger.error(

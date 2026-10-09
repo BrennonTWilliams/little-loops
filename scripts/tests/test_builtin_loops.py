@@ -1680,10 +1680,18 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "reconcile_issue", (
             f"check_reconcile_limit.on_yes should be 'reconcile_issue', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_reconcile_limit.on_no should be 'check_gate_refine_limit' (escalation is "
-            f"mandatory, never discretionary; BUG-3551), got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_residual_decision_drift", (
+            f"check_reconcile_limit.on_no should be 'check_residual_decision_drift' (BUG-3763: "
+            f"the guard precedes the mandatory check_gate_refine_limit escalation, BUG-3551), "
+            f"got {state.get('on_no')!r}"
         )
+        guard = data["states"].get("check_residual_decision_drift", {})
+        assert guard, "State 'check_residual_decision_drift' not found (BUG-3763)"
+        assert (guard.get("on_yes"), guard.get("on_no"), guard.get("on_error")) == (
+            "record_gate_unmet",
+            "check_gate_refine_limit",
+            "record_gate_unmet",
+        ), "guard: match/probe-error -> record_gate_unmet, ordinary no-match -> additive fallback"
         assert state.get("on_error") == "check_gate_refine_limit", (
             f"check_reconcile_limit.on_error should be 'check_gate_refine_limit', "
             f"got {state.get('on_error')!r}"

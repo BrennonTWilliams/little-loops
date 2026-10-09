@@ -16,6 +16,7 @@ Long-term observability for the project little-loops is installed in: what ran, 
 - [Quality Metric Definitions](#quality-metric-definitions)
 - [Session Log Tooling (ll-logs)](#session-log-tooling-ll-logs)
 - [Advanced: LCM Compaction](#advanced-lcm-compaction)
+- [Recommendation events](#recommendation-events)
 - [Retention & Pruning](#retention--pruning)
 - [Scrubbing Stored Payloads](#scrubbing-stored-payloads)
 - [Configuration Reference](#configuration-reference)
@@ -55,7 +56,7 @@ Use this when you want to query what happened in past sessions, inject historica
 
 `.ll/history.db` is a per-project SQLite database that accumulates a long-lived event history across every Claude Code session. Where session JSONL files are ephemeral per-conversation snapshots, history.db is the persistent record: it indexes tool invocations, file modifications, issue state transitions, loop executions, user corrections, and session-to-message content across all sessions that have ever run in this project. Set `LL_HISTORY_DB=/path/to/alt.db` to override the default location (useful for test isolation or CI). Each `ll-*` command waits at most 250 ms for a busy history.db before skipping its `cli_events` row, so a long-running writer never stalls your commands; skipped rows are counted in `.ll/history.db.cli-event-drops` and `ll-doctor` reports the last-7-day count. To run an `ll-*` CLI without writing its per-invocation analytics row — or authoring the db at all — set `LL_ANALYTICS_CAPTURE=0` (kill switch: no resolution, no file, no `cli_events` row; wins over `LL_HISTORY_DB`; per-invocation use, not a shell-profile export — ENH-3449).
 
-The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 59, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
+The database is **additive-only** — backfill is idempotent (dedup indexes prevent duplicates on repeated runs) and nothing is deleted unless you explicitly prune. Schema migrations apply automatically on connect. Current schema version: 63, defined in `scripts/little_loops/session_store/schema.py` (`_MIGRATIONS`). Each version maps to the ENH/FEAT that introduced it:
 
 | Version | Issue | Adds |
 |---------|-------|------|
@@ -119,6 +120,9 @@ The database is **additive-only** — backfill is idempotent (dedup indexes prev
 | v58 | ENH-3651 | `usage_events` source-link columns (`source_raw_event_id`, `source_path`, `observation_key`) with unique indexes, plus the `usage_source_cursors` table (source-tail and derive completion proof) |
 | v59 | BUG-3736 | `usage_replay_holds` markers: a source (or host/channel population) whose retained usage can no longer be replayed from `raw_events`; seeded from legacy dangling raw links, unlinked usage and sources missing their first line |
 | v60 | BUG-3755 | Nullable `to_state` column on `loop_events`: a `route` row keeps the transition source in `state` and the target in `to_state`; earlier rows and non-route events stay NULL |
+| v61 | BUG-3766 | `skill_events.origin` provenance column (`prompt_hook`, `skill_host`, `transcript`, `legacy`) |
+| v62 | ENH-3745 | Five internal usage-derive tables: `usage_source_state` (per-source completion head), `usage_source_pending` (unresolved failure/derive-gap/refresh obligations), `usage_observation_witnesses` / `usage_observation_dependencies` (actual applied-value supplier and consumed qualification frontier) and `usage_completion_dependencies` (what the last positive completion consumed). Created empty: nothing is seeded from legacy cursors or the global checkpoint |
+| v63 | FEAT-3711 | `recommendation_events`: append-only `ll-next` events — a `shown` row per offered recommendation and an `accepted_explicit` acknowledgement copied from it, keyed by `UNIQUE(rec_id, kind)`. Created empty; outside `rebuild()` |
 
 v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observability migrations; v41 onward are individual feature- or fix-driven migrations, each described in the table above; all migrations are additive — no user action is required when the schema version advances. Migrations v37–v39 add columns without backfilling them, so rows written before those versions carry `NULL` in the new columns.
 
@@ -144,7 +148,10 @@ v15–v18 and v20–v40 are EPIC-2457 coverage expansions and related observabil
 | `test_run_events` | Pytest runs: `total`, `passed`, `failed`, `errored`, `skipped`, `duration_s`, `failing_names_json`, `head_sha`, `branch`, `command`, `env_label`. Queryable via `ll-session recent --kind test_run` (ENH-2459, v18). |
 | `usage_events` | LLM token observations from live invocations (`channel='live'`), Claude-shaped transcript usage (`'transcript'`), and Codex rollout requests (`'rollout'`). Nullable token components, provenance, cost and identity fields preserve uncertainty. Codex v56 rows carry the host-observed thread in `session_id`, native span `turn_id`, native response `request_id` where available, and distinct ordinal/physical-line positions. Old-shape requests have unverified identity and unknown provenance. Rebuild replaces replayable channels and preserves live rows; live/rollout overlap is not yet selected away. v57 added a nullable `usage_contract` column (persisted producer qualification for Claude usage; legacy rows stay NULL), and v58 added source-link columns (`source_raw_event_id`, `source_path`, `observation_key`) with unique indexes. Queryable via `ll-session recent --kind usage` and the history reader. |
 | `usage_source_cursors` | Source-tail and derive completion proof for `usage_events` (v58, ENH-3651). |
-| `usage_replay_holds` | Replay hold markers (v59, BUG-3736): sources whose raw rows `prune` removed whole, or legacy populations whose usage cannot be reconstructed. `rebuild`, usage catch-up and `refresh_raw_events` neither delete nor re-derive held usage. Stage 1 never lifts a hold. |
+| `usage_source_state` / `usage_source_pending` | Source-local derive completion and unresolved obligations (v62, ENH-3745): the last *successfully derived* boundary (kept separate from how far the source was ingested), a bounded reason, and durable pending/failure records that survive restart and retention. Content-free: positions and finite reason codes only, never source bytes. |
+| `usage_observation_witnesses` / `usage_observation_dependencies` / `usage_completion_dependencies` | Minimal dependency witnesses (v62, ENH-3745): the source that actually supplied an observation's values, the native context its qualification consumed, and the observations/context the last positive completion depended on. Legacy rows read as explicitly *unavailable*. |
+| `recommendation_events` | `ll-next` recommendation events (v63, FEAT-3711): `shown` (what was offered, with the immutable action payload and fingerprint) and `accepted_explicit` (`ll-next accept`). Project-scoped by a hash of the project root, written only into an existing prepared store, never rebuilt or searched. Looked up with `ll-next feedback REC_ID`. See [Recommendation events](#recommendation-events). |
+| `usage_replay_holds` | Replay hold markers (v59, BUG-3736): sources whose raw rows `prune` removed whole, or legacy populations whose usage cannot be reconstructed. `rebuild` and usage catch-up never delete held usage, and add a proved-distinct new request without changing the protected rows; `refresh_raw_events` still refuses a held source. A hold is lifted only when every observation it covers can be reconstructed from retained evidence. |
 | `orchestration_runs` | Final per-issue outcomes from `ll-auto`, `ll-parallel`, and `ll-sprint`: invocation-scoped `run_id`, driver, status, duration, failure reason, sprint wave label, optional PR URL, timestamps, git context, dequeue-time `base_sha`/`base_dirty` stamp (v38), and `ll_version` (v48, the little-loops version installed at write time). Retries UPSERT the same `(run_id, issue_id)` and refresh FTS. Queryable via `ll-session recent --kind orchestration_run`, FTS search, export, and `history_reader.recent_orchestration_runs()`/`aggregate_orchestration_runs()` (ENH-2492, v22). |
 | `summary_nodes` / `summary_spans` | LCM compaction summary tree (`summary_nodes` = nodes, `summary_spans` = message-link table). Populated when `history.compaction.enabled: true`; surface via `ll-history root --expand` and `ll-session expand/describe` (v10 / v12). |
 | `prompt_opt_events` | Prompt-optimization offer/outcome telemetry: `ts`, `session_id`, `mode`, `offered`, `bypass_reason`, `raw_len`, `optimized_len`, `optimized_text`, `accepted`. Live-written per prompt by `user_prompt_submit.py::handle()` (gated on `analytics.enabled`); `optimized_len`/`optimized_text`/`accepted` filled in later, in place, by `_backfill_prompt_opt()` when a parseable `ENHANCED:` block is found in the transcript. Queryable via `ll-session recent --kind prompt_opt` and `history_reader.recent_prompt_opt_events()`/`prompt_opt_offer_rate()` (ENH-2498, v32). |
@@ -215,6 +222,33 @@ Reads these sources sequentially:
 > can no longer regenerate them. Other summary nodes are regenerated only when
 > `history.compaction.enabled` is true; otherwise they are cleared. Rebuild holds
 > the database write lock for its whole run, including any summarization calls.
+>
+> Live hook telemetry survives a rebuild: tool rows the PostToolUse hook wrote
+> (those with a populated `bytes_in` or `bytes_out`) and corrections captured live
+> (any `source` other than `backfill`) keep their fields and IDs and stay searchable,
+> and a transcript replay of the same tool call is not counted twice. Replay-derived
+> rows (both byte columns NULL; `source = 'backfill'`) are wiped and re-derived, so
+> they are lost if their raw source is gone. Rows deleted by a rebuild from an older
+> version are unrecoverable without a backup. Preserved correction text is not
+> rewritten by `ll-session redact`, which only rewrites `raw_events` (see BUG-3762).
+> Skill invocations survive too: every `skill_events` row not stamped
+> `origin = 'transcript'` (prompt-hook rows, `ll-action` skill-host rows with their
+> `exit_code` / `success` / `duration_ms`, and unclassifiable `legacy` rows) keeps
+> its ID and fields and is re-indexed. A transcript replay of a hook invocation with
+> the same session, skill name and stored arguments (first 200 characters) within
+> 1 second is not counted twice; each surviving hook row suppresses at most one replay
+> row, so two rapid identical prompts with one surviving row keep one replay row, and
+> invocations whose stored arguments share a 200-character prefix cannot be told apart.
+> Rows written before the `origin` column existed are classified on the first rebuild:
+> a completion field proves a skill host, a unique `.jsonl` source-path search anchor
+> proves a transcript replay row (replaced), and anything ambiguous becomes `legacy` and
+> is kept — so the first rebuild can leave a bounded duplicate when such a row's
+> transcript twin still exists; later rebuilds do not add more. Legacy rows lose their
+> original replay path anchor and are not refreshed from raw text. Skill rows already
+> deleted by an older rebuild are unrecoverable without a backup, and an old-version
+> rebuild against a v61 store is still destructive.
+> The first rebuild after upgrading holds the write lock; hook telemetry written
+> during that window can be dropped at the 5 s busy timeout.
 >
 > The `SessionStart` hook rebuilds automatically only when the derivation
 > itself changed (tracked by a `rebuild_derive_version` stamp), not on every
@@ -647,6 +681,17 @@ ll-session grep "auth" --summary-id 42   # search within a node's scope
 
 ---
 
+## Recommendation events
+
+`ll-next` can record what it offered and what you explicitly accepted (v63, `recommendation_events`). A normal `ll-next` run appends one `shown` event per recommendation to `.ll/history.db`; `ll-next accept REC_ID` appends an `accepted_explicit` acknowledgement copied from it; `ll-next feedback REC_ID` is a read-only lookup that reports `accepted` or `unknown` (*offer found, acceptance unknown*). There is no `ignored` state: repeated displays and missing telemetry never prove a rejection, and acceptance proves neither causation nor that the work started or succeeded.
+
+- **Existing store only.** Recording, `accept` and `feedback` never create or migrate `history.db`. After upgrading little-loops, a store still at an older schema reports `schema_not_ready` (recommendations are unaffected; only the IDs are missing) until your next session start or an explicit `ll-session migrate` brings it to v63. A remote (libsql/Hrana) store is not supported in this version (`remote_unsupported_v1`).
+- **Project scope.** Each event carries a SHA-256 hash of the resolved project root. Running from a subdirectory shares the scope; a different checkout does not, even when both use one SQLite file (an absolute `LL_HISTORY_DB`). Moving or renaming a project makes its old `rec_id` values unknown at the new location. A relative `LL_HISTORY_DB` is relative to the directory you run from, so use an absolute path to share a store across working directories.
+- **Immutable offers.** The offered action (target, command and fingerprint) is stored as offered. A later `accept` or `feedback` reports that historical action, labeled as such, even if the issue is now done or the loop definition has changed. A fingerprint is a limited identity (for loops, the top-level definition bytes only), and each display gets its own `rec_id` even when fingerprints are equal.
+- **Controls.** Set `next.recording.enabled: false`, `analytics.enabled: false`, exclude `ll-next` from `analytics.capture.cli_commands`, or export `LL_ANALYTICS_CAPTURE=0` to stop automatic recording; `--no-record` and `--explain` write nothing. `ll-next accept` is a deliberate action and ignores those switches.
+- **Growth.** Events are append-only and never pruned or rebuilt: a run that records adds one row per recommendation (typically one to a few). `ll-session prune` does not touch them.
+- **Concurrency.** Writers take the store's write lock with a 250 ms busy timeout; under contention a run reports `recording: unavailable (write_failed)` and still prints its recommendations. Reads (`feedback`) are bounded point lookups; like other read-only history access they may create SQLite's `-wal`/`-shm` coordination files for a WAL-mode database but never touch the main file.
+
 ## Retention & Pruning
 
 history.db grows over time. `prune` reclaims space — but since ENH-2581 it is the **second** step of a two-step flow, and running it alone deletes nothing.
@@ -678,11 +723,13 @@ ll-session compact --and-prune   # both steps in one invocation
 
 If either gate is unmet, `prune` returns a `gate_unmet` list explaining why and deletes nothing. If both gates pass but `raw_event_max_age_days` is `null`, pruning is considered to have "run" but no age cutoff is applied (no rows deleted). Otherwise, compacted `raw_events` rows older than the cutoff are deleted, the transaction is committed, and a `VACUUM` runs afterward on a separate connection (avoids transaction conflicts) to reclaim disk space.
 
-**Result shape** (both human and `--json` output derive from this dict): `pruned` (bool, whether pruning executed), `gate_unmet` (list of human-readable reasons), `project_age_days`, `db_size_mb`, `deleted`, `retained`, `retention_reasons`, `vacuumed` (bool). `deleted` has exactly one key — `{"raw_events": N}` — or is empty `{}` when a gate was unmet or `raw_event_max_age_days` is `null`. `retained` is `{"raw_events": N}` (zero on gated and no-op calls): aged compacted rows kept by the whole-source usage rule below, each counted once. `retention_reasons` is a sorted list drawn from `usage_derive_unverified` (the usage derive checkpoint is missing, malformed, negative or from another normalizer version), `usage_derive_pending` (the checkpoint lags the source's newest row) and `usage_replay_context_required` (part of the source is still recent or uncompacted).
+**Result shape** (both human and `--json` output derive from this dict): `pruned` (bool, whether pruning executed), `gate_unmet` (list of human-readable reasons), `project_age_days`, `db_size_mb`, `deleted`, `retained`, `retention_reasons`, `vacuumed` (bool). `deleted` has exactly one key — `{"raw_events": N}` — or is empty `{}` when a gate was unmet or `raw_event_max_age_days` is `null`. `retained` is `{"raw_events": N}` (zero on gated and no-op calls): aged compacted rows kept by the whole-source usage rule below, each counted once. `retention_reasons` is a sorted list drawn from `usage_derive_unverified` (the usage derive checkpoint is missing, malformed, negative or from another normalizer version), `usage_derive_pending` (the checkpoint lags the source's newest row), `usage_replay_context_required` (part of the source is still recent or uncompacted, or retained usage depends on context another source would lose), `usage_derive_gap` (a usage candidate in the source has no committed observation), `usage_proof_unprovable` (identity, order or stored input of the source cannot be verified) and `usage_proof_limit` (the source is too large to verify within the built-in bounds) and `source_recovery_pending` (an unresolved acquisition failure, native conflict, parser-refresh or held-source derive gap still needs the source's raw rows as evidence; `prune` never clears the obligation).
+
+**Semantic veto (usage-bearing sources).** A derive checkpoint at or above a source's newest row is necessary but no longer sufficient: before deleting, `prune` verifies that every logical usage candidate in the source is represented by a committed observation (or by an actual native coalescing/deduplication of that candidate), and keeps the raw rows otherwise. Audit observations (partial or unknown provenance) count as representation independently of whether they qualify as measured, and a missing qualification marker is never promoted by this check. Native terminal snapshots and rate-limit-only notifications need no observation. Sources are processed one at a time, each in its own transaction, re-reading what earlier sources changed; if a source fails, earlier sources stay committed and re-running `prune` is safe. A source that is too large to verify, or whose stored payloads are corrupt, is kept indefinitely with a bounded reason rather than discarded. Retained-only verification cannot certify sources that were already pruned or whose lines were rejected before storage; source completion and reconciliation of retained gaps are separate follow-up work.
 
 **Usage is never pruned in part.** A source that carries (or may yet carry) replay-derived usage is deleted only whole, and only when every row is old, compacted and at or below a valid current-version usage derive checkpoint; otherwise all its rows are kept. Deleting such a source records a hold marker in the same transaction, so a later `rebuild`, usage catch-up or `refresh_raw_events` leaves the retained usage observations alone instead of replacing them with a partial replay. Proof, count, delete and marker share one write transaction; `--dry-run` reads one snapshot and writes nothing. Sources that carry no usage keep the row-level rules above.
 
-**Known limits.** A long-lived source that keeps appending is never pruned. A held source keeps its retained usage but derives no new usage from later appends. Usage search rows for held usage are dropped by `rebuild` and are not restored. A store pruned by an earlier version can already contain loss that migration cannot detect.
+**Known limits.** A long-lived source that keeps appending is never pruned. A held source keeps its retained usage unchanged and derives later appends only when each new request can be proved distinct from its protected history; a request that cannot (for example one without a producer message ID) stays pending and the hold remains. Usage search rows for held usage survive `rebuild`, which re-indexes them from the committed observations. A store pruned by an earlier version can already contain loss that migration cannot detect.
 
 **When to prune:** If your project is under 1 year old, leave the defaults alone — the guards prevent premature pruning. Only lower `raw_event_max_age_days` if `ll-session` commands feel slow (consistently > 500ms), which indicates the database has grown large.
 
@@ -700,6 +747,37 @@ The raw event max age:
 
 ---
 
+### Usage Derive Freshness and Source Completion
+
+Usage observations are derived from `raw_events` by a **scan** that advances a single global checkpoint (`usage_derive_raw_id`). A scan position is not proof that every source was fully derived, so freshness is reported per source from separate facts:
+
+- **Ingestion boundary** — how much of a source was read into `raw_events` (the source cursor). It can advance while derivation is incomplete.
+- **Successful derived boundary** — the last point at which a source was *fully acquired from offset zero* and every usage candidate in it was either represented by a committed observation, a recognized benign/terminal omission or an excluded channel. Only this boundary is published as a source's `as_of`; a source with no proved boundary reports `as_of` unknown rather than borrowing ingestion or row timestamps.
+
+**Validated checkpoint.** The checkpoint is trusted only when both keys exist, the version is current, the ID is a non-negative integer and it does not exceed `raw_events`' allocation sequence. Retention (`prune`) can lower the surviving maximum raw ID but never the validated floor, and never triggers a destructive replay. A pristine store (no checkpoint, no replay-derived usage, no replay holds, no earlier successful boundary) derives once without deleting or repricing anything; live-only observations do not block that. A missing, partially missing, malformed, contradictory or version-changed checkpoint in an established store **skips** derivation, leaves usage, holds and metadata untouched, and reports a bounded reason (`checkpoint_missing`, `checkpoint_invalid`, …) rather than `fresh`.
+
+**What blocks a source's completion.**
+
+| Reason | Meaning |
+|--------|---------|
+| `json_failure`, `decode_failure`, `non_object_record` | A complete physical line was rejected (malformed JSON, invalid UTF-8, or not an object). The evidence is durable and content-free (line/offset only) and later appends, unchanged refreshes and retention do not clear it. Blank lines are recognized as benign. |
+| `partial_tail` | An unterminated final line. It clears when the line completes and its candidates resolve. |
+| `sanitization_refused` | The history sanitizer refused a line. The whole refresh/backfill transaction rolls back (nothing is ingested, the cursor and checkpoint do not move) and a separate, guarded transaction records only the bounded reason and first refused position. A concurrent newer successful refresh makes that delayed record a no-op. The marker clears when the refused range re-ingests successfully under the same continuity. |
+| `held_source_skipped` / `usage_derive_gap` / `usage_proof_unprovable` | A request the replay could not prove safe to add or change: appended usage on a held source that cannot be proved distinct from its protected history, a snapshot whose order is unproven, or a candidate without a committed observation. The scan advances, but the durable pending bound keeps the source pending and is retried on later calls even when no new raw rows arrive; an unrelated source stays fresh. Identical repeated failures do not churn the stored state. |
+| `native_conflict` | Two copies of one request disagree. The committed observation keeps its numbers, cost and timestamps but is no longer measured, the conflicting copy is kept as unknown audit evidence, and the source stays pending; replay never restores the measurement and the hold is never released while the conflict stands. |
+| `acquisition_unprovable` | A completed boundary could not be extended because the retained prior prefix could not be re-verified against the native source (for example it was pruned). The older boundary is kept and the new completion stays pending; device/inode/size/mtime/tail equality alone is never treated as proof of an unchanged prefix. |
+| `parser_refresh`, `reconcile` | A verified parser refresh updated this source's rows, or a guarded reconciliation changed an observation the completion consumed. The completion becomes pending in the same transaction and the older boundary is kept as history. A source that merely depends on a refreshed source owes usage recovery only, never parser-cache work. |
+
+**Raw-only handoff and checkpoint repair.** Ingesting a transcript that nobody had read before records its verified acquisition and one `derive_pending` obligation; the next derive resolves it from the retained rows alone (the original file may already be gone) and only then publishes completion. If the usage derive checkpoint is missing or unusable in an established store, nothing is reset: sources with outstanding work are recovered individually and the checkpoint is republished only after a full replay of the retained rows leaves no unresolved usage work, to the bound that replay scanned. That bound never vouches for history that was pruned.
+
+**Refresh status.** `refresh_usage_source` now returns `status: "incomplete"` with a bounded `reason` when ingestion advanced but derivation, acquisition or source proof did not complete (and for an unchanged Codex rollout whose pending, failure or version state is unresolved), instead of an unconditional `complete`.
+
+**Legacy compatibility versus semantic proof.** A source ingested before this feature keeps today's public freshness comparison (cursor, checkpoint and file witnesses) while nothing negative is known. That fallback is *not* completion proof: `read_source_derive_completion` reports it as unavailable, and it never clears pending state or grants admission. Once a source has semantic tracking, negative evidence overrides the fallback and an invalidated source never falls back to it.
+
+**Caller-owned reads.** `usage_source_freshness(db, source, *, conn=None)` accepts an already-active, `PRAGMA query_only = 1` read transaction so admission, figures and source proof can be read in one committed revision; an inactive or writable connection yields `unknown` / `read_snapshot_unavailable`. The reader never opens another history connection and never commits, rolls back or closes yours. Without `conn` it owns one read transaction and also compares the opened file descriptor with the resolved path before and after its file checks.
+
+**Current limitation.** Continuity of a prefix is established by full re-acquisition from offset zero compared with the retained rows; there is no full-prefix digest yet, so a source whose history was pruned cannot extend a semantic boundary and stays on the legacy fallback. Rebuild and catch-up are row- and cost-preserving, and a held source accepts proved-distinct new requests; context-only promotion of held or pruned requests and aggregate as-of integration for whole figures are not part of this release.
+
 ## Scrubbing Stored Payloads
 
 New events are redacted before they are stored, but rows written earlier keep their original payload text until you scrub them. `ll-session redact` does that explicitly: a bounded, rerunnable pass over the stored `raw_line` and `parsed_json` columns that removes the supported credential and personal-data matches, using the same policy as ingestion.
@@ -714,6 +792,8 @@ ll-session redact --json      # one machine-readable report object
 - **Safe to rerun.** Every run rescans under the current policy. A second run on a scrubbed store changes nothing. Columns that did not need changing keep their exact bytes and storage type, and IDs, timestamps, compaction links and ingest watermarks are untouched.
 - **Needs a current store.** It never creates or migrates a store; if it says the schema is behind, run `ll-session migrate` and retry. It works the same against a shared remote store (all machines' rows are scanned).
 - **Conflicts are reported, not overwritten.** A row another writer changed while the scan ran is left as found and counted under `conflicts`; rows it could not validate are counted under `failed`. Rerun after resolving them.
+- **Large payloads are validated, within fixed limits.** A payload above 1 MiB stored or 4 MiB decoded is re-read once and checked at up to 8 MiB stored and 8 MiB decoded per column (compressible JSON hits the decoded limit first). Clean large rows complete without being rewritten, and large dirty rows are scrubbed when the scrubbed value fits. These limits are fixed; there is no flag. When writing to a remote store, a dirty row must also fit the 8 MiB write request (a local store has no such limit), so a very large dirty row on a remote store can be refused.
+- **Size refusals do not clear on rerun.** A row beyond those limits is reported as `unverifiable_oversize` (counted under `oversize_refused`, with the exhausted budget in `--json`). The whole row stays unchanged, the run stays incomplete, and the row may still contain unredacted matches, even in a column that checked out clean. Rerunning unchanged cannot help: review the reported row ids and reduce or remove those payloads through backend administration, then rerun. `ll-session` never does this for you, and `prune`/`compact` are not a remedy.
 - **Upgrade writers first.** Upgrade every machine that writes to the store before scrubbing, then rerun after relevant activity, since a later writer or a row added after the scan started is not covered.
 
 `complete: true` in the report means the whole snapshot was scanned with nothing failed, conflicted or unconfirmed. It is a statement about the stored raw columns only: derived and full-text tables, summaries, your original session transcripts, backups, database free pages and provider-side history are **not** cleaned, and no rebuild runs automatically (a rebuild can be destructive when retention applies). Run it deliberately afterwards if you want derived tables regenerated from the scrubbed rows.

@@ -108,6 +108,7 @@ ll-history-context = "little_loops.cli:main_history_context"
 ll-ctx-stats = "little_loops.cli:main_ctx_stats"
 ll-config = "little_loops.cli:main_config"
 ll-queue = "little_loops.cli:main_queue"
+ll-next = "little_loops.cli:main_next"
 # internal: dev tooling — regenerates docs/reference/schemas/ after LLEvent changes
 ll-generate-schemas = "little_loops.cli:main_generate_schemas"
 ll-generate-skill-descriptions = "little_loops.cli:main_generate_skill_descriptions"
@@ -298,6 +299,7 @@ markers = [
     "slow: marks tests as slow running (deselect with '-m \"not slow\"')",
     "conformance: marks tests as host conformance tests (deselect with '-m \"not conformance\"')",
     "no_parallel: marks tests that must not run on xdist workers (subprocess signal-handling, timing-sensitive). Under the default -n logical addopts this SKIPS the test outright (the controller never runs tests under -n N); it only actually runs in a serial -n 0 invocation, via scripts/tests/test_no_parallel_serial_gate.py — see scripts/tests/conftest.py",
+    "perf: marks opt-in scaled wall-clock gates (e.g. the FEAT-3561 10k-issue ll-next gate). SKIPPED unless --run-perf is passed (scripts/tests/conftest.py); run serially: python -m pytest <file> --run-perf -n 0 -m perf",
     "host_config: opts a test out of the autouse _config_host_cli stub so it exercises resolve_host()'s orchestration.host_cli config step (BUG-3644).",
     "grader_case(grader, kind): tags a test as covering one of a live-model grader's required case kinds ('pass', 'fail', 'boundary') in fsm/evaluators.py, per ENH-3463's test_grader_coverage.py meta-test.",
 ]

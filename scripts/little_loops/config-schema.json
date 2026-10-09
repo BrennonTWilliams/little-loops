@@ -2402,7 +2402,7 @@
     },
     "next": {
       "type": "object",
-      "description": "Next-action recommendation settings. Validated lazily by the consuming command (not at config load): invalid values make `ll-loop next-loop` exit 2 with one diagnostic. A local `.ll/ll.local.md` override merges per key; a local null removes a leaf so its default applies.",
+      "description": "Next-action recommendation settings: `loop_history` (consumed by `ll-loop next-loop`), `verbs` and `recording` (consumed by `ll-next`). Validated lazily by the consuming command (not at config load): invalid values make that command exit 2 with one diagnostic; each consumer validates only its own subtree. A local `.ll/ll.local.md` override merges per key; a local null removes a leaf so its default applies.",
       "properties": {
         "loop_history": {
           "type": "object",
@@ -2429,6 +2429,282 @@
                   "minimum": 0,
                   "default": 0.2,
                   "description": "Weight of the share of runs with status `completed`."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "recording": {
+          "type": "object",
+          "description": "`ll-next` recommendation recording (FEAT-3711). Validated lazily by `ll-next` before it opens storage; explicit `ll-next accept`/`feedback` do not consult it.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Record each offered recommendation (a `shown` event with a `rec_id`) in the existing local history store. Recording never creates or migrates the store and also honors `analytics.enabled`, `analytics.capture.cli_commands` and the `LL_ANALYTICS_CAPTURE` kill switch."
+            }
+          },
+          "additionalProperties": false
+        },
+        "verbs": {
+          "type": "object",
+          "description": "`ll-next` per-action-type scoring and selection settings. Validated lazily by `ll-next` (not at config load). Independent of `next.loop_history`: `next.verbs.run-loop.weights` tunes the `run-loop` verb, while `next.loop_history.weights` only affects `ll-loop next-loop`.",
+          "properties": {
+            "implement-issue": {
+              "type": "object",
+              "description": "`ll-next` settings for the `implement-issue` action type.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "priority": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the filename-first priority (P0 best, P5 worst)."
+                    },
+                    "outcome": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the frontmatter outcome-confidence score."
+                    },
+                    "leverage": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.2,
+                      "description": "Weight of the downstream fan-out (distinct nonterminal dependents, saturating at 10)."
+                    },
+                    "effort": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.1,
+                      "description": "Weight of the inverse Impact-section Effort field."
+                    },
+                    "momentum": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.1,
+                      "description": "Weight of the recency of the latest Session Log timestamp (seven-day half-life)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                }
+              },
+              "additionalProperties": false
+            },
+            "refine-issue": {
+              "type": "object",
+              "description": "`ll-next` settings for the `refine-issue` action type.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "priority": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the filename-first priority (P0 best, P5 worst)."
+                    },
+                    "readiness_gap": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the maximum shortfall against the readiness and outcome thresholds."
+                    },
+                    "leverage": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.15,
+                      "description": "Weight of the downstream fan-out (distinct nonterminal dependents, saturating at 10)."
+                    },
+                    "staleness": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.15,
+                      "description": "Weight of the age of the captured_at / discovered_date, saturating at 30 days."
+                    },
+                    "momentum": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.1,
+                      "description": "Weight of the recency of the latest Session Log timestamp (seven-day half-life)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                },
+                "refine_cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 5,
+                  "description": "Maximum `/ll:refine-issue` runs recorded in an issue's Session Log before further refinement is reported as a diagnostic instead of recommended."
+                }
+              },
+              "additionalProperties": false
+            },
+            "resolve-blocker": {
+              "type": "object",
+              "description": "`ll-next` settings for the `resolve-blocker` action type.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "priority": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.25,
+                      "description": "Weight of the filename-first priority (P0 best, P5 worst)."
+                    },
+                    "leverage": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.5,
+                      "description": "Weight of the downstream fan-out (distinct nonterminal dependents, saturating at 10)."
+                    },
+                    "effort": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.15,
+                      "description": "Weight of the inverse Impact-section Effort field."
+                    },
+                    "staleness": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.05,
+                      "description": "Weight of the age of the captured_at / discovered_date, saturating at 30 days."
+                    },
+                    "momentum": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.05,
+                      "description": "Weight of the recency of the latest Session Log timestamp (seven-day half-life)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                }
+              },
+              "additionalProperties": false
+            },
+            "run-loop": {
+              "type": "object",
+              "description": "`ll-next` settings for the `run-loop` action type. Independent of `next.loop_history.weights` (legacy `ll-loop next-loop`), whose defaults are the same 0.50/0.30/0.20.",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights over the filesystem run history of the loop. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "frequency": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.5,
+                      "description": "Weight of the log-scale qualified-run-count curve (lower-bounded at 0.4, reference count 50)."
+                    },
+                    "recency": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the seven-day half-life recency decay of the latest qualified run start (lower-bounded at 0.2)."
+                    },
+                    "success": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.2,
+                      "description": "Weight of the share of recognized terminal runs with status `completed` (lower-bounded at 0.2)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                }
+              },
+              "additionalProperties": false
+            },
+            "run-sprint": {
+              "type": "object",
+              "description": "`ll-next` settings for the `run-sprint` action type (existing `NAME.yaml` sprint definitions in `sprints.sprints_dir`).",
+              "properties": {
+                "weights": {
+                  "type": "object",
+                  "description": "Per-axis weights. Missing axes take their default; the geometric aggregate renormalizes over resolved axes. Zero disables an axis; at least one effective weight must be nonzero.",
+                  "properties": {
+                    "ready_share": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.5,
+                      "description": "Weight of the dependency-ready share: remaining sprint members that pass every implementation gate now (not a concurrency or file-contention measure); lower-bounded at 0.4."
+                    },
+                    "priority": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.3,
+                      "description": "Weight of the mean filename-first priority of the remaining sprint members (P0 best, P5 worst)."
+                    },
+                    "since_last_run": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 0.2,
+                      "description": "Weight of the time since the newest observed ended `ll-sprint run NAME` invocation in the bounded history window (name-based, definition unknown; lower-bounded at 0.2, 30-day saturation)."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                }
+              },
+              "additionalProperties": false
+            },
+            "capture-issues": {
+              "type": "object",
+              "description": "`ll-next` settings for the `capture-issues` action type: one evidence-only `/ll:scan-codebase` recommendation for the configured scan scope, gated on recent scoped git activity. It has no scored axes, so it admits no `weights` key.",
+              "properties": {
+                "cap": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 2,
+                  "description": "Maximum recommendations of this type per round-robin selection."
+                },
+                "activity_threshold": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 20,
+                  "description": "Minimum distinct commits touching the configured scan scope within `activity_lookback_days` for the scan to be recommended. An initial default, not an optimized value."
+                },
+                "activity_lookback_days": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 30,
+                  "description": "Days of git history (committer time, ending at the invocation's `as_of`) counted by the activity gate."
                 }
               },
               "additionalProperties": false

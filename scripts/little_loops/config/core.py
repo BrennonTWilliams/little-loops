@@ -546,6 +546,15 @@ class BRConfig:
         return self._analytics_capture
 
     @property
+    def analytics_opted_out(self) -> bool:
+        """True when ``analytics.enabled`` is explicitly ``false`` (ll-init's opt-out shape).
+
+        A missing ``enabled`` key stays permissive, exactly like the telemetry write gates.
+        """
+        analytics = self._raw_config.get("analytics", {})
+        return isinstance(analytics, dict) and analytics.get("enabled") is False
+
+    @property
     def history(self) -> HistoryConfig:
         """Get history read/consume configuration."""
         return self._history

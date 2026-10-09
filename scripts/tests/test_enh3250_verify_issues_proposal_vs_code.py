@@ -205,3 +205,69 @@ class TestClaimsOutdatedVerdict:
     def test_allowed_tools_includes_ll_issues(self) -> None:
         frontmatter = VERIFY_CMD.read_text().split("---", 2)[1]
         assert "Bash(ll-issues:*)" in frontmatter
+
+
+class TestSelectedDecisionPropagationContract:
+    """BUG-3764: conditional Program Design/Impact drift is DIRECTIVE_DRIFT."""
+
+    @staticmethod
+    def _flat(body: str, start: str, end: str) -> str:
+        a = body.index(start)
+        return " ".join(body[a : body.index(end, a)].split())
+
+    def test_b6_has_explicit_propagation_check_and_retained_precondition(self) -> None:
+        b6 = self._flat(
+            _body(VERIFY_CMD), "6. **Proposal-vs-code consequence check", "7. **Evidence"
+        )
+        assert "Selected-decision propagation (BUG-3764)" in b6
+        assert "even when those passages have no Integration Map entry" in b6
+        assert "no candidates is not a pass" in b6
+        assert "another decision group's winner is insufficient" in b6
+        assert "skip entirely if `## Proposed Solution` is absent" in b6
+        assert "**unassessed**" in b6 and "never originates `DIRECTIVE_DRIFT`" in b6
+
+    def test_verdict_table_names_conditional_scope_and_remedy(self) -> None:
+        body = _body(VERIFY_CMD)
+        row = next(line for line in body.splitlines() if line.startswith("| DIRECTIVE_DRIFT |"))
+        assert "Program Design directive passages" in row
+        assert "Impact Effort/Risk" in row
+        assert "reconcile-issue --from-verify-evidence" in row
+
+    def test_precedence_order_unchanged(self) -> None:
+        persist = self._flat(
+            _body(VERIFY_CMD), "Full verdict precedence", "If the field already exists"
+        )
+        assert (
+            "`NON_VALID` > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` > "
+            "`DIRECTIVE_DRIFT` > `VALID`" in persist
+        )
+        assert "stays `NON_VALID` and wins over both" in persist
+
+    def test_check_mode_persistence_owns_evidence_grammar_and_cleanup(self) -> None:
+        persist = self._flat(
+            _body(VERIFY_CMD),
+            "**Selected-decision items (BUG-3764).**",
+            "If the field already exists",
+        )
+        assert "canonical prefixes `Program Design:` or `Impact:`" in persist
+        assert "replace an embedded ` -> ` with ` → `" in persist
+        assert "embedded `; ` with `, `" in persist
+        assert "remove any stale `verify_evidence`" in persist
+        assert "preserve every body byte" in persist
+
+    def test_post_fix_sync_refreshes_evidence(self) -> None:
+        sync = self._flat(_body(VERIFY_CMD), "**Frontmatter sync**", "### 4.5")
+        assert "revalidate the complete B6 work list" in sync
+        assert "remove **both** `verify_verdict` and `verify_evidence`" in sync
+        assert "Resolved to `VALID`: remove stale `verify_evidence`" in sync
+        assert "no verdict and no orphan evidence" in sync
+
+    def test_targeted_pass_cannot_certify_design_drift(self) -> None:
+        sec4 = self._flat(
+            _body(VERIFY_CMD), "A targeted pass skips B6", "**Verification Notes must not"
+        )
+        assert "cannot discover or certify a new design-drift category" in sec4
+        assert "remove the issue's existing `verify_verdict`/`verify_evidence` pair" in sec4
+        assert "check-mode precedence stands" in sec4
+        normal = self._flat(_body(VERIFY_CMD), "- **In a normal (non-`--from-evidence`)", "behind")
+        assert "edit authority stays claims-only" in normal

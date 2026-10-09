@@ -27,7 +27,7 @@ Decide whether unknown concrete model IDs should receive explicitly approximate 
 
 ## Current Behavior
 
-`estimate_cost_usd` uses exact model IDs. Unpriced IDs yield unavailable costs. BUG-3696 owns the exact Sonnet 5.5 rate; ENH-3719 owns the missing-price footer and cost-table documentation. Neither introduces approximate pricing.
+`estimate_cost_usd` uses exact model IDs. Unpriced IDs yield unavailable costs. BUG-3696 has delivered the exact Sonnet 5.5 rate. ENH-3719's aggregate-model footer has landed, but contribution-aware diagnostics and residual documentation remain open. Neither introduces approximate pricing. Evaluate the completed contribution-aware footer, since the current aggregate footer can miss an earlier unpriced contribution or falsely name an unpriced parent whose authoritative contributions are all priced.
 
 ## Expected Behavior
 
@@ -97,7 +97,7 @@ Only after the decision, add a separate approximate estimator/result used by `Co
 
 ## Implementation Steps
 
-1. After ENH-3719 lands, evaluate the footer and record implement/cancel evidence and permitted matching policy.
+1. After ENH-3719's contribution-aware residual lands, evaluate actual contribution/legacy reports with unpriced concrete IDs, missing IDs and known-model incomplete tokens. Record whether a missing-price estimate solves a remaining need rather than token/identity incompleteness; then record implement/cancel evidence and any permitted matching policy.
 2. If cancelled, record the rationale and close; otherwise add the separate approximate result and narrowly allowed matcher.
 3. Propagate approximation through reports and round-trips; keep stored usage exact-only and ceilings fail-closed.
 4. Test exact-only parity, boundaries, uncertainty labels and ceilings; document the selected contract.
@@ -137,6 +137,8 @@ Only after the decision, add a separate approximate estimator/result used by `Co
 **Deferred** | Created: 2026-10-02 | Priority: P4
 
 ## Session Log
+
+- Pre-implementation epic review - 2026-10-08 - Clarified that the aggregate footer has landed but its contribution-aware residual must complete before evaluating approximate pricing. The decision remains deferred; incomplete usage/identity is not evidence that family-price guessing helps.
 
 - Pre-implementation epic review - 2026-10-05 - Carried completed BUG-3724's authoritative contribution/model/batch/date accounting into the optional fallback design. Kept the human-deferred footer-first decision and exact-only store/ceiling boundaries; no approximation is approved.
 

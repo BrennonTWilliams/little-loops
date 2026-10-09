@@ -13,12 +13,6 @@ blocks:
 relates_to:
 - ENH-3728
 - ENH-3700
-confidence_score: 100
-outcome_confidence: 82
-score_complexity: 21
-score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 25
 ---
 
 # ENH-3729: Fail-closed failure routing and atomic enrich publish for the sft-corpus loop
@@ -42,6 +36,8 @@ In `scripts/little_loops/loops/sft-corpus.yaml`, `stage` masks failure with `2>/
 
 The optional absence of `sft-corpus.last_harvested` is normal; an existing sentinel that cannot be read is an error. Check `mkdir`, sentinel reads and the captured-path sidecar write as well as `ll-messages`/Python exits: a succeeding later command must not mask their status. Do not change the successful incremental-harvest semantics.
 
+Validate a present readable sentinel before invoking `ll-messages`: after removing an optional trailing line ending, accept exactly one real UTC timestamp in the writer's `YYYY-MM-DDTHH:MM:SSZ` format. Empty, multiline, invalid-date or extra-argument content fails with a fixed safe reason naming `sft-corpus.last_harvested` and telling the user to remove it before rerunning; never echo its contents. Preserve the bad file for inspection and do not silently restart a full harvest. Build optional `--since` arguments with a bash array and quoted expansion, not `SINCE_ARG` word splitting. A valid sentinel yields exactly one value for `--since`. Only genuine path absence is optional; a dangling link is an existing unusable sentinel, not absence. The existing success writer remains outside this slice.
+
 ## Motivation
 
 A masked failure in `sft-corpus` silently yields an empty or partially enriched training corpus that downstream states treat as success; failing closed makes the loop's result trustworthy and keeps the previous good `enriched.jsonl`.
@@ -49,6 +45,8 @@ A masked failure in `sft-corpus` silently yields an empty or partially enriched 
 ## Proposed Solution
 
 Edit the packaged YAML only; keep `${...}` bash escaped as `$${...}` in FSM shell actions and write per-run artifacts under `${context.run_dir}/`. Remember the FSM interpolates the whole action string before bash. A subprocess failure must exit non-zero in the state's shell so `on_error` routes. A checked conditional is allowed if it captures/propagates the failing status; an unchecked conditional, `|| true`, or succeeding final echo must not mask it.
+
+Within these two touched actions, pass `context.run_dir` through the existing quoted `:shell` environment pattern and read it from `os.environ` in Python, rather than injecting it into Python string literals. Use the selected shell variable for mkdir/redirection/sidecar paths. Spaces, quotes and shell metacharacters in a valid run-directory name must remain pathname data. ENH-3728 preserves this plumbing while adding its four quality flags; no sweep of later filter/publish actions is included.
 
 Validate the enrich input record shape before `.get`/`Path(source)`: a syntactically valid JSON array/scalar or non-string non-null source is malformed input, not a traceback-producing `AttributeError`/`TypeError`. Null/missing source retains its existing empty-session behavior. Use the same fixed safe boundary reason and atomic cleanup as syntax/I/O failures, without printing a record or exception text. This is validation for the existing accepted object records, not a change to SFT formats or downstream filters.
 
@@ -61,6 +59,7 @@ Validate the enrich input record shape before `.get`/`Path(source)`: a syntactic
 - Execute the actual packaged YAML states and the FSM failure route (not copied shell snippets): a failing `ll-messages` status cannot be overwritten by its pathname echo; stage/enrich failures reach `terminal: true, failure: true` without filter/publish/success sentinel; failure after one record leaves the previous `enriched.jsonl` intact and no leaked temp file; success stdout contains only the captured pathname.
 - Cover absent vs unreadable harvest sentinel, failed run-directory/sidecar writes, malformed second JSONL record and replace failure. These are local deterministic failure injections; ENH-3677's remote fixture is not needed. Leave remote quality-refusal integration tests to ENH-3728 and preserve these routes/temp cleanup in that later edit.
 - Include valid JSON with the wrong top-level shape and invalid source type after a good first record: safe non-zero failure, no traceback/raw-record canaries, previous final retained and no temp leak. An existing non-regular harvest sentinel is an error; only genuine absence takes the optional-sentinel path.
+- Present empty/garbage/multiline/invalid-date/extra-argument sentinels and a dangling link fail before `ll-messages`, expose no content canary, retain the sentinel and final output, and name the recovery action safely. An actual writer-format timestamp reaches the command as one `--since` value. Stage/enrich also succeed under run-directory names containing spaces, an apostrophe and shell metacharacters through the packaged FSM interpolation path.
 - `ll-loop validate` must stay clean (MR rules).
 
 ## Program Design
@@ -78,7 +77,7 @@ Validate the enrich input record shape before `.get`/`Path(source)`: a syntactic
 
 ## Implementation Steps
 
-1. Remove masking; add status propagation for the named fallible shell steps; add `corpus_failed` and `on_error` routes. No ENH-3677 dependency is required.
+1. Remove masking; add status propagation for the named fallible shell steps, sentinel validation/quoted argument arrays and run-directory environment transport; add `corpus_failed` and `on_error` routes. No ENH-3677 dependency is required.
 2. Atomic temp+replace publish for `enriched.jsonl`.
 3. Tests per above; `ll-loop validate`; run `python -m pytest scripts/tests/` and update the README loop count only if a loop file is added (none is).
 
@@ -101,6 +100,7 @@ Validate the enrich input record shape before `.get`/`Path(source)`: a syntactic
 - [ ] `enriched.jsonl` is published atomically only after success; a failure after one record retains the previous final file and cleans temps.
 - [ ] Absent harvest sentinel remains successful; unreadable sentinel, mkdir/sidecar failure, malformed later JSONL record and atomic-replace failure reach the failure terminal without downstream execution or replacement of the previous good output.
 - [ ] Syntactically valid wrong-shape records and invalid source types fail through the safe enrich boundary without traceback/raw-record output or temp leaks; null/missing source retains its existing behavior. Existing non-regular sentinel paths fail rather than masquerading as absence; checked shell conditionals preserve non-zero status.
+- [ ] Readable malformed or dangling-link sentinels fail before command invocation with a safe recovery reason, no content leak or automatic deletion; a valid UTC writer-format timestamp is one quoted `--since` argument. Touched stage/enrich paths survive spaces/quotes/shell metacharacters through environment transport and actual FSM interpolation.
 - [ ] Tests execute the packaged YAML states and the FSM route; `ll-loop validate` is clean; `python -m pytest scripts/tests/` passes.
 
 ## Related
@@ -117,10 +117,11 @@ Validate the enrich input record shape before `.get`/`Path(source)`: a syntactic
 
 ## Confidence Check Notes
 
-Scope/dependencies amended 2026-10-05; run `/ll:confidence-check` before implementation. This issue can be prepared independently of the remote fixture. Its local FSM tests must pass before ENH-3728 adds the remote fallback/refusal branches.
+Scope amended 2026-10-06 for sentinel-content validation and safe transport in the two touched actions. The prior 100/82 scores and component scores are cleared; run `/ll:confidence-check` on this revised plan before implementation. This issue can be prepared independently of the remote fixture. Its local FSM tests must pass before ENH-3728 adds the remote fallback/refusal branches.
 
 ## Session Log
 
+- EPIC-3693 review #6 + `/ll:advise` (opus, user_requested, confidence 0.62) - 2026-10-06 - validated the sentinel writer format against code; added safe malformed-sentinel recovery and quoted optional arguments, plus run_dir environment transport for touched stage/enrich actions. Prior 100/82 scores cleared for the changed plan; implementation not performed.
 - `/ll:confidence-check` - 2026-10-05T18:33:45 - `af0cc2df-1eb5-430f-a8c4-2e0bd187887f.jsonl`
 - EPIC-3693 review #4 - 2026-10-05 - malformed object/source cases and non-regular sentinel added to safe atomic failure tests; misleading ban on correctly checked shell conditionals replaced with status-propagation requirement. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - artificial fixture dependency removed, ENH-3728 failure-route prerequisite wired, shell/atomic failure cases pinned; implementation not performed

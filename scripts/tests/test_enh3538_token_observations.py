@@ -229,9 +229,21 @@ def _transcript_line(usage: dict[str, Any], ts: str | None = "2026-01-01T00:00:0
 class TestReplay:
     def _cursor(self, db: Path, rows: list[tuple[str, str, str | None]]) -> sqlite3.Cursor:
         conn = sqlite3.connect(":memory:")
-        conn.execute("CREATE TABLE raw_events(raw_line TEXT, source_path TEXT, host TEXT)")
-        conn.executemany("INSERT INTO raw_events VALUES(?, ?, ?)", rows)
-        return conn.execute("SELECT raw_line, source_path, host FROM raw_events")
+        conn.execute(
+            "CREATE TABLE raw_events(raw_line TEXT, source_path TEXT, host TEXT, host_basis TEXT, "
+            "event_type TEXT, ts TEXT, session_id TEXT, line_no INTEGER, ordinal INTEGER, "
+            "usage_contract TEXT, id INTEGER)"
+        )
+        # ENH-3770: replay refuses rows without a durable raw identity, so give each one
+        # (and the envelope timestamp the stored ingest would have recorded).
+        conn.executemany(
+            "INSERT INTO raw_events VALUES(?, ?, ?, NULL, 'assistant', ?, NULL, ?, NULL, NULL, ?)",
+            [
+                (line, source, host, json.loads(line).get("timestamp") or "", index, index)
+                for index, (line, source, host) in enumerate(rows, 1)
+            ],
+        )
+        return conn.execute("SELECT * FROM raw_events ORDER BY id")
 
     def test_iterator_preserves_host_and_jsonl_source_has_none(self, tmp_path: Path) -> None:
         cursor = self._cursor(tmp_path / "x", [("{}", "a", "codex"), ("{}", "b", None)])

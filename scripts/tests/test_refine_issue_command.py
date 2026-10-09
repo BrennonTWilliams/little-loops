@@ -753,3 +753,76 @@ class TestEvidenceVerificationContract:
             "dry-run",
         ):
             assert status in report
+
+
+class TestGapAnalysisWriteGuard:
+    """ENH-3765: gap-analysis must protect candidate-bearing sections before any write."""
+
+    GUARD = "### 2.7. Gap-Analysis Write Guard"
+
+    def _guard_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index(self.GUARD)
+        return content[start : content.index("### 3. Research Codebase")]
+
+    def test_guard_precedes_every_writing_stage(self) -> None:
+        content = COMMAND_FILE.read_text()
+        guard_idx = content.index(self.GUARD)
+        for heading in (
+            "### 3.9. Evidence Snapshot",
+            "### 5a. Fill Gaps with Research Findings",
+            "### 5c. Gap-Analysis Mode",
+            "### 6. Update Issue File",
+            "### 6.7. Prose Dependency & Program Design Gate",
+        ):
+            assert guard_idx < content.index(heading), f"guard must precede {heading}"
+
+    def test_preflight_uses_structured_detail_and_canonical_id(self) -> None:
+        text = self._guard_text()
+        assert "ll-issues format-check" in text and "--format json" in text
+        assert "unapplied_decision_detail" in text
+        assert "canonical ID" in text
+        assert "never parse" in text.lower()
+
+    def test_indeterminate_preflight_blocks_body_edits_but_logs(self) -> None:
+        text = self._guard_text()
+        assert "Indeterminate" in text and "no body edits" in text.lower()
+        assert "Exit 1 may carry valid findings" in text
+        assert "Never treat failure as an empty candidate set" in text
+
+    def test_containing_h2_and_impact_protection(self) -> None:
+        text = self._guard_text()
+        assert "containing H2" in text
+        assert "protect **every** matching parent" in text
+        assert "Impact" in text and "Effort/Risk" in text
+        assert "relocate" in text
+
+    def test_late_gates_respect_embargo(self) -> None:
+        text = self._guard_text()
+        for token in ("program_design_nonspecific", "stale_prose_dep", "duplicate_findings_block"):
+            assert token in text
+        content = COMMAND_FILE.read_text()
+        gate = content[
+            content.index("### 6.7. Prose Dependency & Program Design Gate") : content.index(
+                "### 6.8. Evidence Delta Check"
+            )
+        ]
+        assert "Gap-analysis embargo (ENH-3765)" in gate
+
+    def test_report_is_informational_and_lifecycle_preserved(self) -> None:
+        text = self._guard_text()
+        assert "GAP_ANALYSIS:REVIEW_REQUIRED unapplied_decision" in text
+        assert "not an exit status and not a loop route" in text
+        assert "exactly one `/ll:refine-issue:gap-analysis` Session Log entry" in text
+        assert "`--dry-run` writes neither body nor Session Log" in text
+        assert "/ll:reconcile-issue <ID> --from-verify-evidence" in text
+
+    def test_step_5a_and_5c_reference_embargo(self) -> None:
+        content = COMMAND_FILE.read_text()
+        s5a = content[
+            content.index("### 5a. Fill Gaps with Research Findings") : content.index(
+                "### 5b. Interactive Refinement"
+            )
+        ]
+        s5c = content[content.index("### 5c. Gap-Analysis Mode") : content.index("### 6. Update")]
+        assert "Step 2.7" in s5a and "Step 2.7" in s5c

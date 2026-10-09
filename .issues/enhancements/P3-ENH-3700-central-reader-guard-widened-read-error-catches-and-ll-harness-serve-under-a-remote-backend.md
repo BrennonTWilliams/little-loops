@@ -11,7 +11,7 @@ captured_at: '2026-10-02T17:56:06Z'
 blocked_by:
 - ENH-3657
 - ENH-3677
-- ENH-3682
+- ENH-3768
 blocks:
 - ENH-3668
 - ENH-3684
@@ -21,13 +21,14 @@ relates_to:
 - BUG-3652
 - ENH-3728
 - ENH-3729
+- ENH-3682
 parent: EPIC-3693
 epic: EPIC-3693
 ---
 
 # ENH-3700: Central reader guard, widened read-error catches and ll-harness serve under a remote backend
 
-> **Current scope (reviewed 2026-10-05):** ENH-3657 owns refusal boundaries; ENH-3728 owns degrade sites; ENH-3729 owns SFT failure routing. The guard still returns `None` plus one safe warning for default/advisory callers. Required harness lookups now have a **per-call opt-in** failure channel; this is not the previously dropped universal re-raise or an ambient strict-reader mode. Read-mode ensure/serve-behind, shared stamp-policy changes and a stub permission mode remain dropped. ENH-3682 owns best-effort same-client verification. Earlier scope is in git history.
+> **Current scope (reviewed 2026-10-05):** ENH-3657 owns refusal boundaries; ENH-3728 owns degrade sites; ENH-3729 owns SFT failure routing. The guard still returns `None` plus one safe warning for default/advisory callers. Required harness lookups now have a **per-call opt-in** failure channel; this is not the previously dropped universal re-raise or an ambient strict-reader mode. Read-mode ensure/serve-behind, shared stamp-policy changes and a stub permission mode remain dropped. ENH-3682 (independent, P4) owns best-effort same-client verification; **ENH-3768** owns marker/cache/live-state decoding and the sanitized reader warnings (review #7). Earlier scope is in git history.
 
 ## Summary
 
@@ -39,7 +40,7 @@ Under `history.backend.provider: libsql` (FEAT-3535), a reader that builds the d
 
 **Explicit-local setup hole (verified 2026-10-05; fix moved to ENH-3657 in review #4).** `SqliteBackend.ensure_schema` calls `schema.ensure_db(_local_path(target, ...))`, dropping the selected `LocalTarget`. `schema.ensure_db` then calls `_seam_target(..., reresolve_absolute=True)` and can resolve that plain default-shaped Path against the ambient remote configuration. A temporary-project probe of `open_history_readonly(LocalTarget(<root>/.ll/history.db), ensure=True)` returned `"typed_local_ensure_reader_error": "HistoryBackendNotLocal"` with `"error_operation": "ensure_db"`, despite the local file already existing. ENH-3657 now supplies the narrow setup fix so its own selected-root tests can pass before this dependent issue; consume it here. <!-- ll-evidence-ok: the quoted JSON fields are output of this issue's own 2026-10-05 temp-project probe; ENH-3657 is cited only as the issue the fix moved to -->
 
-**Mid-query hole (verified 2026-10-04).** `LibsqlConnection` raises `HistoryUnavailable` / `HistoryOperationError` (`HistoryError`, not `sqlite3.Error`). `history_reader` has ~65 `except sqlite3.Error` sites and only ~4 that also catch `HistoryError`, so a remote mid-query failure (dead endpoint after open, missing column) escapes as a traceback in those readers. `_connect_readonly` (`history_reader/_base.py`) also embeds raw `{exc}` text in its remote `remote_telemetry.warn_once`; ENH-3682 sanitizes that line (this issue is `blocked_by` it).
+**Mid-query hole (verified 2026-10-04).** `LibsqlConnection` raises `HistoryUnavailable` / `HistoryOperationError` (`HistoryError`, not `sqlite3.Error`). `history_reader` has ~65 `except sqlite3.Error` sites and only ~4 that also catch `HistoryError`, so a remote mid-query failure (dead endpoint after open, missing column) escapes as a traceback in those readers. `_connect_readonly` (`history_reader/_base.py`) also embeds raw `{exc}` text in its remote `remote_telemetry.warn_once`; ENH-3768 sanitizes that line (this issue is `blocked_by` it).
 
 **Open path stays as is.** `open_history_readonly(ensure=True)` runs `ensure_schema` -> `check_access(write=True)` (metadata SELECTs only), which cleanly refuses a behind/ahead/unstamped store with a message naming `ll-session migrate`; `_connect_readonly` maps that `HistoryUnsupported` to `None` plus one `remote_telemetry.warn_once`. Serving behind/ahead stores through this shared path was rejected on 2026-10-04: queries against a behind schema would surface the mid-query hole above in ~65 sites, replacing today's clean refusal. The process-shared `_VERIFIED` cache already prevents a duplicate cold verification between `ensure_schema` and the first query.
 
@@ -63,6 +64,8 @@ In `session_store.backend.open_history_readonly` (the `ensure=True` reader opene
 
 Inspect the **original argument** for explicit `LocalTarget` intent before `_resolve_once` automatically wraps a plain absolute path; its synthesized `LocalTarget` must not accidentally exempt the hazard. Consume ENH-3657's typed-local `SqliteBackend.ensure_schema` fix, preventing a second root-less resolution. Keep the schema seam's ordinary writer/hook resolution and `_resolve_once` policy unchanged. Cover both relative and absolute default-shaped explicit CLI paths plus a local owning root under a foreign remote cwd through the actual ensure/read path.
 
+ENH-3657 retains legacy plain-Path ensure forwarding for original untyped remote-owning defaults so its setup fix can ship safely before this guard. Replace that compatibility branch here: classify/guard original intent first, then forward the validated resolved local target through setup. The final opener must not leave a second ambient schema resolution for a permitted local result. Test the composition with both prerequisites — ENH-3657's setup fix and ENH-3768's malformed live-metadata normalization (this issue must not reimplement that decoder) — and, if ENH-3682 has landed, its connection-or-typed-error best-effort branch.
+
 **Env presence is not target provenance (review #4).** A temporary-project probe with a pre-existing shadow and an env override returned `"absolute_default_with_env_reads_shadow": true` and `"reads_override": false`: `_resolve_once` honors the original absolute argument, regardless of a different `LL_HISTORY_DB`. Do not disable the guard merely because that variable is nonempty. For an untyped absolute hazard, the env carve-out applies only when the original path is the actual selected env target (compare normalized absolute locations without creating/opening a DB); otherwise refuse the unrelated shadow path. Root-aware callers that already selected a local target carry `LocalTarget`. A relative default still resolves normally to the env target. Never redirect an already-absolute argument inside this opener; distinguish intentional selection from a global env flag.
 
 For default/advisory calls, `_connect_readonly` maps `HistoryRemoteRefused` to `None` with one fixed-text, endpoint-free `remote_telemetry.warn_once` (e.g. key `history-reader-guard`), preserving the existing contract. Classify that exception **before** the ambient `_is_remote_store` fallback: the latter currently resolves without `root=` and can classify a remote owning path as local from a foreign cwd, selecting `exc_info=True`. Carry only the safe provider/owning-target classification needed by this handler, or use the opener's already-selected target; no endpoint/token is needed on the exception. The guard never reaches the local traceback logger. Required calls instead use the narrow failure channel below; best-effort still wins if both flags are present.
@@ -77,7 +80,7 @@ Add `_READ_ERRORS = (sqlite3.Error, HistoryError)` in `history_reader/_base.py` 
 
 The AST gate recognizes SQLite `Error` **and subclasses**, import aliases, `from sqlite3 import ...` aliases and tuple handlers; each must also cover `HistoryError` or have an exemption keyed by `(module, qualified function)` with a local-only reason. Required handlers that deliberately re-raise are permitted and tested. Detector tests plant exact Error, OperationalError, module aliases, from-import aliases and tuple variants, plus accepted widened/exempt handlers. Exercise remote open and mid-query failures in a representative reader and FTS reader with sanitized logging; no string-only gate is sufficient.
 
-Catch widening must also replace the reached remote `logger.warning(..., exc_info=True)` branches. Use one module-private diagnostic helper in `_base.py` (or the existing equivalent after prerequisites land), taking a fixed operation label plus the error and selected target/connection classification; remote errors use fixed-text `warn_once`, local SQLite errors keep their current diagnostics. Do not mechanically widen the catch while leaving traceback logging intact. ENH-3682 retains ownership of its existing opener/runs warning edits; reuse those sanitized paths when integrating.
+Catch widening must also replace the reached remote `logger.warning(..., exc_info=True)` branches. Use one module-private diagnostic helper in `_base.py` (or the existing equivalent after prerequisites land), taking a fixed operation label plus the error and selected target/connection classification; remote errors use fixed-text `warn_once`, local SQLite errors keep their current diagnostics. Do not mechanically widen the catch while leaving traceback logging intact. ENH-3768 owns the sanitized `_connect_readonly` / `runs._log_query_failure` remote text; reuse those paths rather than adding a third formatter.
 
 ### Importer AST gate (replaces the exhaustive audit)
 
@@ -97,7 +100,7 @@ Normalize reached filesystem/setup `OSError` failures in required mode to a safe
 
 Query and validate each incumbent/frozen baseline once, then pass that exact `BaselineResult` into the comparison or pin decision. Remove the validation-then-advisory-read race and avoid re-querying in `_frozen_baseline_refusal`; any unavoidable reread is required and its failure refuses before execution/publication. Successful absence still permits intentional first measurement or force behavior. Local required-read failures also fail closed; this is the deliberate validation correction, while healthy/missing local results and all advisory defaults retain their behavior.
 
-For advisory remote failures use one fixed-text `remote_telemetry.warn_once`; required failures are reported once at the CLI validation boundary without raw reader logging. Capture logging/stderr and inject endpoint/token/SQL canaries on open/query/fetch failures. Sanitize reached loud remote-recording failures in `_run_baseline_phase`, `_run_compare_arm` and retry command catches as well: their current `{exc}` formatting can expose a remote endpoint after a successful lookup followed by a failed write. Preserve local recording diagnostics and exit semantics; no writer/backoff redesign is included. ENH-3682 owns the generic `_connect_readonly` warning.
+For advisory remote failures use one fixed-text `remote_telemetry.warn_once`; required failures are reported once at the CLI validation boundary without raw reader logging. Capture logging/stderr and inject endpoint/token/SQL canaries on open/query/fetch failures. Sanitize reached loud remote-recording failures in `_run_baseline_phase`, `_run_compare_arm` and retry command catches as well: their current `{exc}` formatting can expose a remote endpoint after a successful lookup followed by a failed write. Preserve local recording diagnostics and exit semantics; no writer/backoff redesign is included. ENH-3768 owns the generic `_connect_readonly` warning.
 
 ### Docs wording
 
@@ -110,7 +113,7 @@ A refusal from the boundary helper (ENH-3657) only covers CLIs that pre-resolve.
 ## Scope Boundaries
 
 - **In scope**: central guard with retained advisory contract, narrow required harness lookup channel, explicit-local provenance, widened advisory read-error catches + gate, importer tripwire, `ll-harness` serve and advisory/required dispositions (measure/compare/retry/pin-force included), safe remote diagnostics and support-table rows.
-- **Out of scope**: the boundary helper and refuse sites (ENH-3657); degrade sites, CT-0 and mirrors (ENH-3728); `sft-corpus` routing (ENH-3729); hand-built paths (ENH-3658); `context-monitor.sh`; prepatch budget and `_connect_readonly` message sanitization (ENH-3682); **read-mode ensure, serving behind/ahead stores, shared missing-stamp tightening and the `HranaStub` read-only permission mode** (dropped 2026-10-04; revisit as an explicit opt-in only if a remote user needs a behind store served, and with ENH-3668 if revived); remote read serving for `ll-history` subcommands and MCP (ENH-3668/3684/3685, deferred); writers/startup paths (BUG-3652, done).
+- **Out of scope**: the boundary helper and refuse sites (ENH-3657); degrade sites, CT-0 and mirrors (ENH-3728); `sft-corpus` routing (ENH-3729); hand-built paths (ENH-3658); `context-monitor.sh`; prepatch budget (ENH-3682); `_connect_readonly` message sanitization and marker/cache/live-state decoding (ENH-3768); **read-mode ensure, serving behind/ahead stores, shared missing-stamp tightening and the `HranaStub` read-only permission mode** (dropped 2026-10-04; revisit as an explicit opt-in only if a remote user needs a behind store served, and with ENH-3668 if revived); remote read serving for `ll-history` subcommands and MCP (ENH-3668/3684/3685, deferred); writers/startup paths (BUG-3652, done).
 
 ## Proposed Solution
 
@@ -147,7 +150,7 @@ A refusal from the boundary helper (ENH-3657) only covers CLIs that pre-resolve.
 
 ### Signatures
 - `open_history_readonly(target=None, *, ensure: bool = False)` — gains the default-shaped-local-path guard (raises `HistoryRemoteRefused`); remote `ensure=True` behavior otherwise unchanged (write-mode `check_access`).
-- `_connect_readonly(db_path: Path | LocalTarget, *, best_effort: bool = False, required: bool = False) -> sqlite3.Connection | None` — retain ENH-3682's best-effort parameter. Default/advisory calls return `None` on errors; required calls distinguish actual missing local files from unavailable opens and propagate typed failure. Best-effort wins if both flags are passed.
+- `_connect_readonly(db_path: Path | LocalTarget, *, best_effort: bool = False, required: bool = False) -> sqlite3.Connection | None` — if ENH-3682 has landed, retain its `best_effort` parameter (otherwise this issue adds only `required` and ENH-3682 integrates its keyword). Default/advisory calls return `None` on errors; required calls distinguish actual missing local files from unavailable opens and propagate typed failure. Best-effort wins if both flags are passed.
 - `harness_event_by_id(db_path: Path | str | LocalTarget, attempt_id: int, *, required: bool = False) -> HarnessEvent | None` — preserve advisory defaults and selected local intent; required open/query/fetch/invalid-row failure raises a safe typed error.
 - `baseline_for(db_path: Path | str | LocalTarget, *, runner: str, target: str, input_hash: str, target_content_hash: str, conditions: BaselineConditions, required: bool = False) -> BaselineResult | None` — add the opt-in flag to the existing keyword arguments, retaining local intent; successful insufficient rows remain `None`.
 - `read_baseline(key: BaselineKey, conditions: BaselineConditions, *, required: bool = False) -> BaselineResult | None` — CLI wrapper forwards the flag; all required validation consumers explicitly opt in.
@@ -164,12 +167,16 @@ A refusal from the boundary helper (ENH-3657) only covers CLIs that pre-resolve.
 
 ## Implementation Steps
 
-Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper, support table and typed-local reader setup/forwarding) and ENH-3682 (sanitized `_connect_readonly` warning and best-effort seam) landed. ENH-3728 / ENH-3729 are independent of this issue.
+Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper, support table and typed-local reader setup/forwarding) and ENH-3768 (marker/cache/live-state decoding and the sanitized `_connect_readonly` warning) landed. ENH-3682 (best-effort prepatch seam), ENH-3728 and ENH-3729 are independent of this issue; integrate ENH-3682's `best_effort` keyword if it lands first.
 
 1. Seam: guard with selected-env-target discrimination, `_connect_readonly` mapping, `_READ_ERRORS` replacement plus safe remote query diagnostics, explicit-local provenance; consume ENH-3657's setup fix and verify against `HranaStub` (including a behind-schema store).
 2. Required reader flags and CLI validation catches/result reuse; `cli/harness.py` serve + advisory/required dispositions and safe reached recording diagnostics.
 3. AST gates; docs and support-table rows.
 4. Tests per the Integration Map. Run `python -m pytest scripts/tests/`, `ruff check scripts/`, `python -m mypy scripts/little_loops/` (scope `ruff format` to changed files).
+
+Keep this as one issue with two ordered review phases: first the guard/catch/diagnostic/importer gates, then required harness lookups and public validation exits. Each phase has the corresponding acceptance criteria below; neither phase is an independent readiness or epic-closure claim. The required failure channel depends on the same opener, so no additional child or dependency is needed.
+
+**Execution order (review #7):** land as ordered commits — guard → catch widening with its AST gate → importer gate → required harness lookups → safe recording diagnostics — each AST gate in the same commit as the code it guards. Re-derive the `sqlite3.Error` catch-site count (~69 at 2026-10-07) and the importer inventory at the start; both drift. Split the required-harness-lookup phase into a follow-up child only if this issue's `/ll:confidence-check` outcome score falls below the 65 gate.
 
 ## Impact
 
@@ -182,6 +189,7 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper, s
 
 - [ ] `HistoryRemoteRefused` exists; default/advisory `_connect_readonly` returns `None` with one fixed-text warning for it and other `HistoryUnsupported`. Required calls propagate typed failure to their CLI boundary. Foreign-cwd guard handling never selects the local traceback logger; no traceback or canaries appear.
 - [ ] The guard inspects original intent and fires only for a remote provider + plain default-shaped absolute local path without an override; it classifies from the owning root and creates no shadow DB. Explicit relative/absolute default-shaped `--db` remains local through reached helpers and `SqliteBackend.ensure_schema`; override content is actually read, including from a foreign remote cwd. Ordinary writer/hook resolution is preserved.
+- [ ] ENH-3657's temporary legacy ensure forwarding is replaced after guard classification; every allowed selected local result reaches setup without another ambient resolution. Malformed live schema metadata (ENH-3768's normalization) produces advisory fallback or the required unavailable validation exit, never a raw conversion traceback or subject/artifact writes.
 - [ ] The importer AST gate (default-path absolute construction + unaudited importers, reasoned exceptions) passes against the re-run inventory, and dynamic tests assert no shadow DB.
 - [ ] The catch gate covers SQLite Error/subclasses, aliases and tuples with planted detector tests and qualified-function exemptions. Representative advisory and FTS remote failures degrade safely; local invalid-FTS behavior/diagnostics are retained. Required handlers propagate failure rather than satisfying the gate with an empty fallback.
 - [ ] A behind/ahead/unstamped remote store still yields the clean migrate/upgrade refusal at open (`None` + one warning), not a traceback; no reader-mode ensure, stamp-policy change or stub permission mode is introduced.
@@ -194,7 +202,7 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper, s
 
 ## Related
 
-- ENH-3657 (refuse boundary; `blocked_by`), ENH-3677 (shared fixture; `blocked_by`), ENH-3682 (sanitized warning + best-effort seam; `blocked_by`), ENH-3728 (degrade verdicts) and ENH-3729 (SFT routing) (split-out siblings), ENH-3658 (hand-built paths), ENH-3668/3684/3685 (deferred), BUG-3652 (done), FEAT-3535 (remote libSQL backend).
+- ENH-3657 (refuse boundary; `blocked_by`), ENH-3677 (shared fixture; `blocked_by`), ENH-3768 (decoder normalization + sanitized warning; `blocked_by`), ENH-3682 (best-effort seam; independent), ENH-3728 (degrade verdicts) and ENH-3729 (SFT routing) (split-out siblings), ENH-3658 (hand-built paths), ENH-3668/3684/3685 (deferred), BUG-3652 (done), FEAT-3535 (remote libSQL backend).
 
 ---
 
@@ -210,9 +218,11 @@ Prerequisites: ENH-3677 (hoisted `remote` fixture), ENH-3657 (boundary helper, s
 
 _Updated 2026-10-04 after the second EPIC-3693 review._
 
-Scope narrowed and re-planned; re-run `/ll:confidence-check` after ENH-3677, ENH-3657 and ENH-3682 land. The guard-without-re-raise, catch-widening and harness-serve obligations need implementation evidence; the Opus recommendation is not a passing readiness check.
+Scope narrowed and re-planned; re-run `/ll:confidence-check` after ENH-3677, ENH-3657 and ENH-3768 land. The guard-without-re-raise, catch-widening and harness-serve obligations need implementation evidence; the Opus recommendation is not a passing readiness check.
 
 ## Session Log
+- EPIC-3693 review #7 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-07 - `blocked_by` ENH-3682 replaced with new ENH-3768 (the only parts it consumed: live-state decoder normalization and the sanitized warning); ENH-3682 is now independent. Kept as one issue with an ordered-commit execution plan and a confidence-gated split rule for the required-lookup phase. Implementation not performed.
+- EPIC-3693 review #6 + `/ll:advise` (opus, user_requested, confidence 0.62) - 2026-10-06 - permanent guard consumes/removes ENH-3657's safe intermediate setup compatibility; live-metadata normalization consumed from ENH-3682. Kept one coherent issue with two ordered review phases; existing required validation catch/exit obligations retained. Implementation not performed.
 - EPIC-3693 review #4 - 2026-10-05 - setup fix reassigned to prerequisite ENH-3657; env carve-out tied to actual selected target; typed required helper signatures, filesystem/row failure classification and shared safe query diagnostics clarified. Fresh Opus consult skipped: existing per-chat budget exhausted; implementation not performed.
 - EPIC-3693 review #3 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.80) - 2026-10-05 - required per-call lookups, measure/pin-force/compare races, SQLite setup/local intent, foreign-cwd guard logging, subclass-aware catch gate and syntactic importer scope corrected; implementation not performed
 - EPIC-3693 review #2 + `/ll:advise` (claude-opus-5-5, user_requested, confidence 0.78) - 2026-10-04 - split degrade sites (ENH-3728) and SFT routing (ENH-3729) out; re-raise, read-mode ensure/serve-behind, stamp tightening and stub permission mode dropped; widened catches + AST gates added; implementation not performed

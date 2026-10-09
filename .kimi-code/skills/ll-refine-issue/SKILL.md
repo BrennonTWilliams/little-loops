@@ -156,6 +156,43 @@ HIST=$(ll-history-context {{issue_id}} 2>/dev/null || true)
 
 If `$HIST` is non-empty, include the output as a `## Historical Context` section in the prompt context for Step 5a gap-filling. Cap: already enforced by the CLI (5 rows max). If DB is missing or no matches, proceed without the section.
 
+### 2.7. Gap-Analysis Write Guard (ENH-3765)
+
+**Skip unless `GAP_ANALYSIS` is true.** Additive gap-analysis can append a restatement of the selected option beside rejected-option directives it is forbidden to remove, which leaves two competing designs in one issue. Establish the protected-section set **now**, before any body write or findings fold — Steps 3.9, 5a, 5c, 6, 6.7 and 6.8 all consult it, on every path (ordinary research, covered triage per Step 3.1, `--dry-run`, and late gates).
+
+```bash
+# format-check takes a canonical ID, not a path: when invoked with an explicit file path,
+# derive the ID from the resolved issue (frontmatter `id:` / filename) first.
+GUARD_JSON=$(ll-issues format-check "$CANONICAL_ID" --format json 2>/dev/null || true)
+```
+
+Read the structured `unapplied_decision_detail` candidates; never parse the human `unapplied_decision` reason strings.
+
+- **Consumable**: a JSON object whose `unapplied_decision_detail` is a list, each entry carrying nonempty string `section` and `identifier`. Exit 1 may carry valid findings and is consumable. An explicitly empty list means **no candidates** — ordinary gap-analysis behavior, no embargo (this is not an Impact-only detector: Impact drift with no scanner candidate stays the verifier's job).
+- **Indeterminate**: the command failed or printed non-JSON, the issue is unreadable, the field is missing or not a list, or any entry is malformed. Make **no body edits**, report that the protection could not be assessed, and still append the ordinary non-dry-run Session Log entry (Step 6.5) when the target is safely readable — otherwise report that logging could not be completed. Never treat failure as an empty candidate set, and never claim a completed clean pass.
+
+**Protected set.** When candidates exist, resolve each candidate's `identifier` and `section` against the full issue text and protect the **containing H2** of every match — an H3 such as `Files to Modify` normally rolls up to Integration Map, but do not assume that parent when the issue places it elsewhere. Candidates carry no occurrence offsets, so when a repeated heading or identifier makes attribution ambiguous, protect **every** matching parent; if a candidate cannot be mapped safely at all, treat the preflight as indeterminate. In addition, protect the existing `## Impact` Effort/Risk estimates whenever any candidate exists (Impact is outside the detector's section list, but an alternative decision-derived estimate appended there reproduces the same contradiction).
+
+**Embargo rules** — apply to every body-writing stage:
+
+- Do not append findings, selected-option restatements, warnings (including Step 5c's stale-anchor note), or replacement directives inside a protected H2, and do not relocate such a restatement elsewhere to bypass the embargo. Preserving the original bytes is not enough on its own: the observed failure was an *addition*.
+- Step 6.7's `program_design_nonspecific` revision cannot touch a protected `## Program Design`; keep that gate visible as unresolved. The same holds for `stale_prose_dep` edits and `duplicate_findings_block` re-issues that would touch a protected H2: **withhold the repair and report the residual** rather than letting a structural gate override the embargo.
+- If the candidates name `## Proposed Solution`, do not mutate its selection or rationale indirectly through a later step.
+- Recheck the candidates before a later body-writing stage when an intervening edit could change the option/section structure; extend protection rather than bypass it.
+- Additive work in **unprotected** sections continues, with the normal Step 3.9/6.8 evidence-delta checks on those additions.
+
+Candidates are a conservative write embargo, **not** proof of incorrect prose or authorization to erase it: historical research and shared vocabulary can be false positives, and some candidates are intentional pieces of the selected design. Do not require every candidate to disappear, insert supersession markers to silence the detector, or launch an automatic full rewrite. Withholding useful additions from a protected section is the accepted cost of not declaring directives repaired by adding a competing design.
+
+**Report** (Step 8) a single informational line — not an exit status and not a loop route:
+
+```
+GAP_ANALYSIS:REVIEW_REQUIRED unapplied_decision — protected: [H2s] · candidates: [section:identifier, ...] · applied elsewhere: [N additions] · residual: [withheld repairs]
+```
+
+Raw candidates establish potential drift, not a proven rewrite requirement. Name `/ll:reconcile-issue <ID> --from-verify-evidence` only when verifier evidence and a recorded selection establish eligibility; otherwise request semantic review rather than inventing a rewrite. When an embargo blocks the only required gate repair, record the locked sections and the unmet obligation in the output — the calling loop's existing bounded retry ends at `gate_unmet`; do not describe that refusal as convergence. Do not guess a run directory or add caller wiring.
+
+**Lifecycle.** A non-dry-run pass appends exactly one `/ll:refine-issue:gap-analysis` Session Log entry (Step 6.5) even when every candidate-bearing section was skipped, preserving the `max_refine_count` exemption; this guard changes neither the lifetime count nor the loop's retry counter. `--dry-run` writes neither body nor Session Log and reports the protections it would apply.
+
 ### 3. Research Codebase
 
 Spawn parallel sub-agents to gather comprehensive context about the issue's subject matter — but only the ones the issue does not already answer.
@@ -197,7 +234,7 @@ If **every** axis is `covered`, spawn nothing and **skip Steps 4, 5a, and 5b ent
 
 On a project where the Program Design gate is active, this branch cannot be reached while the section is missing or non-specific — Step 3.0's override forces `analyzer` unmet. The no-op path stays entirely normal on unstamped and grandfathered projects, where the gate is inactive and the override never fires.
 
-Proceed directly to Step 5c (if `--gap-analysis`), then Steps 6, 6.5, and 6.7 — taking the Step 3.9 evidence snapshot first if any of those will edit the body. Covered triage establishes only that research is unnecessary, never that no edits occur. Still append the Session Log entry (Step 6.5), and report the no-op explicitly, naming what satisfied each axis:
+Proceed directly to Step 5c (if `--gap-analysis`; the Step 2.7 write guard still applies), then Steps 6, 6.5, and 6.7 — taking the Step 3.9 evidence snapshot first if any of those will edit the body. Covered triage establishes only that research is unnecessary, never that no edits occur. Still append the Session Log entry (Step 6.5), and report the no-op explicitly, naming what satisfied each axis:
 
 ```
 No research needed — all three axes already covered:
@@ -353,6 +390,8 @@ ll-verify-evidence "$ISSUE_FILE" --json --save-snapshot
 
 Do not build a path: the CLI allocates a fresh unique file and returns it as `snapshot_path` in the JSON payload. Exit 1 with valid JSON is normal scan data (pre-existing findings), not a failure. **Retain that original `snapshot_path` for the entire pass** — never overwrite it with a post-edit scan and never reuse a snapshot from an earlier run. If the CLI is missing, exits 2, times out, or returns malformed JSON, verification is **incomplete** (note the reason, continue gracefully as `/ll:verify-issues` check B7 does); without a valid snapshot do not treat later findings as new.
 
+**Gap-analysis guard.** Under `--gap-analysis`, the Step 2.7 protected-section set is already established before this snapshot and before any write below.
+
 **Authored-quote list.** As the pass writes, record every quote it authors — each `fold-findings` payload and each section fill — with its span text, artifact attribution, and insertion context (section and surrounding inserted text). Repair ownership (Step 6.8) is decided from this list.
 
 ### 4. Identify Knowledge Gaps
@@ -411,6 +450,8 @@ For each knowledge gap category relevant to the issue type:
 **Skip this section if**: `AUTO_MODE` is false (interactive mode uses Step 5b instead)
 
 **Scope boundary**: Only use `Edit` to modify files under `.issues/`. If research reveals a missing implementation (code, tests, config), document it in the issue — write it as a gap finding under `### Codebase Research Findings` (via `ll-issues fold-findings`, see § Writing Findings Blocks below). Do NOT implement code, even when the gap is small and the implementation is obvious. The `Edit` tool is restricted to `.issues/**` by the command's allowed-tools; attempting to edit code files will fail.
+
+**Gap-analysis embargo (ENH-3765)**: under `--gap-analysis`, a gap whose target section is in the Step 2.7 protected set (including `ll-issues fold-findings --section` targets and the Impact Effort/Risk estimates) is **not** filled — record it as withheld and continue with unprotected sections.
 
 For each **FILLABLE** gap, update the issue with research findings.
 
@@ -956,6 +997,8 @@ If `AUTO_MODE` is true, proceed directly to application without prompting. Other
 
 #### 5. Apply Additive Changes Only
 
+**Step 2.7 embargo first**: skip any gap whose target is a protected H2 (or the protected Impact Effort/Risk estimates) and list it as withheld in the output instead; applying the rest is unchanged.
+
 For each approved gap, use the Edit tool with append-only changes:
 
 1. **Append** missing information to the relevant section by piping it to `ll-issues fold-findings [ISSUE-ID] --section "<H2>"` (same as Step 5a — see § Writing Findings Blocks; never hand-write the heading or provenance line). Folding is relocation only, so this mode's additive-only guarantee is unchanged.
@@ -981,8 +1024,10 @@ GAP ANALYSIS COMPLETE: [ISSUE-ID]
 | [gap 2] | [priority] | ✓ Stale-anchor note added |
 
 Sections preserved verbatim: [N]
+Sections withheld (Step 2.7 embargo): [none | H2 list]
 Content added: [N] additions
 Content removed: 0 (gap-analysis never removes)
+[GAP_ANALYSIS:REVIEW_REQUIRED unapplied_decision line, when candidates exist]
 
 Run /ll:ready-issue [ISSUE-ID] to validate.
 ================================================================================
@@ -990,7 +1035,7 @@ Run /ll:ready-issue [ISSUE-ID] to validate.
 
 ### 6. Update Issue File
 
-**Skip file modifications if `DRY_RUN` is true.**
+**Skip file modifications if `DRY_RUN` is true.** Under `--gap-analysis`, also honor the Step 2.7 protected-section set: no edit in this step may land inside a protected H2 or the protected Impact estimates, and an indeterminate guard preflight means no body edits at all.
 
 1. Use Edit tool to add/update sections with research findings and user input
 2. Preserve existing frontmatter
@@ -1116,6 +1161,7 @@ keys:
   differ only in what they permit. List any findings as `[AC N] vs
   [AC M / Program Design]: [one-sentence contradiction]` in Step 8's output
   under the gate report; do not edit the issue file to resolve them.
+- **Gap-analysis embargo (ENH-3765)**: under `--gap-analysis`, every repair above that would write inside a Step 2.7 protected H2 — the `program_design_nonspecific` revision, `stale_prose_dep` prose edits, `duplicate_findings_block` re-issues — is **withheld**; keep the gate visible as unresolved and report the locked section and unmet obligation in Step 8. Frontmatter-only repairs (`ll-issues link`) write no body text and still apply. Recheck the candidates first if an earlier edit this pass could have changed option/section structure.
 - Skip this gate if `DRY_RUN` is true.
 
 ### 6.8. Evidence Delta Check (ENH-3519)
@@ -1213,6 +1259,10 @@ ISSUE REFINED: [ISSUE-ID]
 - Would update Root Cause with: [file path and anchor reference]
 - Would populate Program Design with: [N] signatures and a call path
 - Would enrich Implementation Steps with: [N] concrete references
+
+## GAP-ANALYSIS GUARD [Step 2.7, --gap-analysis only]
+- Preflight: [no candidates | candidates found | indeterminate (reason — no body edits) | dry-run preview]
+- GAP_ANALYSIS:REVIEW_REQUIRED unapplied_decision: [protected H2s, candidate identifiers, applied elsewhere, residual | — ]
 
 ## PROSE/PROGRAM DESIGN GATE [Step 6.7]
 - prose_dep_drift: [clear | fixed | — ]

@@ -126,3 +126,59 @@ def test_real_over_limit_store_is_not_replayed(
     monkeypatch.setattr(lifecycle, "REBUILD_AUTO_MAX_BYTES", 1)
     assert backfill_worker.main([str(db), str(folder), "--auto-rebuild"]) == 0
     assert rebuild_needed(db).status == "stale"
+
+
+def test_real_auto_rebuild_preserves_live_telemetry_and_stamps_current(tmp_path: Path) -> None:
+    """BUG-3761: the real worker replay keeps hook tool rows/corrections and their index."""
+    import sqlite3
+
+    from little_loops.session_store import (
+        connect,
+        ensure_db,
+        rebuild_needed,
+        record_correction,
+    )
+    from little_loops.session_store.writers import _index
+
+    folder = tmp_path / "proj"
+    folder.mkdir()
+    (folder / "s.jsonl").write_text("")
+    db = tmp_path / "h.db"
+    ensure_db(db)
+    conn = connect(db)
+    try:
+        conn.execute(
+            "INSERT INTO tool_events(ts, session_id, tool_name, args_hash, result_size, "
+            "bytes_in, bytes_out, cache_hit, latency_ms) "
+            "VALUES('2026-01-01T00:00:00Z', 's1', 'Bash', 'h', 4, 7, 4, 0, 12)"
+        )
+        _index(
+            conn, content="Bash", kind="tool", ref="Bash", anchor="s1", ts="2026-01-01T00:00:00Z"
+        )
+        conn.execute(
+            "INSERT INTO meta(key, value) VALUES('rebuild_derive_version', 'stale-tag') "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    record_correction(db, "s1", "no, actually use pytest", "user_prompt_submit")
+    assert rebuild_needed(db).status == "stale"
+
+    assert backfill_worker.main([str(db), str(folder), "--auto-rebuild"]) == 0
+
+    assert rebuild_needed(db).status == "current"
+    raw = sqlite3.connect(str(db))
+    try:
+        assert raw.execute(
+            "SELECT bytes_in, bytes_out, latency_ms FROM tool_events"
+        ).fetchall() == [(7, 4, 12)]
+        assert raw.execute("SELECT source FROM user_corrections").fetchall() == [
+            ("user_prompt_submit",)
+        ]
+        kinds = raw.execute(
+            "SELECT kind, COUNT(*) FROM search_index GROUP BY kind ORDER BY kind"
+        ).fetchall()
+    finally:
+        raw.close()
+    assert kinds == [("correction", 1), ("tool", 1)]

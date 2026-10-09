@@ -10,10 +10,14 @@ import copy
 import fnmatch
 import math
 from dataclasses import dataclass, field
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from little_loops.config.dirs import canonical_dir
 from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
+
+if TYPE_CHECKING:
+    from little_loops.next_arena.registry import ArenaSettings
 
 
 def _normalize_untracked_prefix(entry: str) -> str | None:
@@ -237,8 +241,9 @@ class NextConfigError(ValueError):
 
 
 # Allowed keys at each consumed level; mirrored by ``config-schema.json``.
-_NEXT_ROOT_KEYS: tuple[str, ...] = ("loop_history",)
+_NEXT_ROOT_KEYS: tuple[str, ...] = ("loop_history", "recording", "verbs")
 _NEXT_LOOP_HISTORY_KEYS: tuple[str, ...] = ("weights",)
+_NEXT_RECORDING_KEYS: tuple[str, ...] = ("enabled",)
 # Canonical axis order: the additive sum's left-to-right order depends on it.
 LOOP_HISTORY_WEIGHT_AXES: tuple[str, ...] = ("frequency", "recency", "success")
 DEFAULT_LOOP_HISTORY_WEIGHTS: dict[str, float] = {
@@ -250,6 +255,28 @@ DEFAULT_LOOP_HISTORY_WEIGHTS: dict[str, float] = {
 
 def _describe_type(value: Any) -> str:
     return "null" if value is None else type(value).__name__
+
+
+def _weight_number(path: str, value: Any) -> float:
+    """Validate one weight leaf: a finite, non-bool number >= 0."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise NextConfigError(f"{path} must be a number, got {_describe_type(value)}")
+    try:
+        number = float(value)
+    except OverflowError:
+        raise NextConfigError(f"{path} is too large to represent") from None
+    if not math.isfinite(number) or number < 0:
+        raise NextConfigError(f"{path} must be a finite number >= 0, got {value!r}")
+    return number
+
+
+def _positive_int(path: str, value: Any) -> int:
+    """Validate one cap leaf: a positive ``int`` (bools and floats rejected)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise NextConfigError(f"{path} must be a positive integer, got {_describe_type(value)}")
+    if value < 1:
+        raise NextConfigError(f"{path} must be a positive integer, got {value!r}")
+    return value
 
 
 @dataclass
@@ -316,20 +343,112 @@ class NextConfig:
             if axis not in supplied:
                 weights[axis] = DEFAULT_LOOP_HISTORY_WEIGHTS[axis]
                 continue
-            value = supplied[axis]
-            path = f"next.loop_history.weights.{axis}"
-            if isinstance(value, bool) or not isinstance(value, int | float):
-                raise NextConfigError(f"{path} must be a number, got {_describe_type(value)}")
-            try:
-                number = float(value)
-            except OverflowError:
-                raise NextConfigError(f"{path} is too large to represent") from None
-            if not math.isfinite(number) or number < 0:
-                raise NextConfigError(f"{path} must be a finite number >= 0, got {value!r}")
-            weights[axis] = number
+            weights[axis] = _weight_number(f"next.loop_history.weights.{axis}", supplied[axis])
         if not any(weights.values()):
             raise NextConfigError("next.loop_history.weights: at least one weight must be nonzero")
         return weights
+
+    def resolve_recording_enabled(self) -> bool:
+        """Return validated ``next.recording.enabled`` for ``ll-next`` shown-offer recording.
+
+        Defaults to ``True``. Only the ``recording`` subtree (plus the shared root-key
+        allowlist) is validated, so a malformed value never affects the legacy loop-weight or
+        ``next.verbs`` consumers, and explicit ``accept``/``feedback`` do not call this.
+
+        Raises:
+            NextConfigError: ``next.recording`` is not a mapping with only an ``enabled``
+                boolean.
+        """
+        if not self.present:
+            return True
+        root = self._mapping("next", self.raw, _NEXT_ROOT_KEYS)
+        if "recording" not in root:
+            return True
+        recording = self._mapping("next.recording", root["recording"], _NEXT_RECORDING_KEYS)
+        enabled = recording.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise NextConfigError(
+                f"next.recording.enabled must be a boolean, got {_describe_type(enabled)}"
+            )
+        return enabled
+
+    def resolve_arena_settings(self) -> ArenaSettings:
+        """Return validated effective ``next.verbs`` settings for ``ll-next`` (FEAT-3561).
+
+        Consumed keys derive from the verb registry: ``next.verbs.<verb>.weights.<axis>``,
+        ``next.verbs.<verb>.cap``, (``refine-issue`` only) ``refine_cap`` and (``capture-issues``
+        only) ``activity_threshold`` / ``activity_lookback_days``; the evidence-only
+        ``capture-issues`` verb admits no ``weights`` key (not even ``{}``). Omitted
+        sections and leaves take registry defaults; weights come back in canonical
+        axis order regardless of config key order. Only the ``verbs`` subtree (plus the
+        shared root-key allowlist) is validated: ``next.loop_history`` values are the
+        legacy consumer's concern. Pure: no I/O, no caching, no mutation of ``raw``.
+
+        Raises:
+            NextConfigError: a consumed shape/key/number is invalid, an unknown or
+                unregistered verb/axis is named, or a verb's effective weights are all zero.
+        """
+        from little_loops.next_arena.registry import (
+            REGISTRY,
+            ArenaSettings,
+            registered_verbs,
+        )
+
+        supplied_verbs: dict[Any, Any] = {}
+        if self.present:
+            root = self._mapping("next", self.raw, _NEXT_ROOT_KEYS)
+            if "verbs" in root:
+                supplied_verbs = self._mapping("next.verbs", root["verbs"], registered_verbs())
+        weights: dict[str, dict[str, float]] = {}
+        caps: dict[str, int] = {}
+        refine_cap = 0
+        extras: dict[str, int] = {}
+        for name, spec in REGISTRY.items():
+            base = f"next.verbs.{name}"
+            allowed = (
+                (("weights",) if spec.axes else ())
+                + ("cap",)
+                + (("refine_cap",) if spec.default_refine_cap else ())
+                + tuple(spec.extra_settings)
+            )
+            entry = (
+                self._mapping(base, supplied_verbs[name], allowed) if name in supplied_verbs else {}
+            )
+            supplied_weights: dict[Any, Any] = {}
+            if "weights" in entry:
+                supplied_weights = self._mapping(f"{base}.weights", entry["weights"], spec.axes)
+            resolved: dict[str, float] = {}
+            for axis in spec.axes:
+                if axis in supplied_weights:
+                    resolved[axis] = _weight_number(
+                        f"{base}.weights.{axis}", supplied_weights[axis]
+                    )
+                else:
+                    resolved[axis] = spec.default_weights[axis]
+            if spec.axes and not any(resolved.values()):
+                raise NextConfigError(f"{base}.weights: at least one weight must be nonzero")
+            weights[name] = resolved
+            caps[name] = (
+                _positive_int(f"{base}.cap", entry["cap"]) if "cap" in entry else spec.default_cap
+            )
+            if spec.default_refine_cap:
+                refine_cap = (
+                    _positive_int(f"{base}.refine_cap", entry["refine_cap"])
+                    if "refine_cap" in entry
+                    else spec.default_refine_cap
+                )
+            for setting, default in spec.extra_settings.items():
+                extras[setting] = (
+                    _positive_int(f"{base}.{setting}", entry[setting])
+                    if setting in entry
+                    else default
+                )
+        return ArenaSettings(
+            weights=MappingProxyType({n: MappingProxyType(w) for n, w in weights.items()}),
+            caps=MappingProxyType(caps),
+            refine_cap=refine_cap,
+            **extras,
+        )
 
 
 @dataclass

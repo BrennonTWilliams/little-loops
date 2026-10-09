@@ -42,6 +42,7 @@ Provides command-line interfaces for automated issue management:
 - ll-code: Structural code queries (callers, callees, imports, impact) via a pluggable provider protocol
 - ll-config: Resolve and print a single dot-path config value (e.g. `ll-config get history.go_no_go.correction_penalty`)
 - ll-queue: Persisted work-item queue: add/list/status/remove/run commands (FEAT-2682, FEAT-2683)
+- ll-next: Advisory cross-verb next-action recommendations (implement-issue, refine-issue, resolve-blocker, run-loop) with --explain; records offered recommendations in the existing local history store, with `accept REC_ID` and read-only `feedback REC_ID` (FEAT-3561, FEAT-3711)
 """
 
 from little_loops.cli.action import main_action
@@ -79,6 +80,7 @@ from little_loops.cli.migrate import main_migrate
 from little_loops.cli.migrate_labels import main_migrate_labels
 from little_loops.cli.migrate_relationships import main_migrate_relationships
 from little_loops.cli.migrate_status import main_migrate_status
+from little_loops.cli.next import main_next
 from little_loops.cli.parallel import main_parallel
 from little_loops.cli.queue import main_queue
 from little_loops.cli.schemas import main_generate_schemas  # internal: dev tooling
@@ -131,6 +133,7 @@ __all__ = [
     "main_migrate_labels",
     "main_migrate_relationships",
     "main_migrate_status",
+    "main_next",
     "main_learning_tests",
     "main_logs",
     "main_issues",

@@ -205,6 +205,28 @@ Program Design gate's arming.
      narrow scope after a failed replay — because the repair loop gets one
      reconcile attempt per run. An applicable gap whose fix would change the
      chosen mechanism is `PROPOSAL_UNSOUND`, not directive drift.
+   - **Selected-decision propagation (BUG-3764)**: inspect the current `## Program
+     Design` directives (Types, Signatures, Call Path) and the decision-derived
+     `## Impact` Effort/Risk text against the governing selection, even when those
+     passages have no Integration Map entry or `unapplied_decision_detail` scanner
+     candidate. This is a separate semantic check, not a by-product of AC coverage.
+     Treat scanner candidates as evidence needing contextual review only: the
+     scanner needs recognizable option blocks, scans Program Design but not Impact,
+     and can return nothing for real prose-only drift — no candidates is not a pass.
+     Preserve historical option comparisons, research blocks and intentional
+     selected-mechanism identifiers; a shared-vocabulary hit alone is not drift.
+     The check qualifies a finding only with an unambiguous recorded selected option
+     **and** Decision Rationale for the decision governing that passage (another
+     decision group's winner is insufficient), a selected mechanism that still
+     stands, and a correction restricted to named Program Design directive passages
+     or decision-derived Impact Effort/Risk lines. Absent or ambiguous selection, an
+     unsupported new design, a general Impact factual error, or an actual refutation
+     of the selected mechanism does not qualify: apply the existing claim/premise
+     categories or `PROPOSAL_UNSOUND`. The precondition above applies unchanged —
+     with an absent/`TBD`/boilerplate Proposed Solution this sub-check is skipped,
+     a selection recorded elsewhere does not activate it, and the report must say
+     the check was **unassessed** (a skip is not proof of design alignment and never
+     originates `DIRECTIVE_DRIFT`).
 
    This is judgment over consequences, not a claim to corroborate — read the
    Proposed Solution's diff-shape against the current code the same way an
@@ -214,7 +236,12 @@ Program Design gate's arming.
    **Verdict** (BUG-3574): classify each finding by **which section must change to
    fix it**, not by sub-check. If the fix is confined to Implementation Steps /
    Acceptance Criteria / Integration Map and the selected mechanism stands (e.g. an
-   AC gap, a fixture-invalidation step) → `DIRECTIVE_DRIFT` (§C). If the selected
+   AC gap, a fixture-invalidation step) → `DIRECTIVE_DRIFT` (§C). The selected-decision
+   propagation sub-check (BUG-3764) extends that scope conditionally: when it
+   qualifies, specifically named Program Design directive passages or
+   decision-derived Impact Effort/Risk lines whose correction the recorded selection
+   entails are likewise `DIRECTIVE_DRIFT`; collect them in the **same pass** as any
+   ordinary AC/Step/Integration Map drift. If the selected
    option / Proposed Solution itself must change (the chosen mechanism is refuted)
    → `PROPOSAL_UNSOUND` (§C). When both kinds of finding exist,
    `PROPOSAL_UNSOUND` wins (a refuted proposal makes directive drift moot). If checks 1-4 *also*
@@ -269,7 +296,9 @@ Program Design gate's arming.
    found" errors). Otherwise, an empty list, unknown property/result values, or
    conflicting entries for one occurrence/property → silent fallback to model
    judgment, matching B7. Skipped under `--from-evidence`; runs read-only under
-   `--check`; it never repairs citations.
+   `--check`; it never repairs citations (the §4 Current Behavior citation-location
+exception is a separate owner — B8 stays a read-only, property-exact evidence
+consumer).
 
    Two sources. **Blocking** findings come from the top-level blocking gap lists
    (no occurrence key — a plain path mention has no `examined_refs` entry, so match
@@ -328,7 +357,7 @@ verification output.
 | DEP_ISSUES | Dependency references have problems (broken refs, missing backlinks, cycles) |
 | DECISIONS_VIOLATION | Issue violates an active required rule in the decisions log |
 | PROPOSAL_UNSOUND | The Proposed Solution, implemented as written, contradicts the code it names (check B6) and the selected option must change — a claim-verification defect, not a claim, so it is not remedied by `refine_followup` or `reconcile-issue` |
-| DIRECTIVE_DRIFT | Check B6 finding whose fix is confined to Implementation Steps / Acceptance Criteria / Integration Map; the selected mechanism stands (BUG-3574) — remedied by `reconcile-issue --from-verify-evidence` (BUG-3695), which reads the persisted `verify_evidence` and may add the entailed AC/Step |
+| DIRECTIVE_DRIFT | Check B6 finding whose fix is confined to Implementation Steps / Acceptance Criteria / Integration Map, **or** (BUG-3764) to specifically named Program Design directive passages / decision-derived Impact Effort/Risk lines that an unambiguous recorded selection and Decision Rationale entail; the selected mechanism stands (BUG-3574) — remedied by `reconcile-issue --from-verify-evidence` (BUG-3695, BUG-3763), which reads the persisted `verify_evidence` and may add the entailed AC/Step or, for a named design/estimate item, rewrite only that passage after revalidating the decision |
 | EVIDENCE_UNVERIFIED | A quoted evidence span attributed to a named artifact (check B7) exists in no revision of that artifact — outranks `PROPOSAL_UNSOUND` when both apply |
 | CLAIMS_OUTDATED | An `OUTDATED`/`NEEDS_UPDATE` finding (checks 1-4) whose fix is a **factual metadata correction** only (BUG-3637; see correctable-scope rule below) — remedied by `correct_claims`, not `refine_followup` |
 
@@ -346,7 +375,8 @@ place is unsafe because an independent `--check` re-pass cannot catch it (the
 rewritten issue would be internally consistent), so any finding whose fix
 requires changing Summary, Current Behavior, Expected Behavior, Root Cause,
 Motivation, Steps to Reproduce, or Proposed Solution stays `NON_VALID`, never
-`CLAIMS_OUTDATED`, regardless of how narrow the actual text change looks.
+`CLAIMS_OUTDATED`, regardless of how narrow the actual text change looks —
+with the single bounded exception below for Current Behavior citation numbers.
 `## Context` is in neither list above: a finding whose fix touches it (e.g. a
 blocking citation key surfaced by check B8) is an `OUTDATED`/`NEEDS_UPDATE` finding
 outside the correctable scope, so it stays `NON_VALID`.
@@ -354,6 +384,44 @@ outside the correctable scope, so it stays `NON_VALID`.
 `POSSIBLE_REGRESSION`, and `DEP_ISSUES` are never `CLAIMS_OUTDATED` — they
 always persist as `NON_VALID` (never-auto-correct set). When an issue has
 findings in both scopes, `NON_VALID` wins (see verdict precedence in §2.5).
+
+**Current Behavior citation-location exception (BUG-3767).** A stale source
+citation inside `## Current Behavior` is `CLAIMS_OUTDATED` — not `NON_VALID` —
+only when the finding is a pure citation-location correction whose original
+assertion remains true unchanged. All of the following must hold; if any is
+ambiguous or unsupported, decline the exception and the finding stays
+`NON_VALID`:
+
+- **Edit surface**: only the numeric line/range suffix of an existing citation
+  in the *same source file*, applied as an exact-substring replacement of that
+  numeric span. Accept an explicit `path:N` / `path:N-M`, or shorthand `:N` only
+  when the same sentence/bullet names its source file unambiguously. Never change
+  the path or the asserted symbol, introduce a new anchor, or expand shorthand
+  through a prose rewrite; everything else in Current Behavior stays
+  byte-identical.
+- **Unique original occurrence**: the original citation must be uniquely
+  locatable. Repeated identical citations need uniquely discriminating local
+  context; otherwise decline.
+- **Unique replacement, proven against source**: the sentence/bullet must carry a
+  symbol literal or backticked code expression that directly identifies the
+  asserted source (plus its enclosing symbol when needed). That literal must occur
+  verbatim exactly once in the file (or named enclosing symbol), be present at the
+  replacement range and absent at the old range. A nearest function name, bare
+  prose pointer, merely in-range line, or a literal occurring in several branches
+  does not qualify. Read the source directly and confirm the existing assertion
+  still holds verbatim — `resolve_anchor` / anchor-sweep are optional mechanical
+  aids only and never establish eligibility or the replacement.
+- **Nothing else changes**: asserted symbols, literals, thresholds, conditions,
+  behavior, causation, scope, rationale, code snippets and incident evidence are
+  premise, not metadata. A location pointing at a different fact, a changed source
+  assertion, or an unsupported premise stays `NON_VALID`; never substitute another
+  true statement to make the issue verify. Historical quotations and
+  decision/research provenance are not current-state correction targets — if their
+  age is unclear, report uncertainty instead of rewriting history.
+
+Raw `unapplied_decision` candidates never determine the verdict. All other
+premise sections keep their exclusion above; this is not a general
+factual-rewrite permission.
 
 #### E. Validate Dependency References
 
@@ -479,6 +547,33 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
   `reconcile-issue --from-verify-evidence` consumes it; `clear_verify_verdict`
   removes it (value-agnostic) before the next verify. Frontmatter only under
   `--check`.
+
+  **Selected-decision items (BUG-3764).** Evidence for the propagation sub-check
+  uses the canonical prefixes `Program Design:` or `Impact:` (never a composite
+  heading such as `Program Design / Types`), names the specific current passage
+  and the correction the selection entails, and never turns a section heading
+  into blanket rewrite authority. Collect every applicable finding — design,
+  Impact, AC, Step — in one list and persist it, escaped on a single line, in the
+  same frontmatter update as `DIRECTIVE_DRIFT`, replacing earlier evidence. The
+  item grammar is a contract with `refine-to-ready-issue.yaml`'s
+  `check_residual_decision_drift` guard: items are joined with `; `, each has one
+  structural ` -> ` between drift and correction. **Normalize each drift and
+  correction payload before assembling items and YAML-escaping**: replace an
+  embedded ` -> ` with ` → ` (U+2192) and an embedded `; ` with `, `; only then add
+  the item's single structural ` -> ` and join with `; `. Quotes, ordinary
+  apostrophes/contractions and backslashes are legal payload text (YAML-escape
+  `"` and `\`); do not strip them. Example: `verify_evidence: "Program Design:
+  'Call Path still routes a → b → migrate' -> rewrite the Call Path to the
+  predicate on existing columns; Impact: 'Effort/Risk prices the migration' ->
+  reprice for the selected option, it needs no migration"`.
+
+  **Every fresh full `--check` publishes a coherent verdict/evidence pair**, also
+  when the winning category changes: `DIRECTIVE_DRIFT`, `CLAIMS_OUTDATED` and
+  `PROPOSAL_UNSOUND` replace any earlier evidence with their own complete current
+  work list; `VALID`, `NON_VALID` and `EVIDENCE_UNVERIFIED` carry no evidence
+  contract here, so **remove any stale `verify_evidence`** in the same update. Raw
+  old evidence never overrides the winning category. Under `--check` preserve every
+  body byte, including protected history and the Session Log.
 - `CLAIMS_OUTDATED` verdict (BUG-3637): when every `OUTDATED`/`NEEDS_UPDATE`
   finding is in the correctable scope defined in §2C (and no finding from the
   never-auto-correct set below applies) → `verify_verdict: CLAIMS_OUTDATED` —
@@ -491,7 +586,16 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
   write a one-line `verify_evidence:` field as a **double-quoted YAML
   scalar** on a single line (no newlines, `"` and `\` escaped), one item per
   stale claim, `; `-separated, each item shaped `<section>: '<stale text>' ->
-  <current truth>` (single quotes inside an item avoid `"` escaping), e.g.
+  <current truth>` (single quotes inside an item avoid `"` escaping). Enumerate
+  every eligible finding and replace the evidence together with the verdict. A
+  `Current Behavior:` item under the §2C citation-location exception must name
+  the original citation occurrence with its unique local context, the old/new
+  range in the same file, the identifying literal and enclosing symbol, and direct
+  support that the assertion is unchanged, e.g. `Current Behavior:
+  '<path>:<old>' [context: '<unique local text>'] -> '<path>:<new>' [anchor:
+  '<literal>' in '<symbol>', support: '<unchanged assertion proof>']`. Paraphrase
+  any payload containing `; ` so that sequence appears only between items. Other
+  examples:
   `verify_evidence: "Confidence Check Notes: 'BUG-3628 is open' -> BUG-3628 is
   done; Integration Map: 'prepare-issue.yaml (91 lines)' -> 90 lines"`. Naming
   the section lets `correct_claims` apply the fix without re-locating the
@@ -512,6 +616,14 @@ into the file as if it were true. `CLAIMS_OUTDATED` outranks
 `PROPOSAL_UNSOUND`/`DIRECTIVE_DRIFT` per §B6's existing "claim-verdict wins"
 rule — a proposal built on an outdated premise must have that premise
 corrected first, or the proposal-repair path re-derives the same fiction.
+An otherwise-correctable citation plus lower-priority directive drift therefore
+persists `CLAIMS_OUTDATED` first; the fresh verification after the correction
+rediscovers any remaining drift rather than treating the citation edit as its
+repair. Any noncorrectable/current-premise or never-auto-correct finding prevents
+a `CLAIMS_OUTDATED` verdict. A genuine Current Behavior premise change stays
+`NON_VALID` and wins over both; mixed findings can therefore need successive
+claim-correction and reconcile cycles — do not promise one repair for every mixed
+issue or suppress remaining findings.
 
 If the field already exists in the frontmatter, replace its value in place;
 otherwise insert it alongside the issue's other single-line frontmatter
@@ -550,16 +662,40 @@ does not count as a correction of a stale claim — it must also be rewritten
 status/line-count reference), bounded by §2C's correctable-scope rule (never
 rewrite Summary / Current Behavior / Expected Behavior / Root Cause /
 Motivation / Steps to Reproduce / Proposed Solution here; those verdicts stay
-`NON_VALID` and read-only). This applies:
+`NON_VALID` and read-only) — except the §2C Current Behavior
+citation-location exception, which authorizes replacing only the numeric
+line/range span of an eligible citation (exact substring; every other byte of
+Current Behavior unchanged). This applies:
 - **Under `--from-evidence`** (non-check mode): read the issue's
   `verify_evidence` frontmatter field. If absent or empty, make no edits and
   exit — the following `--check` re-pass then decides. Otherwise, re-check
   **only** the listed claims against the codebase and rewrite each confirmed
   stale claim in place; do not run the full 2A-2E sweep and do not apply
-  fixes beyond the `verify_evidence` work list.
-- **In a normal (non-`--from-evidence`) non-check run**, for any in-scope
+  fixes beyond the `verify_evidence` work list. A `Current Behavior:` item is
+  additionally authority to edit only when the issue's current `verify_verdict`
+  is `CLAIMS_OUTDATED`: re-read the issue and the source before each numeric-span
+  replacement and revalidate the original occurrence, unique literal, old/new
+  ranges and unchanged assertion. Stale evidence that no longer uniquely matches,
+  or evidence recorded for a different verdict, confers no edit authority.
+  A targeted pass skips B6: it cannot discover or certify a new design-drift
+  category or a whole-issue `VALID` (BUG-3764), and does not infer
+  `DIRECTIVE_DRIFT` from old evidence. When it applies claim corrections — even if
+  another listed claim stays unresolved — or confirms every listed claim is already
+  resolved, **remove the issue's existing `verify_verdict`/`verify_evidence` pair**
+  and report that verification is pending (naming any unresolved concern); the
+  following fresh full `--check` owns the new category. A refused/no-op pass with
+  unresolved claims, or missing/empty evidence, keeps its no-edit behavior and the
+  existing pair, and reports the concern. The caller must run a fresh `--check`
+  before dispatching or scoring. If `--check` and `--from-evidence` are both given,
+  check-mode precedence stands: run the full sweep, publish its current pair, and
+  preserve the body.
+- **In a normal (non-`--from-evidence`) non-check run**, edit authority stays
+  claims-only: B6 reports Program Design/Impact drift and leaves its repair to
+  flagged `reconcile-issue`; this command never rewrites those passages. For any in-scope
   `OUTDATED`/`NEEDS_UPDATE` finding the 2A-2E sweep itself surfaces: rewrite it
-  in place the same way, in addition to the full sweep's other work. A plain
+  in place the same way, in addition to the full sweep's other work. An eligible
+  Current Behavior citation needs its own fresh `CLAIMS_OUTDATED` classification
+  in that run and follows the same bounds. A plain
   `/ll:verify-issues <ID>` run (no `--from-evidence`) keeps its normal
   full-sweep behavior regardless of any `verify_evidence` a prior run left
   behind — the flag is explicit, never inferred from the field's presence.
@@ -605,8 +741,22 @@ instead:
 rewrite it in place to reflect the post-fix state — `VALID` if this pass resolved
 everything, otherwise the 2.5 mapping applied to the residual (unfixed) verdict
 (including `CLAIMS_OUTDATED` when the residual findings are still all in the
-correctable scope). Do not insert the field if it is absent; inserting it remains
-`--check` mode's responsibility (2.5).
+correctable scope). Apply the full precedence to **all remaining findings**, and keep
+`verify_evidence` coherent with the resulting verdict in the same update (BUG-3764):
+
+- Residual `DIRECTIVE_DRIFT`: revalidate the complete B6 work list (including the
+  selected-decision propagation sub-check) against the post-fix issue and replace
+  `verify_evidence` with it — never leave citation-only evidence attached to the new
+  verdict. If a complete current residual assessment cannot be substantiated, remove
+  **both** `verify_verdict` and `verify_evidence` and report that a fresh `--check` is
+  required rather than publishing an unsupported category.
+- Other evidence-bearing residual categories (`CLAIMS_OUTDATED`, `PROPOSAL_UNSOUND`)
+  carry their own current work list; a category without an evidence contract removes
+  stale evidence.
+- Resolved to `VALID`: remove stale `verify_evidence`.
+
+Do not insert the field if it is absent (no verdict and no orphan evidence); inserting it
+remains `--check` mode's responsibility (2.5).
 
 ### 4.5 Append Session Log Entries
 
@@ -705,7 +855,7 @@ $ARGUMENTS
 - **flags** (optional): Command behavior flags
   - `--auto` - Non-interactive mode: apply all non-destructive changes (verification notes, line number updates) without prompting. Skips setting resolved issue status (requires explicit approval).
   - `--check` — Check-only mode for FSM loop evaluators. Run verification without applying changes, print `[ID] verify: [verdict]` per non-VALID issue, exit 1 if any non-VALID, exit 0 if all valid. Implies `--auto`.
-  - `--from-evidence` (BUG-3637) — Non-check mode only. Read the target issue's `verify_evidence` frontmatter field and re-check/correct only the claims it lists, skipping the full 2A-2E sweep; no-op (no edits) when `verify_evidence` is absent or empty. Used by `refine-to-ready-issue.yaml`'s `correct_claims` state to repair a `CLAIMS_OUTDATED` verdict without a second full verify session.
+  - `--from-evidence` (BUG-3637) — Non-check mode only. Read the target issue's `verify_evidence` frontmatter field and re-check/correct only the claims it lists, skipping the full 2A-2E sweep; no-op (no edits) when `verify_evidence` is absent or empty. Skips B6, so it never discovers design drift; after correcting (or confirming already-resolved) claims it removes the verdict/evidence pair and reports verification pending (BUG-3764). Used by `refine-to-ready-issue.yaml`'s `correct_claims` state to repair a `CLAIMS_OUTDATED` verdict without a second full verify session.
 
 ---
 

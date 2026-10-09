@@ -36,6 +36,10 @@ ENH-3734 runs after all three capabilities plus FEAT-3596's core evidence. It ow
 
 Current executor constraints are shared across children: zero rate-limit waits require both zero retry/wait knobs **and** rate_limit_long_wait_ladder:[0]; API/infra retries still consume visits/backoff. Runner exceptions may retain old captures, so error/skip/fallback decisions need fixed route status or verified current-attempt identity. Raw captures use the core printf/:shell transport. Grounding shares bounded exact-identity indexes rooted in consuming configuration; materialize staging is bound to attempt/input/source hashes. ENH-3734 executes real deterministic engine actions with stub prompts/browser and advances the executor clock in budget fixtures. Nominal success must fit; retry-driven cap failure and outer timeout remain distinct outcomes, not guaranteed successful completion.
 
+Materialize's existing input snapshot and the finisher's capability-gated portfolio snapshot are persisted before prompt dispatch and verified on resume/error paths; current mutated files cannot replace the original fingerprint. FEAT-3586 owns that additive portfolio publication in its enablement change, with zero additional visits and no artifact when disabled. Core fixtures disable every optional knob and ENH-3734 explicitly sets all three per case, so preset flips cannot change earlier evidence/tests.
+
+**Provisional until the core lands (2026-10-07).** These children and ENH-3734 were hardened against unbuilt surfaces over several spec-only rounds, and EPIC-3581's spec freeze applies. Before starting any of them, reconcile it (`/ll:reconcile-issue`, `/ll:confidence-check`) against the landed core and re-evaluate its value against the core's measured results; FEAT-3585 and FEAT-3586 are the heaviest per unit of value. Cancelling an optional child is a legitimate outcome: it resolves ENH-3734's `blocked_by`, counts toward closure of this epic, and shrinks ENH-3734's matrix to 2^k over the capabilities actually built (deterministic fixtures plus one live all-on run). Budget increments follow EPIC-3581 § Budget sizing rule (one retry allowance per prompt visit; the all-retries bound is informational). Deliver serially on main (EPIC-3581 § Delivery mode and spec freeze).
+
 ## Children
 
 - **FEAT-3584** — Brainstorm codebase grounding with bounded anchor validation (open; v1 implementation scope is codebase only; web deferred).
@@ -79,12 +83,22 @@ Current executor constraints are shared across children: zero rate-limit waits r
 
 ## Review Notes
 
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78); issue edits only:_ marked the optional children provisional until the core lands, made cancellation an explicit allowed outcome (FEAT-3586 is P4 yet gates epic closure), and replaced all-retries budget derivation with EPIC-3581's sizing rule. No capability contract changed; no new measurements.
+
 _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ accepted bounded/non-Git grounding, source/manifest replay and a specified stamp mechanism. Kept the existing fewer-than-two-source failure rather than the advisor's proposed text fallback; unauthored candidates remain ineligible. Grounding's deadline belongs to pre-tournament cost, and stamped-PNG/browser learning proof remains required. No new live evidence or changes to annotate-only pre-mortem were necessary.
+
+## Composition Review
+
+Reviewed 2026-10-06 against all four open children and the current executor, with `/ll:advise` using claude-opus-5-5 (confidence 0.74). **Disposition: KEEP.** All four children are on-theme and recently active, with individual enablement/evidence and combined coverage already owned. Grounding's bounded existence-only contract needs no new slice. Keep the independent optional order and ENH-3734 closeout; no child is missing and optional work does not block core closure.
+
+Clarified persistent input checks for materialize/pre-mortem and the hybrid runner in combined implementation steps; FEAT-3586's effort is Medium. The advisor considered mutation-guard changes optional; persisting the already-required pre-dispatch fingerprint makes the existing promise executable across resume without new states/calls. Recompute alone would trust inputs the prompt may have changed. Browser learning proof and all live capability measurements remain pending implementation.
 
 ## Status
 
 **Open** | Created: 2026-09-30 | Priority: P3
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
+- Implementation-readiness review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.74; issue revisions only) - 2026-10-06
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
 - `/ll:audit-issue-conflicts` - 2026-10-01T20:26:29 - `b32e58bb-e3b8-4048-9c71-1c2f63665ce9.jsonl`

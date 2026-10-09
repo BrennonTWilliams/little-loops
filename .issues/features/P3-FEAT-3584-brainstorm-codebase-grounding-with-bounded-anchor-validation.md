@@ -148,6 +148,8 @@ Web grounding would require a separate issue and measurements for source retriev
 
 ## Review History
 
+_2026-10-07 pre-implementation review, `/ll:advise` with claude-opus-5-5 (confidence 0.78):_ provisional until the core lands (EPIC-3687 § Provisional): reconcile against the landed engine and re-evaluate value against core results before starting; cancellation is allowed. The grounding deadline and repo-summary time stay part of pre-tournament cost (EPIC-3581 § Budget sizing rule). No contract change.
+
 _2026-10-05 executor/configuration review and `/ll:advise` with Opus (confidence 0.70):_ clarified consuming-project configuration and exact/literal anchor identity, bounded shared indexes and repeated repo-summary work, and assigned the additive CLI/fence changes. Renamed the issue to match its codebase-only v1 scope; web remains deferred. Actual engine/profile paths remain unbuilt prerequisites. Historical web directives below are superseded by the current contract above. No new grounding throughput measurements were made.
 
 _2026-10-05 follow-up, `/ll:advise` with Opus (confidence 0.72):_ accepted graceful non-Git discovery, lexical file-anchor validation, runtime/issue-prose exclusions for symbol search, bounded anchor lists and a whole-operation deadline. Kept existence-only scope: no file-content or symlink-target certification and no new semantic analyzer. Caps/deadline are design bounds, not new measurements.
@@ -180,6 +182,7 @@ _Added 2026-09-28 (EPIC-3581 sub-issue review):_
 
 
 ## Session Log
+- Pre-implementation review (`/ll:advise` with claude-opus-5-5, confidence 0.78; issue edits only) - 2026-10-07
 - `/ll:refine-issue` - 2026-10-05T17:31:36-06:00 - `EPIC-3687 pre-implementation review`
 - Follow-up pre-implementation review (Codex; `/ll:advise` with claude-opus-5-5, confidence 0.72; no new live measurements) - 2026-10-05
 - Pre-implementation review and directive reconciliation (Codex; Opus consult unavailable: advisor task budget exhausted) - 2026-10-05
