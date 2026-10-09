@@ -229,6 +229,7 @@ little-loops/
         │   ├── analysis.py      #   Conflict scoring and dependency analysis
         │   ├── formatting.py    #   Report and graph formatting
         │   └── operations.py    #   File mutation operations (apply/fix)
+        ├── next_arena/          # ll-next action arena: verb registry, candidate generators, axes, selection, rendering (FEAT-3561)
         ├── issues/              # Issue utility sub-package (ENH-1300)
         │   ├── __init__.py      #   Package init
         │   ├── anchors.py       #   resolve_anchor(): language-agnostic backwards scan

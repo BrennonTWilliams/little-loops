@@ -257,6 +257,7 @@ little-loops/
         │   ├── history.py
         │   ├── logs.py
         │   ├── messages.py
+        │   ├── next.py          # ll-next advisory next-action recommender CLI (FEAT-3561)
         │   ├── parallel.py
         │   ├── queue.py         # ll-queue persisted work-item queue CLI (FEAT-2682)
         │   ├── session.py       # ll-session unified session store query CLI
@@ -266,6 +267,7 @@ little-loops/
         │   ├── loop/            # ll-loop subcommands
         │   ├── sprint/          # ll-sprint subcommands
         │   └── issues/          # ll-issues subcommands
+        ├── next_arena/          # ll-next action arena: verb registry, candidate generators, axes, selection, rendering (FEAT-3561)
         ├── issues/              # Issue utility sub-package (ENH-1300)
         │   ├── __init__.py
         │   ├── anchors.py       # resolve_anchor(): language-agnostic backwards scan
