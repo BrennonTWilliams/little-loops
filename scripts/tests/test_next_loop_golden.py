@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -140,7 +141,7 @@ RAW_SCORES = {
     "beta": (0.4358854590597031, 0.3333333333333333, "2026-03-11T01:00:00+00:00"),
     "delta": (0.7803469307990238, 1.0, "2026-03-20T12:00:00Z"),
     "epsilon": (0.08814571719444105, 0.0, None),
-    "gamma": (0.23970765635236108, 0.5, "not-a-date"),
+    "gamma": (0.2397076563523611, 0.5, "not-a-date"),
     "tie-a": (0.3568140336757176, 0.5, "2026-03-06T00:00:00Z"),
     "tie-b": (0.3568140336757176, 0.5, "2026-03-06T00:00:00Z"),
     "today-loop": (0.583235296927698, 1.0, "2026-03-15T08:00:00Z"),
@@ -162,11 +163,15 @@ class TestRawScores:
         assert set(history) == set(RAW_SCORES)
         for name, runs in history.items():
             got = next_loop._score_loop(runs, as_of=NOW, weights=DEFAULT_WEIGHTS)
-            want = RAW_SCORES[name]
-            # log1p/exp last-bit results differ across libm builds (macOS vs glibc), so the
-            # float score is compared to 1e-12; the success rate and timestamp stay exact.
-            assert got[0] == pytest.approx(want[0], rel=1e-12), name
-            assert got[1:] == want[1:], name
+            expected = RAW_SCORES[name]
+            # First tuple element is a float score; macos Python 3.11 builds
+            # (libm-dependent) and Linux Python 3.11/3.12 differ by 1 ULP on
+            # the gamma fixture. Subsequent elements are exact (success_rate
+            # is a rational ratio; last_started_at is a passthrough string).
+            assert math.isclose(got[0], expected[0], rel_tol=0, abs_tol=5e-17), (
+                f"{name}: score {got[0]!r} not within 5e-17 of {expected[0]!r}"
+            )
+            assert got[1:] == expected[1:], name
 
     def test_empty_runs_fast_path(self) -> None:
         assert next_loop._score_loop([], as_of=NOW, weights=DEFAULT_WEIGHTS) == (0.0, 1.0, None)
