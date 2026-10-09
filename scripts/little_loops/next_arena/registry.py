@@ -13,7 +13,7 @@ This module is deliberately dependency-free (stdlib only) so that
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 
 #: Output contract version (positive integer, independent of the history DB schema).
@@ -72,7 +72,7 @@ class VerbSpec:
     #: Wording for the fallback order of cold-start candidates in ``selection_reason``.
     cold_start_order: str = "priority then target"
     #: Extra per-verb integer settings (``name -> default``) beyond ``cap``/``refine_cap``.
-    extra_settings: Mapping[str, int] = MappingProxyType({})
+    extra_settings: Mapping[str, int] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def evidence_only(self) -> bool:
