@@ -1011,8 +1011,7 @@ def _native_session_stored(conn: sqlite3.Connection, handle: SessionHandle) -> b
     about the session; Codex verifies through its native ``session_meta`` header row.
     """
     for event_type, raw_line in conn.execute(
-        "SELECT event_type, raw_line FROM raw_events WHERE source_path = ? "
-        "ORDER BY line_no LIMIT 200",
+        "SELECT event_type, raw_line FROM raw_events WHERE source_path = ? ORDER BY line_no",
         (str(handle.path),),
     ):
         try:

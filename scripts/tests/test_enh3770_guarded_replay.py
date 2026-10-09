@@ -1319,3 +1319,14 @@ class TestSecondReviewRegressions:
         source = _write(tmp_path / "some-name.jsonl", records)
         _ingest(db, source, "claude-code")
         assert _sql(db, "SELECT COUNT(*) FROM usage_source_state") == [(0,)]
+
+    def test_native_identity_found_past_many_leading_sessionless_rows(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        lines = _lines(_CLAUDE)
+        sid = next(
+            json.loads(line)["sessionId"] for line in lines if "sessionId" in json.loads(line)
+        )
+        leading = [json.dumps({"type": "summary", "summary": f"s{i}"}) for i in range(250)]
+        source = _write(tmp_path / f"{sid}.jsonl", leading + lines)
+        _ingest(db, source, "claude-code")
+        assert _sql(db, "SELECT COUNT(*) FROM usage_source_state") == [(1,)]
