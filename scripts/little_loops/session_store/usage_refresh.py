@@ -368,7 +368,29 @@ def _record_replacement_acquisition(conn: sqlite3.Connection, attempt: Any, path
     except OSError:
         return
     if not accounting.clean:
+        # No verified range: no acquisition head and no recovery authority, but the refreshed
+        # raw still owes cache and usage work, so it is recorded durably (never dropped).
         record_rejections(conn, attempt, accounting)
+        head = read_source_head(conn, str(path))
+        scope = SourceScope(
+            str(path),
+            head.scope.generation_id if head is not None else attempt.scope.generation_id,
+            attempt.scope.derive_version,
+            attempt.scope.host,
+            attempt.scope.session_id,
+        )
+        record_source_pending(
+            conn,
+            SourcePending(
+                scope=scope,
+                kind="refresh",
+                reason="parser_refresh",
+                range_kind="whole_source",
+                raw_cache_pending=True,
+                usage_pending=True,
+            ),
+            expected_head_revision=head.revision if head is not None else None,
+        )
         return
     witness = _acquisition_witness(path, accounting.offset)
     if witness is None:

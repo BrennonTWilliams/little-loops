@@ -1004,6 +1004,32 @@ def _ingest_snapshot(conn: sqlite3.Connection, handles: list[SessionHandle]) -> 
     return _IngestSnapshot(rows, stats)
 
 
+def _native_session_stored(conn: sqlite3.Connection, handle: SessionHandle) -> bool:
+    """Whether a stored row of the source carries the native session ID the handle names.
+
+    A Claude record without ``sessionId`` falls back to the filename, which verifies nothing
+    about the session; Codex verifies through its native ``session_meta`` header row.
+    """
+    for event_type, raw_line in conn.execute(
+        "SELECT event_type, raw_line FROM raw_events WHERE source_path = ? "
+        "ORDER BY line_no LIMIT 200",
+        (str(handle.path),),
+    ):
+        try:
+            payload = json.loads(_unpack_payload(raw_line))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if handle.host == "codex":
+            native = payload.get("id") if event_type == "session_meta" else None
+        else:
+            native = payload.get("sessionId")
+        if native == handle.session_id:
+            return True
+    return False
+
+
 def _stage_raw_only_acquisition(
     conn: sqlite3.Connection,
     handle: SessionHandle,
@@ -1022,6 +1048,12 @@ def _stage_raw_only_acquisition(
     before = snapshot.stats.get(key)
     if before is None:
         return
+    prior_rows = snapshot.rows.get(key, 0)
+    if prior_rows and (
+        conn.execute("SELECT COUNT(*) FROM raw_events WHERE source_path = ?", (key,)).fetchone()[0]
+        == prior_rows
+    ):
+        return  # an unchanged re-ingest neither restages the acquisition nor polls its handoff
     try:
         final = handle.path.stat()
     except OSError:
@@ -1036,7 +1068,7 @@ def _stage_raw_only_acquisition(
             "SELECT DISTINCT session_id FROM raw_events WHERE source_path = ?", (key,)
         )
     }
-    if sessions != {handle.session_id}:
+    if sessions != {handle.session_id} or not _native_session_stored(conn, handle):
         return
     pristine = snapshot.rows.get(key, 0) == 0
     tracked = read_source_head(conn, key) is not None
@@ -2130,7 +2162,9 @@ def _derive_usage_incremental_disposition(
                 (checkpoint,),
             )
         )
-    retried = _retry_candidates(conn, exclude=full_sources)
+    # Every source with outstanding work is resolved after this call's replay -- including a
+    # Codex source already replayed whole for its appended rows.
+    retried = _retry_candidates(conn, exclude=set())
     full_sources.update(retried)
     count = 0
     if max_id > checkpoint or full_sources:

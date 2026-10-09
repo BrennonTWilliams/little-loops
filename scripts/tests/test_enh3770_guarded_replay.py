@@ -1210,3 +1210,112 @@ class TestDecodeFailuresAndRawOnlyAcquisition:
         assert _sql(db, "SELECT COUNT(*) FROM raw_events") == [(0,)]
         assert _sql(db, "SELECT COUNT(*) FROM usage_source_state") == [(0,)]
         del tracking
+
+
+class TestSecondReviewRegressions:
+    """Defects the second adversarial review confirmed, kept as permanent controls."""
+
+    @staticmethod
+    def _completion(db: Path, source: Path) -> tuple[str, str, str]:
+        from little_loops.session_store import read_source_derive_completion
+
+        conn = connect(db)
+        try:
+            done = read_source_derive_completion(conn, str(source))
+        finally:
+            conn.close()
+        return (done.status, done.basis, done.outstanding)
+
+    def test_a_codex_source_with_appended_rows_resolves_its_outstanding_work(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "r.jsonl", _lines(_CODEX)[:6])
+        _ingest(db, source, "codex")
+        backfill_usage_incremental(db)
+        assert self._completion(db, source) == ("complete", "semantic", "none")
+        with source.open("a") as handle:
+            handle.write("\n".join(_lines(_CODEX)[6:]) + "\n")
+        _ingest(db, source, "codex")  # raw-only append: a fresh derive handoff
+        assert any(row[7] == 1 for row in _pending(db, source))
+        backfill_usage_incremental(db)
+        backfill_usage_incremental(db)
+        assert all(row[7] == 0 for row in _pending(db, source))
+        assert self._completion(db, source) == ("complete", "semantic", "none")
+        assert len(_rows(db)) == 2
+
+    def test_untracked_refresh_with_an_unterminated_tail_still_owes_durable_work(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store import rebuild
+        from little_loops.session_store.sessions import SessionHandle
+        from little_loops.session_store.usage_refresh import refresh_raw_events
+        from little_loops.session_store.writers import _pack_payload, _unpack_payload
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "s.jsonl", _lines(_CLAUDE)[:1])
+        _ingest(db, source, "claude-code")
+        record = json.loads(_unpack_payload(_sql(db, "SELECT raw_line FROM raw_events")[0][0]))
+        del record["message"]["usage"]
+        packed = _pack_payload(json.dumps(record))
+        _sql(
+            db,
+            "UPDATE raw_events SET raw_line = ?, parsed_json = ?, usage_contract = NULL",
+            (packed, packed),
+        )
+        for table in ("usage_source_pending", "usage_source_state"):
+            _sql(db, f"DELETE FROM {table}")  # a legacy, untracked raw-only source
+        with source.open("a") as handle:
+            handle.write('{"type":"user","sess')  # a torn live tail: no verified range
+        session = json.loads(_lines(_CLAUDE)[0])["sessionId"]
+        handle_obj = SessionHandle("claude-code", session, source, tmp_path, source.stat().st_mtime)
+        refreshed = refresh_raw_events(db, handles=[handle_obj])
+        assert refreshed.sources[0].status == "refreshed" and refreshed.needs_rebuild
+        assert any(row[1] == "refresh" and row[7] == 1 and row[8] == 1 for row in _pending(db))
+        rebuild(db)
+        assert len(_rows(db)) == 1 and _rows(db)[0][11] == "measured"
+
+    def test_an_unchanged_raw_only_reingest_neither_restages_nor_revokes_completion(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "history.db"
+        sid = json.loads(_lines(_CLAUDE)[0])["sessionId"]
+        source = _write(tmp_path / f"{sid}.jsonl", _lines(_CLAUDE))
+        _ingest(db, source, "claude-code")
+        backfill_usage_incremental(db)
+        assert self._completion(db, source) == ("complete", "semantic", "none")
+        revision = _head_revision(db, source)
+        pending = _pending(db, source)
+        _ingest(db, source, "claude-code")
+        assert self._completion(db, source) == ("complete", "semantic", "none")
+        assert _head_revision(db, source) == revision and _pending(db, source) == pending
+
+    def test_context_beyond_the_acquired_range_is_not_recorded_as_a_consumed_frontier(
+        self, tmp_path: Path
+    ) -> None:
+        from little_loops.session_store import refresh_usage_source
+
+        db = tmp_path / "history.db"
+        source = _write(tmp_path / "r.jsonl", _lines(_CODEX)[:4])
+        refresh_usage_source(db, source, host="codex")  # acquired through line 4
+        with source.open("a") as handle:
+            handle.write("\n".join(_lines(_CODEX)[4:6]) + "\n{not json\n")
+        _ingest(db, source, "codex")  # raw-only, unclean: no acquisition beyond line 4
+        backfill_usage_incremental(db)
+        (row,) = _rows(db)
+        assert row[11] == "measured"  # retained closure qualifies the same row
+        (witness,) = _witnesses(db)
+        assert witness[4:] == ("known", "unavailable") and _frontier(db) == []
+
+    def test_a_filename_fallback_session_does_not_verify_native_identity(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "history.db"
+        records = []
+        for line in _lines(_CLAUDE):
+            record = json.loads(line)
+            record.pop("sessionId", None)
+            records.append(json.dumps(record))
+        source = _write(tmp_path / "some-name.jsonl", records)
+        _ingest(db, source, "claude-code")
+        assert _sql(db, "SELECT COUNT(*) FROM usage_source_state") == [(0,)]

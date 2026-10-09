@@ -1176,12 +1176,14 @@ def _codex_frontier(ctx: _Ctx, t: CodexTarget) -> tuple[QualificationDependency,
     """The model and closure rows a measured request actually consumed (None = incomplete)."""
     head = ctx.head(t.source)
     cand = t.cand
-    if head is None:
+    if head is None or head.acquired_line_no is None:
         return None
     deps = []
     for role, position in (("model", cand.model_ctx), ("closure", t.closure_ctx)):
         if position is None or position[0] is None or position[0] < 1:
             return None
+        if position[0] > head.acquired_line_no:
+            return None  # context past the acquired range proves nothing under this authority
         deps.append(
             QualificationDependency(
                 role=role,
